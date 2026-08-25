@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<!--
+  底部导航栏图标候选对照页（2026-08-26）
+
+  为什么要有这一页：用户反馈「鸭圈」图标不美观。根因是三个 Tab 键里只有中键
+  是矢量鸭子，左右两键仍是 emoji（🗺️ / 👤）。emoji 由系统字体渲染，字重、
+  色彩、基线都不受设计 Token 控制，选中态该变主色也不会变，与旁边的矢量
+  图形并排必然风格断裂。
+
+  本页所有图形都是真 SVG 路径，与最终写进 code.js 的路径逐字相同，
+  浏览器渲染结果即最终 Figma 渲染结果，因此可直接凭本页定稿。
+
+  Material Symbols 路径取自官方 fonts.gstatic.com，viewBox 恒为 "0 -960 960 960"。
+  鸭子路径取自 assets/duck-symbol-*.svg（唯一真源），本页用 JS 从同一份
+  DISC_HEAD 常量派生各候选，避免手工转抄产生偏差。
+-->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>底部导航栏图标候选对照</title>
+<style>
+  :root {
+    --brand: #0B7C8C;
+    --secondary: #6B7280;
+    --surface: #FFFFFF;
+    --border: #E5E7EB;
+    --bg: #F3F4F6;
+    --text: #111827;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 32px 40px 80px;
+    background: var(--bg); color: var(--text);
+    font: 14px/1.6 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 {
+    font-size: 16px; margin: 40px 0 14px;
+    padding-bottom: 8px; border-bottom: 2px solid var(--brand);
+  }
+  .lead { color: var(--secondary); margin: 0 0 8px; max-width: 780px; }
+  .grid { display: flex; flex-wrap: wrap; gap: 20px; }
+
+  /* 候选卡：标题 + 真实尺寸 Tab 栏 + 放大图 */
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 14px; width: 424px;
+  }
+  .card.reco { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(11,124,140,.12); }
+  .card h3 { font-size: 14px; margin: 0 0 2px; display: flex; align-items: center; gap: 8px; }
+  .tag {
+    font-size: 11px; font-weight: 400; color: var(--surface);
+    background: var(--brand); border-radius: 4px; padding: 1px 6px;
+  }
+  .note { font-size: 12px; color: var(--secondary); margin: 0 0 12px; min-height: 36px; }
+
+  /* 390×64 = 真实机身宽度下的底部导航栏 */
+  .tabbar {
+    width: 390px; height: 64px; display: flex;
+    background: var(--surface); border-top: 1px solid var(--border);
+    margin: 0 auto;
+  }
+  .tabbar.dim { background: #FAFAFA; }
+  .cell {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 4px;
+  }
+  .cell span { font-size: 10px; line-height: 1; }
+  .cell.on { color: var(--brand); }
+  .cell.off { color: var(--secondary); }
+  .cell .emoji { font-size: 20px; line-height: 24px; height: 24px; }
+
+  /* 放大区：图标本体等比放大，用于看笔画会不会粘连 */
+  .zoom {
+    display: flex; align-items: flex-end; gap: 18px;
+    margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border);
+  }
+  .zoom figure { margin: 0; text-align: center; }
+  .zoom figcaption { font-size: 11px; color: var(--secondary); margin-top: 4px; }
+
+  svg { display: block; }
+  .verdict { font-size: 12px; margin: 6px 0 0; }
+  .bad { color: #B42318; }
+  .ok { color: #067647; }
+</style>
+</head>
+<body>
+
+<h1>底部导航栏图标候选对照</h1>
+<p class="lead">
+  每条 Tab 栏都是 390×64 的真实尺寸，图标 24px。左侧「鸭圈」为选中态（主色 #0B7C8C），
+  右侧「我的」为未选中态（#6B7280）。放大区是等比放大，用于判断 24px 下笔画是否粘连。
+</p>
+
+<h2>一、「鸭圈」左键候选</h2>
+<div class="grid" id="left"></div>
+
+<h2>二、「我的」右键：emoji 与矢量对比</h2>
+<div class="grid" id="right"></div>
+
+<h2>三、中键鸭子在 24px 下的候选</h2>
+<p class="lead">
+  现状走 mini 档：圆角色块 + 白盘 + 盘内镂空鸭头 + 白眼点，共四层结构挤在 24px 里。
+  以下候选都不另画新形，只做层次减法，鸭头路径逐字沿用真源。
+</p>
+<div class="grid" id="duck"></div>
+
+<h2>四、推荐组合整条预览</h2>
+<div class="grid" id="combo"></div>
+
+<script>
+/* ============================================================
+   基础数据：全部取自真源，本页不新造任何路径
+   ============================================================ */
+
+/** Material Symbols 官方路径（fill1 / 24px），viewBox 恒为 "0 -960 960 960" */
+var MS = {
+  explore_nearby: "M491.5-243q5.5-3 8.5-9l4-9q26-48 65-82t69-79q15-23 23.5-50t8.5-56q0-79-55-135t-133-57q-77-1-133 53t-59 131q-2 32 6.5 61t25.5 53q30 45 70 78.5t64 82.5l4 9q3 6 8.5 9t11.5 3q6 0 11.5-3Zm-68-230.5Q400-497 400-530t23.5-56.5Q447-610 480-610t56.5 23.5Q560-563 560-530t-23.5 56.5Q513-450 480-450t-56.5-23.5ZM480-80q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Z",
+  map: "m600-120-240-84-186 72q-20 8-37-4.5T120-170v-560q0-13 7.5-23t20.5-15l212-72 240 84 186-72q20-8 37 4.5t17 33.5v560q0 13-7.5 23T812-192l-212 72Zm-40-98v-468l-160-56v468l160 56Z",
+  pin_drop: "M480-200Q339-304 269.5-402T200-594q0-125 78-205.5T480-880q124 0 202 80.5T760-594q0 94-69.5 192T480-200Zm0-320q33 0 56.5-23.5T560-600q0-33-23.5-56.5T480-680q-33 0-56.5 23.5T400-600q0 33 23.5 56.5T480-520ZM200-80v-80h560v80H200Z",
+  person: "M367-527q-47-47-47-113t47-113q47-47 113-47t113 47q47 47 47 113t-47 113q-47 47-113 47t-113-47ZM160-160v-112q0-34 17.5-62.5T224-378q62-31 126-46.5T480-440q66 0 130 15.5T736-378q29 15 46.5 43.5T800-272v112H160Z"
+};
+
+/* 鸭子几何：与 assets/duck-symbol-full.svg 及 code.js 逐字相同 */
+var DUCK_VB = 1024;
+var RING_INNER = 'M205.46 506 A305.84 305.84 0 1 0 817.14 506 A305.84 305.84 0 1 0 205.46 506 Z M237.76 506 A273.54 273.54 0 1 0 784.84 506 A273.54 273.54 0 1 0 237.76 506 Z';
+var DISC_HEAD = 'M284.22 506 A227.08 227.08 0 1 0 738.38 506 A227.08 227.08 0 1 0 284.22 506 Z M418 388 C405.83 392.5 397.5 398.17 389 404 C380.5 409.83 373.83 415.67 367 423 C360.17 430.33 353.17 439.67 348 448 C342.83 456.33 339.33 459.67 336 473 C332.67 486.33 327.17 509.67 328 528 C328.83 546.33 333.67 565.83 341 583 C348.33 600.17 359.33 617 372 631 C384.67 645 399.67 657.33 417 667 C434.33 676.67 457.5 684.83 476 689 C494.5 693.17 515.67 692.17 528 692 C540.33 691.83 545.17 689.83 550 688 C554.83 686.17 554.67 683.33 557 681 C556.67 678.67 560.33 681.5 556 674 C551.67 666.5 536.33 645.83 531 636 C525.67 626.17 525 621.5 524 615 C523 608.5 523.33 603.17 525 597 C526.67 590.83 528.67 584 534 578 C539.33 572 543.17 565.67 557 561 C570.83 556.33 600.5 554.5 617 550 C633.5 545.5 645.33 540.17 656 534 C666.67 527.83 675.17 519 681 513 C686.83 507 689 502.5 691 498 C693 493.5 692.33 490 693 486 C689.67 483.67 691.5 480.17 683 479 C674.5 477.83 654.5 480.67 642 479 C629.5 477.33 616.67 473.17 608 469 C599.33 464.83 595.67 461.5 590 454 C584.33 446.5 579.33 432.17 574 424 C568.67 415.83 566.67 411.67 558 405 C549.33 398.33 533.17 388.67 522 384 C510.83 379.33 501 378.17 491 377 C481 375.83 474.17 375.17 462 377 C449.83 378.83 430.17 383.5 418 388 Z';
+
+/** 眼点。rMini 是 mini 档专用放大值，与 code.js 一致 */
+var EYE = { cx: 506.1, cy: 458.5, r: 20.27, rMini: 25.6 };
+
+/* 以下两条路径由 probe-tabicon-geom.py 实测生成（_tabicon-geom.json）：
+   把鸭头包围盒（实测 x=328 y=376 w=366 h=317）居中缩放的仿射变换
+   直接烧进坐标，而不用 <g transform="scale()">。理由是 Figma 的
+   createNodeFromSvg 对 transform 的支持无官方文档保证，烧进坐标是纯几何
+   数据，任何解析器结果必然一致。变换后已复测占比：disc 0.720 / head 0.918。 */
+
+/** 候选 A：鸭头占画板 72%，居中，为外圈圆盘留出可见环带 */
+var HEAD_DISC = 'M 324.66 216.89 C 300.14 225.95 283.36 237.37 266.24 249.12 C 249.12 260.86 235.68 272.63 221.92 287.39 C 208.16 302.16 194.06 320.97 183.65 337.75 C 173.23 354.53 166.18 361.26 159.48 388.11 C 152.77 414.97 141.69 461.98 143.36 498.91 C 145.03 535.83 154.78 575.11 169.55 609.70 C 184.31 644.29 206.47 678.19 231.99 706.39 C 257.52 734.59 287.73 759.43 322.64 778.91 C 357.55 798.39 404.23 814.83 441.50 823.23 C 478.76 831.63 521.41 829.61 546.25 829.27 C 571.08 828.93 580.83 824.90 590.56 821.21 C 600.29 817.53 599.97 811.81 604.66 807.11 C 604.00 802.42 611.37 808.12 602.65 793.01 C 593.93 777.90 563.03 736.27 552.29 716.46 C 541.55 696.66 540.20 687.26 538.19 674.16 C 536.17 661.07 536.84 650.33 540.20 637.90 C 543.57 625.47 547.59 611.71 558.33 599.63 C 569.07 587.54 576.80 574.79 604.66 565.38 C 632.52 555.97 692.29 552.29 725.53 543.22 C 758.77 534.16 782.60 523.42 804.09 510.99 C 825.59 498.56 842.71 480.78 854.45 468.69 C 866.20 456.60 870.57 447.54 874.60 438.47 C 878.63 429.41 877.28 422.36 878.63 414.30 C 871.92 409.61 875.60 402.56 858.48 400.20 C 841.36 397.84 801.07 403.56 775.89 400.20 C 750.71 396.84 724.86 388.46 707.40 380.06 C 689.93 371.65 682.56 364.95 671.14 349.84 C 659.72 334.73 649.65 305.86 638.91 289.41 C 628.17 272.95 624.14 264.57 606.68 251.13 C 589.21 237.70 556.66 218.24 534.16 208.83 C 511.66 199.42 491.86 197.08 471.71 194.73 C 451.57 192.37 437.81 191.04 413.29 194.73 C 388.78 198.41 349.17 207.82 324.66 216.89 Z';
+var EYE_DISC = { cx: 502.13, cy: 358.90, r: 40.83 };
+
+/** 候选 B：鸭头铺满画板 92%，无容器 */
+var HEAD_FILL = 'M 272.62 134.91 C 241.29 146.49 219.85 161.09 197.97 176.09 C 176.09 191.10 158.93 206.13 141.35 225.00 C 123.77 243.87 105.75 267.91 92.44 289.35 C 79.13 310.79 70.12 319.39 61.55 353.70 C 52.98 388.01 38.82 448.09 40.96 495.27 C 43.10 542.45 55.55 592.64 74.42 636.84 C 93.29 681.03 121.60 724.35 154.22 760.39 C 186.83 796.43 225.44 828.16 270.05 853.05 C 314.65 877.94 374.29 898.95 421.91 909.68 C 469.53 920.41 524.02 917.84 555.76 917.40 C 587.50 916.97 599.95 911.82 612.39 907.11 C 624.82 902.40 624.41 895.09 630.40 889.09 C 629.55 883.09 638.97 890.38 627.83 871.07 C 616.68 851.77 577.20 798.56 563.48 773.26 C 549.76 747.96 548.04 735.94 545.46 719.21 C 542.89 702.48 543.74 688.76 548.04 672.87 C 552.33 656.99 557.48 639.41 571.20 623.97 C 584.92 608.52 594.81 592.23 630.40 580.21 C 666.00 568.19 742.37 563.48 784.84 551.90 C 827.31 540.31 857.76 526.59 885.23 510.71 C 912.69 494.83 934.57 472.10 949.58 456.66 C 964.58 441.22 970.17 429.63 975.32 418.05 C 980.47 406.47 978.74 397.46 980.47 387.16 C 971.89 381.16 976.61 372.16 954.73 369.14 C 932.85 366.13 881.37 373.44 849.19 369.14 C 817.02 364.85 783.99 354.14 761.68 343.40 C 739.36 332.67 729.94 324.10 715.35 304.79 C 700.75 285.49 687.88 248.60 674.16 227.57 C 660.44 206.54 655.29 195.84 632.98 178.67 C 610.66 161.50 569.07 136.64 540.31 124.61 C 511.56 112.59 486.26 109.61 460.52 106.60 C 434.78 103.59 417.20 101.89 385.87 106.60 C 354.55 111.31 303.94 123.33 272.62 134.91 Z';
+var EYE_FILL = { cx: 499.39, cy: 316.38, r: 52.17 };
+
+/* ============================================================
+   渲染辅助
+   ============================================================ */
+
+/**
+ * 生成一个 Material Symbols 图标的 SVG 字符串。
+ * @param {string} name MS 图标名，须存在于 MS 表中
+ * @param {string} color 填充色（十六进制）
+ * @param {number} px 目标边长
+ * @returns {string} 可直接插入 DOM 的 <svg> 字符串
+ */
+function msIcon(name, color, px) {
+  return '<svg width="' + px + '" height="' + px + '" viewBox="0 -960 960 960">'
+       + '<path d="' + MS[name] + '" fill="' + color + '"/></svg>';
+}
+
+/**
+ * 生成鸭子符号的 SVG 字符串。
+ * @param {string} variant 候选标识：mini（现状）/ disc（去外层块）/ head（纯剪影）
+ * @param {number} px 目标边长
+ * @param {string} brand 主色
+ * @returns {string} <svg> 字符串
+ */
+function duckIcon(variant, px, brand) {
+  var open = '<svg width="' + px + '" height="' + px + '" viewBox="0 0 ' + DUCK_VB + ' ' + DUCK_VB + '">';
+
+  if (variant === 'mini') {
+    // 现状：圆角主色块 + 白盘（盘内 evenodd 挖出鸭头）+ 白眼点
+    return open
+      + '<rect x="0" y="0" width="1024" height="1024" rx="229.38" fill="' + brand + '"/>'
+      + '<path d="' + DISC_HEAD + '" fill="#FFF" fill-rule="evenodd"/>'
+      + '<circle cx="' + EYE.cx + '" cy="' + EYE.cy + '" r="' + EYE.rMini + '" fill="#FFF"/>'
+      + '</svg>';
+  }
+
+  if (variant === 'disc') {
+    // 去掉外层圆角块，改为「主色实心圆盘 + 白色鸭头」。
+    // 反相后鸭头由「镂空」变「白色实体」，笔画自此获得完整像素，
+    // 与 app-icon-android-foreground 采用的同一思路（前景不能靠镂空表达）。
+    return open
+      + '<circle cx="512" cy="512" r="504" fill="' + brand + '"/>'
+      + '<path d="' + HEAD_DISC + '" fill="#FFF"/>'
+      + '<circle cx="' + EYE_DISC.cx + '" cy="' + EYE_DISC.cy + '" r="' + EYE_DISC.r
+      + '" fill="' + brand + '"/>'
+      + '</svg>';
+  }
+
+  // head：纯鸭头剪影，无容器，占画板 92%。
+  // 24px 下鸭头本身能拿到全部 24 像素，是三者中笔画最粗的一版。
+  return open
+    + '<path d="' + HEAD_FILL + '" fill="' + brand + '"/>'
+    + '<circle cx="' + EYE_FILL.cx + '" cy="' + EYE_FILL.cy + '" r="' + EYE_FILL.r
+    + '" fill="#FFF"/>'
+    + '</svg>';
+}
+
+/**
+ * 拼一条 390×64 的底部导航栏。
+ * @param {object} cfg { left, right, mid, activeIdx } left/right 为 MS 名或 {emoji:'…'}
+ * @returns {string} <div class="tabbar"> 字符串
+ */
+function tabbar(cfg) {
+  var BRAND = '#0B7C8C', SEC = '#6B7280';
+  var items = [
+    { label: '鸭圈', icon: cfg.left },
+    { label: '发布', icon: null },
+    { label: '我的', icon: cfg.right }
+  ];
+  var html = '<div class="tabbar">';
+  for (var i = 0; i < items.length; i++) {
+    var on = (i === (cfg.activeIdx === undefined ? 0 : cfg.activeIdx));
+    var color = on ? BRAND : SEC;
+    var glyph;
+    if (items[i].icon === null) {
+      glyph = duckIcon(cfg.mid || 'mini', 24, color);
+    } else if (items[i].icon.emoji) {
+      glyph = '<div class="emoji">' + items[i].icon.emoji + '</div>';
+    } else {
+      glyph = msIcon(items[i].icon, color, 24);
+    }
+    html += '<div class="cell ' + (on ? 'on' : 'off') + '">' + glyph
+          + '<span>' + items[i].label + '</span></div>';
+  }
+  return html + '</div>';
+}
+
+/**
+ * 生成一张候选卡。
+ * @param {object} o { title, tag, note, bar, zooms, verdict, verdictCls, reco }
+ * @returns {string} <div class="card"> 字符串
+ */
+function card(o) {
+  var html = '<div class="card' + (o.reco ? ' reco' : '') + '">'
+    + '<h3>' + o.title + (o.tag ? '<span class="tag">' + o.tag + '</span>' : '') + '</h3>'
+    + '<p class="note">' + o.note + '</p>'
+    + o.bar
+    + '<div class="zoom">';
+  for (var i = 0; i < o.zooms.length; i++) {
+    html += '<figure>' + o.zooms[i].svg
+          + '<figcaption>' + o.zooms[i].cap + '</figcaption></figure>';
+  }
+  html += '</div>';
+  if (o.verdict) {
+    html += '<p class="verdict ' + (o.verdictCls || '') + '">' + o.verdict + '</p>';
+  }
+  return html + '</div>';
+}
+
+/* ============================================================
+   三组候选装配
+   ============================================================ */
+
+var BRAND = '#0B7C8C';
+
+/* 一、「鸭圈」左键 */
+var leftCands = [
+  {
+    name: 'explore_nearby', title: 'A · explore_nearby', tag: '推荐', reco: true,
+    note: '实心圆底 + 内嵌白色定位针。外轮廓是完整圆，与中键鸭子的圆形符号同族，整条 Tab 栏轮廓节奏一致。语义为「附近发现」，正对鸭圈的地图发现定位。',
+    verdict: '24px 下针形与圆底之间留白足够，无粘连。', verdictCls: 'ok'
+  },
+  {
+    name: 'map', title: 'B · map',
+    note: '折叠地图册剪影。语义最直白，但外轮廓是不规则四边形，与中键圆形鸭子并排时轮廓打架，且视觉重心偏低、留白不匀。',
+    verdict: '24px 下清晰，但与圆形中键并排轮廓不成族。'
+  },
+  {
+    name: 'pin_drop', title: 'C · pin_drop',
+    note: '落地定位针带底座。语义偏「单个地点」而非「一片圈子」，且底座横条让视觉重量明显重于另两键。',
+    verdict: '24px 下清晰，底座横条抢注意力。'
+  }
+];
+var leftHtml = '';
+for (var i = 0; i < leftCands.length; i++) {
+  var c = leftCands[i];
+  leftHtml += card({
+    title: c.title, tag: c.tag, note: c.note, reco: c.reco,
+    verdict: c.verdict, verdictCls: c.verdictCls,
+    bar: tabbar({ left: c.name, right: 'person', mid: 'mini', activeIdx: 0 }),
+    zooms: [
+      { svg: msIcon(c.name, BRAND, 24), cap: '24px 实际' },
+      { svg: msIcon(c.name, BRAND, 48), cap: '48px' },
+      { svg: msIcon(c.name, BRAND, 96), cap: '96px' },
+      { svg: msIcon(c.name, '#6B7280', 96), cap: '未选中色' }
+    ]
+  });
+}
+document.getElementById('left').innerHTML = leftHtml;
+
+/* 二、「我的」右键 */
+document.getElementById('right').innerHTML =
+  card({
+    title: '现状 · emoji 👤',
+    note: '由系统字体渲染。字形随操作系统变化，字重与色彩不受设计 Token 控制 —— 选中时该变主色，它不会变；与旁边矢量图形并排时风格断裂。',
+    bar: tabbar({ left: 'explore_nearby', right: { emoji: '👤' }, mid: 'mini', activeIdx: 2 }),
+    zooms: [{ svg: '<div class="emoji" style="font-size:96px;line-height:1;height:auto">👤</div>', cap: '放大后由系统字体决定' }],
+    verdict: '选中态无法染主色，这是 emoji 的固有限制。', verdictCls: 'bad'
+  })
+  + card({
+    title: '矢量 · person', tag: '推荐', reco: true,
+    note: '与其余图标同一图标族、同一网格、同一光学重量。选中态正确跟随主色，未选中态跟随 #6B7280，三键行为完全一致。',
+    bar: tabbar({ left: 'explore_nearby', right: 'person', mid: 'mini', activeIdx: 2 }),
+    zooms: [
+      { svg: msIcon('person', BRAND, 24), cap: '24px 选中' },
+      { svg: msIcon('person', '#6B7280', 24), cap: '24px 未选中' },
+      { svg: msIcon('person', BRAND, 96), cap: '96px' }
+    ],
+    verdict: '24px 下头肩间留白清晰，无粘连。', verdictCls: 'ok'
+  });
+
+/* 三、中键鸭子 */
+document.getElementById('duck').innerHTML =
+  card({
+    title: '现状 · mini 档（圆角块 + 镂空鸭头）',
+    note: '四层结构：圆角主色块、白盘、盘内镂空鸭头、白眼点。24px 时白盘直径仅约 10px，鸭头要在这 10px 内表达喙与颈，喙尖会先消失。',
+    bar: tabbar({ left: 'explore_nearby', right: 'person', mid: 'mini', activeIdx: 1 }),
+    zooms: [
+      { svg: duckIcon('mini', 24, BRAND), cap: '24px 实际' },
+      { svg: duckIcon('mini', 48, BRAND), cap: '48px' },
+      { svg: duckIcon('mini', 96, BRAND), cap: '96px' }
+    ],
+    verdict: '24px 下鸭头细节被容器压缩，喙形难辨。', verdictCls: 'bad'
+  })
+  + card({
+    title: 'A · 主色圆盘 + 白色鸭头', tag: '推荐', reco: true,
+    note: '去掉最外层圆角块，圆盘直接铺满画板，鸭头由「镂空」改为「白色实体」。鸭头笔画自此拿到自己的像素，与 Android 前景层同一思路。轮廓仍是圆，与左键 explore_nearby 同族。',
+    bar: tabbar({ left: 'explore_nearby', right: 'person', mid: 'disc', activeIdx: 1 }),
+    zooms: [
+      { svg: duckIcon('disc', 24, BRAND), cap: '24px 实际' },
+      { svg: duckIcon('disc', 48, BRAND), cap: '48px' },
+      { svg: duckIcon('disc', 96, BRAND), cap: '96px' }
+    ],
+    verdict: '鸭头占径比提升，24px 下喙形可辨。', verdictCls: 'ok'
+  })
+  + card({
+    title: 'B · 纯鸭头剪影（无容器）',
+    note: '完全去掉容器，鸭头包围盒等比放大铺满 24px 网格，是三者中笔画最粗、辨识度最高的一版。代价是失去圆形容器，与左右两键的图标族关系变弱，且「发布」的按钮感消失。',
+    bar: tabbar({ left: 'explore_nearby', right: 'person', mid: 'head', activeIdx: 1 }),
+    zooms: [
+      { svg: duckIcon('head', 24, BRAND), cap: '24px 实际' },
+      { svg: duckIcon('head', 48, BRAND), cap: '48px' },
+      { svg: duckIcon('head', 96, BRAND), cap: '96px' }
+    ],
+    verdict: '最清晰，但丢失容器与按钮感。'
+  });
+
+/* 四、推荐组合 */
+document.getElementById('combo').innerHTML =
+  card({
+    title: '推荐组合：explore_nearby + 主色圆盘鸭 + person', tag: '推荐', reco: true,
+    note: '三键全矢量、全圆轮廓、全部跟随设计 Token 染色。以下依次为「鸭圈」「发布」「我的」三种选中态，可确认每种状态下主色与次色的切换都正确。',
+    bar: tabbar({ left: 'explore_nearby', right: 'person', mid: 'disc', activeIdx: 0 })
+       + tabbar({ left: 'explore_nearby', right: 'person', mid: 'disc', activeIdx: 1 })
+       + tabbar({ left: 'explore_nearby', right: 'person', mid: 'disc', activeIdx: 2 }),
+    zooms: [
+      { svg: msIcon('explore_nearby', BRAND, 72), cap: '鸭圈' },
+      { svg: duckIcon('disc', 72, BRAND), cap: '发布' },
+      { svg: msIcon('person', BRAND, 72), cap: '我的' }
+    ]
+  });
+</script>
+</body>
+</html>

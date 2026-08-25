@@ -539,6 +539,23 @@ var ICON_PATHS = {
   'close': {
     vb: ICON_VIEWBOX_MS,
     d: '<path fill="#000" d="m256-200-56-56 224-224-224-224 56-56 224 224 224-224 56 56-224 224 224 224-56 56-224-224-224 224Z"/>'
+  },
+  // 折叠地图册 = map：底部 Tab「鸭圈」键（PRD §10.2）。
+  // 此前是 emoji 🗺️，emoji 由系统字体渲染，字重与色彩不受 paintOf(role) 控制，
+  // 选中态无法跟随主色，与同排矢量图标风格断裂，故换矢量。
+  // 为什么不用 explore_nearby（圆底+定位针）：该图标语义偏「附近的某个点」，
+  // 而地图册剪影直接表达「一整片可翻阅的区域」，与「鸭圈」的圈子语义更贴。
+  // 24px 下已实测无粘连（probe-tabicon.py 渲染对照）
+  'tab-map': {
+    vb: ICON_VIEWBOX_MS,
+    d: '<path fill="#000" d="m600-120-240-84-186 72q-20 8-37-4.5T120-170v-560q0-13 7.5-23t20.5-15l212-72 240 84 186-72q20-8 37 4.5t17 33.5v560q0 13-7.5 23T812-192l-212 72Zm-40-98v-468l-160-56v468l160 56Z"/>'
+  },
+  // 人像 = person：底部 Tab「我的」键（PRD §10.2）。同上，此前是 emoji 👤。
+  // 为什么不用 account_circle（圆底+人像）：24px 下内部头像与圆底边缘粘连
+  // 成不可辨色块（probe-tabicon.py 实测），实心人像轮廓在 24px 下留白充足
+  'tab-person': {
+    vb: ICON_VIEWBOX_MS,
+    d: '<path fill="#000" d="M367-527q-47-47-47-113t47-113q47-47 113-47t113 47q47 47 47 113t-47 113q-47 47-113 47t-113-47ZM160-160v-112q0-34 17.5-62.5T224-378q62-31 126-46.5T480-440q66 0 130 15.5T736-378q29 15 46.5 43.5T800-272v112H160Z"/>'
   }
 };
 
@@ -584,6 +601,152 @@ function svgIcon(name, def, colorRole, size) {
   // 会导致 20px 图标里塞着 960px 的图形被裁切
   var s = size || 20;
   if (s !== native) node.rescale(s / native);
+  return node;
+}
+
+// ------------------------------------------------------------
+// 鸭子 IP 品牌符号（方向 4B「负形留白 + 同心波纹」，PRD §1.4.1.1–§1.4.1.3）
+//
+// 真源是 prototype-figma/assets/*.svg（PRD §1.4.1.3「SVG 矢量为唯一真源」）。
+// 此处内联一份几何数据的原因：Figma 插件沙箱无文件系统读取能力，
+// 无法 fetch 本地 assets 目录，只能把路径数据随代码带入。
+// 因此这里与 assets/duck-symbol-*.svg 构成【双份副本】，改动时必须同步两处
+// —— 与 gen_prd_v2.1_docx.py 里硬编码色值同性质的活文件，已在说明文档登记。
+//
+// 结构（1024 画板，与源图实测一致）：
+//   两道【完整同心圆环】（不是弧），各由两个反向整圆 + evenodd 构成
+//   中心白盘 R=227.08，盘内用 evenodd 挖出【完整鸭头剪影】（圆头 / 朝右喙 / 向下颈）
+//   眼点独立圆，mini 档半径放大到 25.6（占画板 5%）以过 40px 下 2px 硬约束
+//
+// 几何基准（源图实测，PRD §1.4.1.3）：
+//   圆角 = 1024 × 22.4% = 229.38    中心 (511.3, 506.0)
+//   外环 395.84/361.87    内环 305.84/273.54    中心盘 227.08
+// ------------------------------------------------------------
+var DUCK_VIEWBOX = '0 0 1024 1024';
+
+/** 外侧同心圆环，逐字对应 assets/duck-symbol-full.svg 第一个 path */
+var DUCK_RING_OUTER = 'M115.46 506 A395.84 395.84 0 1 0 907.14 506 A395.84 395.84 0 1 0 115.46 506 Z M149.43 506 A361.87 361.87 0 1 0 873.17 506 A361.87 361.87 0 1 0 149.43 506 Z';
+
+/** 内侧同心圆环，逐字对应 assets/duck-symbol-full.svg 第二个 path */
+var DUCK_RING_INNER = 'M205.46 506 A305.84 305.84 0 1 0 817.14 506 A305.84 305.84 0 1 0 205.46 506 Z M237.76 506 A273.54 273.54 0 1 0 784.84 506 A273.54 273.54 0 1 0 237.76 506 Z';
+
+/** 中心盘 + 挖空鸭头（同一 path 内两段子路径 + evenodd），三档位共用 */
+var DUCK_DISC_HEAD = 'M284.22 506 A227.08 227.08 0 1 0 738.38 506 A227.08 227.08 0 1 0 284.22 506 Z M418 388 C405.83 392.5 397.5 398.17 389 404 C380.5 409.83 373.83 415.67 367 423 C360.17 430.33 353.17 439.67 348 448 C342.83 456.33 339.33 459.67 336 473 C332.67 486.33 327.17 509.67 328 528 C328.83 546.33 333.67 565.83 341 583 C348.33 600.17 359.33 617 372 631 C384.67 645 399.67 657.33 417 667 C434.33 676.67 457.5 684.83 476 689 C494.5 693.17 515.67 692.17 528 692 C540.33 691.83 545.17 689.83 550 688 C554.83 686.17 554.67 683.33 557 681 C556.67 678.67 560.33 681.5 556 674 C551.67 666.5 536.33 645.83 531 636 C525.67 626.17 525 621.5 524 615 C523 608.5 523.33 603.17 525 597 C526.67 590.83 528.67 584 534 578 C539.33 572 543.17 565.67 557 561 C570.83 556.33 600.5 554.5 617 550 C633.5 545.5 645.33 540.17 656 534 C666.67 527.83 675.17 519 681 513 C686.83 507 689 502.5 691 498 C693 493.5 692.33 490 693 486 C689.67 483.67 691.5 480.17 683 479 C674.5 477.83 654.5 480.67 642 479 C629.5 477.33 616.67 473.17 608 469 C599.33 464.83 595.67 461.5 590 454 C584.33 446.5 579.33 432.17 574 424 C568.67 415.83 566.67 411.67 558 405 C549.33 398.33 533.17 388.67 522 384 C510.83 379.33 501 378.17 491 377 C481 375.83 474.17 375.17 462 377 C449.83 378.83 430.17 383.5 418 388 Z';
+
+/** 眼点。full / compact 档共用（mini 档另有 DUCK_EYE_MINI） */
+var DUCK_EYE = { cx: 506.1, cy: 458.5, r: 20.27 };
+
+// ------------------------------------------------------------
+// mini 档（<64px）专用几何（2026-08-26）
+//
+// 为什么 mini 档要另一套结构：原 mini 档沿用「圆角色块 + 白盘 + 盘内镂空鸭头」
+// 四层嵌套。24px 下白盘直径仅约 10px，鸭头要在这 10px 内表达喙与颈，
+// 喙尖必先消失 —— 用户实机反馈的「不美观」正是此因。
+//
+// 改法是做层次减法而非另画新形（PRD §1.4.1.2 明令「不得各档位另画新形」）：
+// 去掉最外圆角块，圆盘直接铺满画板；鸭头由「镂空」反相为「白色实体」，
+// 笔画自此拿到自己的像素。这与 app-icon-android-foreground 同一思路
+// —— 前景层不能靠镂空表达，镂空透出的是底色。
+//
+// 反相后眼点必须改为【主色】：鸭头已是白色，白眼点会与头部融为一体。
+//
+// 下面这条路径由 probe-tabicon-geom.py 从真源 assets/duck-symbol-mini.svg
+// 切出鸭头子路径后，把「居中缩放到占画板 72%」的仿射变换烧进坐标生成
+// （鸭头包围盒实测 x=328 y=376 w=366 h=317；变换后复测占比 0.720）。
+// 为什么烧进坐标而不用 <g transform="scale()">：Figma 的 createNodeFromSvg
+// 对 transform 属性的支持未见于官方文档保证，纯坐标是任何解析器都一致的几何数据。
+// ------------------------------------------------------------
+
+/** mini 档鸭头：已居中缩放至占画板 72%，实体填充（非镂空）。逐字取自 assets/duck-symbol-mini.svg */
+var DUCK_HEAD_MINI = 'M324.66 216.89 C300.14 225.95 283.36 237.37 266.24 249.12 C249.12 260.86 235.68 272.63 221.92 287.39 C208.16 302.16 194.06 320.97 183.65 337.75 C173.23 354.53 166.18 361.26 159.48 388.11 C152.77 414.97 141.69 461.98 143.36 498.91 C145.03 535.83 154.78 575.11 169.55 609.7 C184.31 644.29 206.47 678.19 231.99 706.39 C257.52 734.59 287.73 759.43 322.64 778.91 C357.55 798.39 404.23 814.83 441.5 823.23 C478.76 831.63 521.41 829.61 546.25 829.27 C571.08 828.93 580.83 824.9 590.56 821.21 C600.29 817.53 599.97 811.81 604.66 807.11 C604 802.42 611.37 808.12 602.65 793.01 C593.93 777.9 563.03 736.27 552.29 716.46 C541.55 696.66 540.2 687.26 538.19 674.16 C536.17 661.07 536.84 650.33 540.2 637.9 C543.57 625.47 547.59 611.71 558.33 599.63 C569.07 587.54 576.8 574.79 604.66 565.38 C632.52 555.97 692.29 552.29 725.53 543.22 C758.77 534.16 782.6 523.42 804.09 510.99 C825.59 498.56 842.71 480.78 854.45 468.69 C866.2 456.6 870.57 447.54 874.6 438.47 C878.63 429.41 877.28 422.36 878.63 414.3 C871.92 409.61 875.6 402.56 858.48 400.2 C841.36 397.84 801.07 403.56 775.89 400.2 C750.71 396.84 724.86 388.46 707.4 380.06 C689.93 371.65 682.56 364.95 671.14 349.84 C659.72 334.73 649.65 305.86 638.91 289.41 C628.17 272.95 624.14 264.57 606.68 251.13 C589.21 237.7 556.66 218.24 534.16 208.83 C511.66 199.42 491.86 197.08 471.71 194.73 C451.57 192.37 437.81 191.04 413.29 194.73 C388.78 198.41 349.17 207.82 324.66 216.89 Z';
+
+/** mini 档眼点：随鸭头同一变换后的位置，半径抬到 24px 下 2px 的底线 */
+var DUCK_EYE_MINI = { cx: 502.13, cy: 358.9, r: 42.67 };
+
+/** mini 档圆盘半径：铺满画板，留 0.78% 余量避免边缘抗锯齿被裁切 */
+var DUCK_DISC_MINI_R = 504.01;
+
+/**
+ * 生成鸭子 IP 品牌符号节点，按尺寸自动选档（PRD §1.4.1.2 三档位降级规则）。
+ *
+ * 档位规则不由调用方指定而由尺寸推导，理由：PRD §1.4.1.2 明令「不得各档位另画新形」，
+ * 若开放档位参数，调用方就可能在 24px 位置传入完整版（两道弧在 24px 下糊成一团）。
+ * 由尺寸单向推导可从结构上排除这类误用。
+ *
+ * 为什么不用 svgIcon()：svgIcon 会把所有矢量子节点统一染成单色，
+ * 而本符号必须保持「色块一色 + 负形另一色」的双色关系，统一染色会让负形消失。
+ * 故此处独立走一遍 createNodeFromSvg 并按 role 分别染色。
+ *
+ * @param {number} size 目标边长（正方形），据此选档：≥96 完整版 / 64–95 精简版 / <64 微缩版
+ * @param {string} blockRole 色块颜色 role，默认 color/primary；深色底传 color/surface 实现反相
+ * @param {string} negativeRole 负形颜色 role，默认 color/surface。
+ *   full / compact 档负形是「环 + 盘 + 眼点」，mini 档负形是「鸭头本体」
+ * @returns {FrameNode} 已染色并缩放到 size 的品牌符号节点
+ */
+function duckSymbol(size, blockRole, negativeRole) {
+  var s = size || 96;
+  var block = blockRole || 'color/primary';
+  var negative = negativeRole || 'color/surface';
+
+  // 档位边界取实测抬高后的阈值（PRD §1.4.1.2）：full ≥96 / compact ≥64 / mini <64。
+  // mini 档结构与另两档不同（见 DUCK_HEAD_MINI 上方说明），故先分出来
+  var tier = (s >= 96) ? 'full' : (s >= 64 ? 'compact' : 'mini');
+
+  // 染色统一在导入后改绑变量，故 SVG 里先填占位色（占位色不参与最终呈现）。
+  // roles 数组按【文档顺序】逐元素记下该染什么 role —— 不用「首元素是色块、
+  // 其余是负形」的位置约定，因为 mini 档反相后眼点要染色块色而非负形色，
+  // 位置约定在这里会失效。显式列出可让两种结构走同一段染色代码。
+  var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="'
+    + DUCK_VIEWBOX + '">';
+  var roles;
+
+  if (tier === 'mini') {
+    // 主色圆盘铺满画板 + 白色实体鸭头 + 主色眼点（反相，鸭头已是白色）
+    svg += '<circle cx="512" cy="512" r="' + DUCK_DISC_MINI_R + '" fill="#000"/>'
+      + '<path d="' + DUCK_HEAD_MINI + '" fill="#FFF"/>'
+      + '<circle cx="' + DUCK_EYE_MINI.cx + '" cy="' + DUCK_EYE_MINI.cy
+      + '" r="' + DUCK_EYE_MINI.r + '" fill="#000"/>';
+    roles = [block, negative, block];
+  } else {
+    // full / compact：圆角色块 + 若干道白环 + 白盘（盘内 evenodd 镂空鸭头）+ 白眼点
+    var rings = (tier === 'full') ? [DUCK_RING_OUTER, DUCK_RING_INNER] : [DUCK_RING_INNER];
+    svg += '<rect x="0" y="0" width="1024" height="1024" rx="229.38" ry="229.38" fill="#000"/>';
+    roles = [block];
+    for (var i = 0; i < rings.length; i++) {
+      svg += '<path d="' + rings[i] + '" fill="#FFF" fill-rule="evenodd"/>';
+      roles.push(negative);
+    }
+    svg += '<path d="' + DUCK_DISC_HEAD + '" fill="#FFF" fill-rule="evenodd"/>'
+      + '<circle cx="' + DUCK_EYE.cx + '" cy="' + DUCK_EYE.cy
+      + '" r="' + DUCK_EYE.r + '" fill="#FFF"/>';
+    roles.push(negative, negative);
+  }
+  svg += '</svg>';
+
+  var node = figma.createNodeFromSvg(svg);
+  node.name = '_duck-symbol-' + tier;
+  node.fills = [];
+
+  // 用【文档顺序】而非图层名匹配 roles：createNodeFromSvg 对 id 属性的
+  // 命名处理未见于官方文档保证，而 findAll 的遍历顺序等同 SVG 元素顺序。
+  var vecs = node.findAll(function (n) {
+    return n.type === 'VECTOR' || n.type === 'BOOLEAN_OPERATION' || n.type === 'RECTANGLE'
+      || n.type === 'ELLIPSE';
+  });
+  // 数量不符说明导入被 Figma 改写了结构，此时按序染色会把颜色安到错的元素上，
+  // 产出一个「负形消失」的纯色块悄悄上屏，故直接抛出
+  if (vecs.length !== roles.length) {
+    throw new Error('鸭子符号导入后矢量数为 ' + vecs.length + '，期望 ' + roles.length
+      + '（档位 ' + tier + '）');
+  }
+  for (var j = 0; j < vecs.length; j++) {
+    var v = vecs[j];
+    if (v.fills && v.fills.length > 0) v.fills = [paintOf(roles[j])];
+    if (v.strokes && v.strokes.length > 0) v.strokes = [paintOf(roles[j])];
+  }
+
+  // 与 svgIcon 同理：必须 rescale 而非 resize，否则 1024 图形会被裁在小外框里
+  if (s !== 1024) node.rescale(s / 1024);
   return node;
 }
 
@@ -855,14 +1018,29 @@ function bottomTabRaw(active) {
     w: CANVAS.w, h: 64, fill: 'color/surface',
     stroke: 'color/border', align: 'CENTER', justify: 'CENTER'
   });
-  var items = [['🗺️', '鸭圈'], ['＋', '发布'], ['👤', '我的']];
+  // 三键全部矢量（2026-08-26）：此前「鸭圈」用 emoji 🗺️、「我的」用 emoji 👤。
+  // emoji 由系统字体渲染，字重与色彩不受 paintOf(role) 控制 —— 选中时文字变主色
+  // 而 emoji 不变，且与同排的矢量鸭子风格断裂，这是用户实机反馈的成因。
+  // 「发布」中键走 duckSymbol（PRD §1.4.1.2 明列的 IP 微缩版消费位置）。
+  var items = [
+    [ICON_PATHS['tab-map'], '鸭圈'],
+    [null, '发布'],
+    [ICON_PATHS['tab-person'], '我的']
+  ];
   for (var i = 0; i < items.length; i++) {
     var isActive = items[i][1] === active;
     var role = isActive ? 'color/primary' : 'color/text-secondary';
     var cell = box('_tab-' + items[i][1], 'VERTICAL', {
       w: CANVAS.w / 3, gap: SPACING.xs, align: 'CENTER', justify: 'CENTER'
     });
-    cell.appendChild(text(items[i][0], 'body', role));
+    if (items[i][0] === null) {
+      // 24px 落在微缩档（<64），duckSymbol 自动改用「圆盘 + 实体鸭头」结构。
+      // 非激活态色块换 text-secondary：Tab 用色块本身表达选中态，
+      // 而非给 IP 换形（PRD §1.4.1.1 叠加铁律禁止改形）
+      cell.appendChild(duckSymbol(24, role, 'color/surface'));
+    } else {
+      cell.appendChild(svgIcon('_tab-icon-' + items[i][1], items[i][0], role, 24));
+    }
     cell.appendChild(text(items[i][1], 'caption', role));
     bar.appendChild(cell);
   }
@@ -1507,6 +1685,150 @@ var CAT_TREE = {
 };
 
 /**
+ * 演示内容 fixtures（2026-08-25 抽出）：全画布示例数据的唯一真源。
+ *
+ * 为什么必须抽出来：此前「工作 › 餐饮 › 帮厨」这条演示主线在 8 处各自直写，
+ * 而 CAT_TREE 里「工作」的二级是「全职招聘/兼职临时工/求职找工作」，
+ * 三级才有「餐饮服务」——真实类目树里既没有「餐饮」也没有「帮厨」。
+ * 这份稿子的下游是设计师、再下游是开发，假类目会被照着画、照着写，
+ * 直到联调才发现对不上。一处假数据，两棒之后才爆。
+ *
+ * 为什么演示主线选「工作 › 全职招聘 › 餐饮服务」：它在 CAT_TREE 中
+ * 三层都是各自列表的首项，而 buildCategorySelector 恰好把 i === 0
+ * 渲染为选中态——真数据与选中态天然自洽，不必给选择器额外传参指定高亮位。
+ */
+var CONTENT = {
+  /** 演示主线：一条工作类「资源」信息，贯穿列表卡/详情/发布/AI 确认/级联选择器 */
+  job: {
+    catKey: 'cat-work',
+    l1: '工作',
+    l2: '全职招聘',
+    l3: '餐饮服务',
+    /** 面包屑串，全画布统一走这里，禁止再手写 '›' 拼接 */
+    path: '工作 › 全职招聘 › 餐饮服务',
+    title: '招后厨帮工·包吃住',
+    /** 列表卡副标题里的距离与时效 */
+    distance: '1.2km',
+    freshness: '今天更新',
+    /** 详情页模板字段。顺序即渲染顺序；AI 确认页复用前三项并把「工时」置为未猜出 */
+    fields: [
+      ['薪资', '4500-5500 元/月'],
+      ['工时', '早 9 晚 6，月休 4 天'],
+      ['位置', '距你 1.2km'],
+      ['要求', '有餐饮经验优先']
+    ]
+  },
+  /**
+   * 列表页另外三张卡。原先四张卡的类目路径全是编的
+   * （「房屋 › 租房 › 整租」「车辆 › 货运 › 小货车」「服务 › 维修 › 水电」），
+   * 三条在 CAT_TREE 里都不存在，此处全部换成真值。
+   * kind 取「资源」或「需求」，对应 PRD §2.2 的供需二分。
+   */
+  listExtra: [
+    {
+      catKey: 'cat-house', l1: '房屋', l2: '求租/找房', l3: '个人求租',
+      path: '房屋 › 求租/找房 › 个人求租',
+      title: '求租一室一厅', distance: '2.5km', freshness: '昨天更新', kind: '需求'
+    },
+    {
+      catKey: 'cat-vehicle', l1: '车辆', l2: '租车/借车', l3: '货车出租',
+      path: '车辆 › 租车/借车 › 货车出租',
+      title: '小货车拉货', distance: '0.8km', freshness: '今天更新', kind: '资源'
+    },
+    {
+      catKey: 'cat-service', l1: '服务', l2: '维修/安装', l3: '水电维修',
+      path: '服务 › 维修/安装 › 水电维修',
+      title: '水电维修上门', distance: '3.1km', freshness: '3 天前', kind: '资源'
+    }
+  ],
+  /**
+   * 首页 Marker 信息卡的示例条目（PRD §6.4.2）。
+   * 与列表卡刻意不同类目：信息卡是点地图 Pin 弹出的，用生活类能让设计师看到
+   * 另一种分类色与另一种完整度角标（🟡），不与列表页的工作类演示重复。
+   * 副标题原先写「闲置转让 · 面议 · 可自提」，「闲置转让」不是 CAT_TREE 里的名字。
+   */
+  marker: {
+    catKey: 'cat-life', l1: '生活', l2: '二手闲置转让', l3: '母婴儿童',
+    path: '生活 › 二手闲置转让 › 母婴儿童',
+    title: '九成新婴儿推车转让',
+    /** 信息卡副标题：二级类目 + 价格口径 + 交付方式，三段用 · 分隔 */
+    subtitle: '二手闲置转让 · 面议 · 可自提',
+    kind: 'resource',
+    completeness: 'yellow'
+  },
+  /**
+   * 我的收藏页专用的房屋条目（PRD §10.1）。
+   * 为什么不复用 listExtra 里的房屋条目：那条是「需求」（求租），
+   * 而收藏页 segTab 停在「资源」页签，卡片供需属性必须与页签一致，
+   * 否则设计师会以为「资源」页签下也能出现需求卡。
+   */
+  favoriteHouse: {
+    catKey: 'cat-house', l1: '房屋', l2: '整租/合租', l3: '整租出租',
+    path: '房屋 › 整租/合租 › 整租出租',
+    title: '整租一室一厅', distance: '2.5km', kind: '资源'
+  }
+};
+
+/**
+ * 在 CAT_TREE 中定位一条 fixtures 类目路径，命中则返回其所属二级类目下的三级类目全列表。
+ *
+ * 为什么要有这道断言：CONTENT.job.l3 同时是 FLOW_LINKS 里级联选择器的跳转触发点名
+ * （_item/L3/<l3>）。若 CAT_TREE 日后按 PRD 调整而 CONTENT 没跟上，选择器渲染出的
+ * 三级项就不再包含 l3，批次 5 会静默把这条连线记入 skipped——画布看起来完好，
+ * 只是那一跳点不动。这正是「看起来正常的失败」，必须让它响。
+ * 列表卡三条虽不承载跳转，同样过一遍：它们是设计师会照着画的类目文案。
+ *
+ * @param {{catKey:string,l1:string,l2:string,l3:string}} entry fixtures 条目
+ * @returns {string[]} entry.l2 之下的全部三级类目名
+ * @throws {Error} 当 catKey / l2 / l3 任一在 CAT_TREE 中不存在时抛出，并列出可选值
+ */
+function catPathLeaves(entry) {
+  var branches = CAT_TREE[entry.catKey];
+  if (!branches) {
+    throw new Error('fixtures catKey「' + entry.catKey + '」不在 CAT_TREE 中');
+  }
+  for (var i = 0; i < branches.length; i++) {
+    if (branches[i][0] !== entry.l2) continue;
+    var leaves = branches[i][1];
+    for (var k = 0; k < leaves.length; k++) {
+      if (leaves[k] === entry.l3) return leaves;
+    }
+    throw new Error('fixtures l3「' + entry.l3 + '」不在「' + entry.l2
+      + '」的三级类目中，可选：' + leaves.join('/'));
+  }
+  var names = [];
+  for (var m = 0; m < branches.length; m++) names.push(branches[m][0]);
+  throw new Error('fixtures l2「' + entry.l2 + '」不在「' + entry.l1
+    + '」的二级类目中，可选：' + names.join('/'));
+}
+
+/**
+ * 校验全部 fixtures 条目的类目路径，并返回演示主线的三级类目列表供级联选择器使用。
+ *
+ * 顺带核对 path 串与 l1/l2/l3 是否一致：path 是给画布用的成串文案，
+ * 三段字段是给断言与连线用的，两者若不同步，画布上显示的路径就与真正校验过的路径不是一回事。
+ *
+ * @returns {string[]} CONTENT.job.l2 之下的全部三级类目名
+ * @throws {Error} 任一条目路径不存在，或 path 串与三段字段不一致
+ */
+function contentCatPath() {
+  var all = [CONTENT.job].concat(CONTENT.listExtra)
+    .concat([CONTENT.marker, CONTENT.favoriteHouse]);
+  var jobLeaves = null;
+  for (var i = 0; i < all.length; i++) {
+    var e = all[i];
+    var expected = e.l1 + ' › ' + e.l2 + ' › ' + e.l3;
+    if (e.path !== expected) {
+      throw new Error('fixtures「' + e.title + '」的 path 串「' + e.path
+        + '」与三段字段拼出的「' + expected + '」不一致');
+    }
+    var leaves = catPathLeaves(e);
+    if (i === 0) jobLeaves = leaves;
+  }
+  return jobLeaves;
+}
+
+/**
  * 构造一个可点击的圆形悬浮按钮（FAB 风格），用于收起态的各类唤起入口。
  *
  * 为什么收起态用圆形小按钮而不是继续留一条细横条：横条无论多薄都会
@@ -2135,6 +2457,10 @@ var HOME_NAV = { right: '列表', search: '搜索保洁/拼车/租房', bell: 3 
  * @returns {Promise<string>} 执行结果摘要
  */
 async function batchMap() {
+  // fixtures 类目路径前置校验：放在最前面而不是用到时才查，
+  // 是为了让「fixtures 与 CAT_TREE 脱节」在任何节点落地之前就炸掉，
+  // 而不是先铺出半个画布再报错、留下一堆需要手工清的残留。
+  contentCatPath();
   await loadFonts();
   await hydrateVariables();
   await hydrateComponents();
@@ -2193,8 +2519,9 @@ async function batchMap() {
       '再点「查看详情」才进 detail-screen，避免一次点击就全屏跳转'
     ]),
     {
-      infoCard: markerInfoCard('cat-life', '生活', '九成新婴儿推车转让',
-        '闲置转让 · 面议 · 可自提', 'resource', 'yellow')
+      infoCard: markerInfoCard(CONTENT.marker.catKey, CONTENT.marker.l1,
+        CONTENT.marker.title, CONTENT.marker.subtitle,
+        CONTENT.marker.kind, CONTENT.marker.completeness)
     }));
   infoOn.appendChild(bottomTab('鸭圈'));
   frames.push(infoOn);
@@ -2345,10 +2672,15 @@ async function batchMap() {
   var listBody = box('_list-body', 'VERTICAL', {
     w: CANVAS.w, pad: SPACING.lg, gap: SPACING.md, fill: 'color/background'
   });
-  listBody.appendChild(card('招后厨帮工·包吃住', '工作 › 餐饮 › 帮厨｜1.2km｜今天更新', 'category/cat-work', '资源'));
-  listBody.appendChild(card('求租一室一厅', '房屋 › 租房 › 整租｜2.5km｜昨天更新', 'category/cat-house', '需求'));
-  listBody.appendChild(card('小货车拉货', '车辆 › 货运 › 小货车｜0.8km｜今天更新', 'category/cat-vehicle', '资源'));
-  listBody.appendChild(card('水电维修上门', '服务 › 维修 › 水电｜3.1km｜3天前', 'category/cat-service', '资源'));
+  // 四张卡全部走 CONTENT fixtures（2026-08-25）：类目路径原先四条全是编的，
+  // 与 CAT_TREE 无一对得上。contentCatPath() 在批次 2 入口已校验过全部条目。
+  var listCards = [CONTENT.job].concat(CONTENT.listExtra);
+  for (var lc = 0; lc < listCards.length; lc++) {
+    var cd = listCards[lc];
+    listBody.appendChild(card(cd.title,
+      cd.path + '｜' + cd.distance + '｜' + cd.freshness,
+      'category/' + cd.catKey, cd.kind || '资源'));
+  }
   listBody.appendChild(annotation('列表页口径', [
     '不占底部 Tab，由首页右上视图切换进入（PRD §10.1）',
     '与地图共享同一套筛选与范围状态',
@@ -2433,6 +2765,43 @@ function segTab(labels, activeIndex) {
 }
 
 /**
+ * 构造 splash-screen：启动页（PRD §2.1 U1）
+ *
+ * 2026-08-25 新增。此前整页缺失——PRD §1.4.1.2 把启动页列为完整版 IP 的
+ * 首个消费位置，但画布上没有对应画框，导致「素材有规格、无落点」。
+ *
+ * 不放 statusBar：启动页是全屏品牌页，系统状态栏由 OS 绘制，
+ * 画上自绘状态栏反而与真机不符。
+ *
+ * @returns {FrameNode} 启动页节点
+ */
+function buildSplash() {
+  var s = screen('splash-screen', '启动页', 'PRD §2.1 U1');
+  // 白底而非 background 灰：启动页要与 App 图标色块形成干净对比，
+  // 且真机冷启动首帧就是纯白，用 background 会出现一次可见的底色跳变
+  s.fills = [paintOf('color/surface')];
+  // 图层名 _splash-tap 而非 _body：本框整个正文区就是批次 5 的跳转触发点，
+  // 专名让 FLOW_LINKS 的第二列可读（见 FLOW_LINKS 内该条注释）
+  var body = box('_splash-tap', 'VERTICAL', {
+    w: CANVAS.w, h: CANVAS.h, gap: SPACING.sm,
+    align: 'CENTER', justify: 'CENTER'
+  });
+  // 160px 落在完整版档（≥96），两道同心弧齐全
+  body.appendChild(duckSymbol(160));
+  body.appendChild(text('找鸭找', 'h1', 'color/primary'));
+  body.appendChild(text('本地供需，一图看清', 'body', 'color/text-secondary'));
+  // 口径卡必须放在 body 内而非直接挂 s：body 已占满 CANVAS.h，
+  // 而 screen() 设了 clipsContent = true，挂在 s 上会被整块裁掉看不见
+  body.appendChild(annotation('启动页口径', [
+    'IP 取完整版（两道弧），尺寸 160px ≥ 96px（PRD §1.4.1.2）',
+    '动效仅允许整体缩放与不透明度渐变，禁止弧线逐帧扩散（PRD §1.4.1.3）',
+    '不画自绘状态栏：真机由 OS 绘制'
+  ]));
+  s.appendChild(body);
+  return s;
+}
+
+/**
  * 构造 login-screen：手机号验证码一步进入（PRD §10.1）
  * @returns {FrameNode} 登录页节点
  */
@@ -2440,8 +2809,13 @@ function buildLogin() {
   var s = screen('login-screen', '登录/注册（合并）', 'PRD §10.1');
   s.appendChild(statusBar());
   var body = box('_body', 'VERTICAL', { w: CANVAS.w, pad: SPACING.xl, gap: SPACING.lg });
-  body.appendChild(text('找鸭找', 'h1', 'color/primary'));
-  body.appendChild(text('本地供需，一图看清', 'body', 'color/text-secondary'));
+  // 品牌位改用真实 IP 符号（2026-08-25）：此前只有 text('找鸭找')，PRD §1.4.1.2 明列
+  // 「登录页顶部（§3.4.1）」属完整版消费位置，故取 96px 完整版（两道弧）
+  var brand = box('_brand', 'VERTICAL', { gap: SPACING.sm, align: 'CENTER' });
+  brand.appendChild(duckSymbol(96));
+  brand.appendChild(text('找鸭找', 'h1', 'color/primary'));
+  brand.appendChild(text('本地供需，一图看清', 'body', 'color/text-secondary'));
+  body.appendChild(brand);
   body.appendChild(field('手机号', '请输入 11 位手机号'));
   var codeRow = box('_code-row', 'HORIZONTAL', { gap: SPACING.sm, align: 'MAX' });
   codeRow.appendChild(field('验证码', '6 位验证码'));
@@ -2465,18 +2839,18 @@ function buildDetail() {
   s.appendChild(statusBar());
   s.appendChild(navBar('详情', { back: true, right: '收藏' }));
   var body = box('_body', 'VERTICAL', { w: CANVAS.w, pad: SPACING.lg, gap: SPACING.md });
-  body.appendChild(text('招后厨帮工·包吃住', 'h2'));
+  body.appendChild(text(CONTENT.job.title, 'h2'));
   var tagRow = box('_tags', 'HORIZONTAL', { gap: SPACING.sm, align: 'CENTER' });
   // 详情页这里只是「分类身份标识」，完整度另有独立的信任卡承载，故不传角标
-  tagRow.appendChild(pin('category/cat-work', 'resource', null, false));
-  tagRow.appendChild(text('工作 › 餐饮 › 帮厨', 'small', 'color/text-secondary'));
+  tagRow.appendChild(pin('category/' + CONTENT.job.catKey, 'resource', null, false));
+  tagRow.appendChild(text(CONTENT.job.path, 'small', 'color/text-secondary'));
   body.appendChild(tagRow);
   var tmpl = box('_template-fields', 'VERTICAL', {
     w: CANVAS.w - SPACING.lg * 2, pad: SPACING.md, gap: SPACING.sm,
     fill: 'color/surface', radius: RADIUS.lg, stroke: 'color/border'
   });
   tmpl.appendChild(text('模板字段', 'h3'));
-  var pairs = [['薪资', '4500-5500 元/月'], ['工时', '早 9 晚 6，月休 4 天'], ['位置', '距你 1.2km'], ['要求', '有帮厨经验优先']];
+  var pairs = CONTENT.job.fields;
   for (var i = 0; i < pairs.length; i++) {
     var pr = box('_pair', 'HORIZONTAL', { w: CANVAS.w - SPACING.lg * 2 - SPACING.md * 2, justify: 'SPACE_BETWEEN' });
     pr.appendChild(text(pairs[i][0], 'small', 'color/text-secondary'));
@@ -2523,17 +2897,19 @@ function buildDetailOffline() {
   s.appendChild(banner);
 
   var body = box('_body', 'VERTICAL', { w: CANVAS.w, pad: SPACING.lg, gap: SPACING.md });
-  body.appendChild(text('招后厨帮工·包吃住', 'h2'));
+  body.appendChild(text(CONTENT.job.title, 'h2'));
   var tagRow = box('_tags', 'HORIZONTAL', { gap: SPACING.sm, align: 'CENTER' });
-  tagRow.appendChild(pin('category/cat-work', 'resource', null, false));
-  tagRow.appendChild(text('工作 › 餐饮 › 帮厨', 'small', 'color/text-secondary'));
+  tagRow.appendChild(pin('category/' + CONTENT.job.catKey, 'resource', null, false));
+  tagRow.appendChild(text(CONTENT.job.path, 'small', 'color/text-secondary'));
   body.appendChild(tagRow);
   var tmpl = box('_template-fields', 'VERTICAL', {
     w: CANVAS.w - SPACING.lg * 2, pad: SPACING.md, gap: SPACING.sm,
     fill: 'color/surface', radius: RADIUS.lg, stroke: 'color/border'
   });
   tmpl.appendChild(text('模板字段', 'h3'));
-  var pairs = [['薪资', '4500-5500 元/月'], ['工时', '早 9 晚 6，月休 4 天'], ['位置', '距你 1.2km'], ['要求', '有帮厨经验优先']];
+  // 与 buildDetail 共用同一条演示主线：失效态要与正常态逐字一致才能作为对照，
+  // 差异必须只来自 §7.8 的红条 / disabled / Opacity 60% 三项
+  var pairs = CONTENT.job.fields;
   for (var i = 0; i < pairs.length; i++) {
     var pr = box('_pair', 'HORIZONTAL', { w: CANVAS.w - SPACING.lg * 2 - SPACING.md * 2, justify: 'SPACE_BETWEEN' });
     pr.appendChild(text(pairs[i][0], 'small', 'color/text-secondary'));
@@ -2572,7 +2948,7 @@ function buildPublish() {
   }
   body.appendChild(text('T2 发布四模式', 'h3'));
   body.appendChild(modeRow);
-  body.appendChild(listRow('选择分类', '工作 › 餐饮 › 帮厨'));
+  body.appendChild(listRow('选择分类', CONTENT.job.path));
   body.appendChild(field('标题', '一句话说清你要发什么'));
   body.appendChild(field('薪资', '如 4500-5500 元/月'));
   body.appendChild(listRow('地点', '地图选点'));
@@ -2646,8 +3022,11 @@ function buildMyPublish() {
   s.appendChild(navBar('我的发布', { back: true }));
   s.appendChild(segTab(['在架', '下架', '草稿'], 0));
   var body = box('_body', 'VERTICAL', { w: CANVAS.w, pad: SPACING.lg, gap: SPACING.md });
-  body.appendChild(card('招后厨帮工·包吃住', '完整度 🟢｜浏览 42｜3 天前发布', 'category/cat-work', '在架'));
-  body.appendChild(card('小货车拉货', '完整度 🟡｜浏览 11｜7 天前发布', 'category/cat-vehicle', '在架'));
+  // 标题取 fixtures：与列表页/详情页同一条演示主线，设计师翻页时能对上是同一条信息
+  body.appendChild(card(CONTENT.job.title, '完整度 🟢｜浏览 42｜3 天前发布',
+    'category/' + CONTENT.job.catKey, '在架'));
+  body.appendChild(card(CONTENT.listExtra[1].title, '完整度 🟡｜浏览 11｜7 天前发布',
+    'category/' + CONTENT.listExtra[1].catKey, '在架'));
   var actRow = box('_actions', 'HORIZONTAL', { gap: SPACING.sm });
   actRow.appendChild(button('刷新重发', 'secondary', 0));
   actRow.appendChild(button('下架', 'ghost', 0));
@@ -2666,8 +3045,16 @@ function buildMyFavorite() {
   s.appendChild(navBar('我的收藏', { back: true }));
   s.appendChild(segTab(['资源', '需求'], 0));
   var body = box('_body', 'VERTICAL', { w: CANVAS.w, pad: SPACING.lg, gap: SPACING.md });
-  body.appendChild(card('水电维修上门', '服务 › 维修 › 水电｜3.1km', 'category/cat-service', '资源'));
-  body.appendChild(card('整租一室一厅', '房屋 › 租房 › 整租｜2.5km', 'category/cat-house', '资源'));
+  // 收藏页两张卡取 fixtures 的服务类与房屋类（原先类目路径「服务 › 维修 › 水电」
+  // 与「房屋 › 租房 › 整租」在 CAT_TREE 里都不存在）。
+  // 注意 kind 一律传「资源」：本页 segTab 停在「资源」页签，卡片必须与页签一致，
+  // 故不沿用 fixtures 里房屋条目的「需求」，改用同类目的出租向标题。
+  body.appendChild(card(CONTENT.listExtra[2].title,
+    CONTENT.listExtra[2].path + '｜' + CONTENT.listExtra[2].distance,
+    'category/' + CONTENT.listExtra[2].catKey, '资源'));
+  body.appendChild(card(CONTENT.favoriteHouse.title,
+    CONTENT.favoriteHouse.path + '｜' + CONTENT.favoriteHouse.distance,
+    'category/' + CONTENT.favoriteHouse.catKey, CONTENT.favoriteHouse.kind));
   s.appendChild(body);
   return s;
 }
@@ -2765,11 +3152,13 @@ function buildAiConfirm() {
    * 生成一行 AI 猜测字段：字段名 + 猜测值 + "AI 猜"角标
    * 未猜出的字段按 PRD §5.9 标"需你补充"，不猜不编造
    */
+  // 前三行取 fixtures 真值，第四行「工时」刻意置为未猜出：
+  // PRD §5.9 要求 AI 猜不出就标「需你补充」，不猜不编造，故此处不复用 fields 的工时值
   var guesses = [
-    ['分类', '工作 › 餐饮 › 帮厨', true],
-    ['标题', '招后厨帮工·包吃住', true],
-    ['薪资', '4500-5500 元/月', true],
-    ['工时', '需你补充', false]
+    ['分类', CONTENT.job.path, true],
+    ['标题', CONTENT.job.title, true],
+    [CONTENT.job.fields[0][0], CONTENT.job.fields[0][1], true],
+    [CONTENT.job.fields[1][0], '需你补充', false]
   ];
   for (var i = 0; i < guesses.length; i++) {
     var row = box('_guess-' + guesses[i][0], 'HORIZONTAL', {
@@ -2807,7 +3196,8 @@ function buildAiConfirm() {
   sprint.appendChild(sp1);
   var sp2 = box('_sp-2', 'HORIZONTAL', { w: CANVAS.w - SPACING.lg * 2 - SPACING.md * 2, justify: 'SPACE_BETWEEN', align: 'CENTER' });
   sp2.appendChild(text('三级类目', 'small', 'color/primary-dark'));
-  sp2.appendChild(text('帮厨 / 洗碗 / 传菜', 'caption', 'color/primary-dark'));
+  // 三级类目候选取 CAT_TREE 真值前三项（原先直写「帮厨 / 洗碗 / 传菜」，树里都没有）
+  sp2.appendChild(text(contentCatPath().slice(0, 3).join(' / '), 'caption', 'color/primary-dark'));
   sprint.appendChild(sp2);
   body.appendChild(sprint);
 
@@ -2885,13 +3275,15 @@ function buildPublishSuccess() {
  * @returns {Promise<string>} 执行结果摘要
  */
 async function batchCore() {
+  // 同批次 2：详情/离线态/发布/AI 确认四页均消费 CONTENT，先校验再落地
+  contentCatPath();
   await loadFonts();
   await hydrateVariables();
   await hydrateComponents();
   var reset = await resetSection(SECTION_NAMES.core, SECTION_Y.core);
   var page = reset.page;
   var frames = [
-    buildLogin(), buildDetail(), buildDetailOffline(), buildPublish(), buildAiConfirm(),
+    buildSplash(), buildLogin(), buildDetail(), buildDetailOffline(), buildPublish(), buildAiConfirm(),
     buildPublishSuccess(), buildContact(), buildProfile(), buildMyPublish(),
     buildMyFavorite(), buildNotification(), buildTrust(), buildSettings()
   ];
@@ -2899,9 +3291,9 @@ async function batchCore() {
   var orphans = sweepOrphans(page);
   figma.viewport.scrollAndZoomIntoView(frames);
   return '批次 3 完成\n生成 ' + frames.length + ' 页：\n'
-    + 'login / detail / detail-offline / publish / ai-confirm\n'
-    + 'publish-success / contact / profile / my-publish\n'
-    + 'my-favorite / notification / trust / settings'
+    + 'splash / login / detail / detail-offline / publish\n'
+    + 'ai-confirm / publish-success / contact / profile\n'
+    + 'my-publish / my-favorite / notification / trust / settings'
     + '\n清空旧内容 ' + reset.cleared + ' 个｜清扫游离零件 ' + orphans + ' 个';
 }
 
@@ -2918,9 +3310,15 @@ function buildCategorySelector() {
   s.appendChild(statusBar());
   s.appendChild(navBar('选择分类', { back: true, right: '取消' }));
   var cols = box('_cascade', 'HORIZONTAL', { w: CANVAS.w, h: 520, gap: 0 });
-  var l1 = ['工作', '房屋', '车辆', '生活', '服务'];
-  var l2 = ['餐饮', '零售', '工厂', '物流', '家政'];
-  var l3 = ['帮厨', '服务员', '洗碗', '传菜'];
+  // 三列全部取自 CAT_TREE 真值（2026-08-25）：此前 l2 直写「餐饮/零售/工厂/物流/家政」，
+  // 与 CAT_TREE 的「全职招聘/兼职临时工/求职找工作」不符，是设计师会照着画错的一处。
+  // contentCatPath() 顺带校验演示主线仍在树内，不在则抛错而非静默渲染。
+  var l3 = contentCatPath();
+  var l1 = [];
+  for (var a = 0; a < CAT_LIST.length; a++) l1.push(CAT_LIST[a][1]);
+  var l2 = [];
+  var workBranches = CAT_TREE[CONTENT.job.catKey];
+  for (var b = 0; b < workBranches.length; b++) l2.push(workBranches[b][0]);
   var colData = [l1, l2, l3];
   var colFills = ['color/background', 'color/surface', 'color/primary-light'];
   for (var c = 0; c < 3; c++) {
@@ -3129,6 +3527,9 @@ function buildT6Board() {
  * @returns {Promise<string>} 执行结果摘要
  */
 async function batchModal() {
+  // 级联选择器三列全部由 CAT_TREE 派生，且第三列承载 FLOW_LINKS 跳转触发点，
+  // 这里的校验最关键：l3 对不上会让那条连线静默失效
+  contentCatPath();
   await loadFonts();
   await hydrateVariables();
   await hydrateComponents();
@@ -3164,6 +3565,12 @@ async function batchModal() {
  * 依据 PRD §10 信息架构与 §6.4 主流程
  */
 var FLOW_LINKS = [
+  // 启动页 → 登录（2026-08-25 随 splash-screen 一并新增）。
+  // 触发点用 _splash-tap 而非 _body：本表内 _body 在十余个画框里重名，
+  // 虽 findClickable 按源画框范围内查重不会冲突，但给触发点起专名
+  // 能让「这个节点存在的唯一理由是承载跳转」这件事在代码里自解释。
+  // 真机上此跳转是 1.5s 自动转场，Figma 原型无定时触发能力，故降级为点击。
+  ['splash-screen',           '_splash-tap',                'login-screen',           'ON_CLICK'],
   ['login-screen',           'btn/primary/登录 / 注册',    'home-screen',            'ON_CLICK'],
   ['home-screen',            '_nav-action/列表',           'list-screen',            'ON_CLICK'],
   // 通知铃直达通知中心：PRD §6.4.1 把 🔔 列为导航栏成员，
@@ -3178,7 +3585,7 @@ var FLOW_LINKS = [
   ['publish-screen',         'row/地点',                   'map-selector',           'ON_CLICK'],
   ['publish-screen',         'btn/primary/发布',           'cert-modal',             'ON_CLICK'],
   ['cert-modal',             'btn/primary/去实名',          'trust-screen',           'ON_CLICK'],
-  ['category-selector',      '_item/L3/帮厨',              'publish-screen',         'ON_CLICK'],
+  ['category-selector',      '_item/L3/' + CONTENT.job.l3, 'publish-screen',         'ON_CLICK'],
   ['map-selector',           '_nav-action/确定',            'publish-screen',         'ON_CLICK'],
   ['ai-confirm-screen',      'btn/primary/确认发布',        'publish-success-screen', 'ON_CLICK'],
   ['publish-success-screen', 'btn/ghost/我的发布',          'my-publish-screen',      'ON_CLICK'],
@@ -3373,11 +3780,15 @@ async function batchFlow() {
     }
   }
 
-  // 设置起始画框为 login-screen，Present 模式从登录开始走。
+  // 设置起始画框为 splash-screen，Present 模式从启动页开始走完整冷启动路径。
+  // 2026-08-25 从 login-screen 改到 splash-screen：新增启动页后它才是第一屏。
+  // 保留 login 兜底：若启动页因故未生成，起点仍落在登录页而非无起点，
+  // 否则 Present 模式会随机从画布首个画框开始，看起来像原型坏了。
   // 画框现在挂在 Section 里，故须沿 parent 链上溯到 PageNode
-  if (index['login-screen']) {
-    var lp = pageOf(index['login-screen']);
-    if (lp) lp.flowStartingPoints = [{ nodeId: index['login-screen'].id, name: '主流程起点' }];
+  var startFrame = index['splash-screen'] || index['login-screen'];
+  if (startFrame) {
+    var lp = pageOf(startFrame);
+    if (lp) lp.flowStartingPoints = [{ nodeId: startFrame.id, name: '主流程起点' }];
   }
 
   var msg = '批次 5 完成\n成功连线 ' + ok + ' / ' + FLOW_LINKS.length + ' 条';
