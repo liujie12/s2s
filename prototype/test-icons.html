@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图标测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        .test-section {
+            background-color: white;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .icon {
+            display: inline-block;
+            vertical-align: middle;
+            fill: currentColor;
+            width: 24px;
+            height: 24px;
+            margin-right: 10px;
+        }
+        .icon-test {
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>图标显示测试</h1>
+    
+    <div class="test-section">
+        <h2>直接内联SVG</h2>
+        <div class="icon-test">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="color: #3D5AFE;">
+                <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" fill="currentColor"/>
+            </svg>
+            <span>Home图标（内联SVG）</span>
+        </div>
+        <div class="icon-test">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="color: #3D5AFE;">
+                <circle cx="11" cy="11" r="8" stroke="currentColor" stroke-width="2"/>
+                <path d="M21 21l-4.35-4.35" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+            <span>Search图标（内联SVG）</span>
+        </div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Font Awesome图标</h2>
+        <div class="icon-test">
+            <i class="fas fa-home" style="color: #3D5AFE;"></i>
+            <span>Home图标（Font Awesome）</span>
+        </div>
+        <div class="icon-test">
+            <i class="fas fa-search" style="color: #3D5AFE;"></i>
+            <span>Search图标（Font Awesome）</span>
+        </div>
+    </div>
+    
+    <script>
+        // 替换Font Awesome图标为内联SVG
+        function replaceIcons() {
+            console.log('开始替换图标...');
+            
+            // 映射表：Font Awesome类名到SVG代码
+            const iconSvgMap = {
+                'fa-home': '<path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" fill="currentColor"/>',
+                'fa-search': '<circle cx="11" cy="11" r="8" stroke="currentColor" stroke-width="2"/><path d="M21 21l-4.35-4.35" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'
+            };
+            
+            // 查找所有使用Font Awesome的元素
+            const faElements = document.querySelectorAll('.fas, .fab');
+            console.log('找到的Font Awesome元素数量:', faElements.length);
+            
+            faElements.forEach(element => {
+                console.log('处理图标元素:', element);
+                
+                // 获取所有类名
+                const classes = Array.from(element.classList);
+                console.log('元素类名:', classes);
+                
+                // 找到对应的SVG代码
+                let svgCode = '';
+                for (const cls of classes) {
+                    if (iconSvgMap[cls]) {
+                        svgCode = iconSvgMap[cls];
+                        break;
+                    }
+                }
+                
+                if (svgCode) {
+                    console.log('对应的SVG代码:', svgCode);
+                    
+                    // 创建内联SVG元素
+                    const svgElement = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                    svgElement.setAttribute('class', 'icon');
+                    svgElement.setAttribute('viewBox', '0 0 24 24');
+                    svgElement.setAttribute('fill', 'none');
+                    svgElement.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+                    svgElement.innerHTML = svgCode;
+                    console.log('创建的SVG元素:', svgElement);
+                    
+                    // 复制样式
+                    if (element.style.cssText) {
+                        svgElement.style.cssText = element.style.cssText;
+                    }
+                    
+                    // 替换元素
+                    element.parentNode.replaceChild(svgElement, element);
+                    console.log('图标替换完成');
+                } else {
+                    console.log('未找到对应的SVG代码');
+                }
+            });
+            
+            console.log('所有图标替换完成');
+        }
+        
+        // 页面加载完成后替换图标
+        window.addEventListener('DOMContentLoaded', replaceIcons);
+    </script>
+</body>
+</html>

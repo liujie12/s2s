@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>找鸭找 · 主色候选视觉对比</title>
+<style>
+/* ===== 全局：中性底，避免背景色干扰候选色判断 ===== */
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:"PingFang SC","Noto Sans SC","Microsoft YaHei",sans-serif;
+  background:#F1F3F5;color:#1F2937;padding:32px 24px 64px;
+}
+h1{font-size:24px;font-weight:700;margin-bottom:6px}
+.sub{font-size:14px;color:#6B7280;margin-bottom:8px;line-height:1.6}
+.sub b{color:#1F2937}
+.warn{
+  background:#FEF2F2;border-left:3px solid #EF4444;padding:10px 14px;
+  font-size:13px;line-height:1.6;margin:16px 0 28px;border-radius:0 6px 6px 0;
+}
+
+/* ===== 候选卡横向排布，窄屏自动换行 ===== */
+.grid{display:flex;flex-wrap:wrap;gap:24px}
+.cand{
+  background:#fff;border-radius:14px;padding:20px;
+  box-shadow:0 2px 12px rgba(0,0,0,.06);width:352px;
+}
+.cand.reject{opacity:.62}
+.cand-hd{display:flex;align-items:center;gap:10px;margin-bottom:4px}
+.swatch{width:30px;height:30px;border-radius:8px;flex:0 0 auto}
+.cand-name{font-size:16px;font-weight:600}
+.cand-hex{font-size:12px;color:#6B7280;font-family:Consolas,monospace}
+.ratio{font-size:12px;margin:8px 0 16px;line-height:1.7}
+.ok{color:#15803D;font-weight:600}
+.bad{color:#B91C1C;font-weight:600}
+.note{font-size:12px;color:#6B7280;line-height:1.6;margin-top:14px;
+  border-top:1px solid #E5E7EB;padding-top:12px}
+
+/* ===== 手机壳：390 宽按比例缩到 320 ===== */
+.phone{
+  width:320px;border:1px solid #E5E7EB;border-radius:14px;overflow:hidden;
+  background:#F8FAFC;
+}
+.nav{
+  height:44px;display:flex;align-items:center;justify-content:center;
+  color:#fff;font-size:16px;font-weight:600;
+}
+/* 地图区：网格底纹模拟地图，5 个分类 Pin 为已冻结色不参与候选变化 */
+.map{
+  height:132px;position:relative;
+  background:
+    linear-gradient(#E8EDF2 1px,transparent 1px) 0 0/26px 26px,
+    linear-gradient(90deg,#E8EDF2 1px,transparent 1px) 0 0/26px 26px,
+    #F4F7FA;
+}
+.pin{
+  position:absolute;width:20px;height:20px;border-radius:50%;
+  border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.22);
+}
+/* 需求态：空心 + ? （与资源态实心区分，见 PRD 1.4.3） */
+.pin.hollow{
+  background:#fff!important;display:flex;align-items:center;
+  justify-content:center;font-size:11px;font-weight:700;
+}
+/* 主色 Pin：用户当前位置，是主色在地图上唯一露出点，最易与分类色混淆 */
+.me{
+  position:absolute;width:14px;height:14px;border-radius:50%;
+  border:2.5px solid #fff;box-shadow:0 0 0 5px rgba(0,0,0,.06);
+}
+.me-lbl{
+  position:absolute;font-size:9px;color:#6B7280;white-space:nowrap;
+}
+/* 分类 Tab 条：选中态用主色浅底 + 主色字，是主色高频露出处 */
+.tabs{display:flex;gap:6px;padding:10px;background:#fff;
+  border-bottom:1px solid #E5E7EB;overflow:hidden}
+.tab{font-size:11px;padding:5px 10px;border-radius:999px;
+  background:#F1F5F9;color:#6B7280;white-space:nowrap}
+.body{padding:12px}
+.card{background:#fff;border-radius:12px;padding:12px;
+  box-shadow:0 2px 8px rgba(0,0,0,.04);margin-bottom:10px}
+.card.sel{border:1.5px solid}
+.c-t{font-size:14px;font-weight:600;margin-bottom:6px}
+.c-m{font-size:11px;color:#6B7280}
+.tag{display:inline-block;font-size:10px;font-weight:500;
+  padding:2px 7px;border-radius:4px;margin-right:5px}
+.badge{font-size:10px;padding:2px 6px;border-radius:4px;
+  background:#FEF3C7;color:#92400E}
+.btns{display:flex;gap:8px;margin-top:12px}
+.btn{
+  flex:1;height:40px;border-radius:8px;font-size:14px;font-weight:600;
+  display:flex;align-items:center;justify-content:center;
+}
+.btn-2{flex:1;height:40px;border-radius:8px;font-size:14px;font-weight:600;
+  display:flex;align-items:center;justify-content:center;background:#fff;
+  border:1.5px solid}
+/* 底部胶囊：立即发布，主色最大面积露出 */
+.fab{margin:12px;height:44px;border-radius:999px;color:#fff;
+  font-size:15px;font-weight:600;display:flex;align-items:center;
+  justify-content:center;gap:6px}
+</style>
+</head>
+<body>
+
+<h1>找鸭找 · 主色候选视觉对比</h1>
+<p class="sub">
+  每个候选都按真实使用场景铺开：<b>导航栏 / 地图当前位置点 / 分类 Tab 选中态 / 卡片选中边框 / 主次按钮 / 底部发布胶囊</b>。<br>
+  地图上 5 个分类 Pin 用的是<b>已冻结</b>的分类色（蓝工作 / 紫房屋 / 橙车辆 / 绿生活 / 粉服务），四张图完全一致 ——
+  这样你能直接看出<b>主色会不会跟分类色抢视线</b>。
+</p>
+
+<div class="warn">
+  <b>先看第一张（现有 #1FBAD6）</b>：白字对比度只有 <b>2.32:1</b>，远低于 WCAG AA 的 4.5:1。
+  你会看到导航栏标题和按钮文字都"发飘"、糊在底色里 —— 这不是审美偏好，是可测量的缺陷，必须借这次定稿修掉。
+</div>
+
+<div class="grid" id="grid"></div>
+
+<script>
+/**
+ * 主色候选配置
+ * @property {string} key    候选编号
+ * @property {string} name   候选名
+ * @property {string} p      Primary 主色
+ * @property {string} pd     Primary Dark 按下态
+ * @property {string} pl     Primary Light 标签底/选中态
+ * @property {string} accent Accent 辅助色（需求态强调）
+ * @property {string} note   取舍说明
+ * @property {boolean} reject 是否为待淘汰的现状色
+ */
+var CANDS = [
+  { key:'现状', name:'现有色（待淘汰）', p:'#1FBAD6', pd:'#1799B0', pl:'#E7F7FB',
+    accent:'#FF8A3D', reject:true,
+    note:'白字 2.32:1 不达标；且明度过高，在浅色地图底上"浮"不住，当前位置点容易被分类 Pin 盖过。' },
+  { key:'A', name:'深湖青', p:'#0B7C8C', pd:'#075E6B', pl:'#E6F6F8',
+    accent:'#FF8A3D',
+    note:'现有湖蓝鸭色的下沉版，品牌延续性最好、鸭 IP 气质不变。青系在 5 个分类色里是空缺的，地图上零混淆。改动量最小。' },
+  { key:'B', name:'共享绿松', p:'#0F766E', pd:'#0B5A54', pl:'#E6F5F3',
+    accent:'#FF8A3D',
+    note:'青绿是共享/循环类产品最常见的语义色，"资源共享"表达最直接。风险：与生活类 #10B981 同绿系 —— 看地图上"我"的位置点和绿色生活 Pin 是否够分得开。' },
+  { key:'C', name:'墨青蓝', p:'#0E5A7A', pd:'#0A4459', pl:'#E8F1F6',
+    accent:'#FF8A3D',
+    note:'对比度余量最大（7.61:1）。气质沉稳偏信任感，贴合"本地陌生人交换信息"。代价：比 A 更冷，鸭子的亲切感会弱一些。' },
+  { key:'D', name:'中性深墨', p:'#16323C', pd:'#0D2129', pl:'#EBF0F2',
+    accent:'#FFB020',
+    note:'主色退为中性底，把全部彩度让给地图 5 色 Pin，最利于 T3 图层辨识（高德/Google Maps 的做法）。代价：品牌活力基本丢失，且 Accent 需换成鸭喙黄 #FFB020，会连带改动 Accent 现用于"需求态"的口径。' }
+];
+
+/** sRGB 通道逆伽马校正 @param {number} c 0-255 通道值 @returns {number} 线性值 */
+function lin(c){ c/=255; return c<=0.03928 ? c/12.92 : Math.pow((c+0.055)/1.055,2.4); }
+
+/** 计算相对亮度 @param {string} hex #RRGGBB @returns {number} 0-1 */
+function lum(hex){
+  var r=parseInt(hex.substr(1,2),16), g=parseInt(hex.substr(3,2),16), b=parseInt(hex.substr(5,2),16);
+  return 0.2126*lin(r)+0.7152*lin(g)+0.0722*lin(b);
+}
+
+/** 与白色的对比度 @param {string} hex 前景底色 @returns {string} 保留两位小数 */
+function ratioVsWhite(hex){ return ((1.0+0.05)/(lum(hex)+0.05)).toFixed(2); }
+
+/** 渲染单个候选卡 @param {object} c 候选配置 @returns {string} HTML 片段 */
+function render(c){
+  var r = ratioVsWhite(c.p);
+  var pass = parseFloat(r) >= 4.5;
+  return ''
+  + '<div class="cand'+(c.reject?' reject':'')+'">'
+  +   '<div class="cand-hd">'
+  +     '<div class="swatch" style="background:'+c.p+'"></div>'
+  +     '<div><div class="cand-name">'+c.key+' · '+c.name+'</div>'
+  +     '<div class="cand-hex">'+c.p+'</div></div>'
+  +   '</div>'
+  +   '<div class="ratio">白字对比度 <b class="'+(pass?'ok':'bad')+'">'+r+':1</b> '
+  +     (pass?'<span class="ok">✓ 过 WCAG AA</span>':'<span class="bad">✗ 不达标（需 ≥4.5）</span>')
+  +   '</div>'
+
+  +   '<div class="phone">'
+  +     '<div class="nav" style="background:'+c.p+'">附近的资源</div>'
+
+        /* 地图：5 分类 Pin 固定不变，只有"我"的位置点随主色变 */
+  +     '<div class="map">'
+  +       '<div class="pin" style="background:#3B82F6;left:34px;top:22px"></div>'
+  +       '<div class="pin hollow" style="border-color:#8B5CF6;color:#8B5CF6;left:96px;top:14px">?</div>'
+  +       '<div class="pin" style="background:#F97316;left:214px;top:26px"></div>'
+  +       '<div class="pin" style="background:#10B981;left:178px;top:82px"></div>'
+  +       '<div class="pin hollow" style="border-color:#EC4899;color:#EC4899;left:264px;top:74px">?</div>'
+  +       '<div class="pin" style="background:#10B981;left:118px;top:96px"></div>'
+  +       '<div class="me" style="background:'+c.p+';left:60px;top:72px"></div>'
+  +       '<div class="me-lbl" style="left:80px;top:74px">← 我（主色）</div>'
+  +     '</div>'
+
+        /* 分类 Tab：选中态 = 主色浅底 + 主色字 */
+  +     '<div class="tabs">'
+  +       '<div class="tab" style="background:'+c.pl+';color:'+c.p+';font-weight:600">全部</div>'
+  +       '<div class="tab">工作</div><div class="tab">房屋</div>'
+  +       '<div class="tab">车辆</div><div class="tab">生活</div>'
+  +     '</div>'
+
+  +     '<div class="body">'
+          /* 选中卡：主色描边 + 主色浅底标签 */
+  +       '<div class="card sel" style="border-color:'+c.p+'">'
+  +         '<div class="c-t">招后厨帮工 · 包吃住</div>'
+  +         '<div style="margin-bottom:6px">'
+  +           '<span class="tag" style="background:'+c.pl+';color:'+c.p+'">工作 · 餐饮</span>'
+  +           '<span class="badge">🟡 半完整</span>'
+  +         '</div>'
+  +         '<div class="c-m">4500-5500 元/月 · 820m · 2 小时前</div>'
+  +       '</div>'
+          /* 普通卡：需求态用 Accent */
+  +       '<div class="card">'
+  +         '<div class="c-t">求租一室一厅</div>'
+  +         '<div style="margin-bottom:6px">'
+  +           '<span class="tag" style="background:'+c.accent+'22;color:'+c.accent+'">需求 · 房屋</span>'
+  +         '</div>'
+  +         '<div class="c-m">1500 元以内 · 1.2km · 今天</div>'
+  +       '</div>'
+          /* 主次按钮并排：检验主按钮白字可读性 + 次按钮描边可辨识度 */
+  +       '<div class="btns">'
+  +         '<div class="btn-2" style="border-color:'+c.p+';color:'+c.p+'">收藏</div>'
+  +         '<div class="btn" style="background:'+c.p+';color:#fff">联系 TA</div>'
+  +       '</div>'
+  +     '</div>'
+
+        /* 胶囊按钮：主色最大面积露出 */
+  +     '<div class="fab" style="background:'+c.p+'">＋ 立即发布</div>'
+  +   '</div>'
+
+  +   '<div class="note">'+c.note+'</div>'
+  + '</div>';
+}
+
+document.getElementById('grid').innerHTML = CANDS.map(render).join('');
+</script>
+
+</body>
+</html>

@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>混合匹配模式测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+        }
+        .test-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .test-result {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #f9f9f9;
+            border-radius: 4px;
+        }
+        .test-pass {
+            border-left: 4px solid #4CAF50;
+        }
+        .test-fail {
+            border-left: 4px solid #f44336;
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .log {
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #f1f1f1;
+            border-radius: 4px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>混合匹配模式测试</h1>
+        
+        <div class="test-section">
+            <h2>测试控制</h2>
+            <button onclick="runTests()">运行所有测试</button>
+            <button onclick="runHybridMatchingTests()">运行混合匹配测试</button>
+            <button onclick="runModeSwitchingTests()">运行模式切换测试</button>
+            <button onclick="runFrontendIntegrationTests()">运行前端集成测试</button>
+        </div>
+        
+        <div class="test-section">
+            <h2>测试结果</h2>
+            <div id="test-results"></div>
+        </div>
+        
+        <div class="test-section">
+            <h2>测试日志</h2>
+            <div id="test-log" class="log"></div>
+        </div>
+    </div>
+    
+    <!-- 导入测试所需的模块 -->
+    <script src="fastMatcher.js"></script>
+    <script src="deepMatcher.js"></script>
+    <script src="semanticMatcher.js"></script>
+    <script src="semanticPreciseMatcher.js"></script>
+    <script src="smartTrigger.js"></script>
+    <script src="hybridMatchingFrontend.js"></script>
+    <script src="hybridMatchingTest.js"></script>
+    
+    <script>
+        // 重定向console.log到页面
+        const originalLog = console.log;
+        const logElement = document.getElementById('test-log');
+        
+        console.log = function(...args) {
+            originalLog.apply(console, args);
+            const logText = args.map(arg => {
+                if (typeof arg === 'object') {
+                    return JSON.stringify(arg, null, 2);
+                }
+                return arg;
+            }).join(' ') + '\n';
+            logElement.textContent += logText;
+            logElement.scrollTop = logElement.scrollHeight;
+        };
+        
+        console.error = function(...args) {
+            originalLog.apply(console, args);
+            const logText = 'ERROR: ' + args.map(arg => {
+                if (typeof arg === 'object') {
+                    return JSON.stringify(arg, null, 2);
+                }
+                return arg;
+            }).join(' ') + '\n';
+            logElement.textContent += logText;
+            logElement.scrollTop = logElement.scrollHeight;
+        };
+        
+        // 测试实例
+        let hybridMatchingTest;
+        
+        // 初始化测试
+        function initTest() {
+            if (!hybridMatchingTest) {
+                hybridMatchingTest = new HybridMatchingTest();
+            }
+            return hybridMatchingTest;
+        }
+        
+        // 运行所有测试
+        function runTests() {
+            document.getElementById('test-results').innerHTML = '';
+            logElement.textContent = '';
+            
+            const test = initTest();
+            
+            console.log('=== 开始运行所有测试 ===\n');
+            
+            test.runHybridMatchingTests()
+                .then(() => {
+                    console.log('\n=== 混合匹配测试完成 ===\n');
+                    return test.testModeSwitching();
+                })
+                .then(() => {
+                    console.log('\n=== 模式切换测试完成 ===\n');
+                    return test.testFrontendIntegration();
+                })
+                .then(() => {
+                    console.log('\n=== 前端集成测试完成 ===\n');
+                    console.log('\n=== 所有测试运行完成 ===');
+                    showTestResult('所有测试运行完成', true);
+                })
+                .catch(error => {
+                    console.error('测试失败:', error);
+                    showTestResult('测试失败: ' + error.message, false);
+                });
+        }
+        
+        // 运行混合匹配测试
+        function runHybridMatchingTests() {
+            document.getElementById('test-results').innerHTML = '';
+            logElement.textContent = '';
+            
+            const test = initTest();
+            
+            console.log('=== 开始运行混合匹配测试 ===\n');
+            
+            test.runHybridMatchingTests()
+                .then(() => {
+                    console.log('\n=== 混合匹配测试完成 ===');
+                    showTestResult('混合匹配测试完成', true);
+                })
+                .catch(error => {
+                    console.error('测试失败:', error);
+                    showTestResult('测试失败: ' + error.message, false);
+                });
+        }
+        
+        // 运行模式切换测试
+        function runModeSwitchingTests() {
+            document.getElementById('test-results').innerHTML = '';
+            logElement.textContent = '';
+            
+            const test = initTest();
+            
+            console.log('=== 开始运行模式切换测试 ===\n');
+            
+            test.testModeSwitching()
+                .then(() => {
+                    console.log('\n=== 模式切换测试完成 ===');
+                    showTestResult('模式切换测试完成', true);
+                })
+                .catch(error => {
+                    console.error('测试失败:', error);
+                    showTestResult('测试失败: ' + error.message, false);
+                });
+        }
+        
+        // 运行前端集成测试
+        function runFrontendIntegrationTests() {
+            document.getElementById('test-results').innerHTML = '';
+            logElement.textContent = '';
+            
+            const test = initTest();
+            
+            console.log('=== 开始运行前端集成测试 ===\n');
+            
+            test.testFrontendIntegration()
+                .then(result => {
+                    console.log('\n=== 前端集成测试完成 ===');
+                    showTestResult('前端集成测试' + (result ? '通过' : '失败'), result);
+                })
+                .catch(error => {
+                    console.error('测试失败:', error);
+                    showTestResult('测试失败: ' + error.message, false);
+                });
+        }
+        
+        // 显示测试结果
+        function showTestResult(message, passed) {
+            const resultsElement = document.getElementById('test-results');
+            const resultDiv = document.createElement('div');
+            resultDiv.className = 'test-result ' + (passed ? 'test-pass' : 'test-fail');
+            resultDiv.innerHTML = `<strong>${passed ? '通过' : '失败'}:</strong> ${message}`;
+            resultsElement.appendChild(resultDiv);
+        }
+    </script>
+</body>
+</html>

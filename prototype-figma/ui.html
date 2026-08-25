@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<style>
+  body{font-family:-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;font-size:12px;color:#1F2937;margin:0;padding:14px}
+  h3{margin:0 0 4px;font-size:13px}
+  .sub{color:#6B7280;font-size:11px;margin-bottom:12px;line-height:1.5}
+  .batch{border:1px solid #E5E7EB;border-radius:8px;padding:10px 12px;margin-bottom:8px}
+  .batch b{display:block;margin-bottom:2px}
+  .batch span{color:#6B7280;font-size:11px}
+  button{width:100%;padding:9px;border:0;border-radius:8px;background:#0B7C8C;color:#fff;font-size:12px;font-weight:600;cursor:pointer;margin-top:6px}
+  button:hover{background:#075E6B}
+  button.sec{background:#fff;color:#0B7C8C;border:1px solid #0B7C8C}
+  #log{margin-top:12px;padding:10px;background:#F8FAFC;border-radius:8px;font-size:11px;line-height:1.6;white-space:pre-wrap;max-height:180px;overflow:auto;color:#374151}
+  .warn{background:#FEF3C7;color:#92400E;padding:8px 10px;border-radius:6px;font-size:11px;line-height:1.5;margin-bottom:10px}
+  .tip{background:#E6F6F8;color:#075E6B;padding:8px 10px;border-radius:6px;font-size:11px;line-height:1.6;margin-top:10px}
+  .tip b{display:block;margin-bottom:3px}
+  .tip ol{margin:4px 0 0;padding-left:16px}
+</style>
+</head>
+<body>
+<h3>找鸭找 v2 原型生成器</h3>
+<div class="sub">按 PRD v2.1 §10.1 生成 14 页 + 3 模态 + T6 五组规格。颜色全部绑定 Figma Variables（role），公用元素为 Component，改一处全局同步。</div>
+
+<div class="warn">分批执行，避免单次超时。必须按 1→2→3→4→5 顺序点，批次 5 依赖前面全部画框已生成。</div>
+
+<div class="batch">
+  <b>批次 1 · 基础设施</b>
+  <span>Variables（语义色 13 + 分类色 5）+ Component master 20 个 + 字体 + 规格板</span>
+  <button onclick="run('setup')">执行批次 1</button>
+</div>
+
+<div class="batch">
+  <b>批次 2 · 地图页与列表页</b>
+  <span>home-screen（含搜索过滤态 + 信息卡态 + 6 空状态过程态 + 2 定位权限降级态 + 3 性能降级态 + 4 半径档垫图位）、list-screen</span>
+  <button onclick="run('map')">执行批次 2</button>
+</div>
+
+<div class="batch">
+  <b>批次 3 · 核心流程页</b>
+  <span>login / detail / detail-offline / publish / ai-confirm / publish-success / contact / profile 等 13 页</span>
+  <button onclick="run('core')">执行批次 3</button>
+</div>
+
+<div class="batch">
+  <b>批次 4 · 模态与 T6 组件</b>
+  <span>3 个模态 + AI帮我发FAB / 图层面板 / 完整度角标规范 / 完整度卡 / 20px 真实尺寸对照条</span>
+  <button onclick="run('modal')">执行批次 4</button>
+</div>
+
+<div class="batch">
+  <b>批次 5 · 原型跳转连线</b>
+  <span>为主流程 22 条跳转补 reactions，并设 login-screen 为起点；完成后用 Present 模式测试</span>
+  <button onclick="run('flow')">执行批次 5</button>
+</div>
+
+<button class="sec" onclick="run('clean')">清空已生成内容（重跑前用）</button>
+
+<div class="tip">
+  <b>地图底图已内嵌，无需手动贴图</b>
+  9 个地图底板（<b>_map-bg</b>）会在生成时自动填好高德地图截图，重跑插件也不用重贴。
+  底图以 Base64 形式存在 code.js 末尾，不产生网络请求，manifest networkAccess 仍为 none。
+  <ol>
+    <li>要换成别的城区：把新截图存为 <b>docs/map-bg.png</b></li>
+    <li>在仓库根目录执行 <b>python tools/embed-map-bg.py</b>，该脚本会压缩、编码并覆写 code.js 末尾的底图常量段</li>
+    <li>回到 Figma 重新运行本插件（先「清空已生成内容」，再依次跑批次 1→5）</li>
+  </ol>
+  不用 Google 地图：其未取得中国境内测绘资质、域名境内被屏蔽，且国内上架涉地图功能须提供地图服务资质或第三方地图 API 授权证明，与 PRD §6.7 已定的高德 SDK 选型冲突。<br>
+  截图仅用于内部评审，须保留高德版权水印，不要去水印后外发。
+</div>
+
+<div id="log">就绪。</div>
+
+<script>
+  function run(step){
+    document.getElementById('log').textContent = '执行中…';
+    parent.postMessage({pluginMessage:{type:'run',step:step}},'*');
+  }
+  onmessage = function(e){
+    var msg = e.data.pluginMessage;
+    if(msg && msg.type === 'log'){
+      document.getElementById('log').textContent = msg.text;
+    }
+  };
+</script>
+</body>
+</html>

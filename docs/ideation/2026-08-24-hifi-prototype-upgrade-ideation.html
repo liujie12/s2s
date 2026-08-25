@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>高保真原型升级 · 想法生成（2026-08-24）</title>
+<style>
+  :root{
+    --ink:#1F2937; --ink-2:#6B7280; --line:#E5E7EB; --bg:#F8FAFC; --surface:#FFFFFF;
+    --brand:#0B7C8C; --brand-dark:#075E6B; --brand-light:#E6F6F8; --accent:#FF8A3D;
+    --ok:#22C55E; --warn:#F59E0B; --err:#EF4444;
+    --r-sm:4px; --r-md:8px; --r-lg:12px;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; padding:32px 20px 64px; background:var(--bg); color:var(--ink);
+    font-family:"Noto Sans SC","Inter",-apple-system,"Segoe UI",sans-serif;
+    font-size:14px; line-height:1.6;
+  }
+  .wrap{max-width:980px;margin:0 auto}
+  header.doc{border-left:4px solid var(--brand);padding:4px 0 4px 16px;margin-bottom:24px}
+  header.doc h1{font-size:24px;line-height:1.3;font-weight:700;margin:0 0 8px}
+  dl.meta{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:0;font-size:13px}
+  dl.meta dt{color:var(--ink-2);font-weight:500}
+  dl.meta dd{margin:0}
+  h2{font-size:18px;font-weight:600;line-height:1.3;margin:40px 0 12px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+  h3{font-size:16px;font-weight:600;line-height:1.4;margin:0 0 8px}
+  section > p:first-of-type{margin-top:0}
+  code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12.5px;background:var(--brand-light);color:var(--brand-dark);padding:1px 5px;border-radius:var(--r-sm)}
+  table{width:100%;border-collapse:collapse;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-md);overflow:hidden;font-size:13px}
+  caption{text-align:left;color:var(--ink-2);font-size:12px;padding-bottom:6px}
+  th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:var(--brand-light);color:var(--brand-dark);font-weight:600}
+  tbody tr:last-child td{border-bottom:none}
+  article.idea{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:20px;margin:0 0 16px}
+  article.idea > header{display:flex;align-items:flex-start;gap:12px;margin-bottom:12px}
+  .rank{flex:0 0 auto;width:28px;height:28px;border-radius:999px;background:var(--brand);color:#fff;font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:center}
+  .tags{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 12px}
+  .tag{font-size:12px;font-weight:500;padding:2px 10px;border-radius:999px;background:var(--bg);border:1px solid var(--line);color:var(--ink-2)}
+  .tag.axis{background:var(--brand-light);border-color:#BFE6EC;color:var(--brand-dark)}
+  .tag.hi{background:#E9FBEF;border-color:#B7F0C8;color:#137A3A}
+  .tag.mid{background:#FEF6E7;border-color:#F7E2B5;color:#8A5A05}
+  dl.fields{margin:0;display:grid;grid-template-columns:88px 1fr;gap:6px 14px}
+  dl.fields dt{color:var(--ink-2);font-weight:500;font-size:13px}
+  dl.fields dd{margin:0}
+  .basis{font-size:13px;background:var(--bg);border-left:3px solid var(--accent);padding:8px 12px;border-radius:0 var(--r-sm) var(--r-sm) 0}
+  ul{margin:0;padding-left:20px}
+  footer.doc{margin-top:48px;padding-top:16px;border-top:1px solid var(--line);color:var(--ink-2);font-size:12px}
+  a{color:var(--brand-dark)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc">
+  <h1>高保真原型升级 · 想法生成</h1>
+  <dl class="meta">
+    <dt>date</dt><dd>2026-08-24</dd>
+    <dt>topic</dt><dd>由 Figma 低保真骨架 + PRD v2.1 生成高保真原型</dd>
+    <dt>focus</dt><dd>新建高保真 Page 与骨架并存；五大 P0 闭环优先；真实内容 / 状态覆盖 / 视觉精修 / 交互动效四维度全补</dd>
+    <dt>mode</dt><dd>repo-grounded</dd>
+    <dt>output</dt><dd>html</dd>
+  </dl>
+</header>
+
+<section id="context">
+  <h2>Codebase Context</h2>
+  <p>项目当前并非纯低保真。已落地的资产：<code>prototype-figma/code.js</code>（约 3200 行）以六批次入口驱动生成（<code>code.js:3265-3275</code>：<code>batchSetup</code> / <code>batchMap</code> / <code>batchCore</code> / <code>batchModal</code> / <code>batchFlow</code> / <code>batchClean</code>，须按 1→5 顺序执行）；13 语义色 + 5 分类色已注册为 Figma Variables；<code>registerComponents</code>（<code>code.js:1045</code>）注册 20 个 Component master（status-bar ×1、bottom-tab ×3、button ×6、pin ×10）；21 条跳转已用 <code>list_reactions</code> 逐条实证通过；地图底图 Base64 内嵌 174.3 KB。</p>
+  <p>缺口集中在「高保真那一层」：真实内容密度、完整状态覆盖、视觉精修、交互细节与动效。已侦察出三处 <code>code.js</code> 与 <code>docs/PRD.md</code> 的口径冲突，以及 PRD §1 已定义但生成器未实现的 12 项。</p>
+  <p>硬性约束（已实证）：原型跳转不支持跨 Page —— <code>setReactionsAsync</code> 的 NODE 型 action，<code>destinationId</code> 必须与触发节点同一 PageNode（见 <code>说明文档.md</code> 进度条目 [27]）。因此「新建高保真 Page」意味着该 Page 必须自成完整闭环。</p>
+  <p>时间约束：<code>说明文档.md</code> §1.3 里程碑 M3「设计稿与评审」计划 2026-08-28 冻结 14 页视觉稿，距今 4 天。</p>
+</section>
+
+<section id="axes">
+  <h2>Topic Axes</h2>
+  <table>
+    <caption>四条主题轴，源自 grounding 侦察结果而非通用模板</caption>
+    <thead><tr><th>轴</th><th>核心问题</th><th>已知证据锚点</th></tr></thead>
+    <tbody>
+      <tr><td>真实内容与数据密度</td><td>占位文案 → PRD 权威字段与真实文案</td><td><code>PRD.md:1469-1484</code> 完整度三档口径</td></tr>
+      <tr><td>状态覆盖矩阵</td><td>加载 / 空 / 过程 / 错误 / 无权限 / 降级六类是否画齐</td><td><code>PRD.md:971-980</code>、<code>:985</code>、<code>:1320</code></td></tr>
+      <tr><td>视觉与组件精修</td><td>Token 化是否覆盖阴影、状态变体是否成参数</td><td>阴影 9 处内联：<code>code.js:822/1421/1446/1476/1537/1632/1703/2847</code></td></tr>
+      <tr><td>交互与动效落地</td><td>PRD 动效全表 vs 生成器单一动效</td><td><code>PRD.md:191-200</code> §1.4.8 五行全表</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="ideas">
+  <h2>Ranked Ideas</h2>
+  <table>
+    <caption>本节内跳转</caption>
+    <thead><tr><th>#</th><th>想法</th><th>轴</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td><a href="#idea-1">PRD 单一真源表：先修三处口径冲突，再动一行视觉</a></td><td>状态覆盖矩阵</td></tr>
+      <tr><td>2</td><td><a href="#idea-2">CONTENT fixtures 层：把 PRD 文案抽成数据，页面只做渲染</a></td><td>真实内容与数据密度</td></tr>
+      <tr><td>3</td><td><a href="#idea-3">batchHifi：高保真独立 Page，自成闭环</a></td><td>视觉与组件精修</td></tr>
+      <tr><td>4</td><td><a href="#idea-4">ELEVATION Token + Figma Effect Style：消灭 9 处内联阴影</a></td><td>视觉与组件精修</td></tr>
+      <tr><td>5</td><td><a href="#idea-5">MOTION 表驱动：让 §1.4.8 五行动效真的可点出来</a></td><td>交互与动效落地</td></tr>
+      <tr><td>6</td><td><a href="#idea-6">状态矩阵自动建框 + 命名契约，缺一格即报错</a></td><td>状态覆盖矩阵</td></tr>
+    </tbody>
+  </table>
+
+  <article class="idea" id="idea-1">
+    <header><span class="rank">1</span><h3>PRD 单一真源表：先修三处口径冲突，再动一行视觉</h3></header>
+    <div class="tags"><span class="tag axis">状态覆盖矩阵</span><span class="tag hi">confidence 高</span><span class="tag mid">complexity 低</span></div>
+    <dl class="fields">
+      <dt>做什么</dt><dd>在 <code>code.js</code> 顶部建一张从 PRD 抄录的常量表（半径档、过程态时间轴文案、状态清单），所有生成函数只读这张表；同时补齐两个缺失状态画框。冲突处以 PRD 为准。</dd>
+      <dt>basis</dt><dd class="basis"><code>direct:</code> 半径档 <code>code.js:2190</code> 为 <code>1km/3km/10km/全城</code>，而 <code>PRD.md:947-952</code> 为 <code>3km/5km/10km/全城</code>；过程态首行 <code>code.js:2150</code>「骨架屏：地图底图先出」，而 <code>PRD.md:975</code> 为「鸭子 IP 缺省图 + 附近有点安静，正在帮你往外找… + 骨架卡 3 条」；<code>PRD.md:985</code>（全屏权限引导页）与 <code>PRD.md:1320</code>（已下架详情态）在 code.js 变体清单中无对应画框。</dd>
+      <dt>为何重要</dt><dd>高保真的定义是「与规格一致到能直接给开发」。若在错误的半径档和错误的过程态文案上做视觉精修，M3 冻结的稿子会带着规格偏差流向实现，返工成本远大于现在改三个数组。</dd>
+      <dt>风险</dt><dd><ul><li>PRD 本身可能是过期的一方 —— 需先与你确认哪一侧为准，不能默认 PRD 永远对</li><li>补两个新状态画框会打乱现有 <code>SECTION_Y</code> 布局排布</li></ul></dd>
+    </dl>
+  </article>
+
+  <article class="idea" id="idea-2">
+    <header><span class="rank">2</span><h3>CONTENT fixtures 层：把 PRD 文案抽成数据，页面只做渲染</h3></header>
+    <div class="tags"><span class="tag axis">真实内容与数据密度</span><span class="tag hi">confidence 高</span><span class="tag mid">complexity 中</span></div>
+    <dl class="fields">
+      <dt>做什么</dt><dd>为五大 P0 页（login / publish / home / detail / contact）各建一份 fixtures 数据对象，字段名对齐 PRD 页面清单，值用 PRD 原文文案与拟真业务数据；至少覆盖完整度三档（🟢/🟡/🔴）各一条样例。页面构造函数改为吃 fixtures。</dd>
+      <dt>basis</dt><dd class="basis"><code>direct:</code> <code>PRD.md:1469-1484</code>（§9.8）给出完整度三档的唯一判定口径；<code>PRD.md:1557-1579</code>（§10.1）列出 17 页（14 页 + 3 模态）的页面清单与字段归属。侦察已逐项比对出现有 code.js 占位文案与 PRD 字段的缺位对照。</dd>
+      <dt>为何重要</dt><dd>北极星指标之一是「🟢完整发布率」（<code>PRD.md</code> §0.2）。如果原型里看不出 🟢/🟡/🔴 三档的视觉差异，评审时就无法判断完整度引导设计是否有效 —— 这是本产品最该在原型阶段验证的一件事。</dd>
+      <dt>风险</dt><dd><ul><li>fixtures 与 PRD 会各自漂移，需约定 PRD 为唯一编辑入口</li><li>真实文案变长后，现有固定高度画框会溢出，需同步改 Auto Layout</li></ul></dd>
+    </dl>
+  </article>
+
+  <article class="idea" id="idea-3">
+    <header><span class="rank">3</span><h3>batchHifi：高保真独立 Page，自成闭环</h3></header>
+    <div class="tags"><span class="tag axis">视觉与组件精修</span><span class="tag hi">confidence 高</span><span class="tag mid">complexity 中</span></div>
+    <dl class="fields">
+      <dt>做什么</dt><dd>新增 <code>PAGE_NAMES.hifi = '02 · 高保真主页面'</code> 与第七个批次入口 <code>batchHifi</code>，复用 <code>_components · master（勿删）</code> 的 20 个 master（Component 可跨 Page 实例化），但所有跳转目标全部落在本 Page 内。<code>batchClean</code> 需增加对新 Page 的清理分支。</dd>
+      <dt>basis</dt><dd class="basis"><code>direct:</code> 跨 Page 跳转硬限制已实证 —— <code>setReactionsAsync</code> 的 NODE 型 action 的 <code>destinationId</code> 必须与触发节点同一 PageNode（<code>说明文档.md</code> 条目 [27] 记录了根因与「三页合一」修复）；<code>indexMainFrames</code>（<code>code.js:3021</code>）已按 <code>pageId → Frame</code> 建索引并跳过 <code>VARIANT_TAG</code> / <code>board/</code> / <code>_components</code>，天然支持多 Page 隔离。</dd>
+      <dt>为何重要</dt><dd>你已选定「与骨架并存」。而跨 Page 跳转不可用意味着「并存」不能是「一半在旧页一半在新页」—— 必须整套闭环搬过去。这条把该约束前置成架构决定，避免连线阶段才发现死链。</dd>
+      <dt>风险</dt><dd><ul><li>骨架页与高保真页会出现同名画框，<code>findClickable</code>（<code>code.js:3095</code>）的重名抛错逻辑会误伤，需按 Page 作用域收窄</li><li>两页并存后文档与评审需明确「哪一页是评审对象」</li></ul></dd>
+    </dl>
+  </article>
+
+  <article class="idea" id="idea-4">
+    <header><span class="rank">4</span><h3>ELEVATION Token + Figma Effect Style：消灭 9 处内联阴影</h3></header>
+    <div class="tags"><span class="tag axis">视觉与组件精修</span><span class="tag hi">confidence 高</span><span class="tag mid">complexity 低</span></div>
+    <dl class="fields">
+      <dt>做什么</dt><dd>参照现有 <code>SPACING</code> / <code>RADIUS</code> 的写法建 <code>ELEVATION</code> 常量表（card / modal / fab / pin 四档），把 9 处内联 <code>effects</code> 全部替换为查表；并注册为 Figma Effect Style，使设计侧可改。顺带把被改成描边的卡片阴影恢复为 PRD 规定值。</dd>
+      <dt>basis</dt><dd class="basis"><code>direct:</code> 阴影无集中 Token，9 处逐处内联 <code>effects</code>：<code>code.js:822 / 1421 / 1446 / 1476 / 1537 / 1632 / 1703 / 2847</code>；PRD §1 规定卡片阴影为 <code>0 2 8 rgba(0,0,0,0.04)</code>，现实现被替换为描边；<code>PRD.md:159-171</code> 已给出间距圆角 Token 体系（生成器已落地为 <code>SPACING</code> / <code>RADIUS</code>），阴影是唯一漏网的一类。</dd>
+      <dt>为何重要</dt><dd>高保真最直观的观感差异来自层次感。9 处内联意味着任何一次阴影调整都是霰弹式修改，在 4 天窗口内会反复出错；Token 化后一处改全局生效。</dd>
+      <dt>风险</dt><dd><ul><li>Effect Style 名称一旦被设计侧改写，生成器按名查找会失败（须走「找不到即报错」而非兜底）</li><li>描边改阴影后，Auto Layout 的视觉外边距会变化，需复核间距</li></ul></dd>
+    </dl>
+  </article>
+
+  <article class="idea" id="idea-5">
+    <header><span class="rank">5</span><h3>MOTION 表驱动：让 §1.4.8 五行动效真的可点出来</h3></header>
+    <div class="tags"><span class="tag axis">交互与动效落地</span><span class="tag hi">confidence 中高</span><span class="tag mid">complexity 中</span></div>
+    <dl class="fields">
+      <dt>做什么</dt><dd>把 PRD §1.4.8 动效全表抄成 <code>MOTION</code> 常量（每行含 transition 类型 / easing / duration），在 <code>proto_wire</code> / <code>proto_change_to</code> / <code>proto_overlay</code> 调用处按场景查表传参，替换当前统一的 <code>SMART_ANIMATE / EASE_OUT / 0.3s</code>；模态用 overlay 语义、列表用 scroll 语义、返回用 <code>proto_back</code>。</dd>
+      <dt>basis</dt><dd class="basis"><code>direct:</code> <code>PRD.md:191-200</code>（§1.4.8）给出动效规范五行全表，而生成器只落地了单一 <code>SMART_ANIMATE / EASE_OUT / 0.3s</code>；本机 figma-prototype-mcp 已具备 <code>proto_overlay</code> / <code>proto_scroll</code> / <code>proto_back</code> / <code>set_frame_scroll</code> 等分场景工具（已核对 24 个工具）。</dd>
+      <dt>为何重要</dt><dd>「可点击」和「像成品」之间的差距主要就是动效语义。模态用页面跳转而非 overlay，评审时会明显感觉出戏；而这一层几乎不需要重画视觉，是性价比最高的保真度提升。</dd>
+      <dt>风险</dt><dd><ul><li>动效改动无法用 <code>list_reactions</code> 之外的手段验证，逐节点核对成本随连线数线性上升</li><li>overlay 与现有「模态即独立画框」的建稿方式冲突，可能要重建 3 个模态</li></ul></dd>
+    </dl>
+  </article>
+
+  <article class="idea" id="idea-6">
+    <header><span class="rank">6</span><h3>状态矩阵自动建框 + 命名契约，缺一格即报错</h3></header>
+    <div class="tags"><span class="tag axis">状态覆盖矩阵</span><span class="tag mid">confidence 中</span><span class="tag mid">complexity 中高</span></div>
+    <dl class="fields">
+      <dt>做什么</dt><dd>声明一张「页 × 状态」矩阵（五大 P0 页 × 六类状态的适用子集），生成器遍历矩阵建框，画框名按 <code>&lt;page&gt;/&lt;state&gt;</code> 契约命名；生成结束时用矩阵反查，任一格缺失直接抛错而非静默跳过。</dd>
+      <dt>basis</dt><dd class="basis"><code>direct:</code> 现有状态覆盖是零散数组而非矩阵 —— 批次 2 的 22 画框中过程态 6 + 降级态 3 + 半径档 4，且 <code>PRD.md:985</code>（无权限）与 <code>PRD.md:1320</code>（已下架）无对应画框；<code>PRD.md:971-980</code>（§6.4.4）定义了兜底过程态六行时间轴。项目已沉淀「任何找不到就兜底的写法都要删掉，失败必须可见」（<code>说明文档.md</code> 条目 [30]）。</dd>
+      <dt>为何重要</dt><dd>状态遗漏是评审后返工的第一大来源，而人工清点 22+ 画框不可靠。矩阵化把「有没有画齐」从人的注意力问题变成程序断言。</dd>
+      <dt>风险</dt><dd><ul><li>矩阵子集判定本身需要人工决策（哪页该有哪状态），错误的矩阵会制造假安全感</li><li>画框数量可能从 22 涨到 40+，<code>SECTION_Y</code> 布局与画布可读性需重排</li><li>4 天窗口内可能挤占视觉精修时间 —— 建议排在想法 1、2 之后</li></ul></dd>
+    </dl>
+  </article>
+</section>
+
+<section id="rejected">
+  <h2>Rejection Summary</h2>
+  <p><strong>流程降级说明：</strong>本轮未能派发独立的 basis verifier 子代理 —— <code>Task</code> 工具 query 参数约 30 词上限，无法把完整候选清单传入。依据 <code>post-ideation-workflow.md</code> 的降级条款，过滤在主上下文单独完成（orchestrator-only filtering），并在此记录该降级。所有 <code>direct:</code> basis 均来自本轮 4 个 search 子代理返回的带 <code>file:line</code> 原文摘录，未做二次独立校验。</p>
+  <table>
+    <caption>被砍候选与原因</caption>
+    <thead><tr><th>候选</th><th>砍掉原因</th></tr></thead>
+    <tbody>
+      <tr><td>补齐鸭子 IP Logo / 空状态 / 缺省图素材</td><td>确属真实缺口（PRD §1 定义、code.js 全缺），但依赖外部美术产出，不在生成器可控范围；4 天窗口内只能占位。降级为想法 2 的一个子项，不单列。</td></tr>
+      <tr><td>Pin 从 10 基础态补到 30 种组合</td><td>10 基础态是刻意取舍（分类 × 类型的基础组合），补满 30 种对评审信息增量极低，属过度工程。</td></tr>
+      <tr><td>把 17 页全部升高保真</td><td>与你选定的「五大 P0 闭环优先」范围冲突，且必然撞 M3（2026-08-28）时间墙。</td></tr>
+      <tr><td>暗色模式完整落地</td><td>现实现仅取 <code>collection.modes[0]</code>，补全需要整套 Variables 双模式与全页复核；PRD 未将暗色列入 P0，收益不匹配成本。</td></tr>
+      <tr><td>输入框 / 分段控件 / 空状态 / 骨架屏组件化</td><td>方向正确，但与想法 4（Token 化）在同一层，且组件化收益要到第二轮迭代才显现。建议 M3 之后做。</td></tr>
+      <tr><td>导航搜索框从高 32 提到 44×44 触达标准</td><td>真实的可达性问题，但属单点修复，不足以成为一条「想法」；并入想法 4 的执行清单。</td></tr>
+      <tr><td>按钮补 pressed 变暗态</td><td>同上，单点修复，并入想法 4。</td></tr>
+      <tr><td>用 REST API 批量写节点以提速</td><td>技术上不可行 —— Figma REST API 为 GET-only，写节点唯一路径是 Plugin API。</td></tr>
+      <tr><td>把状态变体做成 Component Variants</td><td>Instance 禁止增删子节点（已实证报错 <code>Cannot move node. New parent is an instance</code>），状态差异涉及结构增删的场景无法用 Variants 表达。</td></tr>
+      <tr><td>用 SVG 承载渐变 / 滤镜提升视觉质感</td><td><code>figma.createNodeFromSvg</code> 会剥离 <code>&lt;defs&gt;</code> / 渐变 / 滤镜 / 蒙版 / 动画，做不到。</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<footer class="doc">
+  <p><strong>composition signal：</strong>本文档由 ce-ideate 工作流生成 · repo-grounded 模式 · 4 个 search 子代理并行取证 · 六镜头发散后经对抗式过滤保留 6 条 · basis 校验降级为 orchestrator-only（见 Rejection Summary）· 无空轴（四条主题轴均有 survivor）。</p>
+  <p>项目管理载体：<code>说明文档.md</code> · 规格源：<code>docs/PRD.md</code> v2.1 · 生成器：<code>prototype-figma/code.js</code></p>
+</footer>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,1657 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>路径详情 - 找鸭找APP</title>
+    <script type="text/javascript">
+        window._AMapSecurityConfig = {
+            securityJsCode: 'aa6ff0d9da3a35cd35b8d192a00d1d85',
+        }
+    </script>
+    <script type="text/javascript">
+        AMapLoader = {
+            load: function(options) {
+                return new Promise(function(resolve, reject) {
+                    console.log('开始加载高德地图API...');
+                    var script = document.createElement('script');
+                    script.type = 'text/javascript';
+                    script.src = 'https://webapi.amap.com/maps?v=' + (options.version || '2.0') + '&key=' + options.key;
+                    script.onload = function() {
+                        console.log('高德地图API加载成功');
+                        resolve(window.AMap);
+                    };
+                    script.onerror = function() {
+                        console.warn('高德地图API加载失败，使用模拟地图模式');
+                        window.AMap = {
+                            Map: function() {
+                                return {
+                                    setCenter: function() {},
+                                    setZoom: function() {},
+                                    addControl: function() {},
+                                    addMarker: function() {},
+                                    clearMap: function() {},
+                                    on: function() {},
+                                    off: function() {}
+                                };
+                            },
+                            Marker: function() {
+                                return {
+                                    setPosition: function() {},
+                                    setMap: function() {},
+                                    show: function() {},
+                                    hide: function() {}
+                                };
+                            },
+                            ToolBar: function() {
+                                return {
+                                    setPosition: function() {}
+                                };
+                            },
+                            Geolocation: function() {
+                                return {
+                                    getCurrentPosition: function(callback) {
+                                        callback({status: 'error', info: 'Geolocation not available'});
+                                    }
+                                };
+                            },
+                            infoWindow: function() {
+                                return {
+                                    open: function() {},
+                                    close: function() {}
+                                };
+                            }
+                        };
+                        console.log('模拟AMap对象创建成功');
+                        resolve(window.AMap);
+                    };
+                    document.head.appendChild(script);
+                });
+            }
+        };
+    </script>
+    <style>
+        :root {
+            --primary-color: #3D5AFE;
+            --primary-light: #6366F1;
+            --primary-dark: #1E40AF;
+            --secondary-color: #F97316;
+            --text-primary: #1F2937;
+            --text-secondary: #4B5563;
+            --text-muted: #9CA3AF;
+            --background-light: #F9FAFB;
+            --background-white: #FFFFFF;
+            --border-color: #E5E7EB;
+            --success-color: #10B981;
+            --warning-color: #F59E0B;
+            --error-color: #EF4444;
+            --info-color: #3B82F6;
+            
+            --font-family: 'PingFang SC', 'Helvetica Neue', Arial, sans-serif;
+            --font-size-xs: 12px;
+            --font-size-sm: 14px;
+            --font-size-base: 16px;
+            --font-size-lg: 18px;
+            --font-size-xl: 20px;
+            
+            --spacing-xs: 4px;
+            --spacing-sm: 8px;
+            --spacing-md: 16px;
+            --spacing-lg: 24px;
+            --spacing-xl: 32px;
+            
+            --radius-sm: 4px;
+            --radius-md: 8px;
+            --radius-lg: 12px;
+            --radius-xl: 16px;
+            
+            --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+            --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
+            --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: var(--font-family);
+            font-size: var(--font-size-base);
+            line-height: 1.5;
+            color: var(--text-primary);
+            background: var(--background-light);
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 100%;
+            min-height: 100vh;
+            background: var(--background-white);
+            display: flex;
+            flex-direction: column;
+        }
+        
+        /* 头部导航栏 */
+        .header {
+            height: 64px;
+            padding: 0 var(--spacing-lg);
+            background: var(--background-white);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--border-color);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-md);
+        }
+        
+        .back-btn {
+            width: 32px;
+            height: 32px;
+            border: none;
+            background: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: var(--radius-md);
+            transition: all 0.2s ease;
+        }
+        
+        .back-btn:hover {
+            background: var(--background-light);
+        }
+        
+        .header-title {
+            font-size: var(--font-size-lg);
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-sm);
+        }
+        
+        .action-btn {
+            width: 36px;
+            height: 36px;
+            border: none;
+            background: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: var(--radius-md);
+            transition: all 0.2s ease;
+            font-size: 18px;
+        }
+        
+        .action-btn:hover {
+            background: var(--background-light);
+        }
+        
+        /* 主内容区域 */
+        .main-content {
+            flex: 1;
+            overflow-y: auto;
+            padding-bottom: var(--spacing-xl);
+        }
+        
+        /* 路径概览卡片 */
+        .path-overview {
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
+            color: white;
+            padding: var(--spacing-lg);
+            margin: var(--spacing-md);
+            border-radius: var(--radius-xl);
+            box-shadow: var(--shadow-lg);
+        }
+        
+        .overview-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: var(--spacing-md);
+        }
+        
+        .transport-mode {
+            font-size: var(--font-size-sm);
+            padding: 4px 12px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: var(--radius-full);
+            backdrop-filter: blur(4px);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .transport-mode:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-1px);
+        }
+        
+        /* 交通方式选择面板 */
+        .transport-selector {
+            position: fixed;
+            bottom: -200px;
+            left: 0;
+            right: 0;
+            background: var(--background-white);
+            border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+            box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.1);
+            padding: var(--spacing-lg);
+            transition: bottom 0.3s ease;
+            z-index: 150;
+        }
+        
+        .transport-selector.active {
+            bottom: 0;
+        }
+        
+        .transport-selector-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: var(--spacing-lg);
+        }
+        
+        .transport-selector-title {
+            font-size: var(--font-size-lg);
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        
+        .transport-options {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: var(--spacing-md);
+        }
+        
+        .transport-option {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: var(--spacing-xs);
+            padding: var(--spacing-md);
+            border-radius: var(--radius-lg);
+            border: 2px solid var(--border-color);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .transport-option:hover {
+            border-color: var(--primary-color);
+            background: rgba(61, 90, 254, 0.05);
+        }
+        
+        .transport-option.active {
+            border-color: var(--primary-color);
+            background: rgba(61, 90, 254, 0.1);
+        }
+        
+        .transport-icon {
+            font-size: 24px;
+        }
+        
+        .transport-name {
+            font-size: var(--font-size-xs);
+            color: var(--text-secondary);
+        }
+        
+        /* 实时路况信息 */
+        .traffic-info {
+            margin: var(--spacing-md);
+            padding: var(--spacing-md);
+            background: var(--background-light);
+            border-radius: var(--radius-lg);
+            border-left: 4px solid var(--info-color);
+        }
+        
+        .traffic-header {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-sm);
+            margin-bottom: var(--spacing-sm);
+        }
+        
+        .traffic-title {
+            font-size: var(--font-size-sm);
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        
+        .traffic-status {
+            font-size: var(--font-size-xs);
+            padding: 2px 8px;
+            border-radius: var(--radius-sm);
+            font-weight: 500;
+        }
+        
+        .traffic-status.smooth {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--success-color);
+        }
+        
+        .traffic-status.moderate {
+            background: rgba(245, 158, 11, 0.1);
+            color: var(--warning-color);
+        }
+        
+        .traffic-status.heavy {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--error-color);
+        }
+        
+        .traffic-detail {
+            font-size: var(--font-size-xs);
+            color: var(--text-secondary);
+            line-height: 1.4;
+        }
+        
+        .overview-stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: var(--spacing-md);
+            margin-bottom: var(--spacing-md);
+        }
+        
+        .stat-item {
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: var(--font-size-xl);
+            font-weight: 700;
+            line-height: 1.2;
+        }
+        
+        .stat-label {
+            font-size: var(--font-size-xs);
+            opacity: 0.9;
+            margin-top: 2px;
+        }
+        
+        .overview-route {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-sm);
+            margin-top: var(--spacing-md);
+        }
+        
+        .route-point {
+            flex-shrink: 0;
+        }
+        
+        .start-point {
+            width: 24px;
+            height: 24px;
+            background: var(--success-color);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+        }
+        
+        .end-point {
+            width: 24px;
+            height: 24px;
+            background: var(--error-color);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+        }
+        
+        .route-line {
+            flex: 1;
+            height: 2px;
+            background: rgba(255, 255, 255, 0.6);
+            margin: 0 var(--spacing-xs);
+        }
+        
+        .location-info {
+            flex: 1;
+            min-width: 0;
+        }
+        
+        .location-name {
+            font-size: var(--font-size-sm);
+            font-weight: 500;
+            margin-bottom: 2px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .location-address {
+            font-size: var(--font-size-xs);
+            opacity: 0.8;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        /* 地图预览 */
+        .map-preview {
+            height: 200px;
+            margin: 0 var(--spacing-md);
+            border-radius: var(--radius-lg);
+            overflow: hidden;
+            background: #f0f0f0;
+            position: relative;
+        }
+        
+        .map-placeholder {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-muted);
+            font-size: var(--font-size-sm);
+        }
+        
+        /* 导航指引列表 */
+        .navigation-steps {
+            margin: var(--spacing-lg) var(--spacing-md);
+        }
+        
+        .section-title {
+            font-size: var(--font-size-base);
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: var(--spacing-md);
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-sm);
+        }
+        
+        .step-list {
+            space-y: var(--spacing-sm);
+        }
+        
+        .step-item {
+            display: flex;
+            gap: var(--spacing-md);
+            padding: var(--spacing-md) 0;
+            position: relative;
+        }
+        
+        .step-item:not(:last-child)::before {
+            content: '';
+            position: absolute;
+            left: 11px;
+            top: 36px;
+            bottom: 0;
+            width: 2px;
+            background: var(--border-color);
+        }
+        
+        .step-number {
+            flex-shrink: 0;
+            width: 24px;
+            height: 24px;
+            background: var(--primary-color);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: var(--font-size-xs);
+            font-weight: 600;
+            z-index: 1;
+        }
+        
+        .step-number.start {
+            background: var(--success-color);
+        }
+        
+        .step-number.end {
+            background: var(--error-color);
+        }
+        
+        .step-content {
+            flex: 1;
+            min-width: 0;
+        }
+        
+        .step-instruction {
+            font-size: var(--font-size-base);
+            color: var(--text-primary);
+            margin-bottom: 4px;
+            line-height: 1.4;
+        }
+        
+        .step-distance {
+            font-size: var(--font-size-sm);
+            color: var(--text-secondary);
+        }
+        
+        /* 分享面板 */
+        .share-panel {
+            position: fixed;
+            bottom: -300px;
+            left: 0;
+            right: 0;
+            background: var(--background-white);
+            border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+            box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.1);
+            padding: var(--spacing-lg);
+            transition: bottom 0.3s ease;
+            z-index: 200;
+        }
+        
+        .share-panel.active {
+            bottom: 0;
+        }
+        
+        .share-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: var(--spacing-lg);
+        }
+        
+        .share-title {
+            font-size: var(--font-size-lg);
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        
+        .close-btn {
+            width: 32px;
+            height: 32px;
+            border: none;
+            background: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: var(--radius-md);
+            transition: all 0.2s ease;
+        }
+        
+        .close-btn:hover {
+            background: var(--background-light);
+        }
+        
+        .share-options {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: var(--spacing-lg);
+            margin-bottom: var(--spacing-lg);
+        }
+        
+        .share-option {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: var(--spacing-sm);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            padding: var(--spacing-sm);
+            border-radius: var(--radius-md);
+        }
+        
+        .share-option:hover {
+            background: var(--background-light);
+            transform: translateY(-2px);
+        }
+        
+        .share-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: var(--radius-lg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+        }
+        
+        .share-name {
+            font-size: var(--font-size-xs);
+            color: var(--text-secondary);
+            text-align: center;
+        }
+        
+        .cancel-share {
+            width: 100%;
+            padding: var(--spacing-md);
+            border: none;
+            background: var(--background-light);
+            border-radius: var(--radius-lg);
+            font-size: var(--font-size-base);
+            font-weight: 500;
+            color: var(--text-primary);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .cancel-share:hover {
+            background: #e5e7eb;
+        }
+        
+        /* 遮罩层 */
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+            z-index: 199;
+        }
+        
+        .overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+        
+        /* 响应式设计 */
+        @media (max-width: 767px) {
+            .header {
+                padding: 0 var(--spacing-md);
+                height: 56px;
+            }
+            
+            .header-title {
+                font-size: var(--font-size-base);
+            }
+            
+            .action-btn {
+                width: 32px;
+                height: 32px;
+                font-size: 16px;
+            }
+            
+            .path-overview {
+                margin: var(--spacing-sm);
+                padding: var(--spacing-md);
+            }
+            
+            .overview-stats {
+                gap: var(--spacing-sm);
+            }
+            
+            .stat-value {
+                font-size: var(--font-size-lg);
+            }
+            
+            .map-preview {
+                margin: 0 var(--spacing-sm);
+                height: 180px;
+            }
+            
+            .navigation-steps {
+                margin: var(--spacing-md) var(--spacing-sm);
+            }
+            
+            .step-item {
+                gap: var(--spacing-sm);
+            }
+            
+            .step-instruction {
+                font-size: var(--font-size-sm);
+            }
+            
+            .share-options {
+                grid-template-columns: repeat(3, 1fr);
+                gap: var(--spacing-md);
+            }
+            
+            .transport-options {
+                grid-template-columns: repeat(4, 1fr);
+                gap: var(--spacing-sm);
+            }
+            
+            .transport-option {
+                padding: var(--spacing-sm);
+            }
+            
+            .transport-icon {
+                font-size: 20px;
+            }
+            
+            .traffic-info {
+                margin: var(--spacing-sm);
+                padding: var(--spacing-sm);
+            }
+        }
+        
+        /* 小屏手机优化 */
+        @media (max-width: 480px) {
+            .overview-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: var(--spacing-sm);
+            }
+            
+            .location-name {
+                font-size: var(--font-size-sm);
+            }
+            
+            .overview-stats {
+                grid-template-columns: repeat(3, 1fr);
+                gap: var(--spacing-xs);
+            }
+            
+            .stat-value {
+                font-size: var(--font-size-base);
+            }
+            
+            .stat-label {
+                font-size: 10px;
+            }
+            
+            .map-preview {
+                height: 160px;
+            }
+            
+            .share-options {
+                grid-template-columns: repeat(3, 1fr);
+                gap: var(--spacing-sm);
+            }
+            
+            .share-icon {
+                width: 40px;
+                height: 40px;
+                font-size: 20px;
+            }
+            
+            .transport-selector {
+                padding: var(--spacing-md);
+            }
+            
+            .transport-options {
+                grid-template-columns: repeat(4, 1fr);
+                gap: var(--spacing-xs);
+            }
+            
+            .transport-name {
+                font-size: 10px;
+            }
+        }
+        
+        /* 平板设备优化 */
+        @media (min-width: 768px) and (max-width: 1023px) {
+            .container {
+                max-width: 768px;
+                margin: 0 auto;
+                box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            }
+            
+            .map-preview {
+                height: 220px;
+            }
+            
+            .share-options {
+                grid-template-columns: repeat(4, 1fr);
+            }
+        }
+        
+        /* 桌面设备优化 */
+        @media (min-width: 1024px) {
+            .container {
+                max-width: 800px;
+                margin: 0 auto;
+                box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+            }
+            
+            .map-preview {
+                height: 250px;
+            }
+            
+            .main-content {
+                padding: 0 var(--spacing-md);
+            }
+            
+            .path-overview,
+            .traffic-info,
+            .map-preview,
+            .navigation-steps {
+                margin-left: 0;
+                margin-right: 0;
+            }
+        }
+        
+        /* 触摸设备优化 */
+        @media (hover: none) and (pointer: coarse) {
+            .back-btn,
+            .action-btn,
+            .transport-mode,
+            .share-option,
+            .transport-option {
+                cursor: default;
+                touch-action: manipulation;
+            }
+            
+            .back-btn:active,
+            .action-btn:active,
+            .transport-mode:active,
+            .share-option:active,
+            .transport-option:active {
+                transform: scale(0.95);
+                transition: transform 0.1s ease;
+            }
+            
+            .step-item {
+                touch-action: manipulation;
+            }
+        }
+        
+        /* 动画效果 */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .fade-in-up {
+            animation: fadeInUp 0.3s ease-out;
+        }
+        
+        @keyframes pulse {
+            0%, 100% {
+                transform: scale(1);
+            }
+            50% {
+                transform: scale(1.05);
+            }
+        }
+        
+        .pulse {
+            animation: pulse 2s ease-in-out infinite;
+        }
+        
+        @keyframes slideInUp {
+            from {
+                transform: translateY(100%);
+            }
+            to {
+                transform: translateY(0);
+            }
+        }
+        
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+            to {
+                opacity: 1;
+            }
+        }
+        
+        .share-panel.active {
+            bottom: 0;
+            animation: slideInUp 0.3s ease-out;
+        }
+        
+        .overlay.active {
+            opacity: 1;
+            visibility: visible;
+            animation: fadeIn 0.3s ease-out;
+        }
+        
+        /* 交互反馈 */
+        .step-item {
+            transition: all 0.2s ease;
+        }
+        
+        .step-item:hover {
+            background: rgba(61, 90, 254, 0.05);
+            padding-left: var(--spacing-md);
+            border-radius: var(--radius-md);
+        }
+        
+        /* 滚动条样式 */
+        .main-content::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        .main-content::-webkit-scrollbar-track {
+            background: var(--background-light);
+        }
+        
+        .main-content::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 3px;
+        }
+        
+        .main-content::-webkit-scrollbar-thumb:hover {
+            background: var(--text-muted);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 头部导航栏 -->
+        <header class="header">
+            <div class="header-left">
+                <button class="back-btn" onclick="goBack()">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M19 12H5M12 19l-7-7 7-7"/>
+                    </svg>
+                </button>
+                <h1 class="header-title">路径详情</h1>
+            </div>
+            <div class="header-right">
+                <button class="action-btn" onclick="showSharePanel()">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="18" cy="5" r="3"/>
+                        <circle cx="6" cy="12" r="3"/>
+                        <circle cx="18" cy="19" r="3"/>
+                        <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>
+                        <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+                    </svg>
+                </button>
+                <button class="action-btn">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"/>
+                        <line x1="12" y1="8" x2="12" y2="12"/>
+                        <line x1="12" y1="16" x2="12.01" y2="16"/>
+                    </svg>
+                </button>
+            </div>
+        </header>
+        
+        <!-- 主内容区域 -->
+        <main class="main-content">
+            <!-- 路径概览卡片 -->
+            <section class="path-overview fade-in-up">
+                <div class="overview-header">
+                    <h2 class="location-name">从 当前位置 到 北京市朝阳区建国路88号</h2>
+                    <span class="transport-mode" onclick="showTransportSelector()">步行</span>
+                </div>
+                <div class="overview-stats">
+                    <div class="stat-item">
+                        <div class="stat-value">1.2</div>
+                        <div class="stat-label">公里</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value">15</div>
+                        <div class="stat-label">分钟</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value">980</div>
+                        <div class="stat-label">步数</div>
+                    </div>
+                </div>
+                <div class="overview-route">
+                    <div class="route-point">
+                        <div class="start-point">🚶</div>
+                    </div>
+                    <div class="route-line"></div>
+                    <div class="route-point">
+                        <div class="end-point">📍</div>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- 实时路况信息 -->
+            <section class="traffic-info fade-in-up">
+                <div class="traffic-header">
+                    <h3 class="traffic-title">实时路况</h3>
+                    <span class="traffic-status smooth">畅通</span>
+                </div>
+                <div class="traffic-detail">
+                    <p>当前路径路况良好，预计可以按照规划时间到达目的地。</p>
+                    <p>建国路路段车辆较少，建议保持正常速度行驶。</p>
+                </div>
+            </section>
+            
+            <!-- 地图预览 -->
+            <div class="map-preview fade-in-up">
+                <div class="map-placeholder">
+                    <div>
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.5; margin-bottom: 8px;">
+                            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                            <circle cx="12" cy="10" r="3"/>
+                        </svg>
+                        <p>地图预览</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 导航指引列表 -->
+            <section class="navigation-steps fade-in-up">
+                <h2 class="section-title">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                    </svg>
+                    导航指引
+                </h2>
+                <div class="step-list" id="stepList">
+                    <!-- 步骤将通过JavaScript动态生成 -->
+                </div>
+            </section>
+        </main>
+    </div>
+    
+    <!-- 分享面板 -->
+    <div class="overlay" id="overlay" onclick="hideSharePanel()"></div>
+    <div class="share-panel" id="sharePanel">
+        <div class="share-header">
+            <h3 class="share-title">分享路径</h3>
+            <button class="close-btn" onclick="hideSharePanel()">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+            </button>
+        </div>
+        <div class="share-options">
+            <div class="share-option" onclick="shareTo('wechat')">
+                <div class="share-icon" style="background: #07C160;">
+                    💬
+                </div>
+                <span class="share-name">微信</span>
+            </div>
+            <div class="share-option" onclick="shareTo('weibo')">
+                <div class="share-icon" style="background: #E6162D;">
+                    📱
+                </div>
+                <span class="share-name">微博</span>
+            </div>
+            <div class="share-option" onclick="shareTo('qq')">
+                <div class="share-icon" style="background: #12B7F5;">
+                    🐧
+                </div>
+                <span class="share-name">QQ</span>
+            </div>
+            <div class="share-option" onclick="shareTo('copy')">
+                <div class="share-icon" style="background: #666666;">
+                    📋
+                </div>
+                <span class="share-name">复制链接</span>
+            </div>
+            <div class="share-option" onclick="shareTo('sms')">
+                <div class="share-icon" style="background: #FF9500;">
+                    📲
+                </div>
+                <span class="share-name">短信</span>
+            </div>
+            <div class="share-option" onclick="shareTo('email')">
+                <div class="share-icon" style="background: #4A90E2;">
+                    📧
+                </div>
+                <span class="share-name">邮件</span>
+            </div>
+            <div class="share-option" onclick="shareTo('more')">
+                <div class="share-icon" style="background: #34AADC;">
+                    ⋯
+                </div>
+                <span class="share-name">更多</span>
+            </div>
+        </div>
+        <button class="cancel-share" onclick="hideSharePanel()">取消</button>
+    </div>
+    
+    <!-- 交通方式选择面板 -->
+    <div class="transport-selector" id="transportSelector">
+        <div class="transport-selector-header">
+            <h3 class="transport-selector-title">选择交通方式</h3>
+            <button class="close-btn" onclick="hideTransportSelector()">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+            </button>
+        </div>
+        <div class="transport-options">
+            <div class="transport-option active" onclick="selectTransport('步行')">
+                <div class="transport-icon">🚶</div>
+                <span class="transport-name">步行</span>
+            </div>
+            <div class="transport-option" onclick="selectTransport('驾车')">
+                <div class="transport-icon">🚗</div>
+                <span class="transport-name">驾车</span>
+            </div>
+            <div class="transport-option" onclick="selectTransport('公交')">
+                <div class="transport-icon">🚌</div>
+                <span class="transport-name">公交</span>
+            </div>
+            <div class="transport-option" onclick="selectTransport('骑行')">
+                <div class="transport-icon">🚲</div>
+                <span class="transport-name">骑行</span>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // 模拟路径数据
+        const pathData = {
+            origin: {
+                name: "当前位置",
+                address: "北京市朝阳区"
+            },
+            destination: {
+                name: "北京市朝阳区建国路88号",
+                address: "北京市朝阳区建国路88号SOHO现代城"
+            },
+            distance: 1200, // 米
+            duration: 15, // 分钟
+            steps: [
+                {
+                    instruction: "从当前位置出发，向东步行",
+                    distance: 100,
+                    action: "start"
+                },
+                {
+                    instruction: "沿建国路向东直行",
+                    distance: 500,
+                    action: "straight"
+                },
+                {
+                    instruction: "右转进入现代城路",
+                    distance: 200,
+                    action: "turn-right"
+                },
+                {
+                    instruction: "直行到达目的地",
+                    distance: 400,
+                    action: "end"
+                }
+            ],
+            transport: "步行"
+        };
+        
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            initPathDetail();
+        });
+        
+        // 初始化路径详情
+        function initPathDetail() {
+            renderPathOverview();
+            renderStepList();
+            initMap();
+        }
+        
+        // 渲染路径概览
+        function renderPathOverview() {
+            // 更新路径概览信息
+            const overviewHeader = document.querySelector('.overview-header h2');
+            const transportMode = document.querySelector('.transport-mode');
+            const distanceStat = document.querySelector('.stat-item:nth-child(1) .stat-value');
+            const durationStat = document.querySelector('.stat-item:nth-child(2) .stat-value');
+            
+            if (overviewHeader) {
+                overviewHeader.textContent = `从 ${pathData.origin.name} 到 ${pathData.destination.name}`;
+            }
+            
+            if (transportMode) {
+                transportMode.textContent = pathData.transport;
+            }
+            
+            if (distanceStat) {
+                const distanceKm = (pathData.distance / 1000).toFixed(1);
+                distanceStat.textContent = distanceKm;
+            }
+            
+            if (durationStat) {
+                durationStat.textContent = pathData.duration;
+            }
+        }
+        
+        // 渲染步骤列表（优化版）
+        function renderStepList() {
+            const stepList = document.getElementById('stepList');
+            if (!stepList) return;
+            
+            // 使用文档片段减少DOM操作
+            const fragment = document.createDocumentFragment();
+            
+            pathData.steps.forEach((step, index) => {
+                const stepItem = document.createElement('div');
+                stepItem.className = 'step-item fade-in-up';
+                stepItem.style.animationDelay = `${index * 0.1}s`;
+                
+                let stepClass = '';
+                if (index === 0) stepClass = 'start';
+                if (index === pathData.steps.length - 1) stepClass = 'end';
+                
+                // 使用模板字符串构建HTML
+                stepItem.innerHTML = `
+                    <div class="step-number ${stepClass}">${index + 1}</div>
+                    <div class="step-content">
+                        <p class="step-instruction">${step.instruction}</p>
+                        <p class="step-distance">${step.distance}米</p>
+                    </div>
+                `;
+                
+                fragment.appendChild(stepItem);
+            });
+            
+            // 一次性清空并添加所有步骤
+            stepList.innerHTML = '';
+            stepList.appendChild(fragment);
+        }
+
+        // 页面卸载时清理资源
+        window.addEventListener('beforeunload', function() {
+            // 清理事件监听器
+            const mapContainer = document.querySelector('.map-preview');
+            if (mapContainer) {
+                // 清理地图实例
+                if (window.mapInstance) {
+                    window.mapInstance.destroy();
+                    window.mapInstance = null;
+                }
+            }
+            
+            // 清理其他资源
+            if (window.locationObserver) {
+                window.locationObserver.disconnect();
+                window.locationObserver = null;
+            }
+        });
+        
+        // 节流函数
+        function throttle(func, delay) {
+            let lastCall = 0;
+            return function(...args) {
+                const now = Date.now();
+                if (now - lastCall >= delay) {
+                    lastCall = now;
+                    return func.apply(this, args);
+                }
+            };
+        }
+
+        // 防抖函数
+        function debounce(func, delay) {
+            let timeoutId;
+            return function(...args) {
+                clearTimeout(timeoutId);
+                timeoutId = setTimeout(() => func.apply(this, args), delay);
+            };
+        }
+
+        // 初始化地图（使用懒加载）
+        function initMap() {
+            // 检查地图容器是否在视口中
+            const mapContainer = document.querySelector('.map-preview');
+            if (!mapContainer) return;
+
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        // 地图进入视口，开始加载
+                        loadMap(mapContainer);
+                        observer.unobserve(mapContainer);
+                    }
+                });
+            }, { threshold: 0.1 });
+
+            observer.observe(mapContainer);
+        }
+
+        // 加载地图
+        function loadMap(mapContainer) {
+            // 显示加载状态
+            mapContainer.innerHTML = '<div class="map-placeholder"><p>加载地图中...</p></div>';
+
+            // 集成高德地图API
+            AMapLoader.load({
+                key: 'aa6ff0d9da3a35cd35b8d192a00d1d85',
+                version: '2.0'
+            }).then(function(AMap) {
+                // 清空加载状态
+                mapContainer.innerHTML = '';
+                
+                // 创建地图实例
+                const map = new AMap.Map(mapContainer, {
+                    center: [116.4074, 39.9042],
+                    zoom: 15,
+                    resizeEnable: true,
+                    zoomEnable: true,
+                    dragEnable: true,
+                    doubleClickZoom: false,
+                    // 禁用不必要的控件，提高性能
+                    features: ['road', 'point']
+                });
+                
+                // 显示用户位置和目标位置
+                showLocationMarkers(map);
+            }).catch(function(error) {
+                console.error('地图初始化失败:', error);
+                mapContainer.innerHTML = '<div class="map-placeholder"><p>地图加载失败</p></div>';
+            });
+        }
+        
+        // 在地图上显示位置标记
+        function showLocationMarkers(map) {
+            // 模拟用户位置（蓝色点）
+            const userLocation = [116.4074, 39.9042];
+            
+            // 模拟目标位置（紫色点）
+            const targetLocation = [116.4174, 39.9142];
+            
+            // 添加用户位置标记
+            const userMarker = new AMap.Marker({
+                position: userLocation,
+                icon: new AMap.Icon({
+                    size: new AMap.Size(20, 20),
+                    image: 'https://webapi.amap.com/theme/v1.3/markers/n/blue.png',
+                    imageSize: new AMap.Size(20, 20)
+                }),
+                title: '我的位置'
+            });
+            
+            // 添加目标位置标记
+            const targetMarker = new AMap.Marker({
+                position: targetLocation,
+                icon: new AMap.Icon({
+                    size: new AMap.Size(24, 24),
+                    image: 'https://webapi.amap.com/theme/v1.3/markers/n/purple.png',
+                    imageSize: new AMap.Size(24, 24)
+                }),
+                title: '目标位置'
+            });
+            
+            // 添加标记到地图
+            map.add([userMarker, targetMarker]);
+            
+            // 调整地图视野，确保两个标记都可见
+            map.setFitView([userMarker, targetMarker], false, [50, 50, 50, 50]);
+        }
+        
+        // 返回上一页
+        function goBack() {
+            window.history.back();
+        }
+        
+        // 显示分享面板
+        function showSharePanel() {
+            const sharePanel = document.getElementById('sharePanel');
+            const overlay = document.getElementById('overlay');
+            
+            sharePanel.classList.add('active');
+            overlay.classList.add('active');
+            document.body.style.overflow = 'hidden';
+        }
+        
+        // 隐藏分享面板
+        function hideSharePanel() {
+            const sharePanel = document.getElementById('sharePanel');
+            const overlay = document.getElementById('overlay');
+            
+            sharePanel.classList.remove('active');
+            overlay.classList.remove('active');
+            document.body.style.overflow = 'auto';
+        }
+        
+        // 分享到不同平台
+        function shareTo(platform) {
+            console.log('分享到:', platform);
+            
+            switch(platform) {
+                case 'copy':
+                    copyLink();
+                    break;
+                case 'wechat':
+                    shareToWeChat();
+                    break;
+                case 'weibo':
+                    shareToWeibo();
+                    break;
+                case 'qq':
+                    shareToQQ();
+                    break;
+                case 'sms':
+                    shareToSMS();
+                    break;
+                case 'email':
+                    shareToEmail();
+                    break;
+                case 'more':
+                    shareToMore();
+                    break;
+            }
+            
+            hideSharePanel();
+        }
+        
+        // 分享到微信
+        function shareToWeChat() {
+            // 实际项目中会调用微信JS-SDK
+            showToast('请打开微信扫码分享');
+        }
+        
+        // 分享到微博
+        function shareToWeibo() {
+            const shareText = `我发现了一条从${pathData.origin.name}到${pathData.destination.name}的路径，距离${(pathData.distance/1000).toFixed(1)}公里，预计${pathData.duration}分钟。`;
+            const shareUrl = `https://service.weibo.com/share/share.php?url=${encodeURIComponent(window.location.href)}&title=${encodeURIComponent(shareText)}`;
+            window.open(shareUrl, '_blank');
+        }
+        
+        // 分享到QQ
+        function shareToQQ() {
+            const shareText = `从${pathData.origin.name}到${pathData.destination.name}的路径`;
+            const shareUrl = `https://connect.qq.com/widget/shareqq/index.html?url=${encodeURIComponent(window.location.href)}&title=${encodeURIComponent(shareText)}`;
+            window.open(shareUrl, '_blank');
+        }
+        
+        // 分享到短信
+        function shareToSMS() {
+            const smsText = `从${pathData.origin.name}到${pathData.destination.name}的路径：距离${(pathData.distance/1000).toFixed(1)}公里，预计${pathData.duration}分钟。查看详情：${window.location.href}`;
+            const smsUrl = `sms:?body=${encodeURIComponent(smsText)}`;
+            window.location.href = smsUrl;
+        }
+        
+        // 分享到邮件
+        function shareToEmail() {
+            const emailSubject = `路径分享：从${pathData.origin.name}到${pathData.destination.name}`;
+            const emailBody = `我发现了一条从${pathData.origin.name}到${pathData.destination.name}的路径，距离${(pathData.distance/1000).toFixed(1)}公里，预计${pathData.duration}分钟。\n\n查看详情：${window.location.href}`;
+            const emailUrl = `mailto:?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`;
+            window.location.href = emailUrl;
+        }
+        
+        // 更多分享选项
+        function shareToMore() {
+            if (navigator.share) {
+                navigator.share({
+                    title: `路径分享：从${pathData.origin.name}到${pathData.destination.name}`,
+                    text: `距离${(pathData.distance/1000).toFixed(1)}公里，预计${pathData.duration}分钟`,
+                    url: window.location.href
+                }).catch(err => {
+                    console.error('分享失败:', err);
+                    showToast('分享失败');
+                });
+            } else {
+                showToast('当前浏览器不支持分享功能');
+            }
+        }
+        
+        // 获取平台名称
+        function getPlatformName(platform) {
+            const names = {
+                wechat: '微信',
+                weibo: '微博',
+                qq: 'QQ',
+                sms: '短信',
+                email: '邮件',
+                more: '更多平台'
+            };
+            return names[platform] || platform;
+        }
+        
+        // 复制链接
+        function copyLink() {
+            const link = `https://zhaoyazhao.com/path?origin=${encodeURIComponent(pathData.origin.name)}&dest=${encodeURIComponent(pathData.destination.name)}`;
+            
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(link).then(() => {
+                    showToast('链接已复制到剪贴板');
+                }).catch(err => {
+                    console.error('复制失败:', err);
+                    showToast('复制失败，请手动复制');
+                });
+            } else {
+                // 兼容旧浏览器
+                const textArea = document.createElement('textarea');
+                textArea.value = link;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                showToast('链接已复制到剪贴板');
+            }
+        }
+        
+        // 显示提示信息
+        function showToast(message) {
+            // 创建提示元素
+            const toast = document.createElement('div');
+            toast.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background: rgba(0, 0, 0, 0.7);
+                color: white;
+                padding: 12px 24px;
+                border-radius: 24px;
+                font-size: 14px;
+                z-index: 9999;
+                animation: fadeInUp 0.3s ease-out;
+            `;
+            toast.textContent = message;
+            
+            document.body.appendChild(toast);
+            
+            // 2秒后移除
+            setTimeout(() => {
+                toast.style.animation = 'fadeInUp 0.3s ease-out reverse';
+                setTimeout(() => {
+                    document.body.removeChild(toast);
+                }, 300);
+            }, 2000);
+        }
+        
+        // 显示交通方式选择面板
+        function showTransportSelector() {
+            const transportSelector = document.getElementById('transportSelector');
+            if (transportSelector) {
+                transportSelector.classList.add('active');
+                document.body.style.overflow = 'hidden';
+            }
+        }
+        
+        // 隐藏交通方式选择面板
+        function hideTransportSelector() {
+            const transportSelector = document.getElementById('transportSelector');
+            if (transportSelector) {
+                transportSelector.classList.remove('active');
+                document.body.style.overflow = 'auto';
+            }
+        }
+        
+        // 选择交通方式
+        function selectTransport(transport) {
+            // 更新交通方式显示
+            const transportModeElement = document.querySelector('.transport-mode');
+            if (transportModeElement) {
+                transportModeElement.textContent = transport;
+            }
+            
+            // 更新路径数据
+            pathData.transport = transport;
+            
+            // 根据交通方式更新路径信息
+            updatePathInfoByTransport(transport);
+            
+            // 隐藏选择面板
+            hideTransportSelector();
+            
+            // 显示提示
+            showToast(`已切换为${transport}模式`);
+        }
+        
+        // 根据交通方式更新路径信息
+        function updatePathInfoByTransport(transport) {
+            // 模拟不同交通方式的路径信息
+            const transportData = {
+                '步行': { distance: 1200, duration: 15, steps: pathData.steps },
+                '驾车': { distance: 1500, duration: 5, steps: [
+                    { instruction: '从当前位置出发，向东行驶', distance: 200, action: 'start' },
+                    { instruction: '沿建国路向东直行', distance: 1000, action: 'straight' },
+                    { instruction: '右转进入现代城路', distance: 300, action: 'turn-right' },
+                    { instruction: '直行到达目的地', distance: 0, action: 'end' }
+                ]},
+                '公交': { distance: 1800, duration: 10, steps: [
+                    { instruction: '从当前位置出发，步行至公交站', distance: 100, action: 'start' },
+                    { instruction: '乘坐公交车沿建国路向东行驶', distance: 1500, action: 'bus' },
+                    { instruction: '在现代城站下车', distance: 100, action: 'get-off' },
+                    { instruction: '步行到达目的地', distance: 100, action: 'end' }
+                ]},
+                '骑行': { distance: 1300, duration: 8, steps: [
+                    { instruction: '从当前位置出发，向东骑行', distance: 100, action: 'start' },
+                    { instruction: '沿建国路向东直行', distance: 1000, action: 'straight' },
+                    { instruction: '右转进入现代城路', distance: 200, action: 'turn-right' },
+                    { instruction: '直行到达目的地', distance: 0, action: 'end' }
+                ]}
+            };
+            
+            const data = transportData[transport];
+            if (data) {
+                pathData.distance = data.distance;
+                pathData.duration = data.duration;
+                pathData.steps = data.steps;
+                
+                // 更新路径概览
+                renderPathOverview();
+                
+                // 更新导航指引
+                renderStepList();
+                
+                // 更新地图显示
+                initMap();
+            }
+        }
+        
+        // 模拟获取用户位置
+        function getUserLocation() {
+            return new Promise((resolve, reject) => {
+                if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(
+                        (position) => {
+                            resolve({
+                                lat: position.coords.latitude,
+                                lng: position.coords.longitude
+                            });
+                        },
+                        (error) => {
+                            console.error('获取位置失败:', error);
+                            // 使用默认位置
+                            resolve({ lat: 39.9042, lng: 116.4074 });
+                        }
+                    );
+                } else {
+                    // 浏览器不支持地理定位
+                    resolve({ lat: 39.9042, lng: 116.4074 });
+                }
+            });
+        }
+    </script>
+</body>
+</html>

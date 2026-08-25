@@ -1,0 +1,13 @@
+{
+  "name": "找鸭找 v2 原型生成器",
+  "id": "zhaoyazhao-v2-prototype-generator",
+  "api": "1.0.0",
+  "main": "code.js",
+  "ui": "ui.html",
+  "editorType": ["figma"],
+  "documentAccess": "dynamic-page",
+  "networkAccess": {
+    "allowedDomains": ["none"],
+    "reasoning": "全部内容本地生成，不访问网络"
+  }
+}

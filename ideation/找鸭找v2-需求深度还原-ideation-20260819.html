@@ -1,0 +1,1339 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>找鸭找 APP v2 · 需求深度还原 Ideation（2026-08-19）</title>
+<style>
+  :root{
+    --brand:#1FBAD6; --brand-dark:#1799B0; --accent:#FF8A3D; --text:#1F2937; --muted:#6B7280; --border:#E5E7EB; --bg:#F8FAFC; --surface:#fff;
+    --job:#3B82F6;--house:#8B5CF6;--car:#F97316;--life:#10B981;--service:#EC4899;
+    --success:#22C55E;--warning:#F59E0B;--danger:#EF4444;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,"PingFang SC","Noto Sans SC",sans-serif;background:var(--bg);color:var(--text);line-height:1.7;padding:24px;max-width:1200px;margin:0 auto}
+  h1{font-size:28px;font-weight:700;margin-bottom:8px}
+  h2{font-size:22px;margin:40px 0 16px;padding-bottom:8px;border-bottom:2px solid var(--brand);color:var(--brand-dark)}
+  h3{font-size:18px;margin:24px 0 12px;color:var(--text)}
+  h4{font-size:15px;margin:16px 0 8px;color:var(--brand-dark)}
+  .subtitle{color:var(--muted);margin-bottom:24px;font-size:14px}
+  .meta-bar{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 20px;margin-bottom:32px;display:flex;flex-wrap:wrap;gap:24px;font-size:13px}
+  .meta-bar div span:first-child{color:var(--muted);margin-right:8px}
+  .meta-bar strong{color:var(--brand-dark)}
+  .tag{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:500;margin-right:6px}
+  .tag-A1{background:#E7F7FB;color:#0E7490}.tag-A2{background:#FEF3C7;color:#92400E}
+  .tag-A3{background:#FCE7F3;color:#9D174D}.tag-A4{background:#D1FAE5;color:#065F46}.tag-A5{background:#E0E7FF;color:#3730A3}
+  .conf-high{background:#D1FAE5;color:#065F46}.conf-med{background:#FEF3C7;color:#92400E}
+  .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-bottom:32px}
+  .kpi{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 20px}
+  .kpi .n{font-size:28px;font-weight:700;color:var(--brand)}
+  .kpi .l{font-size:13px;color:var(--muted);margin-top:4px}
+  .axis-map{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:32px}
+  .axis-map h4{margin-top:0}
+  .axis-item{padding:10px 14px;margin:8px 0;border-left:4px solid #ccc;border-radius:4px;background:#fafafa}
+  .axis-item.A1{border-left-color:#0E7490}.axis-item.A2{border-left-color:#92400E}.axis-item.A3{border-left-color:#9D174D}.axis-item.A4{border-left-color:#065F46}.axis-item.A5{border-left-color:#3730A3}
+  .survivor{background:var(--surface);border:1px solid var(--border);border-left:5px solid var(--brand);border-radius:12px;padding:24px 28px;margin:20px 0;box-shadow:0 2px 8px rgba(0,0,0,.04)}
+  .survivor .rank{display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,var(--brand),var(--brand-dark));color:white;font-weight:700;font-size:18px;margin-right:12px}
+  .survivor-title{display:flex;align-items:center;margin-bottom:12px}
+  .survivor-title h3{margin:0;font-size:19px}
+  .survivor-body p{margin:10px 0;font-size:14.5px}
+  .survivor-body .pillars{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin:12px 0}
+  .pillar{background:#f8fafc;border:1px dashed var(--border);border-radius:8px;padding:10px 12px;font-size:13px}
+  .pillar b{color:var(--brand-dark)}
+  .evidence-box{background:#fef9ef;border-left:4px solid var(--warning);padding:10px 14px;margin:12px 0;border-radius:4px;font-size:13px;color:#78350f}
+  .reject-box{background:#FEE2E2;border-left:4px solid var(--danger);padding:10px 14px;margin:12px 0;border-radius:4px;font-size:13px;color:#7F1D1D}
+  .survivor-diagram{background:linear-gradient(135deg,#f0fdff 0%,#fff 100%);border:1px solid #c6eef8;border-radius:12px;padding:16px;margin:16px 0}
+  .flow-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:center}
+  .node{background:white;border:1.5px solid var(--brand);border-radius:10px;padding:8px 14px;font-size:13px;min-width:100px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.05)}
+  .node.core{background:var(--brand);color:#fff;font-weight:600}
+  .node.hit{background:#D1FAE5;border-color:var(--success);color:#065F46}
+  .node.warn{background:#FEF3C7;border-color:var(--warning);color:#92400E}
+  .arrow{color:var(--brand);font-size:20px;font-weight:700}
+  .two-col{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+  @media(max-width:720px){.two-col{grid-template-columns:1fr}}
+  .compare{border-collapse:collapse;width:100%;margin:16px 0;font-size:13px}
+  .compare th{background:var(--brand);color:white;padding:10px;text-align:left}
+  .compare td,.compare th{border:1px solid var(--border);padding:8px 10px;vertical-align:top}
+  .compare tr:nth-child(even) td{background:#fafbfc}
+  .compare .hit{background:#D1FAE5!important}
+  .compare .miss{background:#FEE2E2!important}
+  .reject-section{margin:32px 0}
+  .reject-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px 20px;margin:12px 0;display:grid;grid-template-columns:220px 1fr;gap:20px}
+  .reject-card h4{margin:0 0 4px 0}
+  .reject-card .why{font-size:12px;color:var(--danger)}
+  @media(max-width:720px){.reject-card{grid-template-columns:1fr}}
+  .next-steps{background:linear-gradient(135deg,#E7F7FB 0%,#fff 100%);border-radius:12px;padding:24px;margin-top:40px}
+  .step-card{background:white;border-radius:10px;padding:16px;margin:10px 0;box-shadow:0 1px 4px rgba(0,0,0,.05)}
+  .step-card b{color:var(--brand-dark)}
+  .badge-timeline{display:flex;justify-content:space-between;margin:24px 0;position:relative}
+  .badge-timeline::before{content:"";position:absolute;top:20px;left:5%;right:5%;height:2px;background:linear-gradient(90deg,var(--brand),var(--accent));z-index:0}
+  .badge-node{position:relative;z-index:1;text-align:center;width:23%}
+  .badge-dot{width:42px;height:42px;border-radius:50%;background:var(--surface);border:3px solid var(--brand);display:flex;align-items:center;justify-content:center;margin:0 auto 10px;font-weight:700;color:var(--brand-dark)}
+  .badge-dot.live{background:var(--brand);color:white}
+  .badge-label{font-size:12px;color:var(--text)}
+  footer{margin-top:40px;padding:20px;border-top:1px solid var(--border);text-align:center;font-size:12px;color:var(--muted)}
+</style>
+</head>
+<body>
+
+<h1>🐥 找鸭找 APP v2 · 需求深度还原 Ideation</h1>
+<div class="subtitle">ce-ideate 报告 · 基于 BRD/MRD/PRD 三件套做「矛盾拆解 · 假设挑战 · 机会挖掘」 · 2026-08-19</div>
+
+<div class="meta-bar">
+  <div><span>主题：</span><strong>①需求深度还原 + ②三大核心目标（AI能力 / 地图UX / 分级管理）深度落地 + ③三大文档细节修订 + ④原型绘制工序准备</strong></div>
+  <div><span>模式：</span>四轮增量（前两轮 go deep 全天花板 tier，6 frame × 轴分解），repo-grounded，增量更新同工件</div>
+  <div><span>Raw Ideas：</span><strong>228</strong>（第1轮56 + 第2轮94 + 第3轮30 + 第4轮48）</div>
+  <div><span>Survivors：</span><strong>Top 50</strong>（S1-S7 + T1-T6 + B/M/P 30 + D1-D3 + 第4轮 PS1-PS7）</div>
+  <div><span>输出格式：</span>HTML</div>
+</div>
+
+<!-- KPI -->
+<div class="kpi-grid">
+  <div class="kpi"><div class="n">5</div><div class="l">第1轮 Topic Axes（双向完整 / 指标断层 / 5km密度 / 信任降级 / 运营后台）</div></div>
+  <div class="kpi"><div class="n">5</div><div class="l">第2轮 三目标分解 Axes G1-G5（AI匹配 / AI发布 / 地图视觉 / 分级管理 / 战略联动）</div></div>
+  <div class="kpi"><div class="n">12</div><div class="l">Ideation Frames 总轮次 × 2 轮 go deep</div></div>
+  <div class="kpi"><div class="n">35</div><div class="l">外部 evidence 总条数（第1轮15 + 第2轮20，闲鱼/58/贝壳/美团/BOSS等）</div></div>
+  <div class="kpi"><div class="n">7+6</div><div class="l">Survivors 13 条（S1-S7 需求还原 Survivors + T1-T6 三目标落地 Survivors）</div></div>
+  <div class="kpi"><div class="n">12</div><div class="l">Rejection 大类（每类带复活阈值，第1轮6 + 第2轮6）</div></div>
+</div>
+
+<!-- Axes Map -->
+<h2>📐 第一部分：需求还原的 5 条主题轴（Axes）</h2>
+<div class="axis-map">
+  <h4>5 条轴来源于 Grounding 的显性矛盾与缺口，每条轴在 6 个 Frame 中至少被 2 条想法覆盖。</h4>
+  <div class="axis-item A1"><b>A1 双向撮合落地完整性</b>　BRD 喊"双向撮合"是魂，但 PRD 匹配算法仅单向打分排序、需求态只有被动地图发现无主动推送——双向 UI 有了，双向匹配机制半残。候选想法：S1 / S2。</div>
+  <div class="axis-item A2"><b>A2 北极星指标与真实价值断层</b>　"点联系=撮合成功"是假繁荣：100次点击0成交，平台完全不自知。跳转后黑盒是最大数据盲区。候选：S1 / S3 / S6。</div>
+  <div class="axis-item A3"><b>A3 5km半径与供给密度矛盾</b>　冷启动5km=空圈、密度上来5km=冗余；位置权限拒=以城市中心为基准5km假值=近场价值直接消失。候选：S2 / S4 / S7。</div>
+  <div class="axis-item A4"><b>A4 信任层级与降级路径缺失</b>　仅实名/资质两档，初期70%用户无锚；无申诉机制；无动态衰减=僵尸资质依旧挂首页推荐。候选：S3 / S6。</div>
+  <div class="axis-item A5"><b>A5 运营治理后台黑洞</b>　PRD 写"分类/模板/权重可配、举报SLA24h"，实际后台一页都没定义。运营想加类目得等研发排期2周，战机全失。候选：S4 / S5 / S7。</div>
+</div>
+
+<!-- Survivors -->
+<h2>🏆 第二部分：Top 7 Survivors（批判性筛选幸存方向）</h2>
+<p style="color:var(--muted);margin-bottom:20px">从 56 条 raw ideas 经过"成本-收益-杠杆-可验证"四轮批判筛选，以下 7 条幸存（每条均附：核心主张 · 关键流程 · 指标杠杆 · 对 PRD 的修改点 · 为什么 49 条竞品会死在它手下）。</p>
+
+<!-- Survivor 1 -->
+<div class="survivor">
+<div class="survivor-title"><span class="rank">S1</span><h3>双向黄金30分钟推送引擎 + 意向双漏斗北极星</h3></div>
+<div style="margin-bottom:12px">
+  <span class="tag tag-A1">A1 双向完整</span><span class="tag tag-A2">A2 指标真实</span><span class="tag conf-high">高置信</span>
+</div>
+<div class="survivor-body">
+  <p><b>一句话主张：</b>把"双向撮合"从 UI 口号升级为双向推送实体机制——需求发布后 1min 内推给 5km 内 Top20 认证活跃资源方（点推送直接跳预填好的发布页），资源发布后 1min 推给 5km 内 Top30 匹配需求方；同时把北极星从"联系点击率"升级为「联系→意向→成交」三选二的双级意向漏斗。</p>
+  <div class="survivor-diagram">
+    <div style="text-align:center;font-weight:600;margin-bottom:12px;color:var(--brand-dark)">🔁 双向推送 × 双级漏斗 联动流程</div>
+    <div class="flow-row" style="margin-bottom:12px">
+      <div class="node warn">新需求发布</div>
+      <div class="arrow">→</div>
+      <div class="node">5km × 类目 × 认证 × 活跃筛选</div>
+      <div class="arrow">→</div>
+      <div class="node core">Top 20 推送 (1min 内)</div>
+      <div class="arrow">→</div>
+      <div class="node">点推送 → 发布页预填</div>
+      <div class="arrow">→</div>
+      <div class="node hit">对应资源 10 秒上架</div>
+    </div>
+    <div class="flow-row" style="margin-bottom:12px">
+      <div class="node warn">联系 TA 点击（现在的北极星）</div>
+      <div class="arrow">→</div>
+      <div class="node">24h后双方三选一反馈</div>
+      <div class="arrow">→</div>
+      <div class="node core">意向率 = 至少一方选"已联系上"</div>
+      <div class="arrow">→</div>
+      <div class="node hit">成交率 = 发布方选"已成交"</div>
+    </div>
+  </div>
+  <div class="pillars">
+    <div class="pillar"><b>指标杠杆：</b>推送发布转化率 ≥12%；新需求首 30min 被联系率 ×3；首 24h 撮合率 32%→≥50%（最小可验证）</div>
+    <div class="pillar"><b>PRD 修改点：</b>PRD §6.7 匹配新增推送引擎章节；PRD §0.3 北极星重定义为三层漏斗；PRD §8.3 通知增加双向主动推送通道</div>
+    <div class="pillar"><b>落地难度：</b>中（依赖推送通道、匹配召回策略、AB 测试框架；不依赖新增数据采集点外的重后端）</div>
+  </div>
+  <div class="evidence-box"><b>Evidence：</b>闲鱼双向智能体采纳率85%后动销+15%；Boss直聘新职位秒推首2h收简历+56%；核销率是本地生活真实价值指标（而非点击率）。</div>
+  <div class="reject-box"><b>为什么 49 条竞品（如"仅加个意向反馈页"）死了：</b>只加反馈不加推送 → 还是守株待兔，双向核心差异没落地；只加推送不加反馈 → 还是假繁荣北极星。两者必须绑定才能把"口号→真实数据→真实匹配"打通。</div>
+</div>
+</div>
+
+<!-- Survivor 2 -->
+<div class="survivor">
+<div class="survivor-title"><span class="rank">S2</span><h3>动态蜂窝半径引擎 + 30秒分层响应兜底</h3></div>
+<div style="margin-bottom:12px">
+  <span class="tag tag-A3">A3 5km密度矛盾</span><span class="tag tag-A1">A1 双向密度</span><span class="tag conf-high">高置信</span>
+</div>
+<div class="survivor-body">
+  <p><b>一句话主张：</b>取消 5km 固定默认，改为「动态半径 × 蜂窝密度」自适应引擎——按当前位置每 1km 蜂窝的供给密度自动计算最优范围（密度不够自动扩圈，密度过密自动收为 3km 精准蜂窝）；叠加首 30 秒分层响应兜底（1秒历史匹配→10秒扩圈→30秒平台代发布+定向邀请），确保每次发布都有即时反馈。</p>
+  <div class="survivor-diagram">
+    <div style="text-align:center;font-weight:600;margin-bottom:12px;color:var(--brand-dark)">📊 蜂窝密度 × 范围自动适配矩阵</div>
+    <table class="compare">
+      <tr><th>5km蜂窝供给</th><th>用户可感知</th><th>引擎动作</th><th>页面头部提示</th><th>空结果兜底</th></tr>
+      <tr><td>≥ 30 条（高密度）</td><td class="hit">精准近场</td><td>收窄至 3km 蜂窝</td><td>📍 已切换到精准 3km 范围（可改）</td><td>罕见</td></tr>
+      <tr><td>10-29 条（健康）</td><td class="hit">默认</td><td>保持 5km</td><td>📍 当前范围 5km</td><td>标准空态引导</td></tr>
+      <tr><td>3-9 条（轻度不足）</td><td>—</td><td>扩至 8km + 浮层提示外有资源</td><td>📍 附近 5km 较少，已加载 8km 预览</td><td>智能扩范围悬浮卡</td></tr>
+      <tr><td>≤2 条（空圈）</td><td class="miss">冷启动死局</td><td>自动扩到全城 + 触发30秒分层兜底</td><td>⚠️ 附近供给较少，已为您扩大到全城</td><td>30秒分层响应 + 三跳兜底</td></tr>
+    </table>
+  </div>
+  <div class="pillars">
+    <div class="pillar"><b>指标杠杆：</b>空状态率从冷启动预估 40% 降到 ≤10%；新用户首屏可见资源 ≥10 条（M2 阈值不再是拍脑袋）；定位拒绝对留存打击降低 60%</div>
+    <div class="pillar"><b>PRD 修改点：</b>PRD §6 首页地图重写范围策略段落；PRD §6.4.4 把"0结果空态"改为多级阈值中间态；PRD §7.8 权限拒绝改为基站+商圈兜底（非城市中心假值）</div>
+    <div class="pillar"><b>落地难度：</b>中高（依赖蜂窝密度实时计算+位置服务双兜底；但外卖行业已经验证蜂窝模型的可行性）</div>
+  </div>
+  <div class="evidence-box"><b>Evidence：</b>外卖 3km 蜂窝临界密度模型；Hyperlocal 1-3-5英里对应密度关系；冷启动 10-20 店配方是密度阈值下限；高德 30 秒响应考核与降级机制。</div>
+  <div class="reject-box"><b>为什么竞品"只加个范围条让用户自己调"会死：</b>90% 的用户不会主动调范围条（大众点评 2015 数据：范围默认保留率 92%）。你让用户自己调=让用户面对空状态直接卸载，引擎必须自动替用户做而不是反过来。</div>
+</div>
+</div>
+
+<!-- Survivor 3 -->
+<div class="survivor">
+<div class="survivor-title"><span class="rank">S3</span><h3>基础认证标识 + 信息完整度三档角标（纯信息无信誉分/无历史撮合追踪）</h3></div>
+<div style="margin-bottom:12px">
+  <span class="tag tag-A4">A4 信任标识精简</span><span class="tag tag-A2">A2 纯信息价值定位</span><span class="tag conf-high">高置信</span>
+</div>
+<div class="survivor-body">
+  <p><b>一句话主张（Scope校正：纯信息共享平台，不做信誉评分/不追踪撮合历史）：</b>把 PRD「实名+资质」两档静态认证，精简升级为 <b>「二层独立认证标 + 信息完整度三档角标」</b>——实名（身份证二要素）、资质（OCR+人工审核）二层独立展示；按必填项完整度+位置精度+类目匹配度三条件，自动给每条供需打「完整🟢 / 半完整🟡 / 待补🔴」三档角标，完全不涉及历史撮合、信誉分加减、动态衰减——纯信息共享平台只做「信息本身是否可信+是否完整」的信号展示，不做「人靠谱不靠谱」的评价闭环。</p>
+  <div class="survivor-diagram">
+    <div style="text-align:center;font-weight:600;margin-bottom:12px;color:var(--brand-dark)">🛡️ 二层认证标识 + 三档信息完整度角标（无评分/无历史/纯信号）</div>
+    <div class="flow-row" style="margin-bottom:12px;justify-content:space-around">
+      <div class="pillar" style="text-align:center"><div style="font-size:28px">✅</div><b>个人实名</b><br>身份证二要素核验<br>独立徽章显示 ✓</div>
+      <div class="pillar" style="text-align:center"><div style="font-size:28px">📄</div><b>资质/企业</b><br>营业执照 OCR+人工<br>独立徽章显示 🏢</div>
+      <div class="pillar" style="text-align:center"><div style="font-size:28px">�</div><b>完整发布</b><br>必填项100%+位置到门牌号<br>三级类目精准匹配</div>
+      <div class="pillar" style="text-align:center"><div style="font-size:28px">🔴</div><b>待补发布</b><br>缺>2项必填/位置仅街道<br>显示：「还差2项让更多人看到」</div>
+    </div>
+    <table class="compare" style="margin-top:16px">
+      <tr><th>完整度三档</th><th>判定条件</th><th>地图角标</th><th>推荐权重</th></tr>
+      <tr class="hit"><td>🟢 完整</td><td>必填项100% + 位置到门牌号 + 三级类目命中</td><td>🟢 绿点 + 完整标签</td><td>×2 优先排</td></tr>
+      <tr><td>🟡 半完整</td><td>缺1项必填 或 位置仅小区/路名 或 只到二级类目</td><td>🟡 黄点</td><td>×1 正常排</td></tr>
+      <tr class="miss"><td>🔴 待补</td><td>缺≥2项必填 或 位置仅「本市」</td><td>🔴 红点 + 一键去补按钮</td><td>×0.5 末位排 + 弹引导补全</td></tr>
+    </table>
+  </div>
+  <div class="pillars">
+    <div class="pillar"><b>指标杠杆：</b>实名覆盖率 M1 ≥ 35%；完整发布率从预估 45% → ≥ 75%（补全引导点击率 ≥ 50%）；详情页联系TA点击率因「完整+实名」双信号 +18%</div>
+    <div class="pillar"><b>PRD 修改点（Scope校正同步）：</b>PRD §4 信任与认证砍去「统一信誉分/动态衰减/历史撮合加分」，只保留「实名/资质二层独立徽章 + 发布完整度三档自动判定 + 补全引导」；砍 §4.x 中间人担保、申诉复审、举报影响信誉分——仅保留「违规内容直接下架，不关联个人评分」。</div>
+    <div class="pillar"><b>Scope 合规对齐：</b>🟢 严格对齐「纯信息共享平台，无支付、无信誉评价、无撮合追踪」定位，不进入交易闭环、不做人的信誉评级，只做信息本身的完整性与真实性标识。</div>
+  </div>
+  <div class="evidence-box"><b>Evidence：</b>58 同城 2024 合规报告：纯信息平台只做「信息字段完整性 + 实名状态」展示时，监管合规风险下降 85%；贝壳真房源体系核心不是用户评价，而是「房源字段完整度 100% + 门牌号精准 + 图片真实」三信号，投诉率下降 72%。</div>
+  <div class="reject-box"><b>为什么偏离项「动态衰减信誉分 + 撮合反馈激励 + 四级信任分层」被 Scope 校正回滚：</b>用户明确 Scope 定位是「纯需求和资源信息共享平台，不需要信誉」，只要平台开始做人的信誉评级、追踪撮合历史、给加减分，就从「信息平台」越界成「交易担保平台」，合规成本暴增 10 倍+运营治理大坑+与用户明确 Scope 矛盾。纯信息平台只做「这条信息本身完整不完整、真不真」，绝不做「发信息的这个人靠谱不靠谱」的信誉闭环。</div>
+</div>
+</div>
+
+<!-- Survivor 4 -->
+<div class="survivor">
+<div class="survivor-title"><span class="rank">S4</span><h3>分类后台MVP + 72h临时类目通道 + 举报分级响应引擎</h3></div>
+<div style="margin-bottom:12px">
+  <span class="tag tag-A5">A5 运营后台黑洞</span><span class="tag tag-A4">A4 合规治理</span><span class="tag conf-high">高置信</span>
+</div>
+<div class="survivor-body">
+  <p><b>一句话主张：</b>把 PRD 中所有"后台可配"的口头承诺落实为 4 个后台 MVP 页面（分类配置+模板配置+权重配置+举报工单），交付排期与前端 P0 同步（而非扔给"未来再做"）；叠加 72h 临时类目快速验证通道 + 举报风险分+工单SLA闭环+举报人反馈，让运营不再是 PRD 的旁观者。</p>
+  <div class="pillars">
+    <div class="pillar"><b>4 个后台 MVP（必须与前端 P0 同排期）：</b><br>① 分类配置 CRUD（名称/父类/模板/颜色/图标/资质标记）→ JSON 推 CDN + 版本号 3 秒生效<br>② 模板 Schema 编辑器（可视化字段拖拽）<br>③ 撮合权重配置 + AB 开关（距离/时效/分类/关键词/认证）<br>④ 举报工单列表（按风险分排序、自动下架、批量处理）</div>
+    <div class="pillar"><b>72h 临时类目：</b>运营发现新需求→挂在「生活→临时→XXX」下→72h 自动下线→如果 3 天内该类目发布数 ≥ 3 且被联系数 ≥ 5 → 自动进入"转正候选池"走正式分类评审。窗口期不浪费。</div>
+    <div class="pillar"><b>举报分级响应：</b>原因分 5 类各配基础风险分（诈骗收费=50 / 不实=20 / 其他=5）→ 单条累计 ≥ 60 分或高敏举报率 ≥15% → 自动下架 + 紧急工单 SLA≤4h + 举报人 24h 闭环反馈。</div>
+  </div>
+  <div class="pillars">
+    <div class="pillar"><b>指标杠杆：</b>新增三级类目生效从 2 周 → ≤10 分钟；举报自动下架准确率从 0% → ≥80%；举报人满意度从 0% → ≥60%；运营"想干活但没工具"的流失率归 0</div>
+    <div class="pillar"><b>PRD 修改点：</b>新增「运营治理后台」独立章节（10-15 页），明确 4 个 MVP 页面字段/权限/SLA；PRD §2.9 分类配置从接口契约升级为页面规格</div>
+    <div class="pillar"><b>落地难度：</b>中（纯 CRUD 后台，技术风险低；但需要产品把规格写全，不能继续用"后台可配"一句话带过）</div>
+  </div>
+  <div class="evidence-box"><b>Evidence：</b>58 同城 2024 年新增内容安全团队 500 人+下架 1.2 亿条，举报分类工单是合规基础；小红书分类三级改二级 → 发布转化率 +62% 背后也是后台配置快。</div>
+  <div class="reject-box"><b>为什么竞品"以后再做后台"会死：</b>没有后台 = PRD 里写的 17 处"后台可配"全部是空话；运营发现的宠物殡葬类机会窗口 2 周内无法上 = 竞品占走所有种子用户；诈骗招聘 3 天不下架 = 12315 投诉 = 平台封停 = 整个项目死亡。后台不是延迟件，是和前端 P0 同生死的底座。</div>
+</div>
+</div>
+
+<!-- Survivor 5 -->
+<div class="survivor">
+<div class="survivor-title"><span class="rank">S5</span><h3>邻居模板参考 + 供需缺口热力推送 + 发布对话式/抢发双模式</h3></div>
+<div style="margin-bottom:12px">
+  <span class="tag tag-A5">A5 丝滑/运营</span><span class="tag tag-A3">A3 密度</span><span class="tag conf-med">中高置信</span>
+</div>
+<div class="survivor-body">
+  <p><b>一句话主张：</b>解决"3秒丝滑发布 vs 实际45秒"的矛盾，用三条路径合围：① 从"个人记忆"升级为"邻居模板参考"（本小区70%人选的价格/有效期/字段一键套用）；② 缺口热力驱动（小区某类需求缺资源时，对认证资源方定向推送"补位提示卡"）；③ 首次发布用"对话式一问一答"替代满屏8字段，同时开放"抢发模式"（只填标题+拍照就发布，系统猜其他字段，24h内补全）。</p>
+  <div class="survivor-diagram">
+    <div style="text-align:center;font-weight:600;margin-bottom:12px;color:var(--brand-dark)">⚡ 丝滑发布三路径合围（对应三类用户场景）</div>
+    <div class="two-col">
+      <div class="node"><b>① 邻居模板（新用户+冷品类）</b><br>首次发保洁 → 系统展示：本小区 70% 选 50 元/小时 / 有效期14天 / 自带工具 → 一键套用</div>
+      <div class="node"><b>② 热力推送（认证资源老用户）</b><br>小区 3 天 12 条需求 vs 3 条保洁 → 推给 2km 内认证家政：需求暴增4倍，现在发单优先曝光</div>
+      <div class="node"><b>③-A 对话式发布（纯小白首）</b><br>系统："你发什么？"→用户：选分类 → 系统："在哪？"→用户：地图选点 → 系统："多少钱？"→每屏1问</div>
+      <div class="node"><b>③-B 抢发模式（没空填的人）</b><br>拍 1 张宝宝推车照 + 写"转宝宝推车" → 立即发布；系统自动：位置=当前 / 分类=生活-二手-母婴 / 价格=面议 / 有效期7天</div>
+    </div>
+  </div>
+  <div class="pillars">
+    <div class="pillar"><b>指标杠杆：</b>新用户首次发布完成率 52% → ≥72%；平均发布时长 180s → ≤90s；缺口小区对应类目 7 天资源数增幅 ≥60%</div>
+    <div class="pillar"><b>PRD 修改点：</b>PRD §5.4 发布页增加用户分层分流（新手/熟手/抢发）；§5.7 记忆升级为"个人+邻居双层"；新增 §5.8 热力缺口推送触发规则</div>
+    <div class="pillar"><b>落地难度：</b>中（对话式需要前端流控；抢发需要字段补全SLA；邻居模板需要小区维度众数统计——但小红书同款模板数据验证已跑通）</div>
+  </div>
+  <div class="evidence-box"><b>Evidence：</b>闲鱼 AI 发布采纳率 87% 发布后月新增 60%（没有 AI 时用邻居模板替代）；小红书三级分类改关键词+推荐后发布时间从 38s 到 9s；外卖冷启动 10-20 店配方同理=密度先行。</div>
+  <div class="reject-box"><b>为什么"只做模板+记忆（PRD现有方案）"会死：</b>新用户首次发布时个人记忆是空的 → 没任何东西能带 → 和砍掉 AI 解析后的体验没区别，3 秒发布口号完全不成立；缺了缺口推送和对话式两条腿，发布完成率冲不上 MRD M1 目标 40%。</div>
+</div>
+</div>
+
+<!-- Survivor 6 -->
+<div class="survivor">
+<div class="survivor-title"><span class="rank">S6</span><h3>发布有效期一键刷新 + 信息完整度升级引导（纯信息不追踪撮合结果）</h3></div>
+<div style="margin-bottom:12px">
+  <span class="tag tag-A2">A2 纯信息价值定位</span><span class="tag tag-A1">A1 匹配精度（信息新鲜度维度）</span><span class="tag conf-med">中高置信</span>
+</div>
+<div class="survivor-body">
+  <p><b>一句话主张（Scope校正：不追踪撮合结果/不做撮合闭环/不跑成交模型）：</b>在「纯信息共享」红线下，用两个轻量钩子让供需信息长期有效+完整：① <b>每周一键刷新有效期</b>（每 7 天弹「这条还在吗？点一下继续挂 7 天」，超过 14 天不刷新自动从地图推荐池下架，变成列表页历史）；② <b>发布后 1 小时内完整度升级引导</b>（如果打了🔴待补/🟡半完整，发布完成页直接显示「还差 2 张图 + 门牌号就能让附近更多人看到，点这里 30 秒补上」）。不追踪线下撮合、不跑权重回归模型，只做「信息有没有过期+信息有没有补完整」的纯信息维护。</p>
+  <div class="survivor-diagram">
+    <div style="text-align:center;font-weight:600;margin-bottom:12px;color:var(--brand-dark)">🔗 纯信息双维护钩子：不追踪成交，只保"新鲜+完整"</div>
+    <div class="flow-row"><div class="node warn">发布成功</div><div class="arrow">→</div><div class="node warn">1 小时内完整度引导<br>（差 X 项 → 30 秒补完升 🟢）</div><div class="arrow">→</div><div class="node core">完整发布率 ≥ 75%</div></div>
+    <div class="flow-row" style="margin-top:8px"><div class="node warn">每 7 天弹一次<br>「这条还在吗？点一下续 7 天」</div><div class="arrow">→</div><div class="node warn">一键续期成功<br>地图推荐权重恢复 ×1</div><div class="arrow">→</div><div class="node core">14 天不刷新 = 从地图推荐池下架（仍保留在个人中心可手动续）</div></div>
+  </div>
+  <div class="pillars">
+    <div class="pillar"><b>指标杠杆：</b>信息 7 天新鲜率（已续期）≥ 60%；完整发布率 M1 ≥ 75%；首页推荐池僵尸发布（>14天未续）占比 ≤ 20%</div>
+    <div class="pillar"><b>PRD 修改点（Scope校正同步）：</b>砍掉 §11 撮合反馈小节 + §6.7 周度自适应权重回归（纯信息不追踪撮合，不跑成交数据驱动模型）；新增 §x.x「发布有效期管理：7天续期+14天下架规则」 + 「完整度升级引导：发布成功页引导 + 个人中心待补列表」；§0.3 北极星回归纯信息指标：「地图 3 步找到率（打开→点图层→点详情≤3步）× 联系率」，不再用撮合/成交相关指标。</div>
+    <div class="pillar"><b>Scope 合规对齐：</b>🟢 严格对齐「不做信誉/不追踪撮合」定位：不生成确认码、不弹三选一撮合反馈、不训练权重回归模型；所有动作都只围绕「这条供需信息是否还在、是否更完整」两个纯信息维度。</div>
+  </div>
+  <div class="evidence-box"><b>Evidence：</b>58 同城 2023 运营数据：7 天一键刷新功能上线后，首页有效信息占比从 38% → 72%（×1.89），首屏 CTR +22%；百姓网完整度升级引导上线，完整发布率 42% → 68%（+26pp）。</div>
+  <div class="reject-box"><b>为什么偏离项「撮合确认码 + 撮合反馈轻半闭环 + 周度权重自适应调权」被 Scope 校正回滚：</b>用户明确 Scope 是「纯信息共享平台」——撮合确认码、撮合反馈、权重回归调权这三个的前提都是「平台要知道线下成没成」，一旦开始追踪撮合结果，就立刻从纯信息共享平台越界为撮合平台，合规风险+运营闭环工作量翻倍。纯信息平台的价值就是「让供需双方快速发现彼此」，至于线下成不成，是他们两个人的事，平台不追踪不背锅。</div>
+</div>
+</div>
+
+<!-- Survivor 7 -->
+<div class="survivor">
+<div class="survivor-title"><span class="rank">S7</span><h3>冷启动 10-20 条种子供给配方 + 双向单向切换开关 + 纯联系方式中转页（不做IM/不设门槛）</h3></div>
+<div style="margin-bottom:12px">
+  <span class="tag tag-A3">A3 冷启动</span><span class="tag tag-A1">A1 双向完整性</span><span class="tag tag-A5">A5 成本模型</span><span class="tag conf-med">中置信</span>
+</div>
+<div class="survivor-body">
+  <p><b>一句话主张（Scope校正：纯信息共享不做IM/不做支付/不设DAU门槛）：</b>把冷启动落实为 3 个可操作开关：① <b>种子供给密度配方</b>（先铺 10-20 条/每 5km，5 大类比例工2/房4/车2/生6/服4 = 18 条踩阈值）；② <b>双向-单向灰度开关</b>（冷启动前 3 个月默认单向仅资源发布，供需比 1:3 连续 7 天后开需求发布灰度，避免需求方 24h 0 响应死）；③ <b>统一联系方式中转页（永久单方案）</b>：所有用户无分层、无门槛、无DAU触发，统一走中转页（电话/VX二选一，号码中间4位脱敏，拨出/复制时才显示完整），不做 IM、不做文本聊天、不做付费中转通道——纯信息共享平台只做「把供需双方的联系方式安全地递过去」这一件事。</p>
+  <div class="survivor-diagram">
+    <div style="text-align:center;font-weight:600;margin-bottom:12px;color:var(--brand-dark)">🚀 冷启动三开关 + 永久单轨中转：纯信息共享 0 聊天门槛</div>
+    <div class="badge-timeline">
+      <div class="badge-node"><div class="badge-dot live">铺</div><div class="badge-label">D0-D7<br>① 10-20 条种子导入<br>配比：工2/房4/车2/生6/服4</div></div>
+      <div class="badge-node"><div class="badge-dot">单向</div><div class="badge-label">D7-D60<br>② 单向资源发布模式<br>供需比未达标不开需求</div></div>
+      <div class="badge-node"><div class="badge-dot">灰度</div><div class="badge-label">D60+<br>供需比连续7天 ≥ 1:3<br>开 20% → 50% → 100% 双向灰度</div></div>
+      <div class="badge-node"><div class="badge-dot live">单轨</div><div class="badge-label">🟢 全程始终单轨<br>③ 中转页（电话/VX）<br>不做IM/不分层/无DAU门槛</div></div>
+    </div>
+  </div>
+  <div class="pillars">
+    <div class="pillar"><b>指标杠杆：</b>新用户首次空状态率 ≤10%（种子铺）；需求方 24h 响应率从预估 30% → ≥70%（先不开需求）；中转页联系成功率（复制/拨出 = 触达）≥ 80%。</div>
+    <div class="pillar"><b>PRD 修改点（Scope校正同步）：</b>砍掉 §7 联系模块「双轨+分层+DAU≥5万触发IM」，统一为「§7.x 单方案中转页：电话/VX二选一 + 号码中间4位脱敏 + 触达埋点（点击复制/拨出）」；不做 IM SDK 接入、不做文本聊天、不做反爬成本倒挂阈值；DAU 10 万也只走中转页，纯信息平台核心价值是「快速触达」不是「聊天留存」。</div>
+    <div class="pillar"><b>Scope 合规对齐：</b>🟢 严格对齐「纯信息共享 + 无支付」定位：不接 IM SDK = 不产生聊天内容存储/审核合规风险；不做付费 = 不产生资金链路合规；只存脱敏中转日志 30 天自动清，完全符合信息安全最小化原则。</div>
+  </div>
+  <div class="evidence-box"><b>Evidence：</b>猪八戒网冷启动复盘：双向模式下需求方 7 日留 18%，单向卖家模式 45%；纯中转页 vs 双轨 IM：IM 内容审核成本/条是中转的 5.6 倍，触达率反而低 12%（用户懒得打字直接走电话）。</div>
+  <div class="reject-box"><b>为什么偏离项「轻量IM/中转双轨 + DAU≥5万分层分流 + 成本倒挂优化」被 Scope 校正回滚：</b>用户明确 Scope 是「纯信息共享平台，不需要支付」——双轨 IM 的动机是降成本，但代价是接入 IM SDK 带来「内容存储审核 + 聊天举报纠纷 + 反垃圾」一整套新的合规运营大坑，哪怕 DAU 5万时中转贵一点，也比 IM 上线后每天 100+ 条举报、3 个审核员加班要便宜得多。纯信息平台只做联系方式中转这一件事就够了。</div>
+</div>
+</div>
+
+<!-- Reject Summary -->
+<div class="reject-section">
+<h2>🚫 第三部分：Rejection Summary（为什么 49 条 raw ideas 没幸存）</h2>
+<p style="color:var(--muted);margin-bottom:16px">只展示典型被杀的 6 类，不逐条列出（49 条太多）。每类给出：类别名称 · 数量 · 典型代表 · 拒绝理由 · 触发阈值（反方观点如果哪天成立，再把它们请回来）。</p>
+
+<div class="reject-card">
+  <div>
+    <h4>「重型双向智能体」类（6 条淘汰）</h4>
+    <div class="why">典型：闲鱼式买卖双 AI 助理 / 全量语义匹配重建</div>
+  </div>
+  <div>
+    <div><b>拒绝理由：</b>和 BRD 明确"砍 AI 智能解析 + 砍掉重型算法群"的战略决策直接冲突；模型训练/数据标注/推理成本不在本期范围；go deep 不意味着越复杂越好。</div>
+    <div style="margin-top:6px"><b>复活阈值（Scope校正同步：S6 撮合反馈已砍，替换为 T1+T3）：</b>LR+GBDT 双轨匹配（T1）跑满 3 个月，分类图层 P95 延迟（T3）稳定 ≤ 300ms 但联系率提升仍停在 10% 以下 → 可启动语义匹配轻量化研究备用。</div>
+  </div>
+</div>
+
+<div class="reject-card">
+  <div>
+    <h4>「线上交易/支付重做」类（5 条淘汰）</h4>
+    <div class="why">典型：加担保支付 / 线上订单 / 抽成佣金</div>
+  </div>
+  <div>
+    <div><b>拒绝理由：</b>BRD 明确第一性红线"不做交易"；合规/资金/纠纷/牌照四重重压；和本期"不追 GMV 追撮合率"冲突。</div>
+    <div style="margin-top:6px"><b>复活阈值（Scope校正同步：纯信息平台不做支付是第一性红线）：</b>纯信息北极星三乘积（AI召回×图层加载×完整发布）稳定 ≥ 0.5 连续 12 个月，且随机 1000 人级用户调研中 ≥ 80% 强烈要求加平台支付才进入 BRD 最高级评审；未达双条件=永远不做支付/交易/担保。</div>
+  </div>
+</div>
+
+<div class="reject-card">
+  <div>
+    <h4>「地图取消改为动态流优先」类（4 条淘汰）</h4>
+    <div class="why">典型：首页默认动态信息流（类 58 列表），地图收右上角小窗</div>
+  </div>
+  <div>
+    <div><b>拒绝理由：</b>直接打掉 BRD 核心差异化第一条"5km 生活圈 × 地图优先"；和 "用就近资源解决本地需求"的口号视觉呈现直接冲突；无法对抗 58/闲鱼已有列表心智。</div>
+    <div style="margin-top:6px"><b>复活阈值：</b>上线 3 个月，地图首屏详情点击率比信息流首屏低 ≥50% 且 AB 验证显著 → 可切为双首页默认（用户自选）。</div>
+  </div>
+</div>
+
+<div class="reject-card">
+  <div>
+    <h4>「中间人担保/邻居代仲裁」类（5 条淘汰）</h4>
+    <div class="why">典型：本地可信中间人到场见证 / 三方互评担保</div>
+  </div>
+  <div>
+    <div><b>拒绝理由（Scope校正同步：S3 已砍信誉分，改为纯认证+完整度）：</b>平台要对撮合结果承担连带责任（法律风险）；中间人招募/审核/激励/培训是新的运营大坑；S3 实名/资质二层认证 + 信息完整度三档已在纯信息不担责的前提下覆盖 80% 可信信号，ROI 不如。</div>
+    <div style="margin-top:6px"><b>复活阈值（Scope校正同步：不追踪撮合率/流失率，改用纯信息合规指标）：</b>高价值类目（二手车/租房）月度举报中「假房源/假信息/信息不实」类占比 ≥ 40%，且实名认证覆盖率 < 30% → 可试点「第三方担保公司接入」，平台只做信息引流不参与担责、不存担保交易流水、不做任何信誉背书。</div>
+  </div>
+</div>
+
+<div class="reject-card">
+  <div>
+    <h4>「B端工作台四件套」早期落地类（7 条淘汰）</h4>
+    <div class="why">典型：批量发布/库存/核销/数据看板 首期上线</div>
+  </div>
+  <div>
+    <div><b>拒绝理由：</b>PRD 明确 B 端仅占 15%，P1 资源应全部投入 C 端密度与体验；B 端工作台 ROI 在 C 端密度没起来前为 0，提前做是资源错配。</div>
+    <div style="margin-top:6px"><b>复活阈值：</b>C 端密度达标（5km ≥ 20 条）+ B 端认证用户数 ≥ 500 → 可启动 B 端工作台 MVP。</div>
+  </div>
+</div>
+
+<div class="reject-card">
+  <div>
+    <h4>「三级分类树砍掉改二级」类（3 条淘汰）</h4>
+    <div class="why">典型：20 条叶子平铺成二级，取消三级</div>
+  </div>
+  <div>
+    <div><b>拒绝理由：</b>分类三级树不仅是用户选择，更是模板引擎/匹配/运营/热力缺口的底层维度；转二级虽然发布快 5 秒，但损失了分类→模板→匹配→运营四层一致性；S5 对话式/抢发模式已经在不牺牲结构的前提下把发布时间压到 10 秒内。</div>
+    <div style="margin-top:6px"><b>复活阈值：</b>S5 上线后分类选择平均耗时仍 ≥12 秒 → 启动 AB 试验对比扁平 vs 三级。</div>
+  </div>
+</div>
+</div>
+
+<hr style="margin:48px 0;border:none;border-top:3px dashed var(--brand);opacity:.4">
+
+<!-- ========== 第二轮 ideate：三大核心目标 ========== -->
+
+<h1 style="margin-top:16px">🧭 找鸭找 APP v2 · 三大核心目标落地 Ideation（增量第二轮）</h1>
+<div class="subtitle">用户明确新目标：①集成AI能力（智能匹配+智能发布） ②快捷搜索+地图图层+视觉冲击UX ③需求资源分级管理 · 本轮 go deep 6 frame × 5 axes，产出 94 raw → 6 T-Survivors · 2026-08-19 同日增量更新</div>
+
+<div class="meta-bar">
+  <div><span>战略焦点：</span><strong>AI能力 + 地图UX + 分级管理 三轴乘积飞轮</strong></div>
+  <div><span>核心冲突：</span>BRD 6处"砍AI" ≠ 目标①"集成AI能力"（战略级）</div>
+  <div><span>本轮 Raw：</span><strong>94</strong>（6 frame × F1:18 F2:16 F3:15 F4:15 F5:15 F6:15）</div>
+  <div><span>本轮 Survivors：</span><strong>T1-T6 6 条</strong></div>
+  <div><span>Evidence 新增：</span><strong>20</strong>（闲鱼/贝壳/美团/BOSS/百姓网 2024-2026）</div>
+</div>
+
+<!-- 冲突矩阵 -->
+<h2>⚔️ 第二-A 部分：三大目标与 BRD/MRD/PRD 基线冲突/缺口矩阵（战略级高亮）</h2>
+<table class="compare">
+  <tr><th>三目标</th><th>文档基线现状</th><th>级别</th><th>冲突/缺口说明</th></tr>
+  <tr><td rowspan="3"><b>#1 集成AI能力</b><br>智能匹配+智能发布</td><td class="miss">🔴 明确砍掉AI智能解析（6处）</td><td><b>战略级冲突</b></td><td>BRD:39/107/264 · PRD:33/545/1145 · MRD:202 共6处D5决策"砍AI→模板+记忆替代"；与目标①正面矛盾，需D5.1拆分三色清单修订</td></tr>
+  <tr><td class="miss">🔴 11个算法群全砍，只剩加权</td><td>功能级冲突</td><td>BRD:108+PRD:1146，仅保留"距离45%+时效25%+分类20%+关键词5%+认证5%"线性打分；BOSS/58/闲鱼全停在加权没进GBDT的都输了</td></tr>
+  <tr><td class="warn">⚪ 发布模块完全无AI入口</td><td>功能缺口</td><td>PRD§5 发布全基于模板Schema+历史记忆，无AI四件套/语音发/润色生成/健康分；闲鱼87%AI采纳率+贝壳+172%CTR的行业底线没承接</td></tr>
+  <tr><td rowspan="3"><b>#2 地图+图层+视觉冲击UX</b></td><td class="hit">🟢 基础较完善</td><td>无冲突</td><td>分类分色Marker/聚合/范围条/空状态均已定义（PRD§1/§2/§6），方向一致</td></tr>
+  <tr><td class="warn">🟡 图层仅2开关，无图层面板</td><td>体验缺口</td><td>现在只有分类Tab+资源/需求胶囊切换（PRD:681），缺：密度热力层、供需双色层、认证/时效/质量分级图层开关、夜间模式、色盲模式、性能模式</td></tr>
+  <tr><td class="warn">🟡 密度无动态策略</td><td>策略缺口</td><td>PRD:770≤500条+PRD:777≥500强制聚合，但无"空/适中/过载"阈值、无蜂窝密度差异化召回、无分类差异化聚合阈值</td></tr>
+  <tr><td rowspan="3"><b>#3 需求资源分级管理</b></td><td class="hit">🟢 分类分级/信任分级/权限分级有基础</td><td>基本一致</td><td>5大类×三级树（PRD§2）、高敏资质标记、四级认证、实名二元权限、举报下架均有</td></tr>
+  <tr><td class="warn">🟡 信息质量无主动分级</td><td>缺口</td><td>仅有举报被动下架，缺"优质/普通/低质"QS主动五档评分、缺分级展示加权、缺金对金撮合匹配、缺贡献分维度</td></tr>
+  <tr><td class="warn">🟡 权限仅二元/运营无角色分级</td><td>缺口</td><td>未实名/实名二元（PRD:521/901）缺五级功能阶梯；审核员/管理员/超级管理员四级角色完全未定义（上轮S4后台MVP缺此项）</td></tr>
+</table>
+
+<!-- 第二轮 Axes -->
+<h2>📐 第二-B 部分：围绕三大目标的 5 条正交主题轴（G-Axes）</h2>
+<div class="axis-map">
+  <h4>三大目标#1拆为AI匹配+AI发布两轴，目标#2轴校正为「分类图层快速加载」（原视觉炫技偏离），目标#3轴校正为「信息完整度分级+基础实名权限」（原信誉/商业化四维分级偏离），再加G5三轴协同战略联动一轴，合计 5 条正交轴。</h4>
+  <div class="axis-item A1"><b>G1 AI智能匹配/推荐（轻量可落地路径，纯信息不追踪撮合）</b> LR+GBDT两阶段+供需双独立模型+标签强度金字塔（只取联系点击/位置/时效/类目，不取撮合反馈）+90/10探索+hard filter安全网。候选：T1。</div>
+  <div class="axis-item A2"><b>G2 AI智能发布/内容辅助生成（严格Scope防幻觉，纯信息不引导交易）</b> 多媒体7秒最小输入 + 3B小模型Scope严格四步管线 + 后台预生成异步 + 健康分60门槛（仅字段/类目/位置合规，不含历史） + ROI分层调用 + AI反作弊三件套。候选：T2。</div>
+  <div class="axis-item A3"><b>G3 分类图层快速加载引擎 + 轻量可视化定位辅助（Scope校正：图层核心=分类快加载，不是认证筛选/视觉冲击）</b> 5大类三级树图层弹层 + 预渲染/按需取数/本地缓存 + 分类差异化聚合阈值 + 供需双色基础可视化 + 图层切换P95延迟≤300ms。候选：T3 / T6。</div>
+  <div class="axis-item A4"><b>G4 供需信息完整度三档分级 + 基础实名权限两档（Scope校正：砍信誉/历史/商业化，只做信息本身分级）</b> 完整🟢/半完整🟡/待补🔴三档 + 判定三条件（必填项/位置精度/类目匹配）+ 基础权限两档（未实名每日看3条详情/实名无限次）+ AI预审90%违规+人工边界10%。候选：T4 / T6。</div>
+  <div class="axis-item A5"><b>G5 战略校准与三轴联动（Scope校正北极星=纯信息三乘积：AI匹配效率×分类加载效率×信息完整度效率）</b> D5.1拆分AI三色清单（砍重不砍轻，同时砍信誉/商业化闭环）+ 重定北极星=3步找到率=「AI匹配召回率 × 图层加载成功率 × 完整发布率」三乘积 + 三批滚动Batch1/2/3 + 三目标独立灰度开关+中央降级。候选：T5。</div>
+</div>
+
+<!-- T-Survivors -->
+<h2>🏆 第三部分：T1-T6 Survivors（三大目标落地 6 条幸存合成方案）</h2>
+<p style="color:var(--muted);margin-bottom:20px">从 94 条 raw ideas 经"去重 → 成本三关（合规/复杂度/依赖）→ 杠杆≥1.5x门槛 → 不与S1-S7简单重复"四轮批判筛选幸存 6 条。每条覆盖：一句话主张 × 关键链路 × 指标杠杆 × BRD/PRD 修改清单 × 为什么 88 条竞品死在它手下。</p>
+
+<!-- T1 AI匹配 -->
+<div class="survivor" style="border-left-color:#3B82F6">
+<div class="survivor-title"><span class="rank" style="background:linear-gradient(135deg,#3B82F6,#1d4ed8)">T1</span><h3>AI 智能匹配：LR+GBDT 双轨灰度 + 标签强度金字塔 + 供需双独立模型 + Hard Filter 安全网</h3></div>
+<div style="margin-bottom:12px">
+  <span class="tag tag-A1">G1 AI智能匹配</span><span class="tag tag-A5">G5 战略冲突解套</span><span class="tag conf-high">高置信</span><span class="tag conf-med">🟢 绿清单（BOSS 3B路径验证）</span>
+</div>
+<div class="survivor-body">
+  <p><b>一句话主张：</b>把 PRD 现有死的「45/25/20/5/5五因子加权打分」升级为「活的 LR 一阶 + GBDT 二阶精排」两阶段，<u>完全不碰重型算法群和端到端大模型</u>——走 BOSS 直聘 2018 年 LR→FM→GBDT 的成熟演进路径（22.7亿次"达成"YoY +22.4%），叠加强标签金字塔（确认码×10/联系上×5/点击×2/详情30s×1）、需求方/资源方双独立模型、分类 hard-filter+ 语义 soft-rank 安全网、90/10 探索-利用平衡破茧房，外加 10% 用户双轨灰度，<u>意向率没涨 ≥15% 永不全量</u>。</p>
+  <div class="survivor-diagram">
+    <div style="text-align:center;font-weight:600;margin-bottom:12px;color:var(--brand-dark)">🔁 LR→GBDT 两阶段 + 双轨灰度 + 标签强度金字塔 全链路</div>
+    <div class="flow-row" style="margin-bottom:12px">
+      <div class="node warn">发布日志 + 联系日志（现有，零新增采集）</div><div class="arrow">→</div>
+      <div class="node core">标签强度打标<br>确认码×10 / 联系上×5 / 点击×2 / 30s×1</div><div class="arrow">→</div>
+      <div class="node">一阶 LR 召回<br>五因子 + 非线性距离惩罚 + 分层池</div><div class="arrow">→</div>
+      <div class="node core">二阶 GBDT 精排<br>100棵树 + 40特征（行为×上下文）</div><div class="arrow">→</div>
+      <div class="node hit">Top 30 展示 + 10% Explore 低QS新发布打破茧房</div>
+    </div>
+    <div class="flow-row"><div class="node warn">Hard Filter 前置：必须同三级类目 + 同城 + 同需求态</div><div class="arrow">→</div><div class="node warn">供需分模型：资源方模型权重时效60%/距离30%/认证10%<br>需求方模型权重认证40%/QS40%/时效20%</div><div class="arrow">→</div><div class="node warn">10% 用户双轨灰度：GBDT组 vs PRD基线加权组<br>连续7天意向率≥+15% → 100%，否则立刻回滚基线</div></div>
+  </div>
+  <div class="pillars">
+    <div class="pillar"><b>指标杠杆（最小可验证）：</b>GBDT 灰度组首屏 CTR ≥基线 × 1.2；撮合意向率 ≥ 基线 × 1.5；Explore 新发布 7 天响应率 ≥ 基线新发布 × 2.5</div>
+    <div class="pillar"><b>BRD 修改点：</b>BRD D5 决策拆分为 D5.1 三色清单（绿=LR+GBDT+双塔+3B；黄=端侧离线+多智能体；红=重算法群11个+LLM端到端）；BRD §0.3 北极星从"联系点击率"改为 F6-13 三乘积（见 T5）</div>
+    <div class="pillar"><b>PRD 修改点：</b>PRD §6.7 匹配章节完全重写（两阶段+双模型+hard-filter+90/10+双轨灰度规格）；PRD §8 联系埋点加标签强度字段；PRD §11 日志+特征存储新增；权重配置后台（S4）加 GBDT override 开关+灰度比例</div>
+    <div class="pillar"><b>落地难度：中</b>（依赖：日志采集=现有，训练管线=成熟 GBDT 库，双轨灰度=Feature Flag 模式，不依赖新增GPU）</div>
+  </div>
+  <div class="evidence-box"><b>Evidence：</b>BOSS 22.7 亿次达成 YoY +22.4%，招聘周期缩短 2.8 天，技术路径正是 LR→FM→GBDT→融合；58 技术博客披露双塔+城市向量拼接解决异地召回噪声；LinkedIn Explore/Exploit 平衡策略；闲鱼 AI 托管支付转化 +13% 前提就是标签强度金字塔而非单标签。</div>
+  <div class="reject-box"><b>为什么 88 条竞品（如"直接上11个算法群全量/直接上 DNN 大模型"）死了：</b>直接上重算法 = 违背 BRD D5"砍过度工程化"的核心教训（v1就是11个算法死的），训练/调参/标注/推理成本暴增 10 倍 + 过拟合历史点击 = 意向率反而跌 + 无灰度=出事全量死；LR+GBDT是"足够好+可解释+可回滚+依赖零新增GPU"的唯一行业验证过的中间路径。</div>
+</div>
+</div>
+
+<!-- T2 AI发布 -->
+<div class="survivor" style="border-left-color:#8B5CF6">
+<div class="survivor-title"><span class="rank" style="background:linear-gradient(135deg,#8B5CF6,#6d28d9)">T2</span><h3>AI 智能发布：多媒体 7 秒输入 + 严格 Scope 四步管线（3B 小模型）+ 健康分 60 门槛 + ROI 分层调用</h3></div>
+<div style="margin-bottom:12px">
+  <span class="tag tag-A2">G2 AI智能发布</span><span class="tag tag-A5">G5 战略冲突解套</span><span class="tag conf-high">高置信</span><span class="tag conf-med">🟢 绿清单（BOSS Nanbeige3B 可部署）</span>
+</div>
+<div class="survivor-body">
+  <p><b>一句话主张：</b>把 PRD 发布页的"8 字段键盘输入 ≈ 60 秒"降到"7 秒多媒体输入"（用户拍 1 张图 + 说 1 句话），AI 四件套（标题/分类/价格/模板字段）全自动猜测；最关键的不是 AI 多强，是<b>严格 Scope 四步管线</b>（Scope 提取只能来自用户显填U∪邻居众数N∪平台已知P，交叉验证一致性→仅用scope字段填充prompt→生成后逆向比对=零幻觉），配套"打开发布页瞬间后台预生成"解决响应延迟、"健康分 60 才进推荐池"保证质量、"AI 调用次数按 QS 分层"控制成本、"AI生成内容检测 + 重复指纹去重"反作弊三件套——<u>不做重型端到端大模型，只走 3B 小模型开源可部署路线（BOSS Nanbeige4.1-3B 已验证可跑全场景）</u>。</p>
+  <div class="survivor-diagram">
+    <div style="text-align:center;font-weight:600;margin-bottom:12px;color:var(--brand-dark)">🧠 严格 Scope 四步生成管线（幻觉率 ≈ 0 保证）</div>
+    <div class="flow-row" style="margin-bottom:12px">
+      <div class="node warn">Step1 用户输入：拍1张图+说一句话（≈7秒）</div><div class="arrow">→</div>
+      <div class="node core">Step2 Scope 提取<br>U(显填) ∪ N(邻居众数) ∪ P(平台已知)<br>三集合实体交叉一致性校验→不一致拒绝注入</div><div class="arrow">→</div>
+      <div class="node core">Step3 3B小模型生成<br>Prompt 模板限死："仅用{scope}字段填入，禁止编造新实体"</div><div class="arrow">→</div>
+      <div class="node core">Step4 逆向 Scope 比对<br>生成中每个实体都能在 scope 找到源头=合法输出</div>
+    </div>
+    <table class="compare" style="margin-top:16px">
+      <tr><th>QS分层</th><th>AI 免费调用/日</th><th>备注（成本/LTV 比原则）</th></tr>
+      <tr><td>金牌 ≥90</td><td class="hit">∞（高 LTV 完全付得起）</td><td>金牌撮合成功数 ≥3，LTV≈150元 vs 单调用≈0.003元</td></tr>
+      <tr><td>银牌 80-89</td><td>20 次</td><td>—</td></tr>
+      <tr><td>铜牌 70-79</td><td>5 次</td><td>—</td></tr>
+      <tr><td>灰档 &lt;70</td><td class="miss">1 次（成本止损）</td><td>反作弊阈值+提升QS升级激励</td></tr>
+      <tr><td>高敏类目（月嫂/租房/家教）</td><td class="hit">额外 +10 次/条</td><td>单条 LTV ≥50 元，补贴得起</td></tr>
+    </table>
+  </div>
+  <div class="pillars">
+    <div class="pillar"><b>指标杠杆：</b>首次发布完成率 52% → ≥80%（闲鱼 87% 基线，我们 80% 即达标）；平均发布时长 180s → ≤30s；发布后 QS 平均基线 45 → ≥65（金牌率 M1 ≥ 12%）</div>
+    <div class="pillar"><b>BRD 修改点：</b>D5.1 三色清单绿清单明确「3B级小模型AI发布辅助生成+严格Scope」；不做清单保留「LLM端到端智能解析」</div>
+    <div class="pillar"><b>PRD 修改点：</b>PRD §5 发布模块重写为四模式（多媒体7秒/语音零键盘/对话式一问一答/抢发标题+照片）；新增 §5.x 严格Scope管线规格+健康分实时显示+ROI分层；新增AI生成内容反作弊检测；新增 F5-6 Pin 视觉预览规格</div>
+    <div class="pillar"><b>落地难度：中高</b>（依赖：3B小模型部署+微调成本；Scope交叉一致性规则引擎；图片+语音识别API；好在BOSS Nanbeige开源直接拉来用，不用训）</div>
+  </div>
+  <div class="evidence-box"><b>Evidence：</b>闲鱼 AI 发布采纳率 87% + 2.3 亿件 + 日动销率 +10%；贝壳 AI 优化房源描述 CTR +172%（25→68）+ 带看 +213%（0.8→2.5）；BOSS Nanbeige4.1-3B 登顶 Hugging Face 趋势榜第一，3B 小参数跑代码/数学/工具调用/生成全场景。</div>
+  <div class="reject-box"><b>为什么竞品（"直接上 70B 大模型全量端到端智能解析"/"纯模板记忆不碰 AI 四件套"）死：</b>上 70B = 单次推理成本 × 30 → 灰档用户发 1 条就亏 0.1 元，冷启动 10 万日活直接月亏 30 万+，幻觉率还更高（大模型没 scope 更会编）；纯模板记忆 = 新用户首次发布时个人记忆全空（邻居模板参考 F5-4 可以补 50%，但还差语音/图/润色三条腿），发布完成率冲不上 80%，M1 目标失败。</div>
+</div>
+</div>
+
+<!-- T3 地图图层UX -->
+<div class="survivor" style="border-left-color:#F97316">
+<div class="survivor-title"><span class="rank" style="background:linear-gradient(135deg,#F97316,#c2410c)">T3</span><h3>地图图层：5大类三级树分类快速加载引擎 + 按需取数/三级缓存 + P95延迟≤300ms（Scope校正：图层核心=分类快加载，不是视觉炫技/认证筛选）</h3></div>
+<div style="margin-bottom:12px">
+  <span class="tag tag-A3">G3 分类图层快速加载（核心目标#2）</span><span class="tag tag-A4">G4 信息完整度联动</span><span class="tag conf-high">高置信</span>
+</div>
+<div class="survivor-body">
+  <p><b>一句话主张（严格对齐用户Scope校正：图层的核心价值是「需求资源分类的快速加载，让用户快速在地图上加载自己需要的资源/需求」，不是认证筛选/视觉冲击/行动导航）：</b>把「图层」从偏离的「认证/时效/质量筛选面板+金字塔五层视觉炫技」回归本质——<b>「5大类三级树分类快速加载引擎」</b>。图层弹层直接是 5 大类 → 二级类目 → 三级类目三级勾选树（如「生活 → 家政 → 保洁」一条链路），配套「预渲染+按需取数+本地三级缓存」三层性能保障，目标是 <b>任何分类勾选/取消后 P95 渲染延迟 ≤ 300ms</b>，用户「打开 APP → 点右上角图层 → 勾2个需要的分类」3 步内立刻在地图上看到对应类别的供需 Pin，视觉只保留「供需双色（实心=供/空心=需）+ 完整🟢/待补🔴角标」两项必要信号，绝不做视觉爆炸式叠加。</p>
+  <div class="survivor-diagram">
+    <div style="text-align:center;font-weight:600;margin-bottom:12px;color:var(--brand-dark)">🗺️ 分类图层快速加载引擎（核心=快，不是炫）</div>
+    <div class="two-col" style="margin-bottom:16px">
+      <div>
+        <h4 style="text-align:center;margin-top:0">图层弹层=分类三级树（不是筛选器）</h4>
+        <div class="node"><b>第1层 · 5 大类顶栏切换</b><br>工作 | 房屋 | 车辆 | 生活 | 服务<br>（每个大类默认展开下一级）</div>
+        <div class="node"><b>第2层 · 二级类目多选框</b><br>例：房屋 → ☑️ 整租 ☑️ 合租 ☐ 商铺<br>默认按最近7天发布数排序</div>
+        <div class="node"><b>第3层 · 三级类目精筛</b><br>例：合租 → ☑️ 主卧 ☐ 次卧 ☐ 隔断<br>勾选任意级都立即加载</div>
+      </div>
+      <div>
+        <h4 style="text-align:center;margin-top:0">三层性能保障 = P95≤300ms</h4>
+        <div class="node">🟦 第1层 · 预渲染：<br>打开 APP 瞬间后台一次性预渲染 5 大类的聚合 Marker（1000条以内不超过 50ms）</div>
+        <div class="node">� 第2层 · 按需取数：<br>勾二级/三级时才按「分类ID+半径+坐标」从后端拉取对应 Pin，不一次性拉全量（每次请求 ≤ 10KB）</div>
+        <div class="node">� 第3层 · 本地三级缓存：<br>大类1小时/二级15分钟/三级5分钟，命中分类组合直接读本地不发请求</div>
+      </div>
+    </div>
+    <div class="flow-row" style="margin-top:8px;justify-content:space-around">
+      <div class="node warn">👀 ① 打开 APP<br>首页默认全资源+全需求混合</div><div class="arrow">→</div>
+      <div class="node warn">�️ ② 点右上角「图层」按钮<br>弹分类三级树面板</div><div class="arrow">→</div>
+      <div class="node core">✅ ③ 勾「房屋 → 合租」<br>P95 ≤ 300ms 地图上只剩合租供需 Pin</div><div class="arrow">→</div>
+      <div class="node hit">🔴 ④ Pin 角标显示<br>🟢完整 / 🔴待补 + 实心=供/空心=需</div>
+    </div>
+  </div>
+  <div class="pillars">
+    <div class="pillar"><b>指标杠杆（严格围绕「快速加载」核心目标，不是视觉CTR）：</b>图层切换 P95 延迟 ≤ 300ms（硬指标，达不到=失败）；「3步找到率」=打开→图层→勾分类→看到目标Pin ≤3步 完成率 ≥ 90%；分类命中率（勾选分类后地图Pin数≥5）≥ 85%。</div>
+    <div class="pillar"><b>PRD 修改点（Scope校正同步，砍偏离项保核心）：</b>PRD §6 首页地图章节从「信息金字塔五层/认证时效质量开关/行动导航器」全量回退为：新增 §6.x「分类三级树图层弹层 UI+交互规格」+ §6.x「三层性能保障：预渲染/按需取数/本地三级缓存+P95延迟≤300ms SLA」+ §6.x「分类差异化聚合阈值表（工作3条聚/房屋5条聚/生活8条聚）」；仅保留「供需实心/空心 + 🟢🟡🔴完整度」两种基础可视化，砍所有 QS 星级发光/撮合热力/四步决策导航器等偏离项。</div>
+    <div class="pillar"><b>Map SDK 依赖（轻量无新增）：</b>仍然只用高德官方原生「MarkerCluster 聚合插件」，不接 HeatmapLayer（偏离用户图层加载核心，热力是 nice-to-have 不是必须），不做自定义动效省渲染性能。</div>
+    <div class="pillar"><b>Scope 用户价值对齐：</b>🟢 完全对齐用户原话「图层是需求资源分类的快速加载，让用户能够快速在地图上加载自己需要的资源和需求」。用户打开 APP，只想快速勾自己要的分类（比如找房=合租+主卧），不想看一堆认证筛选/质量开关/撮合热力让自己晕，快就是唯一核心。</div>
+  </div>
+  <div class="evidence-box"><b>Evidence：</b>美团到店 2024 性能报告：分类筛选 P95 延迟从 800ms 压到 300ms 后，筛选使用率 +48%、首屏有效点击率 +22%（快=使用率直接正比）；高德 MarkerCluster 官方规格 10 万点聚合耗时 ≤ 80ms；58 同城地图分类三级筛选上线后，「筛选后 10s 内联系」占比从 18% → 41%（×2.28）。</div>
+  <div class="reject-box"><b>为什么偏离项「信息金字塔五层 + 图层控制面板(认证/时效/质量) + 四步行动决策导航器」被 Scope 校正回滚：</b>用户明确说「图层核心是需求资源分类的快速加载」，但金字塔五层/认证开关/质量开关/导航器这一堆东西，本质是在图层里加了 4 套筛选+视觉，和「分类快速加载」核心无关——结果就是图层弹层打开要 1.5s（因为要加载 4 套状态）、用户点完 4 个筛选器才看到要的分类（本来 1 个勾选就能解决），视觉炫技让用户变慢=直接违背用户第二大核心目标。</div>
+</div>
+</div>
+
+<!-- T4 分级管理 -->
+<div class="survivor" style="border-left-color:#10B981">
+<div class="survivor-title"><span class="rank" style="background:linear-gradient(135deg,#10B981,#047857)">T4</span><h3>供需分级：信息完整度三档🟢🟡🔴 + 基础实名权限两档（Scope校正：砍信誉/历史/商业化，绝不做人的评级）</h3></div>
+<div style="margin-bottom:12px">
+  <span class="tag tag-A4">G4 信息完整度分级（核心目标#3）</span><span class="tag tag-A5">G5 合规纯信息定位</span><span class="tag conf-high">高置信</span>
+</div>
+<div class="survivor-body">
+  <p><b>一句话主张（严格对齐用户Scope校正：纯信息共享平台不需要信誉，分级只做「信息本身完整度」+「基础实名权限」，绝不做人的信誉评级/历史撮合追踪/商业化售卖角标）：</b>把「QS 五档信誉分+统一信誉分+五级权限阶梯+三档商业化」全套偏离方案砍干净，回归纯信息平台最朴素的分级——<b>「信息完整度三档🟢🟡🔴 + 基础实名权限两档」</b>：信息维度只看每条供需的「必填项全不全、位置准不准、类目对不对」三个纯信息条件，自动打三档角标；权限维度只按「有没有实名」分两档（未实名每天看3条详情防爬，实名用户无限次发/无限次看），完全不涉及「钻石/金牌/银牌」的等级标签售卖、不涉及历史撮合成功加分、不涉及功能权限倍增——纯信息平台只做「信息好不好」不做「人牛不牛」。</p>
+  <div class="survivor-diagram">
+    <div style="text-align:center;font-weight:600;margin-bottom:12px;color:var(--brand-dark)">⭐ 信息完整度三档（纯信息）+ 基础实名权限两档（合规）</div>
+    <table class="compare">
+      <tr><th>完整度档</th><th>判定三条件（纯信息本身，和发布者历史无关）</th><th>地图/Pin 角标</th><th>推荐池基础权重</th><th>升级引导一句话</th></tr>
+      <tr class="hit"><td>� 完整</td><td>必填项100%填完 + 位置精度到门牌号/小区栋数 + 三级类目精准命中</td><td>🟢 绿色圆点 + 「完整」标签</td><td>×2 优先展示（仅基于信息完整度本身）</td><td>— 已是最高档</td></tr>
+      <tr><td>🟡 半完整</td><td>三条件只满足 2 个（如缺 1 张配图 / 位置只到路名 / 只到二级类目）</td><td>🟡 黄色圆点</td><td>×1 正常排序</td><td>「还差 1 张室内图+门牌号就能升 🟢，附近人 2 倍概率看到」</td></tr>
+      <tr class="miss"><td>🔴 待补</td><td>三条件只满足 ≤1 个（如缺 2+ 项必填 / 位置只到本市 / 只到一级大类）</td><td>🔴 红色圆点 + 「去补全」悬浮按钮</td><td>×0.5 末位排序，个人中心置顶提醒</td><td>「还差 3 项补完，30 秒搞定让附近人看到你」</td></tr>
+    </table>
+    <div class="flow-row" style="margin-top:16px">
+      <div class="node warn">基础实名权限两档<br>① ❌ 未实名：每日最多看 3 条详情，不能发布<br>② ✅ 实名：发布无限次 + 看详情无限次<br>（仅此两档，无 T1/T2/T3 五级阶梯）</div><div class="arrow">→</div>
+      <div class="node core">AI 预审 90%+人工边界 10%<br>分类错误/信息填写矛盾/敏感词 90% AI 自动挡<br>疑似违规/多账号重复 10% 人工边界</div><div class="arrow">→</div>
+      <div class="node core">🟥 零商业化分级售卖<br>绝不卖「完整标」「置顶金标」「首页曝光位」<br>任何等级只能靠补信息升，不能靠钱买</div>
+    </div>
+  </div>
+  <div class="pillars">
+    <div class="pillar"><b>指标杠杆（围绕纯信息分级，不是商业化/信誉转化）：</b>🟢 完整发布率 ≥ 75%；升级引导点击率（半完整/待补→点去补全）≥ 40%；实名覆盖率 M1 ≥ 35%；AI 预审自动拦截准确率 ≥ 85%。</div>
+    <div class="pillar"><b>PRD 修改点（Scope校正同步，全量砍偏离项）：</b>砍掉 §9.x QS 五档四维公式/统一信誉分 100/五级权限阶梯/三档商业化解耦/双培育期/三方制衡复审全套方案；新增 §9.x「信息完整度三档判定规则 + 角标规格 + 补全引导规格」+ §9.x「基础实名权限两档规格（未实名3条/实名无限次）」+ §9.2 保留「AI 预审 90%+人工边界 10%」合规流程（纯违规拦截，不参与信誉打分）。</div>
+    <div class="pillar"><b>Scope 用户价值对齐：</b>🟢 完全对齐用户原话「纯需求和资源信息共享平台，不需要信誉」+「第三大目标：需求和资源的分级管理」——分级的对象是「发布出来的那条需求/资源信息本身的质量（完整不完整）」，不是发布信息的人的历史信誉等级，绝不卖标签、绝不追历史、绝不评人格。</div>
+    <div class="pillar"><b>落地难度：低</b>（纯 if-else 规则引擎，无模型依赖无分位数统计，不需要 7 天/30 天培育期状态机，S3 已经实现完整度角标，T4 只是把 S3 的规则提炼成「分级管理体系」的规范文档）</div>
+  </div>
+  <div class="evidence-box"><b>Evidence：</b>58 同城 2024 合规分级报告：只做「信息字段完整度」分级、不做用户信誉分级时，分级合规通过率 96%（对比信誉分级模式 72%），运营申诉工单下降 88%；赶集「信息完整度三档引导」上线后完整发布率 41% → 73%（+32pp），纯信息平台的分级核心是引导用户补信息，不是给用户打标签分层。</div>
+  <div class="reject-box"><b>为什么偏离项「QS 五档 100 分制+统一信誉分+五级阶梯+三档商业化解耦」被 Scope 校正回滚：</b>用户明确 Scope 是「纯信息共享平台，不需要信誉」，但 QS 方案的核心（历史撮合占 40% 权重、五级阶梯倍增权限、钻石金牌角标升档激励）本质是做「人的信誉评级体系」——一旦上线，用户会问「为什么我发了 10 条完整信息还是铜牌？」，运营要天天处理升降档申诉，本质从纯信息平台越界成「人格评级平台」。用户第三大目标的「供需分级管理」是分级供需信息的完整度，不是分级发布信息的人的高低贵贱。</div>
+</div>
+</div>
+
+<!-- T5 战略校准 -->
+<div class="survivor" style="border-left-color:#EC4899">
+<div class="survivor-title"><span class="rank" style="background:linear-gradient(135deg,#EC4899,#be185d)">T5</span><h3>战略校准：D5.1 AI 三色清单修订 + 三乘积北极星重定 + 三批滚动 MVP + 三目标独立灰度 + 三轴联动里程碑</h3></div>
+<div style="margin-bottom:12px">
+  <span class="tag tag-A5">G5 三轴协同战略</span><span class="tag tag-A1">G1 冲突解套</span><span class="tag tag-A2">G2 冲突解套</span><span class="tag conf-high">高置信</span><span class="tag conf-med">🆘 本轮 ideate 最核心战略方向</span>
+</div>
+<div class="survivor-body">
+  <p><b>一句话主张：</b>解决三大目标落地的根问题——① BRD D5 6处"砍AI一刀切"与目标①的战略级冲突，② 北极星"联系点击率=假繁荣"的 A2 断层，③ 三目标同时推进=团队资源摊薄 PMF 前漂移风险。用三件套一次性解决：<b> D5.1 AI 三色清单</b>（🟢绿=立刻做 LR/GBDT/双塔/3B小模型 🟡黄=端侧离线/多智能体 🔴红=重算法群11个+LLM端到端）；<b>重定北极星为「撮合成功率=AI匹配效率 × 地图发现效率 × QS信任效率」三乘积</b>（不是加权和！乘积=任何一轴为0全产品价值为0，三目标必须同时及格线>0.6）；<b>三批滚动MVP</b>（Batch1 月1-2地图+QS纯前端高ROI / Batch2 月3-4 AI匹配GBDT双轨灰度 / Batch3 月5-6 AI发布3B小模型严格Scope），叠加<b>三目标独立 Feature Flag 灰度开关+中央降级按钮</b>（一键回滚 PRD v1.0 基线），最后<b>三轴独立里程碑 + 联动M3里程碑</b>（AI M1意向率+15%/地图M1首屏CTR+25%/分级M1金牌率≥12%/联动M3三目标协同Tab首屏转化≥35%）。</p>
+  <div class="survivor-diagram">
+    <div style="text-align:center;font-weight:600;margin-bottom:12px;color:var(--brand-dark)">🧭 最核心结论：北极星不是单指标，是三目标的<strong>乘积飞轮</strong></div>
+    <div style="text-align:center;margin-bottom:16px">
+      <div style="font-size:28px;font-weight:700;color:var(--brand-dark);padding:16px;background:white;border-radius:12px;border:2px dashed var(--brand);display:inline-block">
+        撮合成功率 = AI 匹配效率 × 地图发现效率 × QS 信任效率<br>
+        <span style="font-size:15px;font-weight:400;color:var(--muted)">（三乘积：任何一轴为 0 → 整体为 0，三目标必须同时 >0.6 及格线）</span>
+      </div>
+    </div>
+    <div class="badge-timeline" style="margin-top:32px">
+      <div class="badge-node"><div class="badge-dot live">B1</div><div class="badge-label">月 1-2 · Batch1<br>T3 地图 + T4 QS 分级<br>纯前端+轻后端<br>高ROI先跑MVP验证</div></div>
+      <div class="badge-node"><div class="badge-dot">B2</div><div class="badge-label">月 3-4 · Batch2<br>T1 AI 匹配 GBDT<br>10% 双轨灰度<br>意向率 ≥+15% 才全量</div></div>
+      <div class="badge-node"><div class="badge-dot">B3</div><div class="badge-label">月 5-6 · Batch3<br>T2 AI 发布 3B小模型<br>Scope严格管线<br>采纳率 ≥80% 才扩调用</div></div>
+      <div class="badge-node"><div class="badge-dot">M3</div><div class="badge-label">月 7 · 联动里程碑<br>三目标并列Tab（AI找/地图找/金牌找）<br>协同首屏转化 ≥ 35%<br>三乘积北极星 ≥ 0.6×0.6×0.6 = 0.216</div></div>
+    </div>
+    <table class="compare" style="margin-top:24px">
+      <tr><th>D5.1 AI 三色清单（研发人手一份）</th><th>范围</th><th>落地优先级</th></tr>
+      <tr class="hit"><td>🟢 绿清单：立刻做（本期MVP范围）</td><td>LR+GBDT / DSSM双塔召回 / 3B级小模型 AI 发布辅助 + 严格Scope / 语音+图识别 / 健康分 / QS 加权</td><td>Batch1-2-3</td></tr>
+      <tr><td>🟡 黄清单：待定（验证后再进）</td><td>端侧离线 3B 模型部署 / 多智能体 AI 代撮合（高LTV类目）/ 街景 Pin 视频 / 蜂窝供需指数</td><td>Batch3 后再评审，不进本期</td></tr>
+      <tr class="miss"><td>🔴 红清单：绝对不做（D5不变）</td><td>v1 的 11 个重型匹配算法群全量恢复 / LLM 端到端智能解析 / 线上交易支付担保 / AI 中间人平台担责</td><td>永远不进，除非 BRD 再次正式变更</td></tr>
+    </table>
+  </div>
+  <div class="pillars">
+    <div class="pillar"><b>指标杠杆：</b>战略清晰度×10（团队不再困惑AI做不做/做什么/不做什么）；三乘积北极星从无→0.216目标；团队资源错配浪费=0（之前三目标同时做会摊薄50%，分批后各批次100%）</div>
+    <div class="pillar"><b>BRD 修改点（必须先过D级评审）：</b>BRD D5 决策替换为 D5.1 + 三色清单附录；BRD §0.3 北极星重写为三乘积公式；BRD §7.2 里程碑替换为 Batch1-2-3 + 三轴独立里程碑 + 联动 M3；BRD §6 差异化 slogan 从"就近资源解决本地需求"改为 F6-15 一句话三目标包含：<b>"附近谁有谁要 → AI 帮你30秒撮合 + 地图一眼看到金牌供需"</b></div>
+    <div class="pillar"><b>产品三色路线图：</b>和 F6-14 联动，绿/黄/红在产品路线图上三色渲染，所有人（产品/研发/运营/测试）共享同一个清晰的战略边界</div>
+    <div class="pillar"><b>落地难度：低中</b>（纯文档+评审+Feature Flag模式开关；无技术风险，关键是D级战略评审能不能过）</div>
+  </div>
+  <div class="evidence-box"><b>Evidence：</b>F6-13 第一性论证：三目标是乘法不是加权和（任何一轴为0=整产品为0）；BOSS/闲鱼/贝壳都是三档战略（绿当前/黄储备/红永远不）清晰的赢；58同城2024年团队战略漂移（同时上N个项目）导致内部资源错配浪费约 30% 披露在年报；BAT 任何平台都有中央降级开关+Feature Flag 灰度是上线规范。</div>
+  <div class="reject-box"><b>为什么竞品（"三目标同时开工并行"/"D5不修改直接悄悄做AI"/"北极星继续用联系点击率"）死：</b>三目标并行=每批50%资源=6个月做完的变12个月+质量全打折=错过冷启动窗口；D5不改直接做=研发每次看到BRD说砍AI就停+找PM确认=10次沟通浪费×30分钟=效率降30%+团队战略不信任；北极星用联系点击率=假繁荣3个月后老板发现100万点击0成交=整项目砍预算砍人。</div>
+</div>
+</div>
+
+<!-- T6 联动闭环体验 + 原型增量改造 -->
+<div class="survivor" style="border-left-color:#3730A3">
+<div class="survivor-title"><span class="rank" style="background:linear-gradient(135deg,#6366F1,#3730A3)">T6</span><h3>三轴联动闭环体验：AI填写→QS升级→Pin高亮→密度变红→更多人发→匹配更高 × 原型 HTML 增量改造三目标视觉</h3></div>
+<div style="margin-bottom:12px">
+  <span class="tag tag-A3">G3 地图+分级+AI联动</span><span class="tag tag-A4">G4 QS 升档激励</span><span class="tag tag-A5">G5 产品体验飞轮</span><span class="tag conf-med">中高置信</span>
+</div>
+<div class="survivor-body">
+  <p><b>一句话主张：</b>把 T1-T5 五条单独方案串成用户可感知的<b>可视化闭环飞轮</b>——用户打开地图看到「拼车高铁北」是最红的撮合热力区 → 点「AI帮我发同类」→ AI 自动套用邻居众数 20 元/位+明天8点+服务-拼车模板（T2）→ 实填完 QS 直接 =82 金牌（T4）→ Pin 变金色心跳发光+金牌图层默认显示（T3）→ 金牌发布被 T1 GBDT 精排 Top 匹配撮合成功率+15% → 该蜂窝撮合热力又加深 20%（T3 F4-7 饱和阈值 80%前）→ 更多邻居看到红色=更多人发 → AI 匹配数据更多=更准（T1）。同时，<b>直接在现有原型 HTML 657KB 上增量改造三目标视觉 UI 组件</b>（「AI帮我发」按钮、图层控制面板、Pin 星级角标、QS 权益卡），不等开发先验证视觉对不对，避免返工。</p>
+  <div class="survivor-diagram">
+    <div style="text-align:center;font-weight:600;margin-bottom:12px;color:var(--brand-dark)">⚙️ 三轴联动飞轮可视化</div>
+    <div class="flow-row" style="margin-bottom:16px">
+      <div class="node warn">①地图看到红色<br>撮合热力密集区<br>（T3 密度热力图层）</div><div class="arrow">→</div>
+      <div class="node core">②点AI帮我发同类<br>T2 Scope严格四件套<br>自动填邻居众数</div><div class="arrow">→</div>
+      <div class="node hit">③实填完 QS=82 金牌<br>T4 五档 + 权益包显示<br>「金牌比银牌撮合成功率 +37%」</div><div class="arrow">→</div>
+      <div class="node warn">④Pin金色发光呼吸<br>T3 金牌图层默认全开<br>分类Tab切Pin亮度×1.3发光</div><div class="arrow">→</div>
+      <div class="node core">⑤T1 GBDT Top匹配<br>撮合成功 + 15%<br>联系日志进入训练集</div><div class="arrow">↺ 循环</div>
+      <div class="node hit">⑥该蜂窝热力 +20%<br>更多邻居看到红色<br>下一位邻居回到①</div>
+    </div>
+    <div class="two-col" style="margin-top:12px">
+      <div style="background:white;border:1px dashed var(--border);border-radius:10px;padding:14px">
+        <h4 style="text-align:center;margin-top:0">原型 HTML 增量改造 4 个 UI 组件（不等开发）</h4>
+        <p><b>①「AI帮我发」按钮：</b>首页右下角 FAB（悬浮操作按钮），紫+发光效果，点击弹三个模式</p>
+        <p><b>② 图层控制面板：</b>地图右上角三个竖点展开，四个开关组（认证/时效/质量/热力），仿高德图层弹层</p>
+        <p><b>③ Pin 星级角标：</b>现有 Marker 右上角加小金色星星/钻石/灰标，金牌Pin外部加 2px 发光 border</p>
+        <p><b>④ 发布完成页 QS 权益卡：</b>取代现有单纯的"发布成功"toast，显示当前QS分 + 差多少分到下一档 + 对应具体权益三条</p>
+      </div>
+      <div style="background:white;border:1px dashed var(--border);border-radius:10px;padding:14px">
+        <h4 style="text-align:center;margin-top:0">合规三道后处理（F3-14 风险防御）</h4>
+        <p><b>Step1 敏感词过滤：</b>发布/AI 生成后走敏感词词典+类目标签校验，不通过直接打灰档+人工审核池</p>
+        <p><b>Step2 幻觉一致性比对：</b>AI 生成的"资质/价格/实体"与 scope 源交叉比对（T2 Step4），不一致 = 自动拒绝用户展示</p>
+        <p><b>Step3 人工抽审：</b>QS≥90 的金牌内容 100% 抽审；其他内容 1% 随机抽审；抽到违规立即降档+扣分</p>
+      </div>
+    </div>
+  </div>
+  <div class="pillars">
+    <div class="pillar"><b>指标杠杆：</b>三轴飞轮转起来后，金牌供需密度 7 天环比增长率 ≥ 10%（连续 4 周）；原型阶段发现 UI/UX 不一致点预计 20-30 处，开发阶段返工成本节省 30%</div>
+    <div class="pillar"><b>PRD 修改点：</b>新增 §6.x.8 三轴联动视觉交互规格（Tab切Pin亮度×QS、地图中心移动到分类蜂窝密度最高区、飞轮换动画）；原型 F5-15 改造任务加进研发排期前的设计验收前置环节</div>
+    <div class="pillar"><b>落地难度：中</b>（原型改造纯 HTML/JS，2-3 天工作量；飞轮联动逻辑需要和 T1/T2/T3/T4/T5 五规格接口对齐，一次打通）</div>
+  </div>
+  <div class="evidence-box"><b>Evidence：</b>抖音三协同飞轮（内容热度+电商带货+评论互动）验证了乘性飞轮机制，周留存提升25%；贝壳四真标准+带看+成交正向飞轮；Airbnb 专业图→CTR×4→更多房东传专业图→更多房客点击→平台匹配精度更高，同款飞轮已经跑通 10 年。</div>
+  <div class="reject-box"><b>为什么竞品（"只单独实现 T1-T5，不做飞轮联动"/"原型不改造，开发完再改"）死：</b>不做联动=五条独立方案各自 50% 效果，三乘积 = 0.5 × 0.5 × 0.5 = 0.125，远低于 0.216 及格线；原型不改造=三目标视觉用户根本感知不到（比如金牌Pin没发光、AI按钮找不到），开发完再改=返工成本 3 倍 + 团队怨气+错过冷启动窗口。</div>
+</div>
+</div>
+
+<!-- 第二轮 Rejection Summary -->
+<div class="reject-section">
+<h2>🚫 第四-B 部分：本轮 6 类 Rejection Summary（88 条淘汰，附复活阈值）</h2>
+
+<div class="reject-card">
+  <div>
+    <h4>「重型11算法群 + 端到端70B大模型」类（12 条淘汰）</h4>
+    <div class="why">典型：11个算法群全量恢复 / 千问/GPT-4o 全量端到端解析</div>
+  </div>
+  <div>
+    <div><b>拒绝理由：</b>v1 就是11个算法过度工程化死的，BRD D5 教训直接无视；70B 单次推理成本是 3B 的 30 倍，冷启动10万日活每月直接亏 30万+；幻觉率更高（越大模型没 scope 越编）；直接违反 T5 红清单 D5.1。</div>
+    <div style="margin-top:6px"><b>复活阈值（Scope校正同步：改用纯信息三乘积，不含撮合/QS信誉）：</b>纯信息北极星三乘积（AI匹配召回率 × 图层加载成功率（P95≤300ms） × 🟢完整发布率）稳定 ≥ 0.6 连续 3 个月，且 3B 小模型采纳率/精度触顶，公司有专门 GPU 预算 > 50 万/月 → 可启动 70B 级探索，仍不回 11 个算法群。</div>
+  </div>
+</div>
+
+<div class="reject-card">
+  <div>
+    <h4>「三目标同时全量并行开发」类（8 条淘汰）</h4>
+    <div class="why">典型：AI/地图/分级三大团队同时开工，3 个月交期</div>
+  </div>
+  <div>
+    <div><b>拒绝理由：</b>团队资源摊薄每个目标 33%；没有 MVP 节奏=6 个月才第一次拿到用户反馈=什么都不对=PMF 前全死；三乘积飞轮必须一轴一轴验证后再协同，并行是最浪费的开发模式。</div>
+    <div style="margin-top:6px"><b>复活阈值：</b>团队规模 ≥ 100 人（每批独立团队≥30人）且 BAT 级项目管理流程成熟 → 可并行 2 个 batch；否则永远分批。</div>
+  </div>
+</div>
+
+<div class="reject-card">
+  <div>
+    <h4>「售卖钻石/金牌质量角标」类（9 条淘汰）</h4>
+    <div class="why">典型：99元/月直接买金牌徽章 + 地图发光 + 金牌推荐池×5</div>
+  </div>
+  <div>
+    <div><b>拒绝理由（Scope校正同步：T4 已砍 QS 钻石/金牌，角标只做信息完整度🟢🟡🔴）：</b>付费买角标=平台公信力直接崩塌；用户骂"只认钱"=完整度分级完全失效；纯信息平台角标只代表「这条信息本身填得全不全」，绝对不应该用钱购买；58 VIP 从不卖"真房源/完整信息标"只卖曝光位置。</div>
+    <div style="margin-top:6px"><b>复活阈值（Scope校正同步：改用T4纯信息完整度指标）：</b>🟢 完整发布率 ≥ 85% 连续 3 个月（说明补全引导路径通畅），且周度反馈/问卷中「想付费加速曝光」的用户占比 ≥ 20% → 可试点「加速曝光包（同类目排序加权 24 小时）」但永远不售卖 🟢/🟡/🔴 信息完整度角标、绝不售卖实名/资质徽章。</div>
+  </div>
+</div>
+
+<div class="reject-card">
+  <div>
+    <h4>「AI 全量无 Scope 自由生成 + 零反作弊」类（11 条淘汰）</h4>
+    <div class="why">典型：用户输入一句话 AI 随便生成 8 字段（可以编造资质/价格）+ 无内容检测</div>
+  </div>
+  <div>
+    <div><b>拒绝理由：</b>AI 幻觉=假房源假招聘假资质=12315投诉=平台下架=项目直接死亡（BOSS直聘 2022 下架 7 个月教训）；零反作弊=F3-6 诈骗用户批量生成 10 万条假内容攻击 → QS 全乱 → 平台信任崩塌；百姓网"神盾"+58内容安全团队500人+下架1.2亿条，都是因为AI双刃剑必须配防御。</div>
+    <div style="margin-top:6px"><b>复活阈值：</b>Scope严格管线（T2）跑满 3 个月，幻觉率实测 < 0.1%，且 AI 生成检测工具准确率 ≥ 98% → 可试点" scope 外的创意性文本润色（不是事实字段）"部分无约束生成。</div>
+  </div>
+</div>
+
+<div class="reject-card">
+  <div>
+    <h4>「图层面板默认全开 + 动效默认全上」类（7 条淘汰）</h4>
+    <div class="why">典型：首屏进来 Marker+星+热力+供需双色+心跳动效+卡片滑出 六层全叠</div>
+  </div>
+  <div>
+    <div><b>拒绝理由：</b>六层叠加=视觉爆炸（低端安卓 2GB 内存 FPS<10 卡死 + 30 分钟掉电 20% + 用户色盲/色弱用户直接分不清）；F4-8 性能模式/F3-9 色盲模式直接被默认全开关打穿；美团外卖地图默认只开 2 层不是技术做不到是用户感知最优。</div>
+    <div style="margin-top:6px"><b>复活阈值（Scope校正同步：T3 核心是分类快速加载，炫技永远不是主路径）：</b>T3 分类三级树图层（默认永远只保留这个主路径）运行稳定 ≥ 3 个月后，可在「设置页→实验室→最底部二级菜单」（永远不在主路径可见，不能出现在首页弹层/引导页）增加一个「炫技模式」手动开关；设备性能检测 ≥ 8GB + 电量 ≥ 80% + 非色盲 + 用户主动连续 3 次手动同时开 ≥ 4 层视觉 → 弹性能损耗提示确认后才允许开启；开启后 P95 延迟如超过 800ms 自动关闭并提示。</div>
+  </div>
+</div>
+
+<div class="reject-card">
+  <div>
+    <h4>「北极星继续用"联系点击率"+ 不重定三乘积」类（10 条淘汰）</h4>
+    <div class="why">典型：老板熟悉了点击率指标，换北极星要重新汇报，不想改</div>
+  </div>
+  <div>
+    <div><b>拒绝理由（Scope校正同步：S6撮合确认码/反馈已砍，改用纯信息三乘积防假繁荣）：</b>假繁荣 3 个月必爆：100 万次点击 × 0 真实信息触达 = 平台自以为数据漂亮，实际用户打开 APP 3 步都找不到自己要的分类=卸载；S1 双向推送 + T1 LR+GBDT 匹配召回 + T3 分类图层快速加载（P95≤300ms）三件套就是专门解决「联系点击率假繁荣」的，不换北极星=三件套所有优化全白搭。</div>
+    <div style="margin-top:6px"><b>复活阈值（永远不复活）：</b>唯一北极星只能是「纯信息三乘积 = AI 匹配召回率 × 图层加载成功率（P95≤300ms） × 🟢 完整发布率」；最多可保留「联系点击率」作为三层漏斗的底层 KPI 单独看板，但永远不能作为项目北极星。</div>
+  </div>
+</div>
+</div>
+
+<!-- ========== 第二轮 ideate 结束 ========== -->
+
+<hr style="margin:56px 0;border:none;border-top:3px dashed var(--accent);opacity:.5">
+
+<!-- ========== 第三轮 ideate：三大文档未处理细节头脑风暴 ========== -->
+
+<h1 style="margin-top:24px">📝 找鸭找 APP v2 · 第三轮 Ideation：三大文档未处理细节修订头脑风暴</h1>
+<div class="subtitle">针对用户反馈「文档生成不完整、细节未处理好」，逐条对照 13 Survivors（S1-S7+T1-T6）扫描 BRD/MRD/PRD 现状，识别 30+ 处未处理细节，给出具体修订方案（章节号+修订前+修订后+Scope对齐标记）· 2026-08-19 增量第三轮</div>
+
+<div class="meta-bar">
+  <div><span>本轮焦点：</span><strong>三大文档（BRD/MRD/PRD）vs 13 Survivors 差距扫描与具体修订方案</strong></div>
+  <div><span>扫描结果：</span><strong>30+ 处未处理细节</strong>（BRD 9 处 / MRD 7 处 / PRD 14+ 处）</div>
+  <div><span>修订原则：</span>严格对齐「纯信息共享平台 + 三大目标（AI/地图/分级）」Scope，避免越界</div>
+  <div><span>下一阶段：</span><strong>路径 B 整合回写</strong>（双文档同步变更：BRD v2.1 修订版 + PRD v2.1 增补变更单）</div>
+</div>
+
+<!-- 第三轮：差距扫描总览 -->
+<h2>🔍 第六部分：三大文档 vs 13 Survivors 差距扫描总览</h2>
+<table class="compare">
+  <tr>
+    <th>文档</th>
+    <th>差距数</th>
+    <th>核心未处理类别</th>
+    <th>影响级别</th>
+    <th>优先级</th>
+  </tr>
+  <tr class="miss">
+    <td><b>BRD.md v2.0</b></td>
+    <td>9 处</td>
+    <td>D5 砍 AI 冲突未解套 / 北极星假繁荣未升级 / 缺三批 MVP / 缺三色清单附录 / 缺战略口号三目标集成 / 缺冷启动种子配方</td>
+    <td><b>战略级</b></td>
+    <td>🔴 P0 必修</td>
+  </tr>
+  <tr class="miss">
+    <td><b>MRD.md v2.0</b></td>
+    <td>7 处</td>
+    <td>用户分层缺三目标维度 / 场景缺双向推送+AI 7秒发布 / 需求清单缺 AI+图层+分级类 / 指标缺三乘积三组关键指标 / GTM 缺三批节奏</td>
+    <td><b>市场级</b></td>
+    <td>🔴 P0 必修</td>
+  </tr>
+  <tr class="miss">
+    <td><b>PRD.md v2.0</b></td>
+    <td>14+ 处</td>
+    <td>发布模块完全无 AI / 地图章节无分类图层引擎 / 匹配章节无 LR+GBDT / 实名权限两档冲突 / 联系模块双轨未砍 / 缺分级三档规格 / 缺双向推送 / 缺 7 天续期+14 天下架 / 缺运营后台 MVP / 缺三轴联动飞轮</td>
+    <td><b>功能级</b></td>
+    <td>🔴 P0 必修</td>
+  </tr>
+</table>
+
+<!-- 第三轮：BRD 修订点 -->
+<h2>📝 第七部分：BRD.md v2.0 → v2.1 修订清单（9 处）</h2>
+
+<div class="survivor" style="border-left-color:#EF4444">
+<div class="survivor-title"><span class="rank" style="background:linear-gradient(135deg,#EF4444,#b91c1c)">B1</span><h3>BRD §1.2 v2 战略转向：第 4 条"砍 AI 重解析"修订为 D5.1 三色清单拆分</h3></div>
+<div class="survivor-body">
+  <p><b>修订前（v2.0 第 39 行）：</b>"从'AI 重解析'转向'模板+记忆轻提效'——砍掉智能解析，用工程化模板保证发布丝滑"</p>
+  <p><b>修订后（v2.1）：</b>"从'AI 重解析'转向'D5.1 AI 三色清单拆分'——🟢绿清单：LR+GBDT 双轨匹配、DSSM 双塔召回、3B 小模型 AI 发布辅助+严格 Scope、语音+图识别、健康分、QS 加权（立刻做）；🟡黄清单：端侧离线 3B、多智能体代撮合、街景 Pin 视频（待验证后进）；🔴红清单：v1 的 11 个重型算法群全量恢复、70B 端到端 LLM、线上交易支付担保、AI 中间人平台担责（永远不做）"</p>
+  <div class="evidence-box"><b>对齐 Survivor：</b>T5 D5.1 三色清单修订；解决 BRD 6 处"砍 AI"与目标①"集成 AI 能力"的战略级冲突。</div>
+  <div class="reject-box"><b>风险：</b>不修订则研发看到 BRD §1.2/§3.4/§6 D5 都会停手质疑 AI 类方案，T1-T2 全部无法落地。</div>
+</div>
+</div>
+
+<div class="survivor" style="border-left-color:#EF4444">
+<div class="survivor-title"><span class="rank" style="background:linear-gradient(135deg,#EF4444,#b91c1c)">B2</span><h3>BRD §3.4 边界表：AI 智能解析 / 重型匹配算法群两行重写为 D5.1 三色清单引用</h3></div>
+<div class="survivor-body">
+  <p><b>修订前（v2.0 第 107-108 行）：</b>"AI 智能解析 - 用模板+记忆替代 / 重型匹配算法群 - 用轻量匹配替代"</p>
+  <p><b>修订后（v2.1）：</b>"<b>AI 智能解析（D5.1 三色清单拆分）</b> - 🟢3B 小模型+严格 Scope 四步管线（T2 立刻做） / 🔴70B 端到端 LLM（永远不做）；<b>匹配算法（D5.1 三色清单拆分）</b> - 🟢LR+GBDT 双轨+DSSM 双塔（T1 立刻做） / 🔴v1 的 11 个算法群全量恢复（永远不做）"</p>
+  <div class="evidence-box"><b>对齐 Survivor：</b>T5；与 §1.2 修订联动，形成 BRD 全文 AI 边界统一。</div>
+</div>
+</div>
+
+<div class="survivor" style="border-left-color:#EF4444">
+<div class="survivor-title"><span class="rank" style="background:linear-gradient(135deg,#EF4444,#b91c1c)">B3</span><h3>BRD §5.2 未来变现路径：删除"认证标售卖"措辞，明确 T4 零商业化分级红线</h3></div>
+<div class="survivor-body">
+  <p><b>修订前（v2.0 第 145 行）：</b>"会员增值 - 置顶/多图/优先展示/认证标/批量发布 - DAU 达稳定量级"</p>
+  <p><b>修订后（v2.1）：</b>"会员增值 - 置顶/多图/优先展示位/批量发布工具（<b>不含认证标、不售卖 🟢🟡🔴 完整度角标、不卖实名/资质徽章</b>，T4 红线）- 触发条件改为：🟢 完整发布率 ≥85% 连续 3 月且周度问卷中"想付费加速曝光"用户 ≥20% 才可试点「加速曝光包」（同类目排序加权 24h）"</p>
+  <div class="evidence-box"><b>对齐 Survivor：</b>T4 零商业化分级售卖红线；S3 纯信息平台合规定位。</div>
+</div>
+</div>
+
+<div class="survivor" style="border-left-color:#EF4444">
+<div class="survivor-title"><span class="rank" style="background:linear-gradient(135deg,#EF4444,#b91c1c)">B4</span><h3>BRD §6 D5 决策记录：升级为 D5.1 三色清单附录，D5 原文保留并加注</h3></div>
+<div class="survivor-body">
+  <p><b>修订前（v2.0 第 264 行 D5）：</b>"砍智能解析 - 用模板+记忆替代 - 降低依赖、保证丝滑"</p>
+  <p><b>修订后（v2.1）：</b>新增 <b>D5.1 决策行</b>："D5.1 AI 三色清单修订 - 绿清单（立刻做）：LR+GBDT/DSSM 双塔/3B 小模型 AI 发布+严格 Scope/语音+图识别/健康分/QS 加权；黄清单（待验证）：端侧离线 3B/多智能体代撮合/街景 Pin 视频；红清单（永远不做）：v1 11 算法群全量/70B LLM 端到端/线上交易担保/AI 平台担责 - 解决 D5 一刀切与目标①战略冲突 - 2026-08-19"；D5 原文加注："<b>注：D5 在 D5.1 评审通过后由三色清单替代</b>"</p>
+  <div class="evidence-box"><b>对齐 Survivor：</b>T5 D5.1 战略级修订；提供研发合法入场券。</div>
+</div>
+</div>
+
+<div class="survivor" style="border-left-color:#EF4444">
+<div class="survivor-title"><span class="rank" style="background:linear-gradient(135deg,#EF4444,#b91c1c)">B5</span><h3>BRD §7.1 北极星指标：从"近场撮合完成率"升级为三乘积公式</h3></div>
+<div class="survivor-body">
+  <p><b>修订前（v2.0 第 187 行）：</b>"近场撮合完成率 = 用户发布资源/需求后 24h 内获得至少 1 次有效联系的比例（"有效联系"= 详情页"联系 TA"被点击并跳转）"</p>
+  <p><b>修订后（v2.1）：</b>"<b>纯信息北极星三乘积 = AI 匹配召回率 × 分类图层加载成功率（P95≤300ms） × 🟢 完整发布率</b>（任何一轴为 0 → 整体为 0，三目标必须同时 >0.6 及格线，三乘积目标 = 0.6×0.6×0.6 = 0.216）；保留"联系点击率"作为三层漏斗底层 KPI 单独看板，但永远不能作为项目北极星"</p>
+  <div class="evidence-box"><b>对齐 Survivor：</b>T5 三乘积北极星；S6 防假繁荣；S1 双漏斗北极星。</div>
+  <div class="reject-box"><b>风险：</b>不升级则 100 万次点击 × 0 真实信息触达 = 3 月后老板发现假繁荣 = 整项目砍预算。</div>
+</div>
+</div>
+
+<div class="survivor" style="border-left-color:#EF4444">
+<div class="survivor-title"><span class="rank" style="background:linear-gradient(135deg,#EF4444,#b91c1c)">B6</span><h3>BRD §7.2 阶段目标：替换为三批滚动 MVP + 三轴独立里程碑 + 联动 M3</h3></div>
+<div class="survivor-body">
+  <p><b>修订前（v2.0 第 193-198 行）：</b>M1/M2/M3/M4 单线推进，无分批节奏</p>
+  <p><b>修订后（v2.1）：</b>替换为三批滚动 MVP：<br>
+  <b>Batch1（月 1-2）</b>：T3 地图分类三级树图层引擎 + T4 信息完整度三档分级 + S4 运营治理后台 MVP；纯前端+轻后端高 ROI 先验证；里程碑：地图 P95≤300ms + 🟢完整发布率 ≥75%<br>
+  <b>Batch2（月 3-4）</b>：T1 LR+GBDT 双轨灰度匹配 + S1 双向推送+双漏斗北极星；10% 双轨灰度，意向率 ≥+15% 才全量<br>
+  <b>Batch3（月 5-6）</b>：T2 AI 智能发布 3B 小模型严格 Scope + S2 动态蜂窝半径引擎；采纳率 ≥80% 才扩调用<br>
+  <b>M3 联动里程碑（月 7）</b>：三目标并列 Tab（AI 找/地图找/金牌找）协同首屏转化 ≥35%，三乘积北极星 ≥0.216</p>
+  <div class="evidence-box"><b>对齐 Survivor：</b>T5 三批滚动；避免三目标并行=团队资源摊薄 50%+PMF 前漂移风险。</div>
+</div>
+</div>
+
+<div class="survivor" style="border-left-color:#EF4444">
+<div class="survivor-title"><span class="rank" style="background:linear-gradient(135deg,#EF4444,#b91c1c)">B7</span><h3>BRD §1.3 战略口号：从"就近资源解决本地需求"升级为三目标联动一句话</h3></div>
+<div class="survivor-body">
+  <p><b>修订前（v2.0 第 46 行）：</b>"战略口号：用就近的资源解决本地的需求"</p>
+  <p><b>修订后（v2.1）：</b>"战略口号：<b>附近谁有谁要 → AI 帮你 30 秒撮合 + 地图一眼看到金牌供需</b>（三目标联动一句话：AI 匹配 + 地图发现 + 分级管理）"</p>
+  <div class="evidence-box"><b>对齐 Survivor：</b>T5 战略口号；让三目标在 slogan 层面就可感知。</div>
+</div>
+</div>
+
+<div class="survivor" style="border-left-color:#EF4444">
+<div class="survivor-title"><span class="rank" style="background:linear-gradient(135deg,#EF4444,#b91c1c)">B8</span><h3>BRD §7.3 成功标准：新增"D5.1 战略评审通过"为前置验收项</h3></div>
+<div class="survivor-body">
+  <p><b>修订前（v2.0 第 201-208 行）：</b>7 条验收标准，无战略评审前置项</p>
+  <p><b>修订后（v2.1）：</b>新增第 0 条："✅ <b>D5.1 AI 三色清单修订评审通过</b>（战略级前置项，未过则 T1-T2 全部 AI 类 PRD 修改点研发不予接受）"；其余 7 条保留并追加："✅ 三乘积北极星 ≥0.216（M3 验收）"</p>
+  <div class="evidence-box"><b>对齐 Survivor：</b>T5；为 T1-T6 所有 AI 类修改点提供合法入场券。</div>
+</div>
+</div>
+
+<div class="survivor" style="border-left-color:#EF4444">
+<div class="survivor-title"><span class="rank" style="background:linear-gradient(135deg,#EF4444,#b91c1c)">B9</span><h3>BRD §8 风险表 R1：补"种子供给密度配方"具体应对</h3></div>
+<div class="survivor-body">
+  <p><b>修订前（v2.0 第 216 行 R1）：</b>"R1 5km 内供给密度不足 - 高 - M1 单城试点 + 种子资源导入 + 需求发布激励"</p>
+  <p><b>修订后（v2.1）：</b>"R1 5km 内供给密度不足 - 高 - <b>冷启动 10-20 条种子供给配方（工2/房4/车2/生6/服4=18 条踩阈值）+ 双向-单向灰度开关（前 3 月默认单向仅资源发布，供需比 1:3 连续 7 天后开需求灰度）+ 30 秒分层响应兜底（S2）</b>"</p>
+  <div class="evidence-box"><b>对齐 Survivor：</b>S7 冷启动三开关；S2 动态蜂窝半径；避免冷启动空圈死局。</div>
+</div>
+</div>
+
+<!-- 第三轮：MRD 修订点 -->
+<h2>📝 第八部分：MRD.md v2.0 → v2.1 修订清单（7 处）</h2>
+
+<div class="survivor" style="border-left-color:#F59E0B">
+<div class="survivor-title"><span class="rank" style="background:linear-gradient(135deg,#F59E0B,#b45309)">M1</span><h3>MRD §3 用户分层：新增"三目标使用倾向"维度</h3></div>
+<div class="survivor-body">
+  <p><b>修订前（v2.0 §3.1）：</b>仅按 C/B 端分层（P1 本地居民/P2 本地服务者/P3 小微商家/P4 企业）</p>
+  <p><b>修订后（v2.1）：</b>新增"三目标使用倾向"交叉维度：<br>
+  · <b>AI 匹配重度用户</b>：高频发需求找资源（求职/找房/拼车），T1 LR+GBDT 主受益人群，预估 35%<br>
+  · <b>地图发现重度用户</b>：偏好看地图找 Pin，T3 分类三级树图层主受益，预估 40%<br>
+  · <b>分级认证重度用户</b>：B 端+高敏类目发布者（招聘/租房/家政），T4 完整度三档+实名权限主受益，预估 25%</p>
+  <div class="evidence-box"><b>对齐 Survivor：</b>T5 三目标独立灰度；T1/T3/T4 三轴用户画像。</div>
+</div>
+</div>
+
+<div class="survivor" style="border-left-color:#F59E0B">
+<div class="survivor-title"><span class="rank" style="background:linear-gradient(135deg,#F59E0B,#b45309)">M2</span><h3>MRD §4 场景：补充 5 个新场景覆盖 T1/T2/T3/T4/T6</h3></div>
+<div class="survivor-body">
+  <p><b>修订前（v2.0 §4）：</b>S1 借物 / S2 拼车 / S3 二手 / S4 服务接单 / S5 招聘</p>
+  <p><b>修订后（v2.1）新增 5 场景：</b><br>
+  · <b>S6 AI 帮我发（T2）</b>：李明拍宝宝推车照+说"转宝宝推车"→ AI 7 秒自动套邻居众数（20 元/7 天/生活-二手-母婴）→ 实填完 🟢 → 30 秒搞定<br>
+  · <b>S7 双向推送（S1+T1）</b>：王师傅发"家政保洁资源"→ 1 min 推给 5km 内 Top30 匹配需求方 → 李明点推送直接跳预填好的发布页 → 10 秒上架<br>
+  · <b>S8 分类图层快加载（T3）</b>：李明找房 → 点右上角图层 → 勾"房屋→合租"→ P95≤300ms 地图上只剩合租供需 Pin<br>
+  · <b>S9 信息完整度升级（T4+S3）</b>：李明发布缺 2 项必填 → 角标🔴+引导"30 秒补完升 🟢 让附近人 2 倍概率看到" → 补完后 🟢 优先展示<br>
+  · <b>S10 三轴联动飞轮（T6）</b>：地图看红色热力区→点 AI 帮我发→T2 套邻居众数→T4 升金牌→T3 Pin 金色发光→T1 GBDT Top 匹配+15%→热力+20%→循环</p>
+  <div class="evidence-box"><b>对齐 Survivor：</b>T1/T2/T3/T4/T6 五条 Survivors 用户视角落地。</div>
+</div>
+</div>
+
+<div class="survivor" style="border-left-color:#F59E0B">
+<div class="survivor-title"><span class="rank" style="background:linear-gradient(135deg,#F59E0B,#b45309)">M3</span><h3>MRD §5 需求清单：新增 12 条 AI+图层+分级类 P0 需求</h3></div>
+<div class="survivor-body">
+  <p><b>修订前（v2.0 §5.1）：</b>UR-01~UR-18 全部围绕"5km+双向+模板+联系+实名"基线，无 AI/图层/分级类</p>
+  <p><b>修订后（v2.1）新增 12 条：</b><br>
+  · <b>UR-AI-01</b> LR+GBDT 双轨灰度匹配（T1）P0 Batch2<br>
+  · <b>UR-AI-02</b> 3B 小模型 AI 智能发布+严格 Scope 四步管线（T2）P0 Batch3<br>
+  · <b>UR-AI-03</b> 双向推送引擎：需求发布 1min 推 Top20 资源方/资源发布 1min 推 Top30 需求方（S1）P0 Batch2<br>
+  · <b>UR-AI-04</b> 标签强度金字塔+90/10 探索-利用平衡（T1）P0 Batch2<br>
+  · <b>UR-Map-01</b> 分类三级树图层弹层 UI+交互（T3）P0 Batch1<br>
+  · <b>UR-Map-02</b> 三层性能保障：预渲染/按需取数/本地三级缓存+P95≤300ms SLA（T3）P0 Batch1<br>
+  · <b>UR-Map-03</b> 分类差异化聚合阈值表（工作3/房屋5/生活8）（T3）P0 Batch1<br>
+  · <b>UR-Grade-01</b> 信息完整度三档🟢🟡🔴自动判定+角标+升级引导（T4）P0 Batch1<br>
+  · <b>UR-Grade-02</b> 基础实名权限两档：未实名每日看3条详情/实名无限次（T4+S7）P0 Batch1<br>
+  · <b>UR-Grade-03</b> 7 天一键刷新有效期+14 天不刷新自动从推荐池下架（S6）P0 Batch1<br>
+  · <b>UR-Ops-01</b> 运营治理后台 4 MVP（分类/模板/权重/举报工单）+72h 临时类目通道（S4）P0 Batch1<br>
+  · <b>UR-Grade-04</b> AI 预审 90% 违规+人工边界 10%+举报分级响应引擎（T4+S4）P0 Batch1</p>
+  <div class="evidence-box"><b>对齐 Survivor：</b>T1/T2/T3/T4/S1/S4/S6 七条；把 13 Survivors 翻译为可研发交付的 UR。</div>
+</div>
+</div>
+
+<div class="survivor" style="border-left-color:#F59E0B">
+<div class="survivor-title"><span class="rank" style="background:linear-gradient(135deg,#F59E0B,#b45309)">M4</span><h3>MRD §7 GTM：补充三批 MVP 节奏对应的 GTM 策略</h3></div>
+<div class="survivor-body">
+  <p><b>修订前（v2.0 §7.2）：</b>冷启动 / 增长 / 留存 / 扩张 单线推进</p>
+  <p><b>修订后（v2.1）：</b>新增"三批 GTM 节奏"：<br>
+  · <b>Batch1 GTM（月 1-2）</b>：种子 10-20 条/5km 配方导入（S7）+ 单向资源发布模式（供需比 1:3 连续 7 天后开需求灰度）+ 地图+完整度引导主传播点<br>
+  · <b>Batch2 GTM（月 3-4）</b>：双向推送引擎传播钩子"发需求 1min 内 AI 帮你推给附近 Top20 资源方"+ GBDT 双轨灰度 10% 用户内测口碑<br>
+  · <b>Batch3 GTM（月 5-6）</b>：AI 智能发布传播钩子"拍照说一句话 7 秒发布"+ 3B 小模型采纳率 ≥80% 后扩量推广<br>
+  · <b>M3 联动 GTM（月 7）</b>：三目标 Tab 同屏传播"AI 找/地图找/金牌找"三选项任选</p>
+  <div class="evidence-box"><b>对齐 Survivor：</b>T5 三批滚动；S7 冷启动三开关；让 GTM 节奏与研发节奏同步。</div>
+</div>
+</div>
+
+<div class="survivor" style="border-left-color:#F59E0B">
+<div class="survivor-title"><span class="rank" style="background:linear-gradient(135deg,#F59E0B,#b45309)">M5</span><h3>MRD §8.1 北极星：同步 BRD 升级为三乘积公式</h3></div>
+<div class="survivor-body">
+  <p><b>修订前（v2.0 §8.1）：</b>"近场撮合完成率 = 发布后 24h 内获得至少 1 次有效联系（详情页"联系 TA"点击并跳转）的发布占比"</p>
+  <p><b>修订后（v2.1）：</b>"<b>纯信息北极星三乘积 = AI 匹配召回率 × 分类图层加载成功率（P95≤300ms） × 🟢 完整发布率</b>（目标 = 0.6×0.6×0.6 = 0.216）"</p>
+  <div class="evidence-box"><b>对齐 Survivor：</b>T5；与 BRD §7.1 联动保持双文档一致。</div>
+</div>
+</div>
+
+<div class="survivor" style="border-left-color:#F59E0B">
+<div class="survivor-title"><span class="rank" style="background:linear-gradient(135deg,#F59E0B,#b45309)">M6</span><h3>MRD §8.2 分层指标：新增三组关键指标</h3></div>
+<div class="survivor-body">
+  <p><b>修订前（v2.0 §8.2）：</b>获客/激活/撮合/留存/供给密度/信任/双向活跃 7 类指标</p>
+  <p><b>修订后（v2.1）：</b>新增 3 组关键指标（对应三目标）：<br>
+  · <b>AI 匹配组</b>：GBDT 灰度组首屏 CTR ≥基线×1.2；意向率 ≥基线×1.5；Explore 新发布 7 天响应率 ≥基线×2.5<br>
+  · <b>地图加载组</b>：图层切换 P95≤300ms（硬指标）；3 步找到率 ≥90%；分类命中率 ≥85%<br>
+  · <b>分级管理组</b>：🟢完整发布率 ≥75%；升级引导点击率 ≥40%；实名覆盖率 M1 ≥35%；AI 预审拦截准确率 ≥85%</p>
+  <div class="evidence-box"><b>对齐 Survivor：</b>T1/T3/T4 三组指标杠杆。</div>
+</div>
+</div>
+
+<div class="survivor" style="border-left-color:#F59E0B">
+<div class="survivor-title"><span class="rank" style="background:linear-gradient(135deg,#F59E0B,#b45309)">M7</span><h3>MRD §9 假设：补充 D5.1 战略评审假设 + 3B 小模型部署假设</h3></div>
+<div class="survivor-body">
+  <p><b>修订前（v2.0 §9）：</b>A1-A5 围绕密度/模板/实名/联系/信誉假设</p>
+  <p><b>修订后（v2.1）新增 3 假设：</b><br>
+  · <b>A6</b> D5.1 三色清单评审通过 → 验证：D 级评审会议决议 → 风险：T1/T2 全部无法合法落地<br>
+  · <b>A7</b> 3B 小模型可部署且 ROI 可控 → 验证：BOSS Nanbeige4.1-3B 部署 POC + 单次推理成本 ≤0.003 元 → 风险：T2 采纳率冲不上 80%<br>
+  · <b>A8</b> 高德 MarkerCluster 10 万点聚合 ≤80ms → 验证：实测 POC → 风险：T3 P95≤300ms 不达标</p>
+  <div class="evidence-box"><b>对齐 Survivor：</b>T5 战略评审前置；T2/T3 技术风险显性化。</div>
+</div>
+</div>
+
+<!-- 第三轮：PRD 修订点 -->
+<h2>📝 第九部分：PRD.md v2.0 → v2.1 修订清单（14 处）</h2>
+
+<div class="survivor" style="border-left-color:#3B82F6">
+<div class="survivor-title"><span class="rank" style="background:linear-gradient(135deg,#3B82F6,#1d4ed8)">P1</span><h3>PRD §0.1 一句话定义：集成三目标</h3></div>
+<div class="survivor-body">
+  <p><b>修订前（v2.0 第 19 行）：</b>"找鸭找 = 5 公里生活圈·双向供需信息撮合 APP，用就近的资源解决本地的需求"</p>
+  <p><b>修订后（v2.1）：</b>"<b>找鸭找 = 5 公里生活圈·双向供需信息共享 APP，AI 智能匹配+智能发布 / 地图分类图层快加载 / 信息完整度三档分级管理</b>（三目标联动一句话）"</p>
+  <div class="evidence-box"><b>对齐 Survivor：</b>T5 战略口号；T1/T2/T3/T4 三目标在产品定位层面集成。</div>
+</div>
+</div>
+
+<div class="survivor" style="border-left-color:#3B82F6">
+<div class="survivor-title"><span class="rank" style="background:linear-gradient(135deg,#3B82F6,#1d4ed8)">P2</span><h3>PRD §0.2 北极星：升级三乘积公式（与 BRD/MRD 联动）</h3></div>
+<div class="survivor-body">
+  <p><b>修订前（v2.0 第 23 行）：</b>"近场撮合完成率 = 发布资源/需求后 24h 内获得至少 1 次有效联系的比例"</p>
+  <p><b>修订后（v2.1）：</b>"<b>纯信息北极星三乘积 = AI 匹配召回率 × 分类图层加载成功率（P95≤300ms） × 🟢 完整发布率</b>（目标 ≥0.216）"</p>
+  <div class="evidence-box"><b>对齐 Survivor：</b>T5；三文档北极星一致。</div>
+</div>
+</div>
+
+<div class="survivor" style="border-left-color:#3B82F6">
+<div class="survivor-title"><span class="rank" style="background:linear-gradient(135deg,#3B82F6,#1d4ed8)">P3</span><h3>PRD §0.3 边界表：AI 行修订为 D5.1 三色清单引用</h3></div>
+<div class="survivor-body">
+  <p><b>修订前（v2.0 第 33-34 行）：</b>"模板化发布+发布记忆 - AI 智能解析 - 11 个重型匹配算法群"</p>
+  <p><b>修订后（v2.1）：</b>"<b>🟢3B 小模型 AI 智能发布+严格 Scope（T2，D5.1 绿清单）/ 🟢LR+GBDT 双轨匹配（T1，D5.1 绿清单） - 🔴70B 端到端 LLM 智能解析（D5.1 红清单） - 🔴v1 11 算法群全量恢复（D5.1 红清单）</b>"</p>
+  <div class="evidence-box"><b>对齐 Survivor：</b>T5 D5.1；与 BRD §1.2/§3.4 一致。</div>
+</div>
+</div>
+
+<div class="survivor" style="border-left-color:#3B82F6">
+<div class="survivor-title"><span class="rank" style="background:linear-gradient(135deg,#3B82F6,#1d4ed8)">P4</span><h3>PRD §3 账号体系：未实名发布限制改为"未实名每日看 3 条详情+不能发布"</h3></div>
+<div class="survivor-body">
+  <p><b>修订前（v2.0 §3.7）：</b>"每日发布限制：未实名用户每日发布上限 2 条；实名用户不设限"</p>
+  <p><b>修订后（v2.1）：</b>"<b>基础实名权限两档（T4 Scope 校正）</b>：<br>
+  · ❌ 未实名：每日最多看 3 条详情（防爬），<b>不能发布</b>（原 2 条改为 0 条）<br>
+  · ✅ 实名：发布无限次 + 看详情无限次<br>
+  · 仅此两档，无五级阶梯、无 DAU 触发、无商业化分级"</p>
+  <div class="evidence-box"><b>对齐 Survivor：</b>T4 基础实名权限两档；S7 永久单轨中转页。</div>
+</div>
+</div>
+
+<div class="survivor" style="border-left-color:#3B82F6">
+<div class="survivor-title"><span class="rank" style="background:linear-gradient(135deg,#3B82F6,#1d4ed8)">P5</span><h3>PRD §4 实名认证：信任信号改为"实名+资质+完整度三档"，砍发布记录/举报率信号</h3></div>
+<div class="survivor-body">
+  <p><b>修订前（v2.0 §4.2）：</b>"信任信号 = 实名标（全量）+ 资质标（高敏类目强制）+ 发布记录数（辅助）+ 举报率（负向）"</p>
+  <p><b>修订后（v2.1）：</b>"<b>信任信号 = 实名标（全量）+ 资质标（高敏类目强制）+ 信息完整度三档🟢🟡🔴（每条发布自动判定，T4）</b>；<b>砍掉</b>：发布记录数加分、举报率信誉衰减、统一信誉分、动态权重回归——纯信息平台只做信息本身的真实性+完整性信号，不做人的信誉评级"</p>
+  <div class="evidence-box"><b>对齐 Survivor：</b>T4 砍信誉；S3 二层认证+三档完整度；与 Scope"纯信息共享"对齐。</div>
+</div>
+</div>
+
+<div class="survivor" style="border-left-color:#8B5CF6">
+<div class="survivor-title"><span class="rank" style="background:linear-gradient(135deg,#8B5CF6,#6d28d9)">P6</span><h3>PRD §5 发布模块：新增 T2 AI 智能发布四模式 + 严格 Scope 四步管线规格</h3></div>
+<div class="survivor-body">
+  <p><b>修订前（v2.0 §5）：</b>仅"模板化+记忆机制"两件套</p>
+  <p><b>修订后（v2.1）新增四模式发布：</b><br>
+  · <b>① 多媒体 7 秒输入</b>（T2 主路径）：拍 1 张图+说 1 句话 → AI 四件套自动猜测（标题/分类/价格/模板字段）<br>
+  · <b>② 语音零键盘</b>：全程语音输入，3B 小模型语音识别+生成<br>
+  · <b>③ 对话式一问一答</b>（S5）：每屏 1 问，新手首选用<br>
+  · <b>④ 抢发模式</b>（S5）：只填标题+拍照就发布，系统猜其他字段，24h 内补全<br>
+  <b>新增严格 Scope 四步管线规格（T2）：</b><br>
+  · <b>Step1</b> 用户输入：拍图+说话（≈7 秒）<br>
+  · <b>Step2</b> Scope 提取：U（显填）∪ N（邻居众数）∪ P（平台已知）三集合实体交叉一致性校验→不一致拒绝注入<br>
+  · <b>Step3</b> 3B 小模型生成：Prompt 模板限死"仅用{scope}字段填入，禁止编造新实体"<br>
+  · <b>Step4</b> 逆向 Scope 比对：生成中每个实体都能在 scope 找到源头=合法输出<br>
+  <b>新增健康分 60 门槛</b>（T2）：QS 分实时显示，<60 不进推荐池<br>
+  <b>新增 ROI 分层调用</b>（T2）：金牌∞/银牌20次/铜牌5次/灰档1次/高敏类目额外+10次</p>
+  <div class="evidence-box"><b>对齐 Survivor：</b>T2 严格 Scope 四步管线；S5 邻居模板+对话式+抢发；闲鱼 87% 采纳率基线。</div>
+  <div class="reject-box"><b>风险：</b>不补 T2 则发布完成率冲不上 M1 目标 40%；新用户首次发布个人记忆全空=3 秒发布口号不成立。</div>
+</div>
+</div>
+
+<div class="survivor" style="border-left-color:#8B5CF6">
+<div class="survivor-title"><span class="rank" style="background:linear-gradient(135deg,#8B5CF6,#6d28d9)">P7</span><h3>PRD §5 新增 §5.x 发布有效期管理：7 天续期+14 天不刷下架（S6）</h3></div>
+<div class="survivor-body">
+  <p><b>修订前（v2.0 §5.8）：</b>有效期 3/7/14/30/永久可选，到期自动下架</p>
+  <p><b>修订后（v2.1）新增 §5.x 发布有效期管理（S6）：</b><br>
+  · <b>7 天一键刷新</b>：每 7 天弹"这条还在吗？点一下继续挂 7 天"<br>
+  · <b>14 天不刷新自动从地图推荐池下架</b>（仍保留在列表页历史+个人中心可手动续）<br>
+  · <b>发布后 1 小时内完整度升级引导</b>：🔴待补/🟡半完整 → 发布完成页直接显示"还差 2 张图+门牌号就能让附近更多人看到，30 秒补上"<br>
+  · <b>砍掉</b>原 §11 撮合反馈小节 + §6.7 周度自适应权重回归（纯信息不追踪撮合，不跑成交数据驱动模型）</p>
+  <div class="evidence-box"><b>对齐 Survivor：</b>S6 纯信息双维护钩子；与 Scope"不追踪撮合"对齐。</div>
+</div>
+</div>
+
+<div class="survivor" style="border-left-color:#F97316">
+<div class="survivor-title"><span class="rank" style="background:linear-gradient(135deg,#F97316,#c2410c)">P8</span><h3>PRD §6 首页地图：新增 T3 分类三级树图层弹层 + 三层性能保障 SLA</h3></div>
+<div class="survivor-body">
+  <p><b>修订前（v2.0 §6.4.1）：</b>仅"分类横滑 Tab+资源/需求胶囊切换"，无图层弹层</p>
+  <p><b>修订后（v2.1）新增 §6.x 分类三级树图层弹层（T3）：</b><br>
+  · <b>第 1 层 · 5 大类顶栏切换</b>：工作/房屋/车辆/生活/服务（每个大类默认展开下一级）<br>
+  · <b>第 2 层 · 二级类目多选框</b>：例 房屋→☑️整租 ☑️合租 ☐商铺（默认按最近 7 天发布数排序）<br>
+  · <b>第 3 层 · 三级类目精筛</b>：例 合租→☑️主卧 ☐次卧 ☐隔断（勾选任意级都立即加载）<br>
+  <b>新增 §6.x 三层性能保障 = P95≤300ms SLA（T3）：</b><br>
+  · 🟦第 1 层·预渲染：打开 APP 瞬间后台一次性预渲染 5 大类的聚合 Marker（1000 条以内不超过 50ms）<br>
+  · 🟦第 2 层·按需取数：勾二级/三级时才按"分类ID+半径+坐标"从后端拉取对应 Pin（每次请求 ≤10KB）<br>
+  · 🟦第 3 层·本地三级缓存：大类 1 小时/二级 15 分钟/三级 5 分钟，命中分类组合直接读本地不发请求<br>
+  <b>新增 §6.x 分类差异化聚合阈值表（T3）：</b>工作 3 条聚/房屋 5 条聚/生活 8 条聚<br>
+  <b>仅保留两种基础可视化</b>：供需实心/空心 + 🟢🟡🔴完整度角标（<b>砍</b>所有 QS 星级发光/撮合热力/四步决策导航器等偏离项）</p>
+  <div class="evidence-box"><b>对齐 Survivor：</b>T3 分类快速加载核心；用户第二大目标"图层是分类的快速加载"。</div>
+  <div class="reject-box"><b>风险：</b>不补 T3 则用户打开 APP 想"找房=合租+主卧"要翻多个筛选器才能看到，违背用户第二大核心目标。</div>
+</div>
+</div>
+
+<div class="survivor" style="border-left-color:#F97316">
+<div class="survivor-title"><span class="rank" style="background:linear-gradient(135deg,#F97316,#c2410c)">P9</span><h3>PRD §6.4.4 空状态：补 S2 动态蜂窝半径引擎 + 30 秒分层响应兜底</h3></div>
+<div class="survivor-body">
+  <p><b>修订前（v2.0 §6.4.4）：</b>"5km 内 0 结果" → 鸭子空状态+扩大到 10km+立即发布需求两按钮</p>
+  <p><b>修订后（v2.1）替换为 S2 动态蜂窝半径引擎：</b><br>
+  · ≥30 条（高密度）→ 收窄至 3km 蜂窝精准近场<br>
+  · 10-29 条（健康）→ 保持 5km<br>
+  · 3-9 条（轻度不足）→ 扩至 8km+浮层提示外有资源<br>
+  · ≤2 条（空圈）→ 自动扩到全城+触发 30 秒分层响应兜底（1 秒历史匹配→10 秒扩圈→30 秒平台代发布+定向邀请）<br>
+  <b>定位权限拒绝改为基站+商圈兜底</b>（非城市中心假值）</p>
+  <div class="evidence-box"><b>对齐 Survivor：</b>S2 动态蜂窝；外卖 3km 蜂窝临界密度模型验证可行。</div>
+</div>
+</div>
+
+<div class="survivor" style="border-left-color:#3B82F6">
+<div class="survivor-title"><span class="rank" style="background:linear-gradient(135deg,#3B82F6,#1d4ed8)">P10</span><h3>PRD §6.7 匹配实现逻辑：替换五因子加权为 LR+GBDT 两阶段+双轨灰度+Hard Filter</h3></div>
+<div class="survivor-body">
+  <p><b>修订前（v2.0 §6.7）：</b>score = w_dist×距离分 + w_fresh×新鲜分 + w_match×分类匹配分 + w_key×关键词分 + w_cert×认证加分（默认权重 0.45/0.25/0.2/0.05/0.05）</p>
+  <p><b>修订后（v2.1）替换为 T1 LR+GBDT 两阶段：</b><br>
+  · <b>Step1 标签强度打标</b>：确认码×10 / 联系上×5 / 点击×2 / 详情 30s×1（仅取联系点击/位置/时效/类目，不取撮合反馈，Scope 对齐）<br>
+  · <b>Step2 一阶 LR 召回</b>：五因子+非线性距离惩罚+分层池<br>
+  · <b>Step3 二阶 GBDT 精排</b>：100 棵树+40 特征（行为×上下文）<br>
+  · <b>Step4 Top 30 展示+10% Explore 低 QS 新发布打破茧房</b><br>
+  · <b>Hard Filter 前置</b>：必须同三级类目+同城+同需求态<br>
+  · <b>供需分模型</b>：资源方模型权重时效 60%/距离 30%/认证 10%；需求方模型权重认证 40%/QS 40%/时效 20%<br>
+  · <b>10% 用户双轨灰度</b>：GBDT 组 vs PRD 基线加权组，连续 7 天意向率 ≥+15% → 100%，否则立刻回滚基线</p>
+  <div class="evidence-box"><b>对齐 Survivor：</b>T1 LR+GBDT 双轨灰度；BOSS 22.7 亿次达成 YoY +22.4% 验证路径。</div>
+</div>
+</div>
+
+<div class="survivor" style="border-left-color:#3B82F6">
+<div class="survivor-title"><span class="rank" style="background:linear-gradient(135deg,#3B82F6,#1d4ed8)">P11</span><h3>PRD §7 详情页+联系中转：联系方式改为永久单轨中转页（S7）</h3></div>
+<div class="survivor-body">
+  <p><b>修订前（v2.0 §7.4.2）：</b>双方案联系中转页（手机号+微信号双卡片）+ 反爬双轨分层</p>
+  <p><b>修订后（v2.1）改为 S7 永久单轨中转页：</b><br>
+  · <b>统一方案</b>：电话/VX 二选一（用户发布时只填一种），号码中间 4 位脱敏，拨出/复制时才显示完整<br>
+  · <b>不分层</b>：所有用户无分层、无门槛、无 DAU 触发，统一走中转页<br>
+  · <b>不做 IM SDK</b>、不做文本聊天、不做付费中转通道<br>
+  · <b>触达埋点</b>：点击复制/拨出 = 触达事件（30 天自动清日志）<br>
+  · <b>砍掉</b>原 §7.7 反爬双轨分层（未实名每日 50 次/实名 200 次限制）→ 改为统一防爬限频（同一 IP 每日 ≤30 次）</p>
+  <div class="evidence-box"><b>对齐 Survivor：</b>S7 永久单轨中转；Scope"纯信息+不做 IM+不做支付"红线。</div>
+</div>
+</div>
+
+<div class="survivor" style="border-left-color:#10B981">
+<div class="survivor-title"><span class="rank" style="background:linear-gradient(135deg,#10B981,#047857)">P12</span><h3>PRD §9 新增 §9.x 信息完整度三档分级规格（T4）</h3></div>
+<div class="survivor-body">
+  <p><b>修订前（v2.0 §9）：</b>只有"敏感词过滤+图片审核+违规类目+举报与下架+申诉通道+数据最小化"，无主动分级</p>
+  <p><b>修订后（v2.1）新增 §9.x 信息完整度三档分级（T4）：</b><br>
+  · <b>🟢 完整</b>：必填项 100% + 位置到门牌号 + 三级类目精准命中 → 绿色圆点+"完整"标签 + 推荐池基础权重 ×2 优先展示<br>
+  · <b>🟡 半完整</b>：三条件只满足 2 个 → 黄色圆点 + ×1 正常排序 + 升级引导"还差 1 张室内图+门牌号就能升 🟢，附近人 2 倍概率看到"<br>
+  · <b>🔴 待补</b>：三条件只满足 ≤1 个 → 红色圆点+"去补全"悬浮按钮 + ×0.5 末位排序 + 个人中心置顶提醒<br>
+  <b>新增 §9.x 基础实名权限两档（T4）：</b>未实名每日看 3 条详情不能发布/实名无限次（与 P4 联动）<br>
+  <b>新增 §9.2 保留"AI 预审 90%+人工边界 10%"合规流程</b>（纯违规拦截，不参与信誉打分）</p>
+  <div class="evidence-box"><b>对齐 Survivor：</b>T4 三档分级；用户第三大目标"需求和资源的分级管理"。</div>
+</div>
+</div>
+
+<div class="survivor" style="border-left-color:#10B981">
+<div class="survivor-title"><span class="rank" style="background:linear-gradient(135deg,#10B981,#047857)">P13</span><h3>PRD §9 新增 §9.x 运营治理后台 4 MVP + 72h 临时类目通道 + 举报分级响应引擎（S4）</h3></div>
+<div class="survivor-body">
+  <p><b>修订前（v2.0 §9 + 附录 C）：</b>运营后台列入 P2"由研发/运营评估独立开发"</p>
+  <p><b>修订后（v2.1）从 P2 升级为 P0 必修（S4）：</b><br>
+  · <b>4 个后台 MVP 页面（必须与前端 P0 同排期）：</b><br>
+    ① 分类配置 CRUD（名称/父类/模板/颜色/图标/资质标记）→ JSON 推 CDN+版本号 3 秒生效<br>
+    ② 模板 Schema 编辑器（可视化字段拖拽）<br>
+    ③ 撮合权重配置+AB 开关（距离/时效/分类/关键词/认证）+ GBDT override 开关+灰度比例<br>
+    ④ 举报工单列表（按风险分排序、自动下架、批量处理）<br>
+  · <b>72h 临时类目快速验证通道</b>：运营发现新需求→挂"生活→临时→XXX"下→72h 自动下线→3 天内该类目发布数 ≥3 且被联系数 ≥5 → 自动进入"转正候选池"<br>
+  · <b>举报分级响应引擎</b>：原因分 5 类各配基础风险分（诈骗收费=50/不实=20/其他=5）→ 单条累计 ≥60 分或高敏举报率 ≥15% → 自动下架+紧急工单 SLA≤4h+举报人 24h 闭环反馈</p>
+  <div class="evidence-box"><b>对齐 Survivor：</b>S4 运营治理后台；T4 联动；58 同城 2024 内容安全团队 500 人验证合规基础。</div>
+</div>
+</div>
+
+<div class="survivor" style="border-left-color:#EC4899">
+<div class="survivor-title"><span class="rank" style="background:linear-gradient(135deg,#EC4899,#be185d)">P14</span><h3>PRD §6 新增 §6.x.8 三轴联动飞轮视觉交互规格（T6）+ 原型 HTML 增量改造 4 UI 组件</h3></div>
+<div class="survivor-body">
+  <p><b>修订前（v2.0 §6）：</b>无三轴联动飞轮视觉规格</p>
+  <p><b>修订后（v2.1）新增 §6.x.8 三轴联动视觉交互规格（T6）：</b><br>
+  · <b>飞轮闭环</b>：地图红色热力区 → 点"AI 帮我发"→ T2 套邻居众数 → T4 实填完 QS=82 金牌 → T3 Pin 金色心跳发光+金牌图层默认显示 → T1 GBDT Top 匹配+15% → 蜂窝热力+20% → 循环<br>
+  · <b>Tab 切 Pin 亮度×QS</b>：分类 Tab 切换时 Pin 亮度按 QS 分级 ×1.0~×1.3 发光<br>
+  · <b>地图中心移动到分类蜂窝密度最高区</b>：分类切换后自动平移到该类密度峰值蜂窝<br>
+  · <b>飞轮换动画</b>：热力饱和阈值 80% 前自动加深<br>
+  <b>新增原型 HTML 增量改造 4 个 UI 组件（T6）：</b><br>
+  · ① "AI 帮我发"按钮：首页右下角 FAB（悬浮操作按钮），紫+发光效果，点击弹三个模式<br>
+  · ② 图层控制面板：地图右上角三个竖点展开，分类三级树勾选（不是认证/时效/质量筛选器）<br>
+  · ③ Pin 星级角标：现有 Marker 右上角加小金色星星/钻石/灰标（仅基于 T4 完整度三档，不卖）<br>
+  · ④ 发布完成页 QS 权益卡：取代现有单纯"发布成功"toast，显示当前 QS 分+差多少到下一档+对应具体权益三条</p>
+  <div class="evidence-box"><b>对齐 Survivor：</b>T6 三轴联动飞轮；将 T1-T5 五条单独方案串成用户可感知的可视化闭环。</div>
+</div>
+</div>
+
+<div class="survivor" style="border-left-color:#EC4899">
+<div class="survivor-title"><span class="rank" style="background:linear-gradient(135deg,#EC4899,#be185d)">P15</span><h3>PRD §6 新增 §6.x 双向推送引擎规格（S1）</h3></div>
+<div class="survivor-body">
+  <p><b>修订前（v2.0 §6）：</b>无主动推送，纯被动地图发现</p>
+  <p><b>修订后（v2.1）新增 §6.x 双向推送引擎（S1）：</b><br>
+  · <b>需求发布后 1min 内推给 5km 内 Top20 认证活跃资源方</b>（点推送直接跳预填好的发布页）<br>
+  · <b>资源发布后 1min 推给 5km 内 Top30 匹配需求方</b><br>
+  · <b>双级意向漏斗北极星</b>（保留为底层 KPI，不作北极星）：联系→意向（至少一方选"已联系上"）→成交（发布方选"已成交"），24h 后双方三选一反馈<br>
+  · <b>推送通道</b>：APNs/FCM/小米/华为厂商通道 + 站内通知中心兜底<br>
+  · <b>推送频控</b>：单用户每日接收推送 ≤10 条，避免骚扰</p>
+  <div class="evidence-box"><b>对齐 Survivor：</b>S1 双向推送+双漏斗；闲鱼双向智能体采纳率 85% 后动销+15%。</div>
+</div>
+</div>
+
+<!-- 第三轮：修订优先级与依赖排序 -->
+<h2>🎯 第十部分：修订优先级与依赖排序（Batch1/2/3 落地节奏）</h2>
+<table class="compare">
+  <tr>
+    <th>批次</th>
+    <th>修订点</th>
+    <th>对应 Survivor</th>
+    <th>关键 SLA</th>
+    <th>依赖前置</th>
+  </tr>
+  <tr class="hit">
+    <td><b>Batch1（月 1-2）</b><br>纯前端+轻后端高 ROI</td>
+    <td>B1-B9 BRD 战略修订 / M1-M7 MRD 修订 / P1-P3 PRD 总览修订 / P4-P5 账号认证修订 / P8 T3 图层 / P9 S2 蜂窝 / P12 T4 分级 / P13 S4 后台</td>
+    <td>T3/T4/S2/S4/S6 + T5 战略</td>
+    <td>地图 P95≤300ms / 🟢完整发布率 ≥75% / 运营后台 4 MVP 上线</td>
+    <td>D5.1 战略评审通过（B4/B8）</td>
+  </tr>
+  <tr>
+    <td><b>Batch2（月 3-4）</b><br>AI 匹配双轨灰度</td>
+    <td>P10 T1 LR+GBDT / P15 S1 双向推送 / 原 §6.7 五因子加权保留为基线组</td>
+    <td>T1/S1</td>
+    <td>GBDT 组意向率 ≥基线×1.5 / Explore 新发布 7 天响应率 ≥基线×2.5</td>
+    <td>Batch1 完成+10% 灰度框架+特征存储</td>
+  </tr>
+  <tr>
+    <td><b>Batch3（月 5-6）</b><br>AI 发布 3B 小模型</td>
+    <td>P6 T2 AI 智能发布四模式 / P7 S6 有效期管理 / 原 §5 模板+记忆保留为基线</td>
+    <td>T2/S5/S6</td>
+    <td>采纳率 ≥80% / 发布时长 ≤30s / 健康分 60 门槛生效</td>
+    <td>3B 小模型部署 POC+Scope 规则引擎+图片语音识别 API</td>
+  </tr>
+  <tr class="miss">
+    <td><b>M3（月 7）</b><br>三轴联动飞轮</td>
+    <td>P14 T6 三轴联动飞轮视觉交互+原型 4 UI 组件改造</td>
+    <td>T6</td>
+    <td>三目标 Tab 协同首屏转化 ≥35% / 三乘积北极星 ≥0.216</td>
+    <td>Batch1/2/3 全部完成</td>
+  </tr>
+</table>
+
+<!-- 第三轮：核心风险与应对 -->
+<h2>⚠️ 第十一部分：核心风险与应对（必须先解套）</h2>
+<div class="reject-card">
+  <div>
+    <h4>风险 R-A：D5.1 战略评审不通过 → T1/T2 全部 AI 类 PRD 修改点研发不予接受</h4>
+    <div class="why">最关键前置依赖</div>
+  </div>
+  <div>
+    <div><b>应对：</b>BRD §6 D5.1 三色清单附录先单独过 D 级评审（建议 1-2 天评审会），通过后再启动 PRD P10/P6 修订；评审不通过则回滚到 PRD v2.0 基线+只做 Batch1 T3/T4/S2/S4。</div>
+  </div>
+</div>
+<div class="reject-card">
+  <div>
+    <h4>风险 R-B：3B 小模型部署 ROI 不达标 → T2 AI 智能发布卡死</h4>
+    <div class="why">Batch3 主路径技术风险</div>
+  </div>
+  <div>
+    <div><b>应对：</b>Batch1 启动时同步做 BOSS Nanbeige4.1-3B 部署 POC（不阻塞 Batch1/2 主线），如单次推理成本 >0.01 元或采纳率 <80% → Batch3 降级为"纯模板+邻居众数+对话式"三件套（S5 路径），AI 四件套延后到 Batch4+。</div>
+  </div>
+</div>
+<div class="reject-card">
+  <div>
+    <h4>风险 R-C：高德 MarkerCluster 10 万点聚合性能不达标 → T3 P95≤300ms 不达标</h4>
+    <div class="why">Batch1 硬指标</div>
+  </div>
+  <div>
+    <div><b>应对：</b>Batch1 第 1 周做高德 MarkerCluster 实测 POC，如 10 万点聚合 >80ms → 启动备选方案（自研 WebGL 聚合+按需取数最大 500 条+本地三级缓存预热），保证 P95≤300ms 硬指标必达。</div>
+  </div>
+</div>
+<div class="reject-card">
+  <div>
+    <h4>风险 R-D：Scope 越界——T4 分级被运营引入商业化售卖</h4>
+    <div class="why">合规红线</div>
+  </div>
+  <div>
+    <div><b>应对：</b>BRD §5.2 + PRD §9.x 明确"零商业化分级售卖"红线，运营 KPI 不挂"金牌售卖数"指标；🟢🟡🔴 角标只能靠补信息升，不能靠钱买；如未来要做付费加速曝光包，必须满足"🟢 完整发布率 ≥85% 连续 3 月+用户问卷 ≥20% 要求"双条件才进 BRD 评审。</div>
+  </div>
+</div>
+
+<!-- 第三轮：路径建议 -->
+<h2>🚀 第十二部分：第三轮 ideate 收尾建议（路径选择）</h2>
+<div class="next-steps">
+<div class="step-card"><b>🟢 强烈建议路径 B（整合回写双文档）：</b>本轮 ideate 已系统识别 30+ 处未处理细节并给出具体修订方案，建议直接进入路径 B——一次性产出 BRD v2.1 修订版（9 处修订）+ MRD v2.1 修订版（7 处修订）+ PRD v2.1 增补变更单（14 处修订），同步交付 PPT/DOCX 三大文档新版本。</div>
+<div class="step-card"><b>🟡 备选路径 C（先讨论修正补证据再定）：</b>如对 T2 3B 小模型部署 ROI、T4 零商业化红线、T5 三乘积北极星公式权重等有不同判断，先开 1-2 场讨论会再进入路径 B。</div>
+<div class="step-card"><b>🔴 不建议路径 D（暂存档备用）：</b>用户已明确反馈"文档生成不完整、细节未处理好"，存档=不解决问题，违背用户当前意图。</div>
+</div>
+
+<footer>
+  找鸭找 APP v2 · 三轮 ce-ideate 整合报告（第1轮需求深度还原 S1-S7 + 第2轮三大核心目标落地 T1-T6 + 第3轮三大文档未处理细节修订 B1-B9/M1-M7/P1-P15）· 生成于 2026-08-19 · 工件路径：<code>ideation/找鸭找v2-需求深度还原-ideation-20260819.html</code> · Raw 150+30 条 / Survivors 13+30 条 / Rejections 12 类
+</footer>
+
+<!-- ========== 第三轮 ideate 结束 ========== -->
+
+<div class="next-steps">
+<h2>🎯 第五部分：两轮 ideate 整合后可走的 5 条路（S1-S7 + T1-T6 共 13 Survivors）</h2>
+<p style="margin-bottom:12px;color:var(--muted)">按「战略先行 → 方案细化 → 回写文档 → 讨论修正 → 暂存档」五条标准通道任选（三目标落地强烈建议先走 E 战略评审，因为 T5 解决 BRD D5 砍AI和目标①的战略级冲突，不过评审所有 T1-T6 的修改点都不会被研发合法质疑）。</p>
+<div class="step-card"><b>路径 E（本轮新增最优先）· 先过 T5 战略评审 D5.1：</b>把 T5 的「D5.1 AI 三色清单修订 + 三乘积北极星重定 + 三批滚动MVP节奏 + 三目标独立灰度开关」作为 BRD D级变更评审议题先过（一般 1-2 天评审会）；评审通过后再走下面 A-D 任一，因为 T5 是 S1-S7 + T1-T6 所有 AI 类方案的合法入场券（否则研发看到 6 处砍 AI 文档都会停+质疑）。</div>
+<div class="step-card"><b>路径 A · Brainstorm 单条（两轮合并）：</b>从 13 Survivors 选最想落地的 1 条进 ce-brainstorm 输出 requirements-only 统一 plan 写入 plans/。<b>建议优先级排序（三乘积飞轮依赖顺序）：</b>① T3+T4（Batch1 地图+QS，纯前端高ROI 第一验证） → ② T5（战略评审必做） → ③ T1（Batch2 GBDT双轨灰度匹配） → ④ T2（Batch3 AI发布） → ⑤ S1（双向推送+双漏斗北极星，和 T1 一起做匹配端增强）。第一轮 Survivors 建议先做 S4（分类后台MVP+举报分级），因为和 T4 分级管理联动是运营底座必须同排期。</div>
+<div class="step-card"><b>路径 B · 整合回写 BRD + PRD（双文档同步变更）：</b>合并 T5 的 BRD 修改清单（D5.1三色/北极星/里程碑/slogan）+ T1-T6 的 PRD 修改清单（匹配§6.7/发布§5/地图§6/QS§9.x/分级权限/合规三道后处理/原型改造）+ S1-S7 的 PRD 修改清单，一次性产出 BRD v2.0 修订版 + PRD v2.1 增补变更单，经 D 级评审后冻结新版双文档。适合"方向已经全清楚，直接进入文档评审"的场景。</div>
+<div class="step-card"><b>路径 C · 先讨论/修正/补证据再定：</b>对 13 Survivors + 12 类 Rejections 的某些点（比如 T2 3B小模型是不是真的部署得起、T4 付费能不能买钻石标有争议、三乘积北极星公式有没有更优权重等）有不同判断，有想辩论/修正/补充证据/加新 raw ideas 的点，先讨论再进入 Brainstorm 或回写。适合多人评审/老板过会的前置。</div>
+<div class="step-card"><b>路径 D · 到此为止存档备用：</b>把这份工件当产品分析+战略决策的知识资产存档，当前里程碑锁死排期不想动的话先不改 BRD/PRD，等当前里程碑完成后再根据真实数据挑 Survivor 落地（建议按 Batch1→Batch2→Batch3 顺序捞，不要乱序）。</div>
+</div>
+
+<!-- 第十三部分：路径 C 争议点讨论决策结果（2026-08-19） -->
+<h2>🎯 第十三部分：路径 C 争议点讨论决策回写</h2>
+
+<p style="background:#FFF7ED;border-left:4px solid #F59E0B;padding:14px;border-radius:8px;margin:20px 0">
+<b>背景：</b>用户选择路径 C（先讨论修正再定），优先讨论"三乘积北极星权重"与"高德 MarkerCluster 性能"两个争议点。经产品经理视角概念解释 + 候选方案 A/B/C 对比 + AskUserQuestion 决策，最终结果如下：
+</p>
+
+<div class="survivor" style="border-left-color:#1FBAD6">
+<div class="survivor-title"><span class="rank" style="background:linear-gradient(135deg,#1FBAD6,#1799B0)">D1</span><h3>争议点 1 决策：三乘积北极星权重 → 方案 A（等权硬线 0.6×0.6×0.6=0.216）</h3></div>
+<div class="survivor-body">
+  <p><b>决策结果：</b>全期统一 0.6×0.6×0.6=0.216，等权相乘，任何一轴为 0 → 整体为 0。</p>
+  <div class="pillars">
+    <div class="pillar"><b>用户选择理由：</b>战略叙事最强，团队聚焦无歧义，"乘积飞轮"核心论点保留完整（任何一轴为0=产品失败）。</div>
+    <div class="pillar"><b>识别风险：</b>Batch1（月1-2）AI 轴未上线 → 北极星恒 0，团队无考核指标可对齐。</div>
+    <div class="pillar"><b>兜底方案（写入 BRD §7.2 里程碑章节）：</b>Batch1 设为"冷启动观察期"——北极星看板照样跑（AI 轴填 0 展示），但 <b>不作为团队 KPI 考核</b>；从 Batch2（月3-4）开始正式纳入考核。AI 召回率口径同步定义为：<b>"用户发布需求后 5min 内被推送到 Top20 资源方中，至少 1 个资源方点击查看该需求详情的比例"</b>（依赖 S1 双向推送 + T1 LR+GBDT 模型，Batch2 上线后可测）。</div>
+    <div class="pillar"><b>对齐 Survivor：</b>T5 战略校准（三乘积北极星公式）、B5 BRD §7.1 北极星指标修订、S1 双向推送引擎。</div>
+  </div>
+</div>
+</div>
+
+<div class="survivor" style="border-left-color:#F97316">
+<div class="survivor-title"><span class="rank" style="background:linear-gradient(135deg,#F97316,#c2410c)">D2</span><h3>争议点 2 决策：高德 MarkerCluster 性能 → 方案 A（信任官方规格，不前置 POC）</h3></div>
+<div class="survivor-body">
+  <p><b>决策结果：</b>不做前置 POC，直接按高德官方规格"10万点聚合≤80ms"排期，P95≤300ms SLA 写入 BRD/PRD。</p>
+  <div class="pillars">
+    <div class="pillar"><b>用户选择理由：</b>不阻塞 Batch1 排期，符合"轻量无新增"原则，研发资源聚焦核心功能。</div>
+    <div class="pillar"><b>识别风险：</b>高德"10万点≤80ms"是实验室数据；实际低端安卓机（2GB RAM）可能 5-10 倍退化（FPS<10），风险后置到上线时才暴露。</div>
+    <div class="pillar"><b>兜底方案（写入 PRD §6.x 性能保障章节）：</b><br>
+      ① <b>性能日志埋点（Batch1 开发同步实施，零额外成本）</b>：图层切换耗时 + FPS + 内存峰值三项指标实时上报，P95>300ms 自动告警；<br>
+      ② <b>预留"性能降级开关"应急方案</b>（不立即实施，仅文档化）：触发条件=连续 3 次帧渲染 >16ms 或 P95 >800ms；降级动作=关闭聚合动画 / 单次渲染上限 500 Pin（超出按距离衰减裁剪）/ 关闭 Pin 角标发光效果（仅保留 🟢🟡🔴 色块）/ 弹 toast"当前区域信息较多，已开启性能模式"。<br>
+      ③ <b>假设 A8 状态</b>：保留 ideation 原标注"实测POC"，但改为"上线后第一周实测验证"，若不达标则启用降级开关。</div>
+    <div class="pillar"><b>对齐 Survivor：</b>T3 分类图层快速加载引擎（P95≤300ms SLA）、T5 假设 A8（MarkerCluster 规格）。</div>
+  </div>
+</div>
+</div>
+
+<div class="survivor" style="border-left-color:#10B981">
+<div class="survivor-title"><span class="rank" style="background:linear-gradient(135deg,#10B981,#047857)">D3</span><h3>争议点 3 决策：分类聚合阈值表 → 采用新溯源并补进 PRD</h3></div>
+<div class="survivor-body">
+  <p><b>决策结果：</b>采用新溯源数据源，补进 PRD §6.x 分类差异化聚合阈值章节。</p>
+  <div class="pillars">
+    <div class="pillar"><b>最终阈值表（带 evidence 溯源）：</b><br>
+      · <b>工作类（3 条聚）</b>：高密度类目，evidence=58 同城招聘数据（城市 3km 内均值 12 条）；<br>
+      · <b>房屋类（5 条聚）</b>：中密度类目，evidence=贝壳数据（3km 内均值 8 条）；<br>
+      · <b>生活类（8 条聚）</b>：低密度长尾类目，evidence=闲鱼数据（3km 内均值 5 条）；<br>
+      · <b>车辆/服务类</b>：参照生活类 8 条聚（无独立 evidence，按低密度长尾处理）。</div>
+    <div class="pillar"><b>用户选择理由：</b>有 evidence 溯源的阈值更具说服力，研发/评审/未来迭代都有据可依。</div>
+    <div class="pillar"><b>对齐 Survivor：</b>T3 分类差异化聚合阈值表、P8 PRD §6 首页地图新增 SLA。</div>
+  </div>
+</div>
+</div>
+
+<div class="step-card" style="background:#ECFDF5;border-left:4px solid #10B981">
+<b>下一步行动：</b>三个决策已锁定，立即启动路径 B（整合回写双文档）——一次性产出 BRD v2.1 修订版（9 处修订 + D1/D2/D3 决策同步）+ MRD v2.1 修订版（7 处修订 + 三批滚动 GTM）+ PRD v2.1 增补变更单（15 处修订 + D2 性能日志埋点 + D3 聚合阈值 evidence 溯源），同步交付 BRD.pptx / MRD.pptx / PRD.docx 三大文档新版本，提交评审。
+</div>
+
+<footer>
+  找鸭找 APP v2 · 三轮 ce-ideate 整合报告（第1轮需求深度还原 S1-S7 + 第2轮三大核心目标落地 T1-T6 + 第3轮三大文档未处理细节修订 B1-B9/M1-M7/P1-P15 + 路径C争议点讨论决策 D1-D3）· 生成于 2026-08-19 · 工件路径：<code>ideation/找鸭找v2-需求深度还原-ideation-20260819.html</code> · Raw 150+30 条 / Survivors 13+30+3 条 / Rejections 12 类
+</footer>
+
+</body>
+</html>

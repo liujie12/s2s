@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>路径规划服务测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .test-section h2 {
+            color: #666;
+            margin-top: 0;
+        }
+        .test-result {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #f9f9f9;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-family: 'Courier New', monospace;
+        }
+        .success {
+            border-left: 4px solid #4CAF50;
+        }
+        .error {
+            border-left: 4px solid #f44336;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .input-group {
+            margin: 10px 0;
+        }
+        label {
+            display: inline-block;
+            width: 100px;
+            font-weight: bold;
+        }
+        input {
+            padding: 5px;
+            width: 200px;
+        }
+        select {
+            padding: 5px;
+            width: 120px;
+        }
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-left: 10px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>路径规划服务测试</h1>
+
+        <!-- 基本路径计算测试 -->
+        <div class="test-section">
+            <h2>1. 基本路径计算测试</h2>
+            <div class="input-group">
+                <label>起点经度:</label>
+                <input type="number" id="originLon" value="116.397428" step="0.000001">
+                <label>起点纬度:</label>
+                <input type="number" id="originLat" value="39.90923" step="0.000001">
+            </div>
+            <div class="input-group">
+                <label>终点经度:</label>
+                <input type="number" id="destLon" value="116.417428" step="0.000001">
+                <label>终点纬度:</label>
+                <input type="number" id="destLat" value="39.91923" step="0.000001">
+            </div>
+            <div class="input-group">
+                <label>交通方式:</label>
+                <select id="mode">
+                    <option value="walking">步行</option>
+                    <option value="driving">驾车</option>
+                    <option value="transit">公交</option>
+                </select>
+                <button onclick="testBasicPath()">测试路径计算</button>
+                <span id="loading1" class="loading" style="display: none;"></span>
+            </div>
+            <div id="result1" class="test-result"></div>
+        </div>
+
+        <!-- 批量路径计算测试 -->
+        <div class="test-section">
+            <h2>2. 批量路径计算测试</h2>
+            <button onclick="testBatchPath()">测试批量路径计算</button>
+            <span id="loading2" class="loading" style="display: none;"></span>
+            <div id="result2" class="test-result"></div>
+        </div>
+
+        <!-- 缓存测试 -->
+        <div class="test-section">
+            <h2>3. 缓存测试</h2>
+            <button onclick="testCache()">测试缓存功能</button>
+            <div id="result3" class="test-result"></div>
+        </div>
+
+        <!-- 性能测试 -->
+        <div class="test-section">
+            <h2>4. 性能测试</h2>
+            <button onclick="testPerformance()">测试性能</button>
+            <span id="loading4" class="loading" style="display: none;"></span>
+            <div id="result4" class="test-result"></div>
+        </div>
+
+        <!-- 错误处理测试 -->
+        <div class="test-section">
+            <h2>5. 错误处理测试</h2>
+            <button onclick="testErrorHandling()">测试错误处理</button>
+            <div id="result5" class="test-result"></div>
+        </div>
+    </div>
+
+    <script src="pathPlanning.js"></script>
+    <script>
+        // 初始化路径规划服务
+        const pathService = new pathPlanning.PathPlanningService();
+        const batchCalculator = new pathPlanning.BatchPathCalculator(pathService);
+
+        // 基本路径计算测试
+        async function testBasicPath() {
+            const originLon = parseFloat(document.getElementById('originLon').value);
+            const originLat = parseFloat(document.getElementById('originLat').value);
+            const destLon = parseFloat(document.getElementById('destLon').value);
+            const destLat = parseFloat(document.getElementById('destLat').value);
+            const mode = document.getElementById('mode').value;
+
+            const loading = document.getElementById('loading1');
+            const result = document.getElementById('result1');
+
+            loading.style.display = 'inline-block';
+            result.innerHTML = '';
+
+            try {
+                const startTime = performance.now();
+                const pathResult = await pathService.calculatePath(
+                    [originLon, originLat],
+                    [destLon, destLat],
+                    mode
+                );
+                const endTime = performance.now();
+                const responseTime = endTime - startTime;
+
+                result.className = 'test-result success';
+                result.innerHTML = `响应时间: ${responseTime.toFixed(2)}ms\n` +
+                    JSON.stringify(pathResult, null, 2);
+            } catch (error) {
+                result.className = 'test-result error';
+                result.innerHTML = `错误: ${error.message}`;
+            } finally {
+                loading.style.display = 'none';
+            }
+        }
+
+        // 批量路径计算测试
+        async function testBatchPath() {
+            const loading = document.getElementById('loading2');
+            const result = document.getElementById('result2');
+
+            loading.style.display = 'inline-block';
+            result.innerHTML = '';
+
+            try {
+                const requests = [
+                    {
+                        origin: [116.397428, 39.90923],
+                        destination: [116.417428, 39.91923],
+                        mode: 'walking'
+                    },
+                    {
+                        origin: [116.397428, 39.90923],
+                        destination: [116.417428, 39.91923],
+                        mode: 'driving'
+                    },
+                    {
+                        origin: [116.397428, 39.90923],
+                        destination: [116.417428, 39.91923],
+                        mode: 'transit'
+                    }
+                ];
+
+                const startTime = performance.now();
+                const batchResults = await batchCalculator.calculateBatchPaths(requests);
+                const endTime = performance.now();
+                const responseTime = endTime - startTime;
+
+                result.className = 'test-result success';
+                result.innerHTML = `批量计算响应时间: ${responseTime.toFixed(2)}ms\n` +
+                    JSON.stringify(batchResults, null, 2);
+            } catch (error) {
+                result.className = 'test-result error';
+                result.innerHTML = `错误: ${error.message}`;
+            } finally {
+                loading.style.display = 'none';
+            }
+        }
+
+        // 缓存测试
+        async function testCache() {
+            const result = document.getElementById('result3');
+
+            try {
+                // 清空缓存
+                pathService.clearCache();
+                let cacheSize = pathService.getCacheSize();
+
+                // 第一次计算路径
+                const startTime1 = performance.now();
+                await pathService.calculatePath(
+                    [116.397428, 39.90923],
+                    [116.417428, 39.91923],
+                    'walking'
+                );
+                const endTime1 = performance.now();
+                const time1 = endTime1 - startTime1;
+
+                cacheSize = pathService.getCacheSize();
+
+                // 第二次计算相同路径（应该从缓存获取）
+                const startTime2 = performance.now();
+                await pathService.calculatePath(
+                    [116.397428, 39.90923],
+                    [116.417428, 39.91923],
+                    'walking'
+                );
+                const endTime2 = performance.now();
+                const time2 = endTime2 - startTime2;
+
+                result.className = 'test-result success';
+                result.innerHTML = `缓存大小: ${cacheSize}\n` +
+                    `第一次计算时间: ${time1.toFixed(2)}ms\n` +
+                    `第二次计算时间: ${time2.toFixed(2)}ms\n` +
+                    `缓存效果: ${(time2 < time1 * 0.5) ? '有效' : '无效'}`;
+            } catch (error) {
+                result.className = 'test-result error';
+                result.innerHTML = `错误: ${error.message}`;
+            }
+        }
+
+        // 性能测试
+        async function testPerformance() {
+            const loading = document.getElementById('loading4');
+            const result = document.getElementById('result4');
+
+            loading.style.display = 'inline-block';
+            result.innerHTML = '';
+
+            try {
+                const testCount = 10;
+                const times = [];
+
+                for (let i = 0; i < testCount; i++) {
+                    const origin = [116.397428 + Math.random() * 0.1, 39.90923 + Math.random() * 0.1];
+                    const destination = [116.417428 + Math.random() * 0.1, 39.91923 + Math.random() * 0.1];
+                    const mode = ['walking', 'driving', 'transit'][Math.floor(Math.random() * 3)];
+
+                    const startTime = performance.now();
+                    await pathService.calculatePath(origin, destination, mode);
+                    const endTime = performance.now();
+                    times.push(endTime - startTime);
+                }
+
+                const avgTime = times.reduce((sum, time) => sum + time, 0) / times.length;
+                const maxTime = Math.max(...times);
+                const minTime = Math.min(...times);
+
+                result.className = 'test-result success';
+                result.innerHTML = `性能测试结果 (${testCount}次测试):\n` +
+                    `平均响应时间: ${avgTime.toFixed(2)}ms\n` +
+                    `最大响应时间: ${maxTime.toFixed(2)}ms\n` +
+                    `最小响应时间: ${minTime.toFixed(2)}ms\n` +
+                    `是否满足要求 (<=2000ms): ${(maxTime <= 2000) ? '是' : '否'}`;
+            } catch (error) {
+                result.className = 'test-result error';
+                result.innerHTML = `错误: ${error.message}`;
+            } finally {
+                loading.style.display = 'none';
+            }
+        }
+
+        // 错误处理测试
+        function testErrorHandling() {
+            const result = document.getElementById('result5');
+
+            try {
+                // 测试无效坐标
+                pathService.calculatePath(null, [116.417428, 39.91923], 'walking')
+                    .then(() => {
+                        result.className = 'test-result error';
+                        result.innerHTML = '错误: 应该捕获无效坐标错误';
+                    })
+                    .catch(error => {
+                        result.className = 'test-result success';
+                        result.innerHTML = `错误处理测试通过:\n${error.message}`;
+                    });
+            } catch (error) {
+                result.className = 'test-result success';
+                result.innerHTML = `错误处理测试通过:\n${error.message}`;
+            }
+        }
+
+        // 页面加载完成后自动运行基本测试
+        window.onload = function() {
+            setTimeout(testBasicPath, 500);
+        };
+    </script>
+</body>
+</html>
