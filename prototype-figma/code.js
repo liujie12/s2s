@@ -27,6 +27,13 @@ var SEMANTIC_COLORS = {
   'success':        '#22C55E',
   'warning':        '#F59E0B',
   'error':          '#EF4444',
+  // 深色文字变体（PRD §1.4.2，2026-08-25 新增）：上面三色作文字时对比度仅
+  // 2.15–3.76:1，不过 WCAG AA 4.5:1。故拆职责——原三色只作填充/圆点/图形，
+  // 以下三色专用于「彩色文字」与 danger 按钮底（白字压其上）。实测：
+  // success-text 5.02:1 / warning-text 5.02:1 / error-text 6.47:1
+  'success-text':   '#15803D',
+  'warning-text':   '#B45309',
+  'error-text':     '#B91C1C',
   'text-primary':   '#1F2937',
   'text-secondary': '#6B7280',
   'text-placeholder': '#9CA3AF',
@@ -237,7 +244,7 @@ function styleOf(weight) {
 var COLLECTION_NAME = 'ZhaoYaZhao Tokens';
 
 /**
- * 创建或复用 Variables 集合，并把语义色 13 项 + 分类色 5 项写为 COLOR 变量
+ * 创建或复用 Variables 集合，并把语义色 16 项 + 分类色 5 项写为 COLOR 变量
  * 幂等语义为「值对齐」：同名变量已存在则比对当前值，不一致时改写为最新 Token 值
  * @returns {Promise<{created:number,reused:number,updated:number}>} 新建/沿用/改值的变量计数
  */
@@ -674,7 +681,7 @@ function buttonRaw(label, variant, width) {
     primary:   { fill: 'color/primary',   textColor: 'color/surface',      radius: RADIUS.md,   stroke: null },
     secondary: { fill: 'color/surface',   textColor: 'color/primary',      radius: RADIUS.md,   stroke: 'color/primary' },
     ghost:     { fill: null,              textColor: 'color/primary',      radius: RADIUS.md,   stroke: null },
-    danger:    { fill: 'color/error',     textColor: 'color/surface',      radius: RADIUS.md,   stroke: null },
+    danger:    { fill: 'color/error-text', textColor: 'color/surface',     radius: RADIUS.md,   stroke: null },
     capsule:   { fill: 'color/primary',   textColor: 'color/surface',      radius: RADIUS.full, stroke: null },
     disabled:  { fill: 'color/border',    textColor: 'color/text-placeholder', radius: RADIUS.md, stroke: null }
   }[variant] || {};
@@ -986,7 +993,7 @@ function annotation(title, lines) {
   });
   a.appendChild(text(title, 'small', 'color/primary-dark'));
   for (var i = 0; i < lines.length; i++) {
-    a.appendChild(text('· ' + lines[i], 'caption', 'color/text-secondary'));
+    a.appendChild(text('· ' + lines[i], 'caption', 'color/primary-dark'));
   }
   return a;
 }
@@ -1370,7 +1377,8 @@ async function batchSetup() {
   var colorBoard = box('board/语义色板 [PRD §1.4.2]', 'VERTICAL', {
     pad: SPACING.xl, gap: SPACING.md, fill: 'color/surface', radius: RADIUS.lg
   });
-  colorBoard.appendChild(text('语义色板（13 项）｜主色 = A 深湖青 #0B7C8C（2026-08-23 定稿，白字 4.91:1 过 WCAG AA）', 'h3'));
+  colorBoard.appendChild(text('语义色板（16 项）｜主色 = A 深湖青 #0B7C8C（2026-08-23 定稿，白字 4.91:1 过 WCAG AA）', 'h3'));
+  colorBoard.appendChild(text('*-text 三色为深色文字变体（2026-08-25 新增）：原 success/warning/error 只作填充与圆点，作文字或白字压底时一律改用 -text 变体，详见 PRD §1.4.2', 'caption', 'color/text-secondary'));
   for (var key in SEMANTIC_COLORS) {
     var row = box('_swatch-' + key, 'HORIZONTAL', { gap: SPACING.md, align: 'CENTER' });
     row.appendChild(box('_chip', 'HORIZONTAL', { w: 40, h: 40, radius: RADIUS.md, fill: 'color/' + key, stroke: 'color/border' }));
@@ -2481,8 +2489,8 @@ function buildDetail() {
     fill: 'color/primary-light', radius: RADIUS.lg
   });
   trust.appendChild(text('信任卡', 'h3', 'color/primary-dark'));
-  trust.appendChild(text('已实名 ✅｜资质认证 ✅｜信息完整度 🟢', 'small', 'color/text-secondary'));
-  trust.appendChild(text('不含信誉评价、不含交易记录（Scope 红线）', 'caption', 'color/text-placeholder'));
+  trust.appendChild(text('已实名 ✅｜资质认证 ✅｜信息完整度 🟢', 'small', 'color/primary-dark'));
+  trust.appendChild(text('不含信誉评价、不含交易记录（Scope 红线）', 'caption', 'color/primary-dark'));
   body.appendChild(trust);
   body.appendChild(button('联系 TA', 'primary', CANVAS.w - SPACING.lg * 2));
   s.appendChild(body);
@@ -2509,7 +2517,7 @@ function buildDetailOffline() {
   // 顶部红条：不进 _body，故不受下方 Opacity 60% 影响
   var banner = box('_offline-banner', 'HORIZONTAL', {
     w: CANVAS.w, pad: SPACING.md, align: 'CENTER', justify: 'CENTER',
-    fill: 'color/error'
+    fill: 'color/error-text'
   });
   banner.appendChild(text(st.banner, 'small', 'color/surface'));
   s.appendChild(banner);
@@ -2700,7 +2708,7 @@ function buildTrust() {
     w: CANVAS.w - SPACING.lg * 2, pad: SPACING.md, gap: SPACING.xs,
     fill: 'color/surface', radius: RADIUS.lg, stroke: 'color/success'
   });
-  l1.appendChild(text('第一层 · 实名认证 ✅ 已完成', 'h3', 'color/success'));
+  l1.appendChild(text('第一层 · 实名认证 ✅ 已完成', 'h3', 'color/success-text'));
   l1.appendChild(text('身份证 + 人脸核验，发布前置门槛', 'small', 'color/text-secondary'));
   body.appendChild(l1);
   var l2 = box('_layer2', 'VERTICAL', {
@@ -2772,7 +2780,7 @@ function buildAiConfirm() {
     var lft = box('_l', 'VERTICAL', { gap: 2 });
     lft.appendChild(text(guesses[i][0], 'caption', 'color/text-secondary'));
     lft.appendChild(text(guesses[i][2] ? guesses[i][1] : '需你补充', 'body',
-      guesses[i][2] ? 'color/text-primary' : 'color/error'));
+      guesses[i][2] ? 'color/text-primary' : 'color/error-text'));
     row.appendChild(lft);
     if (guesses[i][2]) {
       var tagBox = box('_ai-tag', 'HORIZONTAL', {
@@ -2794,12 +2802,12 @@ function buildAiConfirm() {
   });
   sprint.appendChild(text('再花 5 秒升 🟢', 'h3', 'color/primary-dark'));
   var sp1 = box('_sp-1', 'HORIZONTAL', { w: CANVAS.w - SPACING.lg * 2 - SPACING.md * 2, justify: 'SPACE_BETWEEN', align: 'CENTER' });
-  sp1.appendChild(text('门牌号', 'small', 'color/text-secondary'));
+  sp1.appendChild(text('门牌号', 'small', 'color/primary-dark'));
   sp1.appendChild(button('取当前定位门牌', 'secondary', 0));
   sprint.appendChild(sp1);
   var sp2 = box('_sp-2', 'HORIZONTAL', { w: CANVAS.w - SPACING.lg * 2 - SPACING.md * 2, justify: 'SPACE_BETWEEN', align: 'CENTER' });
-  sp2.appendChild(text('三级类目', 'small', 'color/text-secondary'));
-  sp2.appendChild(text('帮厨 / 洗碗 / 传菜', 'caption', 'color/primary'));
+  sp2.appendChild(text('三级类目', 'small', 'color/primary-dark'));
+  sp2.appendChild(text('帮厨 / 洗碗 / 传菜', 'caption', 'color/primary-dark'));
   sprint.appendChild(sp2);
   body.appendChild(sprint);
 
@@ -2824,7 +2832,7 @@ function buildPublishSuccess() {
   var s = screen('publish-success-screen', '发布完成页', 'PRD §6.13');
   s.appendChild(statusBar());
   var body = box('_body', 'VERTICAL', { w: CANVAS.w, pad: SPACING.xl, gap: SPACING.lg, align: 'CENTER' });
-  body.appendChild(text('✓', 'h1', 'color/success'));
+  body.appendChild(text('✓', 'h1', 'color/success-text'));
   body.appendChild(text('发布成功', 'h2'));
   body.appendChild(text('附近的人将看到你的信息', 'small', 'color/text-secondary'));
 
@@ -2833,7 +2841,7 @@ function buildPublishSuccess() {
     w: CANVAS.w - SPACING.xl * 2, pad: SPACING.lg, gap: SPACING.md,
     fill: 'color/surface', radius: RADIUS.lg, stroke: 'color/warning'
   });
-  cc.appendChild(text('当前完整度 🟡 半完整', 'h3', 'color/warning'));
+  cc.appendChild(text('当前完整度 🟡 半完整', 'h3', 'color/warning-text'));
   cc.appendChild(text('三条件满足 2 个（PRD §9.8）', 'caption', 'color/text-placeholder'));
 
   var gapBox = box('_gap', 'VERTICAL', { gap: SPACING.xs });
@@ -3073,7 +3081,7 @@ function buildT6Board() {
     w: 320, pad: SPACING.lg, gap: SPACING.sm, fill: 'color/primary-light', radius: RADIUS.lg
   });
   cc.appendChild(text('发布成功 · 完整度 🟡 60%', 'h3', 'color/primary-dark'));
-  cc.appendChild(text('补齐「工时」和「照片」可提升曝光', 'small', 'color/text-secondary'));
+  cc.appendChild(text('补齐「工时」和「照片」可提升曝光', 'small', 'color/primary-dark'));
   cc.appendChild(button('立即补齐', 'primary', 0));
   g4.appendChild(cc);
   b.appendChild(g4);

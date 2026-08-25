@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>找鸭找 · 鸭子 IP 造型方向候选 v2（含信息共享元素）</title>
+<style>
+  :root{
+    --brand:#0B7C8C; --brand-dark:#075E6B; --brand-light:#E6F6F8;
+    --accent:#FF8A3D; --text:#1F2937; --muted:#6B7280;
+    --border:#E5E7EB; --bg:#F8FAFC; --surface:#fff;
+    --warn-bg:#FEF3C7; --warn-bd:#F59E0B;
+    --ok-bg:#ECFDF5; --ok-bd:#22C55E;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:"Noto Sans SC","Microsoft YaHei",sans-serif;
+    background:var(--bg); color:var(--text); line-height:1.6;
+    padding:32px 24px 64px;
+  }
+  .wrap{max-width:1120px;margin:0 auto}
+
+  header{border-bottom:3px solid var(--brand);padding-bottom:20px;margin-bottom:24px}
+  h1{font-size:24px;font-weight:700;color:var(--brand);letter-spacing:-.3px}
+  .sub{font-size:13px;color:var(--muted);margin-top:6px}
+
+  .notice{
+    background:var(--warn-bg);border-left:4px solid var(--warn-bd);
+    padding:14px 18px;border-radius:0 8px 8px 0;margin-bottom:20px;font-size:13px;
+  }
+  .notice strong{color:#92400E}
+  .notice ul{margin:8px 0 0 18px}
+  .notice li{margin:4px 0}
+
+  .concept{
+    background:var(--ok-bg);border-left:4px solid var(--ok-bd);
+    padding:14px 18px;border-radius:0 8px 8px 0;margin-bottom:28px;font-size:13px;
+  }
+  .concept strong{color:#166534}
+  .concept table{margin-top:10px;box-shadow:none;background:transparent}
+  .concept td{border-top:1px solid #BBF7D0;padding:7px 12px 7px 0;background:transparent!important}
+  .concept td:first-child{font-weight:600;white-space:nowrap;width:120px}
+
+  h2{
+    font-size:17px;font-weight:600;margin:34px 0 14px;
+    padding-left:10px;border-left:4px solid var(--brand);
+  }
+
+  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:20px}
+  .card{
+    background:var(--surface);border:1px solid var(--border);
+    border-radius:12px;overflow:hidden;
+    box-shadow:0 2px 8px rgba(0,0,0,.04);
+  }
+  .card-hd{
+    padding:12px 16px;background:var(--brand-light);
+    border-bottom:1px solid var(--border);
+    display:flex;align-items:center;gap:10px;
+  }
+  .tag{
+    background:var(--brand);color:#fff;font-size:11px;font-weight:600;
+    padding:2px 8px;border-radius:10px;flex-shrink:0;
+  }
+  .tag.new{background:var(--accent)}
+  .card-hd h3{font-size:14px;font-weight:600}
+  .card img{width:100%;display:block;background:#fff;aspect-ratio:1;object-fit:cover}
+  .card-bd{padding:14px 16px;font-size:13px}
+  .card-bd dl{display:grid;grid-template-columns:auto 1fr;gap:6px 10px}
+  .card-bd dt{color:var(--muted);font-weight:600;white-space:nowrap}
+  .card-bd dd{color:var(--text)}
+  .card-bd dd b{color:var(--brand-dark)}
+
+  table{width:100%;border-collapse:collapse;font-size:13px;background:var(--surface);
+    border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.04)}
+  th{background:var(--brand);color:#fff;font-weight:600;text-align:left;padding:10px 14px}
+  td{padding:10px 14px;border-top:1px solid var(--border);vertical-align:top}
+  tr:nth-child(even) td{background:#FCFDFE}
+  code{
+    background:var(--brand-light);color:var(--brand-dark);
+    padding:1px 5px;border-radius:4px;font-size:12px;
+    font-family:Consolas,Monaco,monospace;
+  }
+
+  .checklist{background:var(--surface);border:1px solid var(--border);
+    border-radius:8px;padding:16px 20px;font-size:13px}
+  .checklist li{margin:8px 0 8px 4px;list-style:none;position:relative;padding-left:22px}
+  .checklist li::before{
+    content:"";position:absolute;left:0;top:6px;
+    width:12px;height:12px;border:2px solid var(--brand);border-radius:3px;
+  }
+
+  footer{margin-top:40px;padding-top:16px;border-top:1px solid var(--border);
+    font-size:12px;color:var(--muted);text-align:center}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>找鸭找 · 鸭子 IP 造型方向候选 v2</h1>
+  <div class="sub">2026-08-25 ｜ 在 v1 四个方向基础上，叠加「信息共享」内核元素 ｜ 依据 PRD §0.1 一句话定义 + §1.4.1 IP 气质</div>
+</header>
+
+<div class="concept">
+  <strong>✅ 「信息共享」怎么转成视觉语言</strong>
+  <div style="margin-top:6px">以下三个概念全部出自 PRD 原文，非臆造：</div>
+  <table>
+    <tr>
+      <td>双向供需</td>
+      <td><code>PRD.md:20</code>「资源方与需求方<b>双向</b>发布，平台做就近匹配与<b>信息共享</b>」→ 视觉可用<b>双向箭头、对称双形、两点连线</b></td>
+    </tr>
+    <tr>
+      <td>5 公里生活圈</td>
+      <td><code>PRD.md:19</code>「5 公里生活圈」→ 视觉可用<b>同心圆、雷达波纹、圈层</b></td>
+    </tr>
+    <tr>
+      <td>就近连接</td>
+      <td><code>PRD.md:416</code> slogan「用<b>就近</b>的资源解决<b>本地</b>的需求」→ 视觉可用<b>定位针形、节点网络</b></td>
+    </tr>
+  </table>
+</div>
+
+<div class="notice">
+  <strong>⚠️ 这些图是造型方向参考，不是可交付素材。</strong>
+  <ul>
+    <li><b>版权</b>：由文生图接口生成，商用授权条款未经确认。请只作为方向判断依据，选定后须<b>重新矢量绘制</b>。</li>
+    <li><b>格式</b>：PRD <code>L233</code> 要求 SVG 矢量。位图放大会糊，Tab 内 24px 微缩图标必须手工重绘。</li>
+    <li><b>叠加元素的通病</b>：加进共享符号会<b>提高复杂度</b>，与 24px 微缩可辨、以及 <code>PRD.md:108</code>「禁止复杂叠加」直接冲突。看图时请重点判断这一点，下方每张都标了具体风险。</li>
+  </ul>
+</div>
+
+<h2 style="border-left:4px solid var(--accent);padding-left:10px">★ 已选定：方向 4 深化组 · 负形语言内叠加共享语义</h2>
+<div style="font-size:13px;color:var(--muted);margin:-6px 0 14px 12px;line-height:1.7">
+  方向 4 的核心优势是<b>「实心色块 + 白色负形」</b>——天然满铺，直接满足 App 图标要求（iOS 1024×1024 无透明通道）。<br>
+  因此叠加共享元素时有一条<b>铁律</b>：新元素只能<b>用同一种负形手法切进色块内部</b>，<b>不得</b>改成描边、不得在色块外挂部件。否则会同时破掉两件事——满铺优势、以及 <code>PRD.md:108</code>「禁止复杂叠加」。<br>
+  下面四个变体都遵守这条铁律，差别在于「共享」用什么形来表达。
+</div>
+
+<div class="grid">
+
+  <div class="card">
+    <div class="card-hd"><span class="tag new">方向 4A</span><h3>喙 + 双向箭头 · 供需互通</h3></div>
+    <img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=abstract%20flat%20logo%20mark%2C%20solid%20teal%20%230B7C8C%20rounded%20square%20app%20icon%2C%20a%20duck%20beak%20silhouette%20and%20a%20small%20double-headed%20arrow%20both%20cut%20out%20as%20white%20negative%20space%20inside%20the%20square%2C%20clever%20minimal%20branding%2C%20flat%20design%2C%20no%20gradient%2C%20no%20outline%2C%20pure%20white%20background%2C%20high%20contrast%2C%20geometric%20precision%2C%20generous%20spacing&image_size=square_hd" alt="方向 4A：喙+双向箭头">
+    <div class="card-bd">
+      <dl>
+        <dt>做法</dt><dd>色块内同时负形切出鸭喙 + 一枚小型双向箭头</dd>
+        <dt>共享语义</dt><dd>双向供需（<code>PRD.md:20</code>「双向发布」）——语义最直白，用户不需解释</dd>
+        <dt>24px 风险</dt><dd><b>较高</b>。箭头两端的尖角是细节最密处，微缩必先糊，须单独做去箭头的极简版</dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-hd"><span class="tag new">方向 4B</span><h3>喙 + 同心波纹 · 5 公里圈（推荐）</h3></div>
+    <img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=abstract%20flat%20logo%20mark%2C%20solid%20teal%20%230B7C8C%20rounded%20square%20app%20icon%2C%20a%20duck%20beak%20silhouette%20cut%20out%20in%20white%20negative%20space%20at%20center%2C%20surrounded%20by%20two%20thin%20concentric%20white%20ripple%20arcs%20also%20cut%20out%20as%20negative%20space%2C%20radar%20signal%20feeling%2C%20minimal%20clever%20branding%2C%20flat%20vector%2C%20no%20gradient%2C%20pure%20white%20background%2C%20geometric%20precision&image_size=square_hd" alt="方向 4B：喙+同心波纹">
+    <div class="card-bd">
+      <dl>
+        <dt>做法</dt><dd>喙居中，外围负形切出两道等距同心弧</dd>
+        <dt>共享语义</dt><dd>5 公里生活圈 + 信息发散（<code>PRD.md:19</code>）——「就近」感最强</dd>
+        <dt>24px 风险</dt><dd><b>可控</b>。弧线是<b>可减部件</b>：小尺寸直接删掉外圈弧，退回纯方向 4，符号主体不变。这是四个里唯一能「无损降级」的</dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-hd"><span class="tag new">方向 4C</span><h3>双喙相对 · 对称即双向</h3></div>
+    <img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=abstract%20flat%20logo%20mark%2C%20solid%20teal%20%230B7C8C%20rounded%20square%20app%20icon%2C%20two%20mirrored%20duck%20beak%20silhouettes%20facing%20each%20other%20cut%20out%20as%20white%20negative%20space%2C%20perfectly%20symmetrical%20composition%2C%20small%20gap%20between%20them%2C%20minimal%20clever%20branding%2C%20flat%20design%2C%20no%20gradient%2C%20pure%20white%20background%2C%20geometric%20precision&image_size=square_hd" alt="方向 4C：双喙相对">
+    <div class="card-bd">
+      <dl>
+        <dt>做法</dt><dd>不加新部件，把喙<b>镜像成两个相对</b>，中间留缝</dd>
+        <dt>共享语义</dt><dd>供需两方相向（<code>PRD.md:20</code>）——靠构图表达，不靠加符号</dd>
+        <dt>24px 风险</dt><dd><b>中</b>。部件数没增加，但中间那道缝在微缩时会被抹平，两喙糊成一团</dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-hd"><span class="tag new">方向 4D</span><h3>喙 + 双点连线 · 节点撮合</h3></div>
+    <img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=abstract%20flat%20logo%20mark%2C%20solid%20teal%20%230B7C8C%20rounded%20square%20app%20icon%2C%20a%20duck%20beak%20silhouette%20cut%20out%20in%20white%20negative%20space%2C%20plus%20two%20small%20white%20dots%20connected%20by%20a%20thin%20white%20line%20also%20cut%20out%20below%20it%2C%20network%20node%20matching%20concept%2C%20minimal%20flat%20branding%2C%20no%20gradient%2C%20pure%20white%20background%2C%20geometric%20precision&image_size=square_hd" alt="方向 4D：喙+双点连线">
+    <div class="card-bd">
+      <dl>
+        <dt>做法</dt><dd>喙下方负形切出两个圆点 + 一条连线</dd>
+        <dt>共享语义</dt><dd>就近撮合（<code>PRD.md:416</code> slogan）——最贴「平台做匹配」这层含义</dd>
+        <dt>24px 风险</dt><dd><b>高</b>。细连线是负形里最脆的形，微缩必断；且三部件已触到「复杂叠加」边界</dd>
+      </dl>
+    </div>
+  </div>
+
+</div>
+
+<div class="notice" style="border-left-color:var(--brand)">
+  <strong>📌 我的判断：4B 最稳，理由不是好看，是它能降级。</strong>
+  <ul>
+    <li><b>4B 的外圈弧是「可减部件」</b>：大尺寸（启动页 / 登录页 / 缺省图）带弧讲共享，Tab 24px 直接删弧退回纯方向 4——<b>同一个符号两个档位，不是两个 Logo</b>。这正好落在我们已定的「一个基础符号 + 一套可叠加语义元素」规则上。</li>
+    <li><b>4A / 4D 做不到降级</b>：删掉箭头或连线，语义直接归零，等于要维护两套互不相干的形。</li>
+    <li><b>4C 是另一条路</b>：它不加部件、只改构图，理论上最克制；但「两个喙」在 24px 下会连成一块，反而比 4B 更早失效。</li>
+  </ul>
+</div>
+
+<h2>基础组 · 纯造型，不含共享元素（v1 四方向）</h2>
+<div style="font-size:13px;color:var(--muted);margin:-6px 0 14px 12px">
+  这四个只解决「鸭子长什么样」，不表达产品内核。<b>它们是基础符号的候选</b>——小尺寸档位（Tab 24px、单符号版）大概率要从这里选。
+</div>
+
+<div class="grid">
+
+  <div class="card">
+    <div class="card-hd"><span class="tag">方向 1</span><h3>圆润写意 · 保留亲切感</h3></div>
+    <img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=minimalist%20flat%20vector%20logo%20of%20a%20cute%20round%20duck%20head%20facing%20right%2C%20single%20solid%20teal%20color%20%230B7C8C%20on%20pure%20white%20background%2C%20soft%20rounded%20geometric%20shapes%2C%20simple%20small%20beak%2C%20one%20dot%20eye%2C%20no%20gradient%2C%20no%20shadow%2C%20no%20outline%2C%20modern%20app%20icon%20style%2C%20centered%2C%20generous%20white%20space&image_size=square_hd" alt="方向 1：圆润写意">
+    <div class="card-bd">
+      <dl>
+        <dt>特征</dt><dd>整体圆形头部 + 小喙 + 单点眼，保留可识别的「鸭」感</dd>
+        <dt>优点</dt><dd>亲切度最高，用户一眼认出是鸭；小尺寸下仍可辨</dd>
+        <dt>风险</dt><dd>最接近「卡通感」边界，与 PRD「减少卡通感」的取向张力最大</dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-hd"><span class="tag">方向 2</span><h3>几何构成 · 圆与弧的组合</h3></div>
+    <img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=geometric%20minimal%20logo%20mark%20of%20a%20duck%20constructed%20from%20perfect%20circles%20and%20arcs%20only%2C%20solid%20teal%20%230B7C8C%20flat%20color%2C%20pure%20white%20background%2C%20bauhaus%20style%20abstraction%2C%20no%20facial%20details%2C%20clean%20vector%20shapes%2C%20balanced%20composition%2C%20app%20icon%2C%20lots%20of%20negative%20space&image_size=square_hd" alt="方向 2：几何构成">
+    <div class="card-bd">
+      <dl>
+        <dt>特征</dt><dd>只用正圆与弧线构成，去掉五官细节</dd>
+        <dt>优点</dt><dd>最贴 PRD「几何化与抽象度」定调；易做等比缩放与单色版</dd>
+        <dt>风险</dt><dd>抽象后可能读不出是鸭，需配品牌名才能建立联想</dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-hd"><span class="tag">方向 3</span><h3>单线勾勒 · 一笔成形</h3></div>
+    <img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=single%20continuous%20line%20art%20logo%20of%20a%20duck%20silhouette%2C%20one%20unbroken%20stroke%2C%20teal%20color%20%230B7C8C%20on%20white%20background%2C%20uniform%20line%20weight%2C%20elegant%20minimal%20monoline%20design%2C%20no%20fill%2C%20rounded%20line%20caps%2C%20modern%20branding%20mark%2C%20centered%20with%20white%20space&image_size=square_hd" alt="方向 3：单线勾勒">
+    <div class="card-bd">
+      <dl>
+        <dt>特征</dt><dd>等宽单线一笔勾出鸭形轮廓，不填色</dd>
+        <dt>优点</dt><dd>现代感强，与 Material Symbols 图标体系风格统一</dd>
+        <dt>风险</dt><dd><b>24px 以下线条会断裂</b>，Tab 微缩图标需单独做填充版</dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-hd"><span class="tag">方向 4</span><h3>负形留白 · 喙即符号</h3></div>
+    <img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=abstract%20logo%20mark%20using%20negative%20space%2C%20solid%20teal%20%230B7C8C%20rounded%20square%20shape%20with%20a%20duck%20beak%20silhouette%20cut%20out%20in%20white%2C%20clever%20minimal%20branding%2C%20flat%20design%2C%20no%20gradient%2C%20pure%20white%20background%2C%20high%20contrast%2C%20app%20icon%20style%2C%20geometric%20precision&image_size=square_hd" alt="方向 4：负形留白">
+    <div class="card-bd">
+      <dl>
+        <dt>特征</dt><dd>实心色块中用白色负形切出鸭喙／鸭头轮廓</dd>
+        <dt>优点</dt><dd>最适合做 App 图标（天然满铺、无透明通道问题）；辨识度高</dd>
+        <dt>风险</dt><dd>负形在小尺寸下易糊；单色版与深色底适配需另做规则</dd>
+      </dl>
+    </div>
+  </div>
+
+</div>
+
+<h2>A 组 · 双向供需（对称 / 箭头）</h2>
+<div style="font-size:13px;color:var(--muted);margin:-6px 0 14px 12px">
+  以下六个在鸭形基础上叠加共享语义，<b>适用于大尺寸档位</b>（启动页、登录页、缺省图）。
+</div>
+
+<div class="grid">
+
+  <div class="card">
+    <div class="card-hd"><span class="tag new">方向 5</span><h3>双鸭对望 · 供需两方</h3></div>
+    <img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=minimalist%20flat%20vector%20logo%20two%20simplified%20geometric%20duck%20heads%20facing%20each%20other%20symmetrically%2C%20solid%20teal%20%230B7C8C%20flat%20color%2C%20pure%20white%20background%2C%20one%20filled%20one%20outlined%20to%20show%20duality%2C%20rounded%20shapes%2C%20no%20gradient%2C%20no%20shadow%2C%20modern%20branding%20mark%2C%20centered%2C%20generous%20negative%20space&image_size=square_hd" alt="方向 5：双鸭对望">
+    <div class="card-bd">
+      <dl>
+        <dt>共享表达</dt><dd>两只鸭对望，<b>一实心一空心</b>——直接复用产品已有的「资源态实心 / 需求态空心」编码（<code>PRD.md:150</code>）</dd>
+        <dt>优点</dt><dd>与地图 Pin 的供需二态编码<b>同源</b>，视觉语言全局一致；双向语义最直白</dd>
+        <dt>风险</dt><dd>两个主体使宽高比变宽，<b>方形 App 图标内会显小</b>；24px 下两只鸭会糊成一团</dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-hd"><span class="tag new">方向 6</span><h3>鸭头 + 双向箭头</h3></div>
+    <img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=minimal%20geometric%20logo%20a%20single%20abstract%20duck%20head%20silhouette%20with%20two%20opposing%20curved%20arrows%20forming%20a%20circular%20exchange%20loop%20around%20it%2C%20solid%20teal%20%230B7C8C%20on%20white%2C%20flat%20vector%2C%20clean%20lines%2C%20no%20gradient%2C%20symbol%20of%20sharing%20and%20exchange%2C%20app%20icon%20style%2C%20balanced%20composition&image_size=square_hd" alt="方向 6：鸭头+双向箭头">
+    <div class="card-bd">
+      <dl>
+        <dt>共享表达</dt><dd>环绕鸭头的<b>双向循环箭头</b>，取「交换、流通」意</dd>
+        <dt>优点</dt><dd>共享语义最强，无需文字解释；单主体，方形适配好</dd>
+        <dt>风险</dt><dd>箭头是<b>细部件</b>，小尺寸最先丢失；且循环箭头是通用符号（回收、刷新），<b>可能被误读</b></dd>
+      </dl>
+    </div>
+  </div>
+
+</div>
+
+<h2>B 组 · 5 公里生活圈（圈层 / 波纹）</h2>
+
+<div class="grid">
+
+  <div class="card">
+    <div class="card-hd"><span class="tag new">方向 7</span><h3>鸭头 + 同心波纹</h3></div>
+    <img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=minimal%20flat%20logo%20simplified%20round%20duck%20head%20at%20center%20with%20two%20concentric%20radar%20ripple%20arcs%20expanding%20outward%2C%20solid%20teal%20%230B7C8C%20on%20pure%20white%2C%20geometric%20precision%2C%20flat%20vector%20no%20gradient%2C%20suggesting%20local%20proximity%20and%20signal%2C%20app%20icon%2C%20centered%20composition&image_size=square_hd" alt="方向 7：鸭头+同心波纹">
+    <div class="card-bd">
+      <dl>
+        <dt>共享表达</dt><dd>鸭头居中，向外<b>两圈波纹</b>，取「5 公里辐射、信息扩散」意</dd>
+        <dt>优点</dt><dd>与地图产品形态强关联；波纹可做<b>动效</b>（扩散动画），比静态更有生气</dd>
+        <dt>风险</dt><dd>波纹弧线在 24px 下会并成一团；<b>与「加载中」动效符号易混淆</b></dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-hd"><span class="tag new">方向 8</span><h3>定位针中的鸭 · 圈即容器</h3></div>
+    <img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=minimal%20flat%20vector%20logo%20a%20map%20location%20pin%20shape%20with%20a%20tiny%20simplified%20duck%20silhouette%20inside%20as%20negative%20space%20cutout%2C%20solid%20teal%20%230B7C8C%20on%20white%20background%2C%20clean%20geometric%20design%2C%20no%20gradient%2C%20local%20discovery%20branding%2C%20app%20icon%20style%2C%20centered&image_size=square_hd" alt="方向 8：定位针中的鸭">
+    <div class="card-bd">
+      <dl>
+        <dt>共享表达</dt><dd>地图<b>定位针</b>为外形，内部负形切出鸭子——「就近」用容器承载</dd>
+        <dt>优点</dt><dd>一眼读出「本地 + 地图」属性；定位针形状<b>竖向</b>，竖排 Logo 版天然适配</dd>
+        <dt>风险</dt><dd>定位针是地图类 App 的<b>高度同质化符号</b>，辨识度不足；内部负形鸭小尺寸必糊</dd>
+      </dl>
+    </div>
+  </div>
+
+</div>
+
+<h2>C 组 · 节点连接（去具象，最抽象）</h2>
+
+<div class="grid">
+
+  <div class="card">
+    <div class="card-hd"><span class="tag new">方向 9</span><h3>鸭喙即连接节点</h3></div>
+    <img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=abstract%20minimal%20logo%20mark%20two%20simple%20geometric%20shapes%20forming%20a%20duck%20beak%20profile%20that%20doubles%20as%20two%20connected%20nodes%20with%20a%20connecting%20line%2C%20solid%20teal%20%230B7C8C%20flat%20on%20white%2C%20bauhaus%20geometric%20abstraction%2C%20clever%20dual%20meaning%2C%20no%20gradient%2C%20app%20icon%2C%20lots%20of%20white%20space&image_size=square_hd" alt="方向 9：鸭喙即连接节点">
+    <div class="card-bd">
+      <dl>
+        <dt>共享表达</dt><dd><b>一形双读</b>：既是鸭喙侧影，也是两个由线相连的节点</dd>
+        <dt>优点</dt><dd>零冗余部件，抽象度与简洁度兼得，<b>小尺寸表现最好</b>；有巧思，记忆点强</dd>
+        <dt>风险</dt><dd>双重语义<b>需要解释才能领会</b>，用户第一眼可能都读不出；对设计执行力要求最高</dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-hd"><span class="tag new">方向 10</span><h3>圈中双点 · 极简供需</h3></div>
+    <img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=ultra%20minimal%20geometric%20logo%20a%20perfect%20circle%20containing%20two%20dots%20one%20filled%20one%20hollow%20connected%20by%20a%20short%20line%2C%20with%20a%20small%20triangular%20beak%20notch%20on%20the%20circle%20edge%20hinting%20a%20duck%2C%20solid%20teal%20%230B7C8C%20on%20white%2C%20flat%20vector%2C%20bauhaus%20style%2C%20app%20icon%2C%20precise%20geometry&image_size=square_hd" alt="方向 10：圈中双点">
+    <div class="card-bd">
+      <dl>
+        <dt>共享表达</dt><dd>圆圈＝生活圈；<b>内含一实一空两点相连</b>＝供需匹配；圈沿一个三角缺口暗示鸭喙</dd>
+        <dt>优点</dt><dd>三个内核（圈层 / 双向 / 鸭）<b>全部编码进去且部件最少</b>；圆形天然适配 App 图标与头像位</dd>
+        <dt>风险</dt><dd>鸭的存在感最弱，<b>几乎脱离了「鸭子 IP」</b>；与 PRD <code>L106</code>「亲切」的要求距离最远</dd>
+      </dl>
+    </div>
+  </div>
+
+</div>
+
+<h2>选型判断表（含 v1 四个方向）</h2>
+
+<table>
+  <tr>
+    <th style="width:16%">方向</th>
+    <th style="width:14%">共享元素</th>
+    <th style="width:12%">24px 可辨</th>
+    <th style="width:12%">方形图标</th>
+    <th style="width:12%">鸭识别度</th>
+    <th>一句话</th>
+  </tr>
+  <tr><td>1 圆润写意</td><td>无</td><td>✅ 好</td><td>✅ 好</td><td>✅ 最高</td><td>最安全，但没表达产品内核</td></tr>
+  <tr><td>2 几何构成</td><td>无</td><td>✅ 好</td><td>✅ 好</td><td>⚠️ 偏低</td><td>最贴「几何化」定调</td></tr>
+  <tr><td>3 单线勾勒</td><td>无</td><td>❌ 断裂</td><td>⚠️ 需底板</td><td>✅ 中</td><td>好看但小尺寸挂</td></tr>
+  <tr><td>4 负形留白</td><td>无</td><td>⚠️ 易糊</td><td>✅ 最佳</td><td>✅ 中</td><td>App 图标天生适配</td></tr>
+  <tr><td><b>5 双鸭对望</b></td><td>双向供需</td><td>❌ 糊成团</td><td>❌ 偏宽</td><td>✅ 高</td><td>与 Pin 供需编码同源，但双主体太占宽</td></tr>
+  <tr><td><b>6 鸭头+箭头</b></td><td>双向交换</td><td>⚠️ 箭头先丢</td><td>✅ 好</td><td>✅ 高</td><td>语义最强，但循环箭头易误读为刷新</td></tr>
+  <tr><td><b>7 鸭头+波纹</b></td><td>5 公里辐射</td><td>⚠️ 弧线并团</td><td>✅ 好</td><td>✅ 高</td><td>可做扩散动效，但像「加载中」</td></tr>
+  <tr><td><b>8 定位针中鸭</b></td><td>就近本地</td><td>❌ 负形糊</td><td>⚠️ 偏竖</td><td>⚠️ 中</td><td>属性最明确，但定位针太同质化</td></tr>
+  <tr><td><b>9 鸭喙即节点</b></td><td>连接匹配</td><td>✅ 最好</td><td>✅ 好</td><td>⚠️ 偏低</td><td>一形双读有巧思，但需解释</td></tr>
+  <tr><td><b>10 圈中双点</b></td><td>圈层+双向</td><td>✅ 好</td><td>✅ 最佳</td><td>❌ 最弱</td><td>内核编码最全，但快不像鸭了</td></tr>
+</table>
+
+<h2>一个必须权衡的取舍</h2>
+
+<div class="checklist" style="border-left:4px solid var(--accent)">
+  <div style="font-weight:600;margin-bottom:8px">加共享元素 = 加部件 = 提高复杂度，这与两条硬约束正面冲突：</div>
+  <div style="margin-left:4px">
+    ① <code>PRD.md:1599</code> Tab 中键要 24px 微缩可辨 —— 部件越多越先糊；<br>
+    ② <code>PRD.md:108</code> 禁止在 IP 上叠加复杂元素 —— 箭头、波纹是否算「复杂」需你裁定。
+  </div>
+  <div style="margin-top:12px;font-weight:600">因此实务上常见的解法是<b>分版式承载</b>，而非把所有语义塞进一个符号：</div>
+  <div style="margin-left:4px;margin-top:6px">
+    · <b>单符号版 / Tab 微缩图标</b>：走方向 1、2、9 这类极简单主体，只保留鸭；<br>
+    · <b>启动页 / 登录页 Logo</b>：尺寸充裕，可用方向 6、7 的完整版，把共享语义讲清；<br>
+    · <b>缺省图 / 空状态插图</b>：尺寸最大，可加场景元素（波纹、连线、双向）。
+  </div>
+  <div style="margin-top:12px;color:var(--muted)">
+    即：<b>不必只选一个</b>。可以定「一个基础符号 + 一套可叠加的语义元素」，按尺寸档位取用。这也是规格书要写清的核心规则。
+  </div>
+</div>
+
+<h2>下一步待办</h2>
+
+<ul class="checklist">
+  <li>选定基础符号方向（建议从 1 / 2 / 9 里挑，保证小尺寸可用）</li>
+  <li>选定完整版可叠加的共享元素（波纹 / 双向箭头 / 双点连线，可多选）</li>
+  <li>据此把 §1.4.1 扩写为可外包规格书：几何比例、最小尺寸、单色/多色规则、安全区、动效、<b>各尺寸档位用哪个版式</b></li>
+  <li>纳入 App 商店图标规格：iOS 1024×1024 无透明通道、Android 自适应图标前景/背景分层</li>
+  <li>补三处代码缺口：<code>code.js:2435</code> 登录页 Logo、<code>code.js:851</code> Tab 微缩图标、启动页画框缺失</li>
+</ul>
+
+<footer>
+  找鸭找 v2.1 ｜ 本页为造型方向评审用，非交付素材 ｜ 素材口径已定：空状态图与缺省图合为一件，空态统一用同一张只换文案 ｜ 生成于 2026-08-25
+</footer>
+
+</div>
+</body>
+</html>
