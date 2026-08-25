@@ -1,0 +1,21 @@
+# ── Python 依赖与缓存 ──
+# .pylibs / .pptx_lib 是脚本运行时就地安装的第三方库（python-pptx、lxml、Pillow 等），
+# 数千个文件且可随时重装，不入库
+.pylibs/
+.pptx_lib/
+__pycache__/
+*.py[cod]
+
+# ── Office 临时锁文件 ──
+# Word/PPT 打开文档时生成，关闭后残留，非交付物
+~$*
+
+# ── 生成脚本的探针输出 ──
+# 落盘核对用的临时文本，每次核对重新生成
+docs/probe_*.txt
+
+# ── 编辑器与系统 ──
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
