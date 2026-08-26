@@ -21,13 +21,13 @@
 </head>
 <body>
 <h3>找鸭找 v2 原型生成器</h3>
-<div class="sub">按 PRD v2.1 §10.1 生成 14 页 + 3 模态 + T6 五组规格。颜色全部绑定 Figma Variables（role），公用元素为 Component，改一处全局同步。</div>
+<div class="sub">按 PRD v2.1 §10.1 生成 15 页 + 3 模态（18 个主态画框，另含若干过程态/降级态变体）+ T6 五组规格。颜色、字号、间距、圆角全部绑定 Figma Variables，改一处全局同步；公用元素为 Component。</div>
 
 <div class="warn">分批执行，避免单次超时。必须按 1→2→3→4→5 顺序点，批次 5 依赖前面全部画框已生成。</div>
 
 <div class="batch">
   <b>批次 1 · 基础设施</b>
-  <span>Variables（语义色 13 + 分类色 5）+ Component master 20 个 + 字体 + 规格板</span>
+  <span>Variables（语义色 16 + 分类色 5 + 字号 6 + 间距 6 + 圆角 5 = 38 个）+ Component master 20 个 + 字体 + 规格板</span>
   <button onclick="run('setup')">执行批次 1</button>
 </div>
 
@@ -39,7 +39,7 @@
 
 <div class="batch">
   <b>批次 3 · 核心流程页</b>
-  <span>login / detail / detail-offline / publish / ai-confirm / publish-success / contact / profile 等 13 页</span>
+  <span>splash / login / detail / detail-offline / publish / ai-confirm / publish-success / contact / profile / my-publish / my-favorite / notification / trust / settings 共 14 页</span>
   <button onclick="run('core')">执行批次 3</button>
 </div>
 
@@ -51,7 +51,7 @@
 
 <div class="batch">
   <b>批次 5 · 原型跳转连线</b>
-  <span>为主流程 22 条跳转补 reactions，并设 login-screen 为起点；完成后用 Present 模式测试</span>
+  <span>为主流程 23 条跳转补 reactions，并设 splash-screen 为起点；完成后用 Present 模式测试</span>
   <button onclick="run('flow')">执行批次 5</button>
 </div>
 

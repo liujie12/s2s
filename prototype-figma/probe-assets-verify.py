@@ -135,19 +135,32 @@ mini_paths = re.findall(r'<path d="([^"]+)" fill="(#[0-9A-Fa-f]+)"', mini_svg)
 check("mini duck head is solid white", len(mini_paths) == 1
       and mini_paths[0][1].upper() == "#FFFFFF",
       f"{len(mini_paths)} paths")
-# 鸭头须占画板 72% 上下：用渲染掩码实测而非读路径数字。
+# 鸭头须占画板 80% 上下：用渲染掩码实测而非读路径数字。
 # 掩码须限定在圆盘内 —— 圆盘之外是透明区，渲染器把透明画成白，
 # 不排除的话四角会被算进白色区域，量出来的永远是满画板。
+# 基准从 72% 抬到 80%（2026-08-26，用户要求鸭头更醒目）。注意：span 只是
+# 结果，真正卡住上限的是下一条环带宽度断言 —— 别只看 span 就往上抬。
 mini_img = rendered["duck-symbol-mini.svg"]
 head_mask = cv2.inRange(mini_img, np.array([245, 245, 245]), np.array([255, 255, 255]))
 gy, gx = np.ogrid[:512, :512]
 inside_disc = (gx - 256) ** 2 + (gy - 256) ** 2 <= (0.97 * 256) ** 2
-hys, hxs = np.nonzero(head_mask & inside_disc.astype(np.uint8))
+head_in_disc = head_mask & inside_disc.astype(np.uint8)
+hys, hxs = np.nonzero(head_in_disc)
 if hxs.size:
     span = max(hxs.max() - hxs.min(), hys.max() - hys.min()) / 512.0
-    check("mini head spans ~72% of canvas", 0.68 <= span <= 0.76, f"{span:.3f}")
+    check("mini head spans ~80% of canvas", 0.76 <= span <= 0.84, f"{span:.3f}")
 else:
-    check("mini head spans ~72% of canvas", False, "empty white region")
+    check("mini head spans ~80% of canvas", False, "empty white region")
+# 主色环带宽度：鸭头最远点到圆盘边缘的余量。这是 ratio 的真正上限约束 ——
+# 环带是「这是一枚按钮」的体量感载体，24px 下不足 1px 会断续，实测
+# 0.80 → 1.90px（达标）、0.84 → 1.42px、0.88 → 0.93px（喙尖捅破圆盘）。
+# 上一轮只测了笔画粗细没测这里，才误判 88% 可行，故固化成守门人。
+if hxs.size:
+    r_disc = float(mini_circles[0][2]) * 512 / SRC_CANVAS if mini_circles else 252.0
+    dist = np.sqrt((hxs - 256.0) ** 2 + (hys - 256.0) ** 2)
+    inside = dist <= r_disc * 0.995   # 排除圆盘外抗锯齿溢出的白像素
+    band_px_24 = (r_disc - dist[inside].max()) / 512.0 * 24.0
+    check("mini@24px brand ring >= 1.5px", band_px_24 >= 1.5, f"{band_px_24:.2f}px")
 
 # --- 5. 环数校验：full=2 / compact=1 / mini=0 ---
 for name, want in [("duck-symbol-full.svg", 2), ("duck-symbol-compact.svg", 1),

@@ -73,6 +73,28 @@ var RADIUS = { sm: 4, md: 8, lg: 12, xl: 16, full: 999 };
 /** 画布规格：iPhone 14 逻辑分辨率，与 Flutter 逻辑像素一致 */
 var CANVAS = { w: 390, h: 844 };
 
+/**
+ * 数值型 Token 的反查表（值 → 变量名），供 box()/text() 把字面数字换成变量绑定。
+ *
+ * 为什么需要反查而不是改调用点：字号/间距/圆角在 42 个画框里共有数百处消费点，
+ * 逐处改成「传变量名」的工程量与出错面都远大于收益。而所有消费点本来就统一
+ * 走 box()/text() 两个构造器，且传入的实参一律取自 TYPE_SCALE/SPACING/RADIUS
+ * 三张表 —— 也就是说值本身已经是 Token，只是丢了名字。反查即可把名字找回来。
+ *
+ * 为什么三张表分开反查：4 与 8 同时存在于间距阶与圆角阶，混在一张表里会歧义。
+ * 按消费语义分表后各自唯一（圆角 4/8/12/16/999、间距 4/8/12/16/24/32）。
+ *
+ * 为什么由三张真源表派生而不是手写：手写等于第二份副本，改了 SPACING 却忘改
+ * 反查表就会静默失去绑定。派生保证两者不可能脱钩。
+ */
+var NUM_TOKEN_NAMES = { size: {}, spacing: {}, radius: {} };
+(function buildNumTokenIndex() {
+  var k;
+  for (k in TYPE_SCALE) NUM_TOKEN_NAMES.size[TYPE_SCALE[k].size] = 'size/' + k;
+  for (k in SPACING) NUM_TOKEN_NAMES.spacing[SPACING[k]] = 'spacing/' + k;
+  for (k in RADIUS) NUM_TOKEN_NAMES.radius[RADIUS[k]] = 'radius/' + k;
+})();
+
 /** 字体族（用户决策：思源黑体 Noto Sans SC），FONT_FAMILY 在 setup 阶段可能被降级覆写 */
 var FONT_FAMILY = 'Noto Sans SC';
 var FONT_FALLBACK = 'Inter';
@@ -244,7 +266,8 @@ function styleOf(weight) {
 var COLLECTION_NAME = 'ZhaoYaZhao Tokens';
 
 /**
- * 创建或复用 Variables 集合，并把语义色 16 项 + 分类色 5 项写为 COLOR 变量
+ * 创建或复用 Variables 集合，写入 COLOR 变量（语义色 16 + 分类色 5）
+ * 与 FLOAT 变量（字号 6 + 间距 6 + 圆角 5），共 38 项
  * 幂等语义为「值对齐」：同名变量已存在则比对当前值，不一致时改写为最新 Token 值
  * @returns {Promise<{created:number,reused:number,updated:number}>} 新建/沿用/改值的变量计数
  */
@@ -290,24 +313,139 @@ async function ensureVariables() {
     }
     VAR_CACHE[name] = v;
   }
+
+  var num = await ensureNumberVariables(collection, modeId);
+  return {
+    created: created + num.created,
+    reused: reused + num.reused,
+    updated: updated + num.updated
+  };
+}
+
+/**
+ * 写入数值型 Token 变量：字号 6 阶 + 间距 6 阶 + 圆角 5 阶，共 17 项。
+ *
+ * 为什么必须做（2026-08-26，M3 Token 落地）：此前 Figma 侧只有 21 个 COLOR，
+ * 而字号/间距/圆角仍是 code.js 里的 JS 字面量。后果是设计师在 Figma 里
+ * 改不动它们 —— 想把卡片圆角从 12 调到 16，只能逐个改画布上的具体矩形，
+ * 改不了「圆角 lg」这个概念，几十处消费点必然漏改。
+ *
+ * 为什么行高不入变量：行高由「字号 × 倍数」派生（见 text()），
+ * 单独存一份就是第二份副本，改了字号却忘改行高会静默不一致。
+ *
+ * 为什么阴影不入变量：PRD 只规定了两处阴影（§1.4.7 卡片 0.04、§6.7 地图
+ * 悬浮卡 0.12），其余 6 处（Marker/弹层/FAB）属画面特定值而非阶梯 Token，
+ * 强行入表会造出 PRD 里不存在的规格。
+ *
+ * @param {VariableCollection} collection 目标变量集合
+ * @param {string} modeId 目标模式 ID
+ * @returns {Promise<{created:number,reused:number,updated:number}>} 新建/沿用/改值的计数
+ */
+async function ensureNumberVariables(collection, modeId) {
+  var existing = await figma.variables.getLocalVariablesAsync('FLOAT');
+  var byName = {};
+  for (var i = 0; i < existing.length; i++) byName[existing[i].name] = existing[i];
+
+  var all = {};
+  var key;
+  for (key in TYPE_SCALE) all['size/' + key] = TYPE_SCALE[key].size;
+  for (key in SPACING) all['spacing/' + key] = SPACING[key];
+  for (key in RADIUS) all['radius/' + key] = RADIUS[key];
+
+  var created = 0, reused = 0, updated = 0;
+  for (var name in all) {
+    var v = byName[name];
+    var want = all[name];
+    if (v) {
+      // 与 COLOR 同一套「值对齐」语义：字阶调整后重跑批次 1 必须改写旧值
+      if (v.valuesByMode[modeId] === want) {
+        reused++;
+      } else {
+        v.setValueForMode(modeId, want);
+        updated++;
+      }
+    } else {
+      v = figma.variables.createVariable(name, collection, 'FLOAT');
+      v.setValueForMode(modeId, want);
+      created++;
+    }
+    VAR_CACHE[name] = v;
+  }
   return { created: created, reused: reused, updated: updated };
 }
 
 /**
  * 把已建好的 Variables 载入内存缓存，供后续批次（map/core/modal）引用
  * 批次之间插件可能被重新执行，故每批开头都需调用
- * @returns {Promise<number>} 载入的变量数量
+ * @returns {Promise<number>} 载入的变量数量（COLOR 21 + FLOAT 17 = 38）
  */
 async function hydrateVariables() {
-  var vars = await figma.variables.getLocalVariablesAsync('COLOR');
   var n = 0;
-  for (var i = 0; i < vars.length; i++) {
-    if (vars[i].name.indexOf('color/') === 0 || vars[i].name.indexOf('category/') === 0) {
-      VAR_CACHE[vars[i].name] = vars[i];
+  var colors = await figma.variables.getLocalVariablesAsync('COLOR');
+  for (var i = 0; i < colors.length; i++) {
+    if (colors[i].name.indexOf('color/') === 0 || colors[i].name.indexOf('category/') === 0) {
+      VAR_CACHE[colors[i].name] = colors[i];
+      n++;
+    }
+  }
+  // FLOAT 必须与 COLOR 一同载入：批次 2/3/4 里 box()/text() 的每一次调用都要
+  // 查这批变量，缺失则静默退回字面数字 —— 画面看不出差别，但 Token 绑定率归零
+  var nums = await figma.variables.getLocalVariablesAsync('FLOAT');
+  for (var j = 0; j < nums.length; j++) {
+    var nm = nums[j].name;
+    if (nm.indexOf('size/') === 0 || nm.indexOf('spacing/') === 0 || nm.indexOf('radius/') === 0) {
+      VAR_CACHE[nm] = nums[j];
       n++;
     }
   }
   return n;
+}
+
+/**
+ * 把一个数值型字段绑定到对应的 FLOAT 变量上。
+ *
+ * 为什么按「值」反查而不是要求调用方传变量名：见 NUM_TOKEN_NAMES 的说明 ——
+ * 数百处消费点的实参本来就取自三张真源表，值即 Token，只是丢了名字。
+ *
+ * 为什么取不到变量时静默返回：本函数在 box()/text() 里对每个节点调用多次，
+ * 缺变量的唯一后果是该字段保持字面值（画面完全正确，只是不可被 Figma 侧统一
+ * 调整）。为它抛错会让「变量还没建好」的中间状态直接中断生成，代价大于收益。
+ * 完备度由 probe-token-vars.py 在离线侧守，不靠运行时抛错。
+ *
+ * @param {SceneNode} node 目标节点
+ * @param {string} field Figma 绑定字段名，如 "topLeftRadius" / "itemSpacing" / "fontSize"
+ * @param {string} group 反查分组："size" / "spacing" / "radius"
+ * @param {number} value 字面数值
+ * @returns {boolean} 是否成功绑定
+ */
+function bindNum(node, field, group, value) {
+  var name = NUM_TOKEN_NAMES[group][value];
+  if (!name) return false;
+  var v = VAR_CACHE[name];
+  if (!v) return false;
+  node.setBoundVariable(field, v);
+  return true;
+}
+
+/**
+ * 把四个角的圆角一并绑定到同一个 radius 变量。
+ *
+ * 为什么不能绑 cornerRadius：Figma 的变量绑定字段是四个角各自独立的
+ * （topLeftRadius 等），cornerRadius 只是写入用的便捷属性，不可绑定。
+ *
+ * @param {SceneNode} node 目标节点
+ * @param {number} value 圆角字面值
+ * @returns {boolean} 是否成功绑定
+ */
+function bindRadius(node, value) {
+  var name = NUM_TOKEN_NAMES.radius[value];
+  if (!name || !VAR_CACHE[name]) return false;
+  var v = VAR_CACHE[name];
+  node.setBoundVariable('topLeftRadius', v);
+  node.setBoundVariable('topRightRadius', v);
+  node.setBoundVariable('bottomLeftRadius', v);
+  node.setBoundVariable('bottomRightRadius', v);
+  return true;
 }
 
 /**
@@ -360,6 +498,16 @@ function box(name, dir, opt) {
     f.strokes = [paintOf(opt.stroke)];
     f.strokeWeight = opt.strokeWeight || 1;
   }
+
+  // Token 绑定（2026-08-26，M3）：先按字面值写完，再把能对上 Token 阶梯的字段
+  // 改绑变量。顺序不能反 —— Auto Layout 的 sizingMode 依赖已写入的字面值来定高。
+  // 对不上阶梯的值（如 w:4 的分类色条、h:44 的固定行高）保持字面，不强行归阶。
+  if (opt.radius) bindRadius(f, opt.radius);
+  if (opt.gap) bindNum(f, 'itemSpacing', 'spacing', opt.gap);
+  bindNum(f, 'paddingTop', 'spacing', f.paddingTop);
+  bindNum(f, 'paddingBottom', 'spacing', f.paddingBottom);
+  bindNum(f, 'paddingLeft', 'spacing', f.paddingLeft);
+  bindNum(f, 'paddingRight', 'spacing', f.paddingRight);
   return f;
 }
 
@@ -650,18 +798,21 @@ var DUCK_EYE = { cx: 506.1, cy: 458.5, r: 20.27 };
 //
 // 反相后眼点必须改为【主色】：鸭头已是白色，白眼点会与头部融为一体。
 //
-// 下面这条路径由 probe-tabicon-geom.py 从真源 assets/duck-symbol-mini.svg
-// 切出鸭头子路径后，把「居中缩放到占画板 72%」的仿射变换烧进坐标生成
-// （鸭头包围盒实测 x=328 y=376 w=366 h=317；变换后复测占比 0.720）。
+// 下面这条路径由 build-4b-assets.py 生成到真源 assets/duck-symbol-mini.svg，
+// 把「居中缩放到占画板 80%」的仿射变换烧进坐标后逐字复制到此
+// （鸭头包围盒实测 x=328 y=376 w=366 h=317；变换后复测占比 0.799）。
+// 80% 是上限：再往上主色环带会被喙尖顶破 —— 24px 下 0.80 → 1.9px（达标）、
+// 0.88 → 0.93px（断续）。见 probe-mini-negative.py 与 probe-assets-verify.py
+// 的 "mini@24px brand ring >= 1.5px" 断言。
 // 为什么烧进坐标而不用 <g transform="scale()">：Figma 的 createNodeFromSvg
 // 对 transform 属性的支持未见于官方文档保证，纯坐标是任何解析器都一致的几何数据。
 // ------------------------------------------------------------
 
-/** mini 档鸭头：已居中缩放至占画板 72%，实体填充（非镂空）。逐字取自 assets/duck-symbol-mini.svg */
-var DUCK_HEAD_MINI = 'M324.66 216.89 C300.14 225.95 283.36 237.37 266.24 249.12 C249.12 260.86 235.68 272.63 221.92 287.39 C208.16 302.16 194.06 320.97 183.65 337.75 C173.23 354.53 166.18 361.26 159.48 388.11 C152.77 414.97 141.69 461.98 143.36 498.91 C145.03 535.83 154.78 575.11 169.55 609.7 C184.31 644.29 206.47 678.19 231.99 706.39 C257.52 734.59 287.73 759.43 322.64 778.91 C357.55 798.39 404.23 814.83 441.5 823.23 C478.76 831.63 521.41 829.61 546.25 829.27 C571.08 828.93 580.83 824.9 590.56 821.21 C600.29 817.53 599.97 811.81 604.66 807.11 C604 802.42 611.37 808.12 602.65 793.01 C593.93 777.9 563.03 736.27 552.29 716.46 C541.55 696.66 540.2 687.26 538.19 674.16 C536.17 661.07 536.84 650.33 540.2 637.9 C543.57 625.47 547.59 611.71 558.33 599.63 C569.07 587.54 576.8 574.79 604.66 565.38 C632.52 555.97 692.29 552.29 725.53 543.22 C758.77 534.16 782.6 523.42 804.09 510.99 C825.59 498.56 842.71 480.78 854.45 468.69 C866.2 456.6 870.57 447.54 874.6 438.47 C878.63 429.41 877.28 422.36 878.63 414.3 C871.92 409.61 875.6 402.56 858.48 400.2 C841.36 397.84 801.07 403.56 775.89 400.2 C750.71 396.84 724.86 388.46 707.4 380.06 C689.93 371.65 682.56 364.95 671.14 349.84 C659.72 334.73 649.65 305.86 638.91 289.41 C628.17 272.95 624.14 264.57 606.68 251.13 C589.21 237.7 556.66 218.24 534.16 208.83 C511.66 199.42 491.86 197.08 471.71 194.73 C451.57 192.37 437.81 191.04 413.29 194.73 C388.78 198.41 349.17 207.82 324.66 216.89 Z';
+/** mini 档鸭头：已居中缩放至占画板 80%，实体填充（非镂空）。逐字取自 assets/duck-symbol-mini.svg */
+var DUCK_HEAD_MINI = 'M303.84 184.1 C276.6 194.17 257.96 206.86 238.93 219.91 C219.91 232.96 204.98 246.03 189.69 262.43 C174.4 278.84 158.74 299.75 147.17 318.39 C135.59 337.04 127.76 344.51 120.31 374.35 C112.85 404.18 100.54 456.42 102.4 497.45 C104.26 538.48 115.09 582.12 131.5 620.56 C147.9 658.99 172.52 696.66 200.88 727.99 C229.24 759.33 262.82 786.92 301.6 808.57 C340.39 830.21 392.25 848.48 433.66 857.81 C475.07 867.14 522.45 864.91 550.05 864.52 C577.65 864.14 588.48 859.67 599.29 855.57 C610.1 851.48 609.74 845.12 614.96 839.9 C614.22 834.69 622.41 841.02 612.72 824.24 C603.03 807.45 568.69 761.18 556.77 739.18 C544.84 717.18 543.34 706.73 541.1 692.18 C538.86 677.63 539.6 665.7 543.34 651.89 C547.07 638.08 551.55 622.79 563.48 609.36 C575.41 595.93 584 581.77 614.96 571.31 C645.91 560.86 712.32 556.77 749.25 546.69 C786.19 536.62 812.66 524.69 836.55 510.88 C860.43 497.07 879.45 477.31 892.5 463.88 C905.55 450.45 910.41 440.38 914.89 430.3 C919.36 420.23 917.86 412.4 919.36 403.44 C911.91 398.23 916 390.4 896.98 387.78 C877.95 385.16 833.19 391.51 805.21 387.78 C777.23 384.04 748.52 374.73 729.11 365.39 C709.7 356.06 701.51 348.61 688.82 331.82 C676.13 315.03 664.94 282.96 653.01 264.67 C641.08 246.39 636.6 237.08 617.2 222.15 C597.79 207.22 561.62 185.6 536.62 175.14 C511.62 164.69 489.62 162.09 467.23 159.48 C444.85 156.86 429.57 155.38 402.33 159.48 C375.09 163.57 331.08 174.02 303.84 184.1 Z';
 
-/** mini 档眼点：随鸭头同一变换后的位置，半径抬到 24px 下 2px 的底线 */
-var DUCK_EYE_MINI = { cx: 502.13, cy: 358.9, r: 42.67 };
+/** mini 档眼点：随鸭头同一变换后的位置。80% 档下 r=45.37，已超过 24px/2px 底线（42.67），无需再抬 */
+var DUCK_EYE_MINI = { cx: 501.03, cy: 341.89, r: 45.37 };
 
 /** mini 档圆盘半径：铺满画板，留 0.78% 余量避免边缘抗锯齿被裁切 */
 var DUCK_DISC_MINI_R = 504.01;
@@ -798,6 +949,9 @@ function text(content, scale, colorRole) {
   // 显式设置 lineHeight：缺失会导致部分导出场景高度计算为 0
   t.lineHeight = { value: Math.round(s.size * s.lineHeight), unit: 'PIXELS' };
   t.fills = [paintOf(colorRole || 'color/text-primary')];
+  // 字号绑到 size/* 变量（2026-08-26，M3）。行高刻意不绑：它是「字号 × 倍数」
+  // 的派生值，绑成独立变量后改字号不会带动行高，反而制造出一处静默不一致。
+  bindNum(t, 'fontSize', 'size', s.size);
   return t;
 }
 
@@ -1136,6 +1290,14 @@ function pinRaw(catRole, supplyDemand, completeness, selected, showCompleteness)
 
 /**
  * 创建一个列表卡片（用于 list-screen / 我的发布 / 我的收藏）
+ *
+ * 规格对齐（2026-08-26 修正两处与 PRD §1.4.7 的偏差）：
+ * ① 阴影 —— 原实现用 stroke 'color/border' 代替阴影。描边在视觉上比阴影更硬，
+ *    且卡片是 14 页里出现最多的组件，偏差会被整份视觉稿放大。改为 PRD 规定的
+ *    「白底 + R-lg + 阴影 0 2 8 rgba(0,0,0,0.04)」，描边随之移除（两者并存会
+ *    让卡片边界出现双线）。
+ * ② 内边距 —— 原为 md(12)，PRD 明确「内边距 lg（16）」，改为 SPACING.lg。
+ *
  * @param {string} title 标题
  * @param {string} sub 副标题（模板字段摘要）
  * @param {string} catRole 分类色 role，用于左侧色条
@@ -1144,9 +1306,13 @@ function pinRaw(catRole, supplyDemand, completeness, selected, showCompleteness)
  */
 function card(title, sub, catRole, tag) {
   var c = box('card/' + title, 'HORIZONTAL', {
-    w: CANVAS.w - SPACING.lg * 2, pad: SPACING.md, gap: SPACING.md,
-    fill: 'color/surface', radius: RADIUS.lg, stroke: 'color/border', align: 'MIN'
+    w: CANVAS.w - SPACING.lg * 2, pad: SPACING.lg, gap: SPACING.md,
+    fill: 'color/surface', radius: RADIUS.lg, align: 'MIN'
   });
+  c.effects = [{
+    type: 'DROP_SHADOW', color: { r: 0, g: 0, b: 0, a: 0.04 },
+    offset: { x: 0, y: 2 }, radius: 8, spread: 0, visible: true, blendMode: 'NORMAL'
+  }];
   var bar = box('_cat-bar', 'VERTICAL', { w: 4, h: 44, radius: RADIUS.sm, fill: catRole });
   c.appendChild(bar);
   var main = box('_card-main', 'VERTICAL', { gap: SPACING.xs });

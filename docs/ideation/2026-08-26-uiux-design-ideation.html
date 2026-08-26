@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UI/UX 设计稿 Ideation · 2026-08-26</title>
+<style>
+:root{
+  --ink:#12232a; --ink-2:#3d5560; --ink-3:#6b8290;
+  --paper:#f6f4ef; --card:#fffefb; --line:#dcd6c9;
+  --brand:#0B7C8C; --brand-soft:#e6f2f3;
+  --warn:#8a5a00; --warn-soft:#fdf3e0;
+  --stop:#8e2f2f; --stop-soft:#fbeceb;
+  --ok:#2f6b45;
+  --mono:ui-monospace,"SFMono-Regular",Consolas,"Liberation Mono",monospace;
+}
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font:16px/1.72 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+}
+.wrap{max-width:920px;margin:0 auto;padding:48px 24px 96px}
+header.doc{border-bottom:3px solid var(--brand);padding-bottom:24px;margin-bottom:8px}
+header.doc h1{font-size:30px;line-height:1.3;margin:0 0 6px;letter-spacing:-.01em}
+header.doc .sub{color:var(--ink-2);font-size:15px}
+dl.meta{display:grid;grid-template-columns:auto 1fr;gap:4px 16px;margin:20px 0 0;font-size:14px}
+dl.meta dt{color:var(--ink-3)}
+dl.meta dd{margin:0;color:var(--ink)}
+h2{font-size:21px;margin:56px 0 4px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+h2 .n{color:var(--brand);font:600 13px/1 var(--mono);vertical-align:middle;margin-right:8px}
+h3{font-size:17px;margin:0 0 8px}
+p{margin:12px 0}
+code{font:.88em var(--mono);background:#eae6dc;padding:1px 5px;border-radius:3px}
+.lead{color:var(--ink-2);font-size:15px;margin-top:14px}
+ul.jump{list-style:none;padding:0;margin:16px 0 0;display:grid;gap:6px;
+  grid-template-columns:repeat(auto-fill,minmax(260px,1fr));font-size:14px}
+ul.jump a{color:var(--brand);text-decoration:none;border-bottom:1px dotted var(--brand)}
+ul.jump a:hover{background:var(--brand-soft)}
+article.idea{background:var(--card);border:1px solid var(--line);border-left:5px solid var(--brand);
+  border-radius:6px;padding:22px 24px;margin:22px 0}
+article.idea .hd{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px;margin-bottom:2px}
+.id{font:600 12px/1.6 var(--mono);color:var(--brand);background:var(--brand-soft);
+  padding:2px 8px;border-radius:3px}
+.tags{margin:10px 0 14px;display:flex;flex-wrap:wrap;gap:8px;font-size:12.5px}
+.tag{border:1px solid var(--line);border-radius:999px;padding:2px 10px;color:var(--ink-2);background:#fbf9f4}
+.tag b{color:var(--ink);font-weight:600}
+dl.f{display:grid;grid-template-columns:96px 1fr;gap:10px 16px;margin:16px 0 0;font-size:15px}
+dl.f dt{color:var(--ink-3);font-size:13.5px;padding-top:2px}
+dl.f dd{margin:0}
+dl.f dd ul{margin:0;padding-left:20px}
+dl.f dd li{margin:3px 0}
+.basis{font-size:14px;color:var(--ink-2)}
+.basis .k{font:600 11.5px/1 var(--mono);color:var(--brand);text-transform:uppercase;margin-right:5px}
+.down{background:var(--warn-soft);border-left:3px solid var(--warn);padding:10px 14px;border-radius:0 4px 4px 0;font-size:14.5px}
+.down ul{margin:0;padding-left:18px}
+table{width:100%;border-collapse:collapse;font-size:14.5px;margin:18px 0}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:13px;color:var(--ink-3);font-weight:600;background:#efece4}
+td.rid{font:600 12px var(--mono);color:var(--ink-2);white-space:nowrap}
+.axis{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:16px 20px;margin:14px 0}
+.axis h3{color:var(--brand);font:600 15px/1.5 var(--mono);margin-bottom:4px}
+.axis p{margin:6px 0 0;font-size:15px}
+.gap{background:var(--stop-soft);border-left:3px solid var(--stop);padding:12px 16px;border-radius:0 4px 4px 0;font-size:14.5px;margin:18px 0}
+footer.sig{margin-top:72px;padding-top:18px;border-top:1px solid var(--line);
+  color:var(--ink-3);font-size:13px;line-height:1.9}
+footer.sig b{color:var(--ink-2);font-weight:600}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc">
+  <h1>UI/UX 设计稿 Ideation</h1>
+  <div class="sub">从「42 框可点原型」到「设计师能接棒的 UI/UX 设计稿」——六个方向</div>
+  <dl class="meta">
+    <dt>稳定 ID</dt><dd id="ARTIFACT-2026-08-26-UIUX-DESIGN-IDEATION">ARTIFACT-2026-08-26-UIUX-DESIGN-IDEATION</dd>
+    <dt>创建日期</dt><dd>2026-08-26</dd>
+    <dt>主题</dt><dd>M3「设计稿与评审」——把 Figma 42 框骨架与 PRD 规格真源推到可交付设计师的 UI/UX 设计稿</dd>
+    <dt>基线范围</dt><dd>Figma 42 框 + PRD v2.1 §1 视觉系统 / §10.1 页面清单（双基线）</dd>
+    <dt>候选 / 存活</dt><dd>40 条原始想法 → 去重 26 条 + 组合 5 条 → 存活 6 条</dd>
+    <dt>模式</dt><dd>repo-grounded ideation（无联网，external 依据取自本机 Figma MCP 工具 schema 原文）</dd>
+  </dl>
+</header>
+
+<h2 id="SEC-GROUNDING"><span class="n">SEC-GROUNDING</span>依据现状</h2>
+
+<p class="lead">这一轮不是从零构想界面，而是回答一个交棒问题：<strong>08-28 要冻结的东西，怎样才能让设计师接得住、并且改完之后我们还认得出红线在不在。</strong></p>
+
+<p>原型侧的事实：<code>prototype-figma/code.js</code> 约 3400 行，生成 42 个画框（18 个主态 + 23 个变体 + 1 个组件页）、20 个 Component master、21 个 COLOR 变量、23 条原型跳转、35 张画布标注卡。PRD v2.1 是唯一权威源，规定了 16 个语义色 + 5 个分类色、6 阶字号、6 阶间距、5 阶圆角、六件基础组件、S2 四档聚合、空态六时点、T3 弹层三退出口。</p>
+
+<p>缺口集中在四个地方，且都不是「画得不够好看」，而是<strong>规格没有可交付的载体</strong>：字号 / 间距 / 圆角 / 阴影四类共 17 项仍是 JS 字面量，Figma 侧只有颜色进了变量；20 个 master 互相之间没有任何关系表达，全文没有 <code>createComponentSet</code>；35 张标注卡对被标注对象零引用，纯粹漂在画布上；生成器的操作界面上有四处计数已经和实现脱节。</p>
+
+<div class="gap">
+  <b>本轮的红线（项目原则 ⑳）</b>：视觉精修与动效实现是设计师的本职，我们做了她也会推翻重做。凡属「替设计师决定颜色好不好看、动画怎么弹」的想法一律不算机会。但「不做实现 ≠ 不交规格」——<strong>规格必须以可读回的形式交出去</strong>。六条存活想法全部落在这条线的内侧。
+</div>
+
+<div class="gap">
+  <b>取证遗留</b>：本轮环境无联网工具。地图 UI 的外部先例（bottom sheet 分档惯例、marker 聚合视觉惯例、图层面板形态谱、地图与列表联动模式等 6 类）本轮无法取证，需在有联网的会话补齐。所有 external 依据均取自本机已安装的 130 个 Figma MCP 工具 schema 原文，未编造任何 URL。
+</div>
+
+<h2 id="SEC-AXES"><span class="n">SEC-AXES</span>主题的四条轴</h2>
+
+<p class="lead">从缺口反推，「怎么把原型推成设计稿」这个问题实际被四条互不重叠的轴切开。四条轴与 08-24 那份「生成器如何升级」的四条轴完全不同。</p>
+
+<div class="axis">
+  <h3 id="AXIS-A1">A1 · 规格的承载体</h3>
+  <p>35 张画布标注卡，和「绑在节点上、能读回、进 Dev Mode」的规格，是两种东西。前者评审时好用，交棒后就是噪音；后者才能在设计师改稿之后仍然可查。</p>
+</div>
+<div class="axis">
+  <h3 id="AXIS-A2">A2 · Token 的完备度与出口</h3>
+  <p>21 个颜色变量之外的字号、间距、圆角、阴影；以及 Token 从 Figma 流向 Flutter 时的口径——用什么单位、谁是权威源、冲突时谁让路。</p>
+</div>
+<div class="axis">
+  <h3 id="AXIS-A3">A3 · 组件之间的关系</h3>
+  <p>20 个散装 master 之间的关系没有被表达；PRD §1.7 的六件基础组件只做了一件。组件库的价值在结构，不在数量。</p>
+</div>
+<div class="axis">
+  <h3 id="AXIS-A4">A4 · 交棒契约与离场对账</h3>
+  <p>设计师拿到文件后从哪儿起手、哪些不许改、改完之后凭什么证明红线还在。这一轴决定的是交付是否可复现（项目原则 ㉔）。</p>
+</div>
+
+<h2 id="SEC-IDEAS"><span class="n">SEC-IDEAS</span>存活想法（6 条，按推荐度排序）</h2>
+
+<ul class="jump">
+  <li><a href="#IDEA-I1">I1 · 规格从画布迁到节点上</a></li>
+  <li><a href="#IDEA-I2">I2 · Token 权威源移到 DTCG，出口按 dp</a></li>
+  <li><a href="#IDEA-I3">I3 · 散装 master 合成变体集，SLOT 承载结构差异</a></li>
+  <li><a href="#IDEA-I4">I4 · 交棒第一屏做成可信入口</a></li>
+  <li><a href="#IDEA-I5">I5 · 动效规格改走 annotation，按语义分档</a></li>
+  <li><a href="#IDEA-I6">I6 · 08-28 冻结的对象从像素翻转为契约</a></li>
+</ul>
+
+<article class="idea" id="IDEA-I1">
+  <div class="hd"><span class="id">I1</span><h3>规格从画布卡迁到节点上：改一个函数体，35 张卡整体换承载体</h3></div>
+  <div class="tags">
+    <span class="tag">轴 <b>A1 规格的承载体</b></span>
+    <span class="tag">信心 <b>82%</b></span>
+    <span class="tag">复杂度 <b>Medium</b></span>
+    <span class="tag">推荐 <b>Top pick</b></span>
+  </div>
+
+  <p>今天的 35 张标注卡，是一个函数生出来的：<code>annotation(title, lines)</code> 全身只有一个浅色框、一个标题、一个循环打印的条目列表——<strong>对被它标注的对象一无所知</strong>。它不知道自己在说哪个按钮，卡片和对象之间只有「挨得近」这一层关系。设计师一旦挪动布局，这层关系就断了。</p>
+
+  <p>关键杠杆在于：所有 35 处规格都从这一个函数流出。<strong>换掉函数体，等于一次性把 35 处规格从「画布上的浅色框」搬到「绑在节点上、Dev Mode 能读回」的 annotation 上</strong>，而不需要逐个调用点改写。</p>
+
+  <p>搬过去之后还能顺手做两件今天做不到的事。一是<strong>分级</strong>：现在 35 张卡视觉完全同构，「主色对比度不得低于 4.5:1」和「这里建议留点呼吸感」长得一模一样，设计师无从判断哪条是红线；annotation 支持分类，红线与提示可以从此分开。二是<strong>分通道</strong>：人要读的理由写进 <code>labelMarkdown</code>，机器要核的数值挂进 <code>properties[]</code>，不再让一句话里既有理由又有数字。</p>
+
+  <p>最后这件事才是它真正的价值：设计师改完稿之后，我们可以把全部 annotation 读回来逐条对账。今天做不到——今天只能靠人肉看图找那 35 张浅色框还在不在。</p>
+
+  <dl class="f">
+    <dt>依据</dt>
+    <dd class="basis"><ul>
+      <li><span class="k">direct</span>code.js:1170-1180 —— <code>annotation()</code> 函数体仅 <code>box('_annotation/'+title, 'VERTICAL', {w:260, fill:'color/primary-light', stroke:'color/border'})</code> + 标题 text + 循环 text，无 severity 维度、对被标注对象零引用</li>
+      <li><span class="k">direct</span>全文 23 处静态调用点，运行时展开为 35 张卡（含 3+6+3+4+1 的循环体）</li>
+      <li><span class="k">external</span><code>figma_set_annotations</code> schema —— 支持 <code>labelMarkdown</code>、<code>properties[]</code>（可 pin 33 项）、<code>categoryId</code></li>
+      <li><span class="k">external</span><code>figma_get_annotations</code> schema —— 支持 <code>include_children</code> 与 <code>depth</code>，构成离场对账的读回通道</li>
+    </ul></dd>
+    <dt>为何重要</dt>
+    <dd>它把「规格」从评审期的一次性道具，变成贯穿交棒全程的可查资产。项目原则 ㉔ 说「审批的载体决定交付可复现性」——这条正是换载体。</dd>
+    <dt>风险</dt>
+    <dd class="down"><ul>
+      <li>Desktop Bridge plugin 是二元前置。不通则这条为零，因此第一步应是一次独立的连通性验证，不要和迁移混在一起做。</li>
+      <li>画布卡在评审场景仍然有用（投屏时一眼能看见）。迁移不等于删除，需要决定是否保留双投影。</li>
+      <li>「哪条是红线」这个分级判断本身需要过一遍 PRD，不是纯机械改造。</li>
+    </ul></dd>
+  </dl>
+</article>
+
+<article class="idea" id="IDEA-I2">
+  <div class="hd"><span class="id">I2</span><h3>Token 的权威源既不在 Figma 也不在 code.js，而在 DTCG；出口按 dp 直连 Flutter</h3></div>
+  <div class="tags">
+    <span class="tag">轴 <b>A2 Token 完备度与出口</b></span>
+    <span class="tag">信心 <b>76%</b></span>
+    <span class="tag">复杂度 <b>Medium</b></span>
+  </div>
+
+  <p>今天的 Token 状态是不对称的：颜色进了 Figma 变量（16 语义 + 5 分类，共 21 个），而字号 6 阶、间距 6 阶、圆角 5 阶——共 17 项——仍然是 <code>code.js</code> 里的 JS 字面量，注释回标 PRD 章节号，但 Figma 侧完全看不见。<strong>后果是设计师在 Figma 里改不动它们</strong>：她想把卡片圆角从 12 调到 16，只能改一个画布上的具体矩形，改不了「圆角 lg」这个概念。</p>
+
+  <p>补齐本身不难，难的是补齐之后谁是权威源。如果 Figma 有一份、<code>code.js</code> 有一份，就回到了「多格式交付件一致性」那个已经吃过教训的坑里。所以这条想法的重点不是「导入变量」，而是<strong>把权威源移出两边，落在一份 DTCG 格式的 Token 文件上</strong>，Figma 变量和 <code>code.js</code> 常量都降格为它的投影。这类似于千克原器在 2019 年被普朗克常数取代——去掉实物基准，任何一方损坏都可以从定义重建。</p>
+
+  <p>出口上有一个恰好的便利：项目的画布宽高 <code>390×844</code> 在注释里就写明「与 Flutter 逻辑像素一致」，而导出工具支持 <code>sizeUnit: 'dp'</code>。<strong>选 dp，Token 从 Figma 到 Flutter 之间不需要任何换算</strong>，也就少了一个漂移点。</p>
+
+  <p>还有两个细节值得一并决定。导入冲突时的行为默认是「问」——一字不写、等人确认，这天然就是「设计参数复核闸门」那条沉淀想要的东西，不用另建流程。另一头则要留神：版本 diff 工具明确<strong>不追踪变量值的变更</strong>，也就是说有人把主色从 <code>#0B7C8C</code> 调深一档，diff 里看不出来——而主色对比度实测 4.91:1，红线 4.5:1，<strong>余量只有 0.41</strong>。Token 值这条腿必须单独记一本账，不能指望版本对比替你看住。</p>
+
+  <dl class="f">
+    <dt>依据</dt>
+    <dd class="basis"><ul>
+      <li><span class="k">direct</span>code.js:57-71 —— <code>TYPE_SCALE</code>(6 阶) / <code>SPACING</code>(6 阶) / <code>RADIUS</code>(5 阶) 为纯 JS 字面量，注释只回标 PRD §1.4.4/§1.4.5，无任何 <code>figma.variables</code> 调用</li>
+      <li><span class="k">direct</span>code.js:260 —— <code>ensureVariables()</code> 只查 <code>getLocalVariablesAsync('COLOR')</code>，非颜色类型从未纳入</li>
+      <li><span class="k">direct</span>code.js:74 —— <code>CANVAS = {w:390, h:844}</code>，注释原文「与 Flutter 逻辑像素一致」</li>
+      <li><span class="k">direct</span>PRD:201 —— 主色对比度实测 4.91:1，红线 4.5:1，余量 0.41</li>
+      <li><span class="k">external</span><code>figma_setup_design_tokens</code> schema —— DTCG 花括号别名，上限 modes≤4 / tokens≤100（现存 21 + 新增 17 = 38，远未触顶）</li>
+      <li><span class="k">external</span><code>figma_export_tokens</code> schema —— 10 种格式、<code>sizeUnit: px/rem/pt/dp</code>、<code>dry-run</code>、<code>$extensions</code> 存 variable ID 保 round-trip</li>
+      <li><span class="k">external</span><code>figma_diff_versions</code> schema —— 明确声明不追踪变量值变更</li>
+    </ul></dd>
+    <dt>为何重要</dt>
+    <dd>M3 的验收项里「Design Token 落地」是硬指标。今天落地率是 21/38，而且缺的正好是设计师最常调的字号与间距。</dd>
+    <dt>风险</dt>
+    <dd class="down"><ul>
+      <li>阴影一类的实际数量需要重新点算——原始候选里写的「13 处 DROP_SHADOW」经核实实为 8 处，说明这类计数不能凭印象。</li>
+      <li>DTCG 作权威源意味着多一个需要维护的文件与一条同步纪律；如果没人真的按它走，反而多一份漂移源。</li>
+      <li>动效类 Token 走不通这条路（见 I5）。</li>
+    </ul></dd>
+  </dl>
+</article>
+
+<article class="idea" id="IDEA-I3">
+  <div class="hd"><span class="id">I3</span><h3>20 个平行 master 合成变体集，SLOT 承载结构差异变体——被否过的想法，前置条件变了</h3></div>
+  <div class="tags">
+    <span class="tag">轴 <b>A3 组件之间的关系</b></span>
+    <span class="tag">信心 <b>71%</b></span>
+    <span class="tag">复杂度 <b>High</b></span>
+  </div>
+
+  <p>组件页上有 20 个 Component master：6 个按钮（<code>primary / secondary / ghost / default / hover / disabled</code> 六个平行名字）+ 10 个 pin + 若干其他。全文没有一处 <code>createComponentSet</code>、没有 <code>combineAsVariants</code>、没有 <code>componentPropertyDefinitions</code>。<strong>它们是 20 个孤岛，彼此之间的关系全靠命名暗示。</strong></p>
+
+  <p>这带来两个具体损失。一是那六个按钮名字其实混了两个正交维度——<code>primary/secondary/ghost</code> 是样式，<code>hover/disabled</code> 是状态，把它们并列成六个名字是范畴错误，也意味着「secondary 的 disabled 态」这一格根本不存在、而且没人看得出它缺了。变体矩阵的价值恰在于<strong>缺格会自己显形</strong>。二是没有变体集就没有「状态覆盖度」这个概念，可访问性审计工具无从下手——比如全套组件是否都有 focus 态，今天没法回答。</p>
+
+  <p>更值得注意的是一条<strong>被否想法的复活</strong>。08-24 那轮曾提出把 pin 做成变体，被否的理由很硬：Instance 禁止增删子节点，而 pin 的选中态（48×48 带阴影）与角标态是结构差异，不是属性差异，所以代码里一律回退到原生构造 <code>pinRaw</code>，留下一份重复实现。<strong>现在有了 SLOT</strong>——schema 原文说它「比 INSTANCE_SWAP 更灵活」，SlotNode 会自动创建同名 SLOT 属性，正是「结构可换」的官方出口。项目原则 ⑱ 要求被拒想法随前置条件复评，这条到点了。</p>
+
+  <p>合并的时机风险也比想象小：<code>create_component_set</code> 会保留 base 的 node ID、已有 instance 不断链。<strong>42 框已经成型的情况下仍然可以无损合并</strong>，不必推倒重来。</p>
+
+  <dl class="f">
+    <dt>依据</dt>
+    <dd class="basis"><ul>
+      <li><span class="k">direct</span>code.js:1330-1356 —— <code>registerComponents()</code> 六次 <code>toComponent('ui/button/'+variants[v])</code> + 双层循环注册十个 pin，合计 20 个平行 master；全文检索 <code>combineAsVariants|createComponentSet|componentPropertyDefinitions</code> 零命中</li>
+      <li><span class="k">direct</span>code.js:1290-1322 —— <code>pin()</code> 注释明确「选中态（48×48+阴影）与角标态属结构差异，一律回退原生构造」，并在 1313 行落地回退</li>
+      <li><span class="k">direct</span>code.js:1201-1206 —— <code>toComponent()</code> 只设 name 并入缓存，20 个 master 全无 description</li>
+      <li><span class="k">external</span><code>figma_create_component_set</code> schema —— base 保留 node ID、instance 不断链、上限 100 变体</li>
+      <li><span class="k">external</span><code>figma_create_slot</code> schema —— SlotNode 自动创建同名 SLOT 属性，原文「more flexible than INSTANCE_SWAP」</li>
+      <li><span class="k">external</span><code>figma_audit_component_accessibility</code> schema —— 状态覆盖度 + annotation 完整度 + 色盲模拟</li>
+      <li><span class="k">direct</span>项目原则 ⑱（说明文档:941）—— 被拒想法须随前置条件复评</li>
+    </ul></dd>
+    <dt>为何重要</dt>
+    <dd>组件库交付给设计师，交的是结构而非数量。变体矩阵一旦成立，缺口自己会说话，审计也才有落点。</dd>
+    <dt>风险</dt>
+    <dd class="down"><ul>
+      <li>复杂度是这六条里最高的，且 PRD §1.7 六件基础组件补齐所需的工作量此前被显著低估——核实后，标签 / 空状态 / 骨架屏三件<strong>全无对应函数</strong>，需要从零写，不是「包一层」。建议先只做按钮与 pin 的合并，其余三件单独排。</li>
+      <li>SLOT 的实际行为未在本项目验证过，schema 说明与真实表现可能有差距，需要一次小样验证。</li>
+      <li>同样依赖 Desktop Bridge。</li>
+    </ul></dd>
+  </dl>
+</article>
+
+<article class="idea" id="IDEA-I4">
+  <div class="hd"><span class="id">I4</span><h3>交棒第一屏做成可信入口：计数运行时自报，契约随组件走</h3></div>
+  <div class="tags">
+    <span class="tag">轴 <b>A4 交棒契约</b></span>
+    <span class="tag">信心 <b>88%</b></span>
+    <span class="tag">复杂度 <b>Low</b></span>
+    <span class="tag">性价比 <b>最高</b></span>
+  </div>
+
+  <p>设计师接手时看到的第一个界面是生成器的操作面板 <code>ui.html</code>。上面有四个数字，<strong>四个全错</strong>：写「14 页 + 3 模态」，实际 18 个主态；写「语义色 13」，实际 16；写「等 13 页」，实际 14；写「22 条跳转」，实际 23。这些不是笔误，是手写副本随实现漂移的必然结果——「跨文档引用核验」那条沉淀讲的就是这件事。</p>
+
+  <p>问题的根不在数字，在<strong>撰写权</strong>。只要这些数字由人手打，它们就会再次过期。做法应当是取消人工撰写权：让计数在运行时由生成器自报，界面只负责显示。这样「交棒界面上的数字说谎」这种事，从此在结构上不可能发生。</p>
+
+  <p>同一屏还缺第二样东西：契约。20 个 master 全部没有 description，设计师打开组件页看到 20 个孤立框，不知道该从哪个起手、哪些是不许动的。把「从哪起手 / 哪些不许改」写进每个组件的 description，<strong>契约就和文件同生共死</strong>，不会像一份单独的交接文档那样被遗忘在某个目录里。</p>
+
+  <p>加上 I1 提供的读回通道，这一屏就构成完整闭环：数字自报、契约随组件、红线可读回。三件事各自都很小，凑在一起是「交付可复现」的最小实现。</p>
+
+  <dl class="f">
+    <dt>依据</dt>
+    <dd class="basis"><ul>
+      <li><span class="k">direct</span>ui.html:24「14 页 + 3 模态」实为 18 主态（<code>screen()</code> 去重后 18 个 pageId）</li>
+      <li><span class="k">direct</span>ui.html:30「语义色 13」实为 16（<code>SEMANTIC_COLORS</code> 16 键）</li>
+      <li><span class="k">direct</span>ui.html:42「等 13 页」实为 14（code.js:3289-3291 列 14 个 <code>build*</code>）</li>
+      <li><span class="k">direct</span>ui.html:54「22 条跳转」实为 23（code.js:3576-3601 计 23 行）</li>
+      <li><span class="k">direct</span>code.js:1201-1206 —— <code>toComponent()</code> 从不写 description</li>
+      <li><span class="k">direct</span>docs/solutions/workflow-issues/cross-document-reference-verification.md</li>
+      <li><span class="k">external</span><code>figma_set_description</code> 与 <code>figma_generate_component_doc</code></li>
+    </ul></dd>
+    <dt>为何重要</dt>
+    <dd>四个错误数字出现在交棒动线的第一个触点上。第一屏不可信，后面所有规格的可信度都要打折。而修它的成本在六条里最低。</dd>
+    <dt>风险</dt>
+    <dd class="down"><ul>
+      <li>计数自报需要生成器在跑完之后回填界面，涉及一次消息通道改动——小，但不是零。</li>
+      <li>description 写什么需要人来定，不能自动生成；写得太细会变成第二份 PRD。</li>
+    </ul></dd>
+  </dl>
+</article>
+
+<article class="idea" id="IDEA-I5">
+  <div class="hd"><span class="id">I5</span><h3>动效规格改走 annotation：记「♩=120」，不记弓法</h3></div>
+  <div class="tags">
+    <span class="tag">轴 <b>A1 / A2 交界</b></span>
+    <span class="tag">信心 <b>64%</b></span>
+    <span class="tag">复杂度 <b>Low</b></span>
+  </div>
+
+  <p>23 条原型跳转共用同一段硬编码 transition：<code>SMART_ANIMATE / EASE_OUT / 0.3s</code>，而 <code>link()</code> 的函数签名里根本没有 duration 参数——<strong>就算想给某条跳转单独设时长，今天也传不进去</strong>。于是搜索框展开、弹层升起、整页切换这三种语义完全不同的转场，动起来一模一样。</p>
+
+  <p>本来的自然想法是把时长和曲线做成 Token，跟着 I2 一起进变量。但这条路是堵死的：动效类 Token（TIMING / EASING）<strong>无法经 Plugin API 创建为变量</strong>。这不是懒得做，是能力边界。既然 Token 层承载不了，动效规格就只能落到 annotation 上——正好和 I1 是同一个承载体。</p>
+
+  <p>更要紧的是划清交什么、不交什么。乐谱记 <code>♩=120</code>，不记弓法：<strong>时长与曲线是规格（必须交），运镜与弹性是表演（留给设计师）</strong>。按这把刀切，我们该交的是「弹层升起 250ms / ease-out，页面切换 300ms / ease-in-out」这类可核对的量，不该交的是「这里应该有一点回弹感」。后者属于原则 ⑳ 明确要避开的区域——我们做了她也会重做。</p>
+
+  <p>可以顺手做的一件事是让 23 条跳转按语义分档，这样设计师在 Present 模式里能直接体感差异，而不必读文档去想象。但要注意这一步很容易越线：<strong>分档的依据必须是已有的语义分类，不能变成我们在替设计师调手感</strong>。这也是这条信心只有 64% 的原因。</p>
+
+  <dl class="f">
+    <dt>依据</dt>
+    <dd class="basis"><ul>
+      <li><span class="k">direct</span>code.js:3706-3721 —— transition 为硬编码字面量 <code>{type:'SMART_ANIMATE', easing:{type:'EASE_OUT'}, duration:0.3}</code>，签名 <code>link(node, target, trigger)</code> 无 duration 参数</li>
+      <li><span class="k">direct</span>code.js:3570-3602 —— <code>FLOW_LINKS</code> 实为 23 条，全部共用上述字面量</li>
+      <li><span class="k">external</span><code>figma_import_tokens</code> schema —— 明确声明 TIMING / EASING 无法经 Plugin API 创建</li>
+      <li><span class="k">reasoned</span>记谱法的规格 / 演绎分界：定量参数入谱，表现手法留给演奏者</li>
+    </ul></dd>
+    <dt>为何重要</dt>
+    <dd>动效是 14 页视觉稿之外最容易在交棒时丢失的一类规格，因为它不在静态画面上。而它恰好又是 Token 层唯一承载不了的一类，必须显式安排去处。</dd>
+    <dt>风险</dt>
+    <dd class="down"><ul>
+      <li>最贴近原则 ⑳ 红线的一条。「按语义分档」与「替设计师调手感」之间只有一层，需要在动手前明确写下判据。</li>
+      <li>Present 模式的体感差异是否真的比文档有效，未验证。</li>
+    </ul></dd>
+  </dl>
+</article>
+
+<article class="idea" id="IDEA-I6">
+  <div class="hd"><span class="id">I6</span><h3>08-28 冻结的对象，从像素翻转为契约</h3></div>
+  <div class="tags">
+    <span class="tag">轴 <b>A4 交棒契约</b></span>
+    <span class="tag">信心 <b>69%</b></span>
+    <span class="tag">复杂度 <b>Low</b></span>
+    <span class="tag">类型 <b>范围决策</b></span>
+  </div>
+
+  <p>M3 的里程碑写的是 2026-08-28 冻结 14 页视觉稿、Design Token 落地。但如果承认原则 ⑳——视觉精修由设计师主导、我们做的视觉稿大概率会被推翻——那么<strong>「冻结 14 页视觉稿」这个目标本身就有内在矛盾</strong>：冻结一件注定要被重做的东西，冻结动作没有承载价值。</p>
+
+  <p>翻转一下：08-28 冻结的不是像素，是<strong>契约层</strong>——Token 出口口径（I2）、变体矩阵结构（I3）、红线 annotation（I1）、交棒入口（I4）。像素交给设计师在冻结之后填。这样冻结的是不会被推翻的部分，而里程碑仍然按期达成、且达成的是有价值的东西。</p>
+
+  <p>这条不是执行想法，是<strong>范围决策</strong>：它决定另外五条的目标形态。如果保留原目标，I1–I5 都是「视觉稿的配套」；如果翻转，I1–I4 本身就是交付物，优先级整体上移。所以它应该最先被拍，而不是最后。</p>
+
+  <dl class="f">
+    <dt>依据</dt>
+    <dd class="basis"><ul>
+      <li><span class="k">direct</span>说明文档:63 —— M3「2026-08-28 / 14 页视觉稿冻结、Design Token 落地」</li>
+      <li><span class="k">direct</span>项目原则 ⑳（说明文档:986）—— 定维度前先问「谁接、他能自己补上哪些」</li>
+      <li><span class="k">reasoned</span>视觉稿会被下游推翻，契约不会；冻结应作用在稳定层</li>
+    </ul></dd>
+    <dt>为何重要</dt>
+    <dd>它是唯一一条会改变其他五条优先级的想法。先拍这个，后面的排序才有依据。</dd>
+    <dt>风险</dt>
+    <dd class="down"><ul>
+      <li>改里程碑定义需要同步更新说明文档 §1.3，且要向上说明——不是可以悄悄改的东西。</li>
+      <li>若外部对「14 页视觉稿」有硬承诺（如向他人展示），翻转不可行。</li>
+    </ul></dd>
+  </dl>
+</article>
+
+<h2 id="SEC-REJECTED"><span class="n">SEC-REJECTED</span>被否想法与理由</h2>
+
+<p class="lead">40 条原始想法经去重与依据核验后，以下未进入存活集。被吸收的不算失败——它们是存活想法的组成部分；被驳倒的则记下理由，以便日后前置条件变化时按原则 ⑱ 复评。</p>
+
+<table>
+  <thead><tr><th style="width:88px">候选</th><th style="width:96px">结果</th><th>理由</th></tr></thead>
+  <tbody>
+    <tr><td class="rid">C19</td><td>驳倒</td><td>「PRD §1.7 五件组件已是参数化函数，只差包一层」不实——核实后仅 <code>card()</code> 与 <code>field()</code> 存在，标签 / 空状态 / 骨架屏三件全无对应函数，改动量被严重低估。已作为风险写入 I3。</td></tr>
+    <tr><td class="rid">C7</td><td>越线</td><td>「让 23 条跳转在 Present 里能感觉到差异」单独成立会滑向替设计师决定动画手感，触碰原则 ⑳。仅以「按已有语义分类分档」的受限形式并入 I5。</td></tr>
+    <tr><td class="rid">C20</td><td>非想法</td><td>空态六框零 IP 图形——是「刻意留白」还是「漏了」，这是需要先问设计师的判断题，不是可执行方向。</td></tr>
+    <tr><td class="rid">C4</td><td>依据错位</td><td>主张有据但行号归属错：「Marker 只表达两类信息」在 PRD:1183-1185，不在所引的 :1019-1032。实质内容已被 I1 的红线分级吸收。</td></tr>
+    <tr><td class="rid">C18</td><td>依据不支持</td><td>所引 PRD L1745 实为分类体系验收项，既不涉状态覆盖度也不涉 focus 态。方向可信，能力随 I3 的审计一并获得。</td></tr>
+    <tr><td class="rid">C17</td><td>依据关联弱</td><td><code>VARIANT_TAG='⟨变体⟩'</code> 约束的是画框不进跳转索引，与组件变体维度被压平无关。「正交维度」部分成立，并入 I3。</td></tr>
+    <tr><td class="rid">C2 C3 C5 C24</td><td>已吸收</td><td>双通道标注 / 单点声明三重投影 / 标注分级 / Desktop Bridge 前置验证——四者是同一条主线的分解步骤，单独立项会把一条线拆成四张卡。全部并入 I1。</td></tr>
+    <tr><td class="rid">C8–C13</td><td>已吸收</td><td>三表升变量 / DTCG 权威源 / dp 出口 / ask 闸门 / card 描边与 PRD 不一致 / 变量腿单独记账——并入 I2。其中 C8 的「13 处 DROP_SHADOW」经核实实为 8 处，已在 I2 中修正。</td></tr>
+    <tr><td class="rid">C21 C22 C23</td><td>已吸收</td><td>离场对账 / 计数自报 / description 写契约——并入 I4（对账的读回通道归 I1）。C21 所引「原则 ㉔ 在说明文档:986 邻近」有误，㉔ 实际在 :1037。</td></tr>
+    <tr><td class="rid">C6 C14 C25</td><td>已吸收</td><td>动效走 annotation / 记谱法分界 / 23 条共用 0.3s——并入 I5。</td></tr>
+    <tr><td class="rid">08-24 旧稿<br>想法 3/4/5/6</td><td>已复评作废</td><td>上一轮工件 <code>2026-08-24-hifi-prototype-upgrade-ideation.html</code> 中因「Instance 禁增删子节点」被砍的几条，其前置条件已因 SLOT 能力出现而改变，相关部分以 I3 的形式重生。旧稿不回改。</td></tr>
+  </tbody>
+</table>
+
+<footer class="sig">
+  <b>组成信号</b>：本文件由 ce-ideate 于 <b>2026-08-26</b> 组成，来源标识 <b>ARTIFACT-2026-08-26-UIUX-DESIGN-IDEATION</b>。<br>
+  <b>组成路径</b>：Grounding（3 路并行代码库 / 沉淀 / 工具能力调研）→ 四轴分解 → 5 个 frame 并行发散共 40 条 → 去重合并 26 条 + 组合 5 条 → 独立依据核验（fresh context，逐条抽查行号）→ 仲裁存活 6 条。<br>
+  <b>基线</b>：Figma 42 框 + PRD v2.1 双基线（由用户在本轮开始时确认）。<br>
+  <b>已知取证缺口</b>：本轮环境无联网，地图 UI 外部先例 6 类未取证；所有 external 依据取自本机 Figma MCP 工具 schema 原文。
+</footer>
+
+</div>
+</body>
+</html>

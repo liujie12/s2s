@@ -141,7 +141,7 @@ def transform_head_scaled(canvas, ratio):
     return path, eye
 
 
-def build_mini_symbol(canvas=1024, ratio=0.72):
+def build_mini_symbol(canvas=1024, ratio=0.80):
     """组装微缩档符号：主色圆盘铺满画板 + 白色实体鸭头 + 主色眼点。
 
     为什么不沿用 build_symbol(canvas, 0, BRAND)：那套是「圆角块 + 白盘 +
@@ -154,6 +154,12 @@ def build_mini_symbol(canvas=1024, ratio=0.72):
     2. 鸭头由镂空反相为白色实体 —— 镂空透出的是底色，前景层不能靠镂空
        表达形状，反相后笔画才拿到自己的像素（与 build_android_foreground 同思路）；
     3. 眼点随之改为主色 —— 鸭头已是白色，白眼点会与鸭头融为一体。
+
+    ratio 为何是 0.80（2026-08-26 二次实测，probe-mini-negative.py）：
+    用户希望鸭头更大更醒目，逐档扫描 0.72~0.96 后取 0.80。上限由**主色环带
+    宽度**决定，而非笔画粗细 —— 环带是「这是一枚按钮」的体量感载体，24px 下
+    不足 1px 就会断续。实测环带最窄处：0.80 → 1.90px（达标）、0.84 → 1.42px、
+    0.88 → 0.93px（喙尖已捅破圆盘边缘）。故 0.80 是环带不破的上限。
 
     :param canvas: 画板边长
     :param ratio: 鸭头长边占画板的比例
