@@ -111,6 +111,27 @@ var TYPE_SCALE = {
 /** 间距阶（PRD §1.4.5） */
 var SPACING = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 };
 
+/**
+ * 贴合间距（2px）—— SPACING 阶梯之外的**唯一获准豁免值**。
+ *
+ * 为什么必须存在（2026-08-27 条目 [61]，B 类像素精修）：
+ * 它只用在「一个语义单元内部的两行」之间 —— 圆标与其标签、色块名与其色值、
+ * 时长行与其 PRD 出处、字段名与其取值。这类两行本就该读成一件东西，用阶梯
+ * 最小值 xs=4 会把它们拉成两条独立信息，视觉上与「单元之间」的间距混为一档。
+ *
+ * 为什么以常量形式而非字面 2 散落各处：`bindNum()` 对不在阶梯上的值是
+ * **静默不绑变量、也不报错**（code.js:672 `if (!name) return false;`）。
+ * 也就是说散落的字面 2 会让这些容器悄悄脱离 Variables 而画面完全正常，
+ * 是最难发现的一类漂移。收成一个具名常量后：
+ * ① 豁免理由只写一遍，读代码的人当场看到它是刻意的而非手滑；
+ * ② 布局探针能钉住「全文只有这一个非阶梯间距值、且用量恰为 9 处」，
+ *    日后谁再随手写个 3 或 6，断言立刻报红（见 probe-layout-offline.js）。
+ *
+ * **不要把它加进 SPACING**：加进去就意味着承诺它是一档通用间距，
+ * 会被用到单元之间，而 PRD §1.4.5 的阶梯是 4 的倍数，2 破坏该规律。
+ */
+var TIGHT_GAP = 2;
+
 /** 圆角阶（PRD §1.4.5） */
 var RADIUS = { sm: 4, md: 8, lg: 12, xl: 16, full: 999 };
 
@@ -2356,7 +2377,7 @@ async function batchSetup() {
   for (var key in SEMANTIC_COLORS) {
     var row = box('_swatch-' + key, 'HORIZONTAL', { gap: SPACING.md, align: 'CENTER' });
     row.appendChild(box('_chip', 'HORIZONTAL', { w: 40, h: 40, radius: RADIUS.md, fill: 'color/' + key, stroke: 'color/border' }));
-    var meta = box('_meta', 'VERTICAL', { gap: 2 });
+    var meta = box('_meta', 'VERTICAL', { gap: TIGHT_GAP });
     meta.appendChild(text('color/' + key, 'body'));
     meta.appendChild(text(SEMANTIC_COLORS[key], 'caption', 'color/text-secondary'));
     row.appendChild(meta);
@@ -2453,7 +2474,7 @@ async function batchSetup() {
       radius: RADIUS.sm, fill: 'color/primary'
     }));
     mrow.appendChild(mslot);
-    var mmeta = box('_motion-meta-' + mk, 'VERTICAL', { gap: 2 });
+    var mmeta = box('_motion-meta-' + mk, 'VERTICAL', { gap: TIGHT_GAP });
     mmeta.appendChild(text(motionLine(mk), 'small'));
     mmeta.appendChild(text('motion/' + mk + ' ｜ ' + MOTION[mk].prd, 'caption', 'color/text-secondary'));
     mrow.appendChild(mmeta);
@@ -2802,7 +2823,7 @@ function mapOverlayTop() {
   for (var r = 0; r < steps.length; r++) {
     var active = r === 2;
     var seg = box('_radius-' + steps[r], 'HORIZONTAL', {
-      padTop: 2, padBottom: 2, padLeft: SPACING.sm, padRight: SPACING.sm,
+      padTop: TIGHT_GAP, padBottom: TIGHT_GAP, padLeft: SPACING.sm, padRight: SPACING.sm,
       radius: RADIUS.full, fill: active ? 'color/primary' : null,
       align: 'CENTER', justify: 'CENTER'
     });
@@ -2855,7 +2876,7 @@ function mapOverlayCats() {
   }];
 
   // 「全部」为默认选中态：主色实心，与五大类的分类色描边形成主次
-  var all = box('_chip-all', 'VERTICAL', { gap: 2, align: 'CENTER', justify: 'CENTER' });
+  var all = box('_chip-all', 'VERTICAL', { gap: TIGHT_GAP, align: 'CENTER', justify: 'CENTER' });
   all.appendChild(box('_chip-all-disc', 'HORIZONTAL', {
     w: 28, h: 28, radius: RADIUS.full, fill: 'color/primary',
     align: 'CENTER', justify: 'CENTER'
@@ -2865,7 +2886,7 @@ function mapOverlayCats() {
 
   for (var i = 0; i < CAT_LIST.length; i++) {
     var catRole = 'category/' + CAT_LIST[i][0];
-    var cell = box('_chip-' + CAT_LIST[i][0], 'VERTICAL', { gap: 2, align: 'CENTER', justify: 'CENTER' });
+    var cell = box('_chip-' + CAT_LIST[i][0], 'VERTICAL', { gap: TIGHT_GAP, align: 'CENTER', justify: 'CENTER' });
     // 分类圆底用分类色实心 + 白图标，与地图 Pin 资源态完全同构，降低认知成本
     var disc = box('_chip-disc-' + CAT_LIST[i][0], 'HORIZONTAL', {
       w: 28, h: 28, radius: RADIUS.full, fill: catRole,
@@ -2949,22 +2970,41 @@ function markerInfoCard(catKey, catName, title, sub, supplyDemand, completeness)
     offset: { x: 0, y: -2 }, radius: 12, spread: 0, visible: true, blendMode: 'NORMAL'
   }];
 
-  // 首行：分类圆标 + 标题 + 供需文字标（文字标而非再来一个符号，避免与 Pin 重复编码）
-  var head = box('_mi-head', 'HORIZONTAL', { gap: SPACING.sm, align: 'CENTER' });
+  // 两列结构（2026-08-27 条目 [61]，A1 像素精修）：圆标独占左列，**其余全部文字
+  // 落在右列**，因此四行正文的左缘由结构保证一致，不靠每行各写 padLeft 去凑。
+  //
+  // 改前实测四行文字左缘为 36 / 0 / 18 / 0（标题被 28 圆标 + 8 间距推到 36、
+  // 摘要直接挂在卡上是 0、完整度被 10 色点 + 8 间距推到 18、动作行又回到 0），
+  // 竖向扫读时四条参差的起笔线会让人误以为它们属于不同层级，而它们是同一层。
+  // 统一为「正文左缘 = 圆标右边缘」是列表类卡片的通行做法。
+  //
+  // 为什么用结构而不是给三行各加 padLeft: 36：36 不在 SPACING 阶梯上，
+  // bindNum() 对非阶梯值是**静默不绑变量**（code.js:672），三处会一齐脱离
+  // Variables 且毫无征兆；而两列结构里这个 36 是 28 + SPACING.sm 现算出来的
+  // 副产物，本就不需要、也不该是一个间距 Token。
+  var inner = w - SPACING.md * 2;                 // 卡内可用宽 = 358 - 24 = 334
+  var textColW = inner - 28 - SPACING.sm;         // 右列宽 = 334 - 28 - 8 = 298
+
+  // 左列：分类圆标。align 取 MIN 而非 CENTER —— 右列现在有四行，
+  // 居中会把圆标顶到整卡竖向中点，与标题脱开。
+  var head = box('_mi-head', 'HORIZONTAL', { gap: SPACING.sm });
   var disc = box('_mi-disc', 'HORIZONTAL', {
     w: 28, h: 28, radius: RADIUS.full, fill: 'category/' + catKey,
     align: 'CENTER', justify: 'CENTER'
   });
   disc.appendChild(catIcon(catKey, 'color/surface', 16));
   head.appendChild(disc);
-  var ttl = box('_mi-title', 'VERTICAL', { gap: 2 });
-  ttl.layoutGrow = 1;
+
+  // 右列：标题/分类供需标/摘要/完整度/分隔线/动作行，共用同一条左缘
+  var body = box('_mi-body', 'VERTICAL', { w: textColW, gap: SPACING.sm });
+
+  // 标题 + 供需文字标（文字标而非再来一个符号，避免与 Pin 重复编码）
+  var ttl = box('_mi-title', 'VERTICAL', { gap: TIGHT_GAP });
   ttl.appendChild(text(title, 'h3', 'color/text-primary'));
   ttl.appendChild(text(catName + ' · ' + (supplyDemand === 'demand' ? '需求' : '资源'), 'caption', 'color/text-secondary'));
-  head.appendChild(ttl);
-  c.appendChild(head);
+  body.appendChild(ttl);
 
-  c.appendChild(text(sub, 'small', 'color/text-secondary'));
+  body.appendChild(text(sub, 'small', 'color/text-secondary'));
 
   // 完整度行：这是从 Marker 卸下来的那条信息，故用真实色点 + 明确文案，不再是 1px 小角标
   var comp = box('_mi-completeness', 'HORIZONTAL', { gap: SPACING.sm, align: 'CENTER' });
@@ -2974,17 +3014,22 @@ function markerInfoCard(catKey, catName, title, sub, supplyDemand, completeness)
     w: 10, h: 10, radius: RADIUS.full, fill: compRole[completeness]
   }));
   comp.appendChild(text('完整度：' + compLabel[completeness], 'caption', 'color/text-secondary'));
-  c.appendChild(comp);
+  body.appendChild(comp);
 
-  c.appendChild(box('_mi-divider', 'HORIZONTAL', { w: w - SPACING.md * 2, h: 1, fill: 'color/border' }));
+  body.appendChild(box('_mi-divider', 'HORIZONTAL', { w: textColW, h: 1, fill: 'color/border' }));
 
-  var act = box('_mi-actions', 'HORIZONTAL', { gap: SPACING.sm, align: 'CENTER' });
+  // 动作行取固定宽而非 HUG：右端「查看详情 ›」要贴住右列右缘，
+  // HUG 宽的容器里 spacer 的 layoutGrow 无处可伸，两端对齐会失效。
+  var act = box('_mi-actions', 'HORIZONTAL', { w: textColW, gap: SPACING.sm, align: 'CENTER' });
   act.appendChild(text('距我 1.2km', 'caption', 'color/text-secondary'));
   var spacer = box('_mi-spacer', 'HORIZONTAL', { h: 1 });
   spacer.layoutGrow = 1;
   act.appendChild(spacer);
   act.appendChild(text('查看详情 ›', 'small', 'color/primary'));
-  c.appendChild(act);
+  body.appendChild(act);
+
+  head.appendChild(body);
+  c.appendChild(head);
   return c;
 }
 
@@ -3012,9 +3057,20 @@ function catTreeSheet(catKey, depth, openIdx) {
   var oi = openIdx || 0;
   var catRole = 'category/' + catKey;
   var sheet = box('_cat-tree-sheet', 'VERTICAL', {
+    // 左右内缘提到弹层本身上（2026-08-27 条目 [61]，A3 像素精修）：
+    // 改前 padLeft: SPACING.lg 由 _sheet-title / _tree-lv1 / _tree-lv2 /
+    // _sheet-action 四处各自重复声明，任一处漏写即整行错位，而错位在结构断言里
+    // 零征兆。提到父级后左缘只有一个来源，新增子行默认就对齐。
+    //
+    // 随之要改的一件事：子容器不能再传 w: CANVAS.w（那是含内缘的整宽，会顶破
+    // 父级可用宽），一律改传 innerW。这里刻意用固定宽而非 layoutAlign STRETCH：
+    // 离线布局探针的 Auto Layout mock 不实现 STRETCH（probe:22 已声明），
+    // 用 STRETCH 会让探针量到 HUG 宽，从此这一屏的宽度断言失去意义。
     w: CANVAS.w, padTop: SPACING.md, padBottom: SPACING.lg,
+    padLeft: SPACING.lg, padRight: SPACING.lg,
     gap: SPACING.md, fill: 'color/surface', radius: RADIUS.xl
   });
+  var innerW = CANVAS.w - SPACING.lg * 2;   // 弹层内可用宽 = 390 - 32 = 358
   sheet.effects = [{
     type: 'DROP_SHADOW', color: { r: 0, g: 0, b: 0, a: 0.18 },
     offset: { x: 0, y: -4 }, radius: 16, spread: 0, visible: true, blendMode: 'NORMAL'
@@ -3022,7 +3078,7 @@ function catTreeSheet(catKey, depth, openIdx) {
 
   // 顶部把手：告知用户此层可下滑关闭，是「可收起」的最直接可视线索
   var handleRow = box('_sheet-handle-row', 'HORIZONTAL', {
-    w: CANVAS.w, justify: 'CENTER'
+    w: innerW, justify: 'CENTER'
   });
   handleRow.appendChild(box('_sheet-handle', 'HORIZONTAL', {
     w: 36, h: 4, radius: RADIUS.full, fill: 'color/border'
@@ -3031,8 +3087,7 @@ function catTreeSheet(catKey, depth, openIdx) {
 
   // 标题行：左标题 + 右「收起」，收起是显式退出口，不依赖用户猜手势
   var titleRow = box('_sheet-title', 'HORIZONTAL', {
-    w: CANVAS.w, padLeft: SPACING.lg, padRight: SPACING.lg,
-    align: 'CENTER', justify: 'SPACE_BETWEEN'
+    w: innerW, align: 'CENTER', justify: 'SPACE_BETWEEN'
   });
   titleRow.appendChild(text('分类筛选 · 第 ' + depth + ' 层', 'h3'));
   titleRow.appendChild(text('收起', 'small', 'color/primary'));
@@ -3040,8 +3095,7 @@ function catTreeSheet(catKey, depth, openIdx) {
 
   // ---- 第 1 层：5 大类顶栏 ----
   var lv1 = box('_tree-lv1', 'HORIZONTAL', {
-    w: CANVAS.w, padLeft: SPACING.lg, padRight: SPACING.lg,
-    gap: SPACING.sm, align: 'CENTER'
+    w: innerW, gap: SPACING.sm, align: 'CENTER'
   });
   for (var i = 0; i < CAT_LIST.length; i++) {
     var on = CAT_LIST[i][0] === catKey;
@@ -3067,19 +3121,22 @@ function catTreeSheet(catKey, depth, openIdx) {
 
   if (depth >= 2) {
     var lv2Wrap = box('_tree-lv2', 'VERTICAL', {
-      w: CANVAS.w, padLeft: SPACING.lg, padRight: SPACING.lg, gap: SPACING.xs
+      w: innerW, gap: SPACING.xs
     });
-    lv2Wrap.appendChild(text('二级类目（按最近 7 天发布数排序）', 'caption', 'color/text-secondary'));
+    // 说明文字走 listHintRow：它要与紧随其后的勾选项文字同左缘（A2 精修）
+    lv2Wrap.appendChild(listHintRow('二级类目（按最近 7 天发布数排序）'));
     var nodes = CAT_TREE[catKey] || [];
     for (var j = 0; j < nodes.length; j++) {
       // depth=3 时只有被展开的那一项勾选，其余留空，避免同屏出现多条三级列表
       var checked = depth === 3 ? j === oi : j < 2;
       lv2Wrap.appendChild(checkRow(nodes[j][0], checked, catRole, false));
       if (depth === 3 && j === oi) {
+        // padLeft: SPACING.xl 是三级相对二级的**层级缩进**，属刻意的差异，
+        // 与 A3 要消除的「重复声明同一左缘」不是一回事，故保留
         var lv3 = box('_tree-lv3', 'VERTICAL', {
-          w: CANVAS.w - SPACING.lg * 2, padLeft: SPACING.xl, gap: SPACING.xs
+          w: innerW, padLeft: SPACING.xl, gap: SPACING.xs
         });
-        lv3.appendChild(text('三级精筛 · ' + nodes[j][0], 'caption', 'color/text-secondary'));
+        lv3.appendChild(listHintRow('三级精筛 · ' + nodes[j][0]));
         for (var k = 0; k < nodes[j][1].length; k++) {
           lv3.appendChild(checkRow(nodes[j][1][k], k === 0, catRole, true));
         }
@@ -3091,8 +3148,7 @@ function catTreeSheet(catKey, depth, openIdx) {
 
   // 底部动作行：重置 + 确定并收起。「确定」即用户所说的「选择完成之后收起」的触发点
   var actionRow = box('_sheet-action', 'HORIZONTAL', {
-    w: CANVAS.w, padLeft: SPACING.lg, padRight: SPACING.lg,
-    gap: SPACING.md, align: 'CENTER'
+    w: innerW, gap: SPACING.md, align: 'CENTER'
   });
   var reset = box('_sheet-reset', 'HORIZONTAL', {
     padTop: SPACING.sm, padBottom: SPACING.sm, padLeft: SPACING.xl, padRight: SPACING.xl,
@@ -3113,6 +3169,16 @@ function catTreeSheet(catKey, depth, openIdx) {
 }
 
 /**
+ * 复选方框边长（三级树复选行）。
+ *
+ * 提成常量是为了让「与复选行文字对齐」这件事有单一来源（2026-08-27 条目 [61]，
+ * A2 像素精修）：树里的说明文字要缩进到与勾选项文字同一左缘，缩进量 =
+ * CHECKBOX_SIZE + SPACING.sm。写死两遍 18 的话，改框大小时说明文字会悄悄错位。
+ * 它是**尺寸**不是间距，故按 box() 已声明的口径（code.js:777）不入 SPACING 阶梯。
+ */
+var CHECKBOX_SIZE = 18;
+
+/**
  * 构造一行复选框（方框 + 勾 + 标签），供三级树的二级/三级列表复用。
  *
  * 用真实方框加 SVG 勾而非 ☑️／☐ 字符：这两个字符在三端字体下时而渲染为
@@ -3130,7 +3196,7 @@ function checkRow(label, checked, catRole, isLeaf) {
     padTop: SPACING.xs, padBottom: SPACING.xs, gap: SPACING.sm, align: 'CENTER'
   });
   var bx = box('_checkbox', 'HORIZONTAL', {
-    w: 18, h: 18, radius: RADIUS.sm,
+    w: CHECKBOX_SIZE, h: CHECKBOX_SIZE, radius: RADIUS.sm,
     fill: checked ? catRole : 'color/surface',
     stroke: checked ? catRole : 'color/border', strokeWeight: checked ? 1 : 1.5,
     align: 'CENTER', justify: 'CENTER'
@@ -3140,6 +3206,28 @@ function checkRow(label, checked, catRole, isLeaf) {
   r.appendChild(text(label, isLeaf ? 'caption' : 'small',
     checked ? 'color/text-primary' : 'color/text-secondary'));
   return r;
+}
+
+/**
+ * 构造一行「与复选项文字同左缘」的列表说明文字。
+ *
+ * 为什么需要它（2026-08-27 条目 [61]，A2 像素精修）：说明文字若直接挂在列表
+ * 容器上，左缘为 0，而紧随其后的每个 checkRow 文字左缘是 CHECKBOX_SIZE +
+ * SPACING.sm = 26 —— 说明与它所说明的那批项差 26px，读起来像两个层级。
+ *
+ * 用「等宽空占位 + SPACING.sm 间距」而不是 padLeft: 26 复刻这段缩进：26 不在
+ * SPACING 阶梯上，bindNum() 对非阶梯值**静默不绑变量也不报错**（:672），
+ * 直接写 26 会让这里悄悄脱离 Variables；用占位则间距仍是阶梯上的 sm。
+ *
+ * @param {string} content 说明文案
+ * @returns {FrameNode} 说明行节点
+ */
+function listHintRow(content) {
+  var row = box('_list-hint', 'HORIZONTAL', { gap: SPACING.sm, align: 'CENTER' });
+  // 空占位与复选方框等宽，高 1 只为不撑行高；无填充故不可见
+  row.appendChild(box('_list-hint-indent', 'HORIZONTAL', { w: CHECKBOX_SIZE, h: 1 }));
+  row.appendChild(text(content, 'caption', 'color/text-secondary'));
+  return row;
 }
 
 /**
@@ -4274,14 +4362,14 @@ function buildAiConfirm() {
       fill: 'color/surface', radius: RADIUS.md, stroke: 'color/border',
       align: 'CENTER', justify: 'SPACE_BETWEEN'
     });
-    var lft = box('_l', 'VERTICAL', { gap: 2 });
+    var lft = box('_l', 'VERTICAL', { gap: TIGHT_GAP });
     lft.appendChild(text(guesses[i][0], 'caption', 'color/text-secondary'));
     lft.appendChild(text(guesses[i][2] ? guesses[i][1] : '需你补充', 'body',
       guesses[i][2] ? 'color/text-primary' : 'color/error-text'));
     row.appendChild(lft);
     if (guesses[i][2]) {
       var tagBox = box('_ai-tag', 'HORIZONTAL', {
-        padTop: 2, padBottom: 2, padLeft: SPACING.xs, padRight: SPACING.xs,
+        padTop: TIGHT_GAP, padBottom: TIGHT_GAP, padLeft: SPACING.xs, padRight: SPACING.xs,
         radius: RADIUS.sm, fill: 'color/accent', align: 'CENTER', justify: 'CENTER'
       });
       tagBox.appendChild(text('AI 猜', 'caption', 'color/surface'));
@@ -4641,7 +4729,7 @@ function buildT6Board() {
       gap: SPACING.md, align: 'CENTER'
     });
     for (var i = 0; i < CAT_LIST.length; i++) {
-      var cell = box('_scale-cell', 'VERTICAL', { gap: 2, align: 'CENTER' });
+      var cell = box('_scale-cell', 'VERTICAL', { gap: TIGHT_GAP, align: 'CENTER' });
       cell.appendChild(pin('category/' + CAT_LIST[i][0], supplyDemand, null, false));
       cell.appendChild(text(CAT_LIST[i][1], 'caption', 'color/text-secondary'));
       r.appendChild(cell);

@@ -582,7 +582,11 @@ const wrapped = new Function(
       // 动效规格（2026-08-27，条目 [51] 第 6 步 / I5）：TIMING/EASING 进不了
       // Variables，动效唯一的机读承载体就是 annotation 的 pluginData。断言必须
       // 拿 MOTION 与 motionLine 现算出期望文本去核对画布，不能手抄
-      'MOTION', 'MOTION_PX_PER_MS', 'motionLine', 'motionSpecLines']
+      'MOTION', 'MOTION_PX_PER_MS', 'motionLine', 'motionSpecLines',
+      // 像素精修（2026-08-27，条目 [61]）：三条不变量要真跑 markerInfoCard 与
+      // listHintRow 去量左缘，不能只做源码正则 —— 写了容器却忘挂子节点时，
+      // 正则全绿而画面照旧参差
+      'markerInfoCard', 'listHintRow', 'TIGHT_GAP', 'CHECKBOX_SIZE']
       .map((k) => k + ': typeof ' + k + " !== 'undefined' ? " + k + ' : undefined')
       .join(', ') +
     ' };'
@@ -983,6 +987,246 @@ function allText(root) {
     /fill: on \? 'category\/' \+ CAT_LIST\[i\]\[0\] \+ '-deep' : 'color\/background'/.test(raw),
     '已改为深色变体'
   );
+
+  // ============================================================
+  // 五之二、像素精修的三条不变量（2026-08-27，条目 [61]）
+  //
+  // 为什么必须落成断言而不是「改完看图确认」：本轮三处改动全是**结构性**的 ——
+  // 改对了画面和改错了画面都可能看着正常（原则 58：结构断言查不出可读性，
+  // 反过来「看图」也查不出结构退化）。三条各自钉一件事：
+  //  ① 非阶梯间距只许有 TIGHT_GAP 一个出口，且用量锁定 9 处；
+  //  ② marker 信息卡四行必须真的同左缘（真跑量像素，不看源码）；
+  //  ③ catTreeSheet 的左内缘只许在 sheet 上声明一次。
+  // ============================================================
+  console.log('\n--- 像素精修不变量（条目 [61]）---');
+
+  // ① 间距裸值收口：bindNum() 对不在 SPACING 阶梯上的值是**静默不绑变量也不
+  // 报错**（code.js:672 `if (!name) return false;`）。也就是说随手写个
+  // gap: 3 会让那个容器悄悄脱离 Variables 而画面毫无异样，是最难人工发现的
+  // 一类漂移。本轮把 9 处字面 2 收成具名常量 TIGHT_GAP 并写明豁免理由，
+  // 这条断言负责让「新增非阶梯裸值」当场变红。
+  //
+  // 两端都钉：常量在不在（含豁免说明），以及全文有没有绕过它的裸值。
+  //
+  // ⚠️ 首跑踩到的坑：直接拿 raw 扫会把**注释里的反例文字**当成真代码。
+  // code.js:2981 与 :3218 两处注释恰恰在解释「为什么不用 padLeft: 36 /
+  // padLeft: 26」，被正则原样抓出来报了两处假违规。所以扫描前必须剥掉注释。
+  // 不能用 raw.replace(/\/\/.*$/gm, '') 这种糙办法：文件里有
+  // 'http://www.w3.org/2000/svg'（:1030）这类字符串，会被从 // 处截断。
+  /**
+   * 剥除 JS 源码中的行注释与块注释，保留字符串字面量原样。
+   *
+   * 逐字符扫描并跟踪三种状态（单引号串 / 双引号串 / 模板串），只在「不在字符串
+   * 内」时才认 // 与 /*。用等长空白替换注释内容而不是直接删除，这样剥后文本与
+   * 原文**行号一一对应**，报错位置仍可直接定位到 code.js 的真实行。
+   *
+   * @param {string} src JS 源码
+   * @returns {string} 注释被替换为空白后的等长源码
+   */
+  const stripJsComments = (src) => {
+    let out = '';
+    let i = 0;
+    let quote = null;      // 当前所处字符串的引号字符，null 表示不在字符串内
+    while (i < src.length) {
+      const ch = src[i];
+      const next = src[i + 1];
+      if (quote) {
+        out += ch;
+        if (ch === '\\') { out += next === undefined ? '' : next; i += 2; continue; }
+        if (ch === quote) quote = null;
+        i += 1;
+        continue;
+      }
+      if (ch === '\'' || ch === '"' || ch === '`') { quote = ch; out += ch; i += 1; continue; }
+      if (ch === '/' && next === '/') {
+        while (i < src.length && src[i] !== '\n') { out += ' '; i += 1; }
+        continue;
+      }
+      if (ch === '/' && next === '*') {
+        while (i < src.length && !(src[i] === '*' && src[i + 1] === '/')) {
+          out += src[i] === '\n' ? '\n' : ' ';   // 换行原样保留，行号才不漂
+          i += 1;
+        }
+        out += '  ';
+        i += 2;
+        continue;
+      }
+      out += ch;
+      i += 1;
+    }
+    return out;
+  };
+  const code = stripJsComments(raw);
+
+  const spacingStep = new Set(Object.values(M.SPACING));
+  check(
+    'TIGHT_GAP 常量存在且写明豁免理由（唯一获准的非阶梯间距值 = 2）',
+    /唯一获准豁免值[\s\S]{0,900}?var TIGHT_GAP = 2;/.test(raw) && M.SPACING.xs === 4,
+    'TIGHT_GAP = 2；SPACING 最小阶 xs = ' + M.SPACING.xs
+  );
+  // 扫 box() 调用里的间距字面量：gap / padTop / padBottom / padLeft /
+  // padRight / pad 六个键，凡直接写数字且不在阶梯上的一律列出。
+  // 已声明豁免的两类不计入：TIGHT_GAP（具名）与 0（gap: 0 走 falsy 分支，
+  // box():779 本就不尝试绑定，见 code.js 注释）。
+  const bareSpacing = [];
+  const spacingKeyRe = /\b(gap|pad|padTop|padBottom|padLeft|padRight):\s*(\d+)\b/g;
+  for (const m of code.matchAll(spacingKeyRe)) {
+    const val = Number(m[2]);
+    if (val === 0) continue;                 // gap:0 / pad:0 不绑，已豁免
+    if (spacingStep.has(val)) continue;      // 阶梯上的值（直写数字也无妨）
+    const lineNo = code.slice(0, m.index).split('\n').length;
+    bareSpacing.push(m[1] + ':' + val + '@L' + lineNo);
+  }
+  check(
+    '间距字面量不绕过 SPACING 阶梯与 TIGHT_GAP（新增非阶梯裸值会静默脱离 Variables）',
+    bareSpacing.length === 0,
+    bareSpacing.length ? '发现 ' + bareSpacing.length + ' 处：' + bareSpacing.join(', ') : '零裸值'
+  );
+  // 用量锁定 9 处：豁免的前提是「只用于单元内两行贴合」这一窄用途。
+  // 若哪天涨到十几处，说明它已被当成通用间距在用，豁免理由就不成立了 ——
+  // 那时该重新评审，而不是让数字默默变大。
+  //
+  // ⚠️ 口径必须是「调用处数」而非「字符出现次数」：_radius-<档>（code.js:2826）
+  // 与 _ai-tag（:4372）两处各在 padTop + padBottom 里各用一次，字符数为 11 而
+  // 调用处只有 9。首跑用字符数得 11、误判为超量。改成按行去重计数 ——
+  // 一处 box() 调用写在一行内，行数即调用处数。
+  const tightLines = code
+    .split('\n')
+    .map((ln, idx) => ({ ln, no: idx + 1 }))
+    .filter((x) => x.ln.indexOf('TIGHT_GAP') >= 0 && !/var TIGHT_GAP\s*=/.test(x.ln));
+  check(
+    'TIGHT_GAP 用量锁定 9 处（涨了说明它被当通用间距用，豁免理由需重新评审）',
+    tightLines.length === 9,
+    '实测 ' + tightLines.length + ' 处调用（行号 ' + tightLines.map((x) => x.no).join('/') + '）'
+  );
+
+  // ② marker 信息卡四行同左缘：真跑一遍量绝对 x，不查源码。
+  //
+  // 改前实测 36 / 0 / 18 / 0（标题被圆标推开、摘要挂在卡上、完整度被色点
+  // 推开、动作行又回到 0）。四条参差的起笔线会让同一层级读成多个层级。
+  // 量像素而不是查「有没有写 body 容器」：写了容器但忘了把某行挂进去，
+  // 源码断言全绿而画面照旧参差。
+  {
+    const card = M.markerInfoCard('cat-house', '房屋', '朝南两居转租',
+      '2200 元/月 · 押一付一 · 8 月起租', 'resource', 'yellow');
+    // mock 不做真实坐标分配（x 恒为 0），故改量「文字节点到卡左缘之间累计的
+    // padding + 前置兄弟宽度」这一确定性口径 —— 与 Figma 的实际左缘等价，
+    // 且不依赖 mock 的坐标分配能力。
+    const offsetOf = (node) => {
+      let off = 0;
+      let cur = node;
+      while (cur && cur !== card) {
+        const p = cur.parent;
+        if (!p) break;
+        off += p.paddingLeft;
+        if (p.layoutMode === 'HORIZONTAL') {
+          const idx = p.children.indexOf(cur);
+          for (let i = 0; i < idx; i++) off += p.children[i].width + p.itemSpacing;
+        }
+        cur = p;
+      }
+      return off;
+    };
+    // ⚠️ 口径收窄（首跑教训）：直接量「卡内所有 TEXT」会把**行内元素**也算进来，
+    // 首跑得到 48 / 66 / 121 三个值 —— 66 是完整度行里色点之后的文案
+    // （48 + 10 色点 + 8 间距），121 是动作行里 spacer 之后的「查看详情 ›」。
+    // 这两个本就该在行内偏右，不属于「行首起笔线」。所以要量的是
+    // **_mi-body 每一行的起笔位置**，而不是每个文本的位置。
+    const bodyCol = byName(card, '_mi-body');
+    const rowOffs = [...new Set(bodyCol.children.map((r) => offsetOf(r)))];
+    check(
+      'marker 信息卡各行起笔线一致（改前为 36/0/18/0 四条参差起笔线）',
+      bodyCol.children.length >= 5 && rowOffs.length === 1,
+      bodyCol.children.length + ' 行，起笔线取值 ' + rowOffs.join(' / ')
+    );
+    // 同左缘也可能是「全都 0」（把圆标删了就成立），故再钉住基准值：
+    // 起笔线 = 卡自身内缘 SPACING.md + 圆标宽 28 + SPACING.sm，
+    // 即「正文左缘对齐到圆标右边缘」。首跑期望值漏算了卡自身的 pad。
+    const expectLead = M.SPACING.md + 28 + M.SPACING.sm;
+    check(
+      'marker 卡起笔线 = 卡内缘 md + 圆标宽 28 + SPACING.sm（对齐圆标右缘，非退化为 0）',
+      rowOffs.length === 1 && rowOffs[0] === expectLead,
+      '实测 ' + rowOffs[0] + '，期望 ' + expectLead
+    );
+    // 行首就是文本的那些行（标题块 / 摘要 / 动作行），文本不得被行内 padding
+    // 再推开一次 —— 否则「行容器对齐了、字还是参差」。
+    // 取法：从每一行沿**长子**一路下钻，钻到的第一个节点若是 TEXT 就纳入比对；
+    // 若是色点那样的图形（完整度行），说明该行首元素本就不是文字，跳过。
+    const firstLeafOf = (row) => {
+      let cur = row;
+      while (cur.children && cur.children.length) cur = cur.children[0];
+      return cur;
+    };
+    const leadTextOffs = [...new Set(
+      bodyCol.children
+        .map(firstLeafOf)
+        .filter((n) => n.type === 'TEXT')
+        .map((t) => offsetOf(t))
+    )];
+    check(
+      'marker 卡行首文本未被行内 padding 二次推开（行对齐了字也必须对齐）',
+      leadTextOffs.length === 1 && leadTextOffs[0] === expectLead,
+      '行首文本左缘 ' + leadTextOffs.join(' / ') + '，期望 ' + expectLead
+    );
+    // 分隔线与动作行必须跟右列同宽，否则「同左缘」是靠缩窄内容换来的
+    const divider = byName(card, '_mi-divider');
+    check(
+      'marker 卡分隔线与右列等宽（同左缘不是靠缩窄内容换来的）',
+      !!divider && !!bodyCol && Math.round(divider.width) === Math.round(bodyCol.width),
+      divider && bodyCol ? divider.width + ' vs ' + bodyCol.width : '取不到节点'
+    );
+  }
+
+  // ③ catTreeSheet 左内缘单一来源：改前 padLeft: SPACING.lg 在四个子容器里
+  // 各写一遍，任一处漏写即整行错位，而错位在结构断言里零征兆。
+  // 这条钉「sheet 自己有左右内缘」+「子容器不再各自声明」两端。
+  {
+    const sheetBody = (code.match(/function catTreeSheet[\s\S]*?\n\}/) || [''])[0];
+    const sheetDecl = (sheetBody.match(/box\('_cat-tree-sheet'[\s\S]*?\}\);/) || [''])[0];
+    check(
+      'catTreeSheet 左右内缘声明在弹层自身上（单一来源）',
+      /padLeft: SPACING\.lg, padRight: SPACING\.lg/.test(sheetDecl),
+      sheetDecl ? '已提到 _cat-tree-sheet' : '取不到弹层声明'
+    );
+    // ⚠️ 两处首跑误判都出在取样窗口上：
+    // ① 旧写法用 [\s\S]{0,200}? 定长窗口，会**跨过本次 box() 调用的结尾**匹配到
+    //    紧随其后的下一个 box() 的 padLeft（_sheet-action 被 _sheet-reset 连坐）。
+    //    改为只截到本次调用的 `});` 为止。
+    // ② _lv1-<cat> 的 padLeft: SPACING.sm 是**胶囊自身的左内边距**（它是个独立
+    //    的圆角标签，与「弹层左内缘」不是同一件事），和 _tree-lv3 的层级缩进
+    //    同属刻意差异，一并列入豁免。
+    const OWN_PADDING_OK = ['_cat-tree-sheet', '_tree-lv3', '_sheet-reset', '_sheet-confirm'];
+    const childPadLeft = [...sheetBody.matchAll(/box\('(_[\w-]+)'[\s\S]*?\}\);/g)]
+      .filter((m) => /padLeft:/.test(m[0]))
+      .map((m) => m[1])
+      .filter((nm) => OWN_PADDING_OK.indexOf(nm) < 0 && nm.indexOf('_lv1-') !== 0);
+    check(
+      'catTreeSheet 子容器不再各自重复声明 padLeft（层级缩进与胶囊自身内边距例外）',
+      childPadLeft.length === 0,
+      childPadLeft.length ? '仍有：' + childPadLeft.join(', ') : '四处重复声明已消除'
+    );
+  }
+
+  // ④ 树内说明文字与勾选项同左缘：走 listHintRow 的等宽占位实现。
+  // 若有人把它改回 text(...)，左缘立刻差 CHECKBOX_SIZE + SPACING.sm。
+  {
+    const hint = M.listHintRow('二级类目（按最近 7 天发布数排序）');
+    const row = M.checkRow('房屋租赁', false, 'color/primary', false);
+    const offIn = (container) => {
+      const t = container.findOne((n) => n.type === 'TEXT');
+      const idx = container.children.indexOf(
+        container.children.find((c) => c === t || c.findOne?.((n) => n === t))
+      );
+      let off = container.paddingLeft;
+      for (let i = 0; i < idx; i++) off += container.children[i].width + container.itemSpacing;
+      return off;
+    };
+    check(
+      '树内说明文字与 checkRow 标签同左缘（改前差 26px，读成两个层级）',
+      offIn(hint) === offIn(row),
+      '说明 ' + offIn(hint) + ' / 勾选项 ' + offIn(row)
+    );
+  }
 
   // ============================================================
   // 六、layout 移出口径卡：真跑一遍，验画框内确实清零
