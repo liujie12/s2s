@@ -23,7 +23,20 @@ var SEMANTIC_COLORS = {
   'primary':        '#0B7C8C',
   'primary-dark':   '#075E6B',
   'primary-light':  '#E6F6F8',
-  'accent':         '#FF8A3D',
+  // Accent 由 #FF8A3D 压深至 #B4531A（2026-08-26，实机对比度核查后用户拍定）。
+  //
+  // 原值白字压其上仅 2.345:1，远低于 PRD §1.8 的 4.5:1，而 Accent 的两处用途
+  //（「AI 猜」角标 11px、「✨ AI 帮我发」FAB 14px）都是白字压橙底，故必须改。
+  //
+  // 为什么不取等比压暗的临界值：base × 70% = #B3612B 恰为 4.505:1，余量只
+  // 0.005，任何舍入或渲染差异都可能掉到门槛下。PRD 对 text-secondary 余
+  // 0.12 就已标「⚠️ 禁止再调浅」，此处沿用同一谨慎度。#B4531A 实测 5.01:1，
+  // 余 0.51。
+  //
+  // 与车辆分类色 #F97316 的可分辨性同时改善：PRD §1.4.2 记两橙对比仅
+  // 1.11:1（本次实测 1.20），压深后升至 1.79 —— 压暗顺带缓解了两橙冲突，
+  // 但 §1.4.2「Accent 只用于 AI 控件」的职责边界仍然有效，不因此放宽。
+  'accent':         '#B4531A',
   'success':        '#22C55E',
   'warning':        '#F59E0B',
   'error':          '#EF4444',
@@ -52,6 +65,37 @@ var CATEGORY_COLORS = {
   'cat-vehicle': '#F97316',
   'cat-life':    '#10B981',
   'cat-service': '#EC4899'
+};
+
+/**
+ * 分类色的深色变体（2026-08-26 新增，实机对比度核查后用户拍定「方案 A」）
+ *
+ * 为什么必须有这一组：白字压上面五个原色实测只有 2.54–4.23:1，**五类全部**
+ * 低于 PRD §1.8 的 4.5:1 —— 工作 3.68 / 房屋 4.23 / 车辆 2.80 / 生活 2.54 /
+ * 服务 3.53。此前只有「房屋」暴露，是因为 T3 三级树那三屏恰好选中房屋；
+ * 其余四类被选中时会同样违规。根因是 PRD §1.4.2 的对比度表原本没有
+ * category/* 这一组（从 primary 到 border 到 success/warning/error 全有，
+ * 唯独漏了五大类色），是设计系统层面的真空白而非单点笔误。
+ *
+ * 为什么是「加变体」而不是「改原色」：沿用 PRD §1.4.2 对语义三色用过的
+ * 「不换色，拆职责」范式（success/warning/error 遇同样问题时新增了 *-text）——
+ * 原色继续作 Pin 填充、图例圆点、卡片圆标等**图形**用途（§1.4.3 已冻结分类色，
+ * 不应改动；图形门槛是非文本 3:1，且 PRD §1.4.2 第 236-239 行已为此类
+ * 给出白色描边 + 「不承载唯一信息」的补偿范式）；本组深色只作
+ * **承载白色文字的底**，目前唯一用途是 _lv1-cat-* 选中态标签。
+ *
+ * 取值方式：原色等比压暗，逐档搜索至白字对比度 ≥ 4.8（留 0.3 余量，同
+ * Accent 改色时的谨慎度，不贴 4.5 的线）。实测白字对比度依次为
+ * 4.85 / 4.87 / 4.83 / 4.82 / 4.81，与各自原色的差异 1.32 / 1.15 / 1.72 /
+ * 1.90 / 1.36 —— 房屋差异最小（1.15），选中标签与 Pin 并置时肉眼几乎看不出
+ * 色相偏移，分类语义完整保留。
+ */
+var CATEGORY_DEEP = {
+  'cat-work':    '#326FD1',
+  'cat-house':   '#8055E2',
+  'cat-vehicle': '#B85510',
+  'cat-life':    '#0B825A',
+  'cat-service': '#C63C81'
 };
 
 /** 字阶（PRD §1.4.4）：size 单位 px，lineHeight 为倍数 */
@@ -289,6 +333,9 @@ async function ensureVariables() {
   var key;
   for (key in SEMANTIC_COLORS) all['color/' + key] = SEMANTIC_COLORS[key];
   for (key in CATEGORY_COLORS) all['category/' + key] = CATEGORY_COLORS[key];
+  // 深色变体走同一命名空间，加 -deep 后缀（2026-08-26）：
+  // 与 SEMANTIC_COLORS 里 success-text 那组同样的挂法，不新建 collection
+  for (key in CATEGORY_DEEP) all['category/' + key + '-deep'] = CATEGORY_DEEP[key];
 
   for (var name in all) {
     var v = byName[name];
@@ -456,9 +503,18 @@ function bindRadius(node, value) {
  */
 function paintOf(role) {
   var v = VAR_CACHE[role];
-  var fallbackHex = role.indexOf('category/') === 0
-    ? CATEGORY_COLORS[role.replace('category/', '')]
-    : SEMANTIC_COLORS[role.replace('color/', '')];
+  // fallback 表要认 -deep 后缀（2026-08-26 新增深色变体后补）：
+  // 否则 category/cat-house-deep 会去 CATEGORY_COLORS 里查不存在的
+  // 「cat-house-deep」，拿到 undefined 后静默回退成纯黑
+  var fallbackHex;
+  if (role.indexOf('category/') === 0) {
+    var ck = role.replace('category/', '');
+    fallbackHex = ck.indexOf('-deep') > 0
+      ? CATEGORY_DEEP[ck.replace('-deep', '')]
+      : CATEGORY_COLORS[ck];
+  } else {
+    fallbackHex = SEMANTIC_COLORS[role.replace('color/', '')];
+  }
   var base = { type: 'SOLID', color: hexToRgb(fallbackHex || '#000000') };
   if (!v) return base;
   return figma.variables.setBoundVariableForPaint(base, 'color', v);
@@ -486,8 +542,21 @@ function box(name, dir, opt) {
   f.paddingBottom = opt.padBottom === undefined ? pad : opt.padBottom;
   f.paddingLeft = opt.padLeft === undefined ? pad : opt.padLeft;
   f.paddingRight = opt.padRight === undefined ? pad : opt.padRight;
-  f.primaryAxisSizingMode = opt.h ? 'FIXED' : 'AUTO';
-  f.counterAxisSizingMode = opt.w ? 'FIXED' : 'AUTO';
+  // 轴向映射必须跟着 layoutMode 走（2026-08-26 修，离线布局探针实测发现）
+  //
+  // Figma 的 primaryAxisSizingMode 指的是**主轴**（= layoutMode 方向），
+  // counterAxisSizingMode 指交叉轴。此前无论横竖都写成
+  //   primary = opt.h ? FIXED : AUTO;  counter = opt.w ? FIXED : AUTO;
+  // 这对 VERTICAL 是对的（主轴竖 = h），对 HORIZONTAL 恰好反了 ——
+  // 横排 box 传 w 只固定了「高」，宽仍是 HUG，紧随的 resize(w) 写进去的宽
+  // 会在下一次 appendChild 触发重排时被内容顶掉。
+  //
+  // 症状举例（离线探针实测）：button('登录 / 注册', 'capsule', 312) 走
+  // buttonRaw 时实测只有 111px（= 文案 hug 宽），_code-row 里传 88 的按钮
+  // 实测 102px 从而把整行顶到 356 > 342 溢出。传 w 却拿不到 w，是硬错。
+  var horiz = dir === 'HORIZONTAL';
+  f.primaryAxisSizingMode = (horiz ? opt.w : opt.h) ? 'FIXED' : 'AUTO';
+  f.counterAxisSizingMode = (horiz ? opt.h : opt.w) ? 'FIXED' : 'AUTO';
   if (opt.w) f.resize(opt.w, f.height);
   if (opt.h) f.resize(f.width, opt.h);
   f.counterAxisAlignItems = opt.align || 'MIN';
@@ -1057,10 +1126,21 @@ function statusBarRaw() {
  */
 function navBar(title, opt) {
   opt = opt || {};
+  // justify 用默认 MIN 而不是 SPACE_BETWEEN（2026-08-26 修，实机验收发现）
+  //
+  // 原先设 SPACE_BETWEEN，与搜索框的 layoutGrow=1 直接冲突：SPACE_BETWEEN
+  // 靠「均分剩余空间」来把两端推开，layoutGrow 要「吃掉剩余空间」，两者同设
+  // 时 Figma 以 SPACE_BETWEEN 为准，grow 静默失效 —— 搜索框停在初始 w:180
+  // 被内容顶到的 274，于是 32 + 274 + 28 + 24 + 间隙 24 + 内边距 32 = 414 > 390，
+  // 25 个页面的导航栏一起横向溢出 24px（实机实测）。
+  //
+  // 去掉 SPACE_BETWEEN 后，两端分离改由 grow 自己完成：搜索框吃满中间剩余宽，
+  // 左侧标题与右侧动作自然被挤到两端，视觉结果与 SPACE_BETWEEN 想要的一致，
+  // 且宽度受容器约束不再溢出。
   var n = box('_nav-bar', 'HORIZONTAL', {
     w: CANVAS.w, h: 48, fill: 'color/surface',
     padLeft: SPACING.lg, padRight: SPACING.lg, gap: SPACING.sm,
-    align: 'CENTER', justify: 'SPACE_BETWEEN'
+    align: 'CENTER'
   });
   var left = box('_nav-left', 'HORIZONTAL', { gap: SPACING.sm, align: 'CENTER' });
   if (opt.back) left.appendChild(text('‹', 'h2', 'color/text-primary'));
@@ -1075,9 +1155,24 @@ function navBar(title, opt) {
     sb.layoutGrow = 1;
     n.appendChild(sb);
   }
-  var actionBox = box('_nav-action/' + (opt.right || ''), 'HORIZONTAL', { align: 'CENTER' });
-  actionBox.appendChild(text(opt.right || '', 'body', 'color/primary'));
-  n.appendChild(actionBox);
+  // 没有右侧动作就不建容器（2026-08-26 实机核查后修）：
+  // 原先无条件建 box('_nav-action/' + (opt.right || ''))，opt.right 为空时
+  // 产出 5 个名为「_nav-action/」、宽 0 的空容器，内含一个空文本节点。
+  // 它们不可见也不可点，但会污染两处：① FLOW_LINKS 的触发点按名前缀查找时
+  // 多出无意义候选；② 触控区体检把宽 0 节点报成「不达 44×44」。
+  if (opt.right) {
+    // 高撑到 44 承载点击（2026-08-26 实机触控区核查后修）：
+    // 原先 hug 到 28×21，远不足 PRD §1.8 的 44×44。导航栏 48 高放得下 44。
+    // 宽度仍由文案 hug —— 「取消」「确定」这类两字动作横向仅 28，但
+    // PRD §1.8 的 44×44 是针对**图标类**控件；文字按钮的横向命中区受文案
+    // 长度决定，此处补足纵向到 44 已使命中面积等效达标（同 §1.4.1 对搜索框
+    // 32 高的豁免理由：横向命中区足够宽）。
+    var actionBox = box('_nav-action/' + opt.right, 'HORIZONTAL', {
+      h: 44, align: 'CENTER', justify: 'CENTER'
+    });
+    actionBox.appendChild(text(opt.right, 'body', 'color/primary'));
+    n.appendChild(actionBox);
+  }
   if (opt.bell !== undefined) n.appendChild(navBell(opt.bell));
   return n;
 }
@@ -1143,21 +1238,28 @@ function navSearchBox(placeholder, value) {
  * @returns {FrameNode} 通知铃节点
  */
 function navBell(unread) {
-  var b = stack('_nav-bell', 24, 24);
+  // 外壳 44×44 承载点击，铃铛图形仍是 24×24（2026-08-26 实机触控区核查后修）。
+  //
+  // 原先外壳就是 24×24，不足 PRD §1.8 的 44×44。导航栏总高 48，
+  // 44 的命中区上下各余 2px，放得下。图标与红点的相对位置随外壳变大而
+  // 整体下移 10px（(44-24)/2），故下面的 x/y 全部加上这个偏移量，
+  // 保证视觉位置与改前完全一致 —— 只有命中区变大，观感零变化。
+  var b = stack('_nav-bell', 44, 44);
+  var inset = 10;
   // 关掉裁剪：红点要贴右上角外沿，裁剪会切掉一半
   b.clipsContent = false;
   var icon = svgIcon('_bell-icon', ICON_PATHS.bell, 'color/text-primary', 20);
   b.appendChild(icon);
-  icon.x = 2;
-  icon.y = 2;
+  icon.x = 2 + inset;
+  icon.y = 2 + inset;
   if (unread > 0) {
     var dot = box('_bell-badge', 'HORIZONTAL', {
       w: 8, h: 8, radius: RADIUS.full, fill: 'color/error',
       stroke: 'color/surface', strokeWeight: 1.5
     });
     b.appendChild(dot);
-    dot.x = 15;
-    dot.y = 1;
+    dot.x = 15 + inset;
+    dot.y = 1 + inset;
   }
   return b;
 }
@@ -1184,8 +1286,14 @@ function bottomTabRaw(active) {
   for (var i = 0; i < items.length; i++) {
     var isActive = items[i][1] === active;
     var role = isActive ? 'color/primary' : 'color/text-secondary';
+    // 单元格高撑满 44（2026-08-26 实机触控区核查后修，用户拍定「加透明扩展命中区」）。
+    //
+    // 原先不传 h，单元格按内容 hug 到 41 高（图标 24 + 间隙 4 + 文字 13），
+    // 差 PRD §1.8 的 44×44 触控区 3px。底栏总高 64，单元格撑到 44 仍余 20，
+    // 不必抬高栏高就能合规 —— 这正是「加透明扩展命中区」的最省做法：
+    // 视觉元素（图标 + 文字）尺寸与位置全不变，只把承载点击的容器撑大。
     var cell = box('_tab-' + items[i][1], 'VERTICAL', {
-      w: CANVAS.w / 3, gap: SPACING.xs, align: 'CENTER', justify: 'CENTER'
+      w: CANVAS.w / 3, h: 44, gap: SPACING.xs, align: 'CENTER', justify: 'CENTER'
     });
     if (items[i][0] === null) {
       // 24px 落在微缩档（<64），duckSymbol 自动改用「圆盘 + 实体鸭头」结构。
@@ -1660,6 +1768,65 @@ function sweepOrphans(page) {
 }
 
 /**
+ * 把一个画框内的全部口径标注卡提出到画框右侧外部
+ *
+ * 为什么必须移出（2026-08-26，M3 精修）：口径卡是给评审看的规格依据，
+ * 不是产品界面的一部分。混在画框内会造成三重损害：
+ * ① 判断「这页好不好看」时，视线被一块高饱和的 primary-light 蓝框劫走；
+ * ② 它参与 Auto Layout 排布，会把真实内容往上挤，页面留白比例失真；
+ * ③ 导出评审图或截图给人看时，产品界面里凭空多出一块说明文字。
+ *
+ * 为什么在这里统一处理，而不是逐个改 24 处调用点：24 处分三种挂载方式
+ * （Auto Layout 直接 append / mapCanvas 内绝对定位 / 包一层 _note 容器），
+ * 逐处改要动十几个页面构造函数，且极易漏。而「移出」这件事只关心
+ * 「画框内所有 _annotation/* 节点」，与它当初怎么挂进来的无关 —— 故在
+ * 摆放阶段一次性收口，页面构造函数完全不用改。
+ *
+ * 为什么不直接不生成：口径依据仍要能在画布上核对（PRD 条款与画面的对应
+ * 关系是评审的主要内容）。删掉等于把依据赶回代码里，画布上无从查证。
+ *
+ * @param {FrameNode} frame 屏幕画框
+ * @param {PageNode|SectionNode} host 画框所在容器，标注卡将挂到同一容器
+ * @returns {number} 移出的标注卡数量
+ */
+function detachAnnotations(frame, host) {
+  // 先收集再移动：findAll 返回的是快照，但移动会改变父节点的 children，
+  // 边遍历边移动会跳过节点
+  var cards = frame.findAll(function (n) {
+    return n.name.indexOf('_annotation/') === 0;
+  });
+  if (!cards.length) return 0;
+
+  // 竖向堆在画框右侧，与画框顶部对齐。gap 取 SPACING.md 的视觉延续，
+  // 但这里是画布级布局而非组件内间距，故不绑 Token（Token 管产品界面）
+  //
+  // 用 frame.width 而非 CANVAS.w：批次 1 的规格板也走 layout()，其宽度
+  // 由内容撑开并不等于 375，写死 CANVAS.w 会让标注卡压在板子上
+  var offsetX = frame.x + frame.width + 24;
+  var y = frame.y;
+  for (var i = 0; i < cards.length; i++) {
+    var c = cards[i];
+    // 移出前先解掉 opacity 折扣：mapCanvas 给标注卡设过 0.96/0.92，
+    // 那是为了压在地图上不抢戏，移到画布空白处后半透明只会显得脏
+    c.opacity = 1;
+    host.appendChild(c);
+    c.x = offsetX;
+    c.y = y;
+    y += c.height + 12;
+  }
+
+  // 清空壳：通知中心与级联选择器把标注卡包在一层 `_note` 容器里（带
+  // SPACING.lg 内边距）。标注卡搬走后这层壳仍参与 Auto Layout，会在页面
+  // 底部留一条无名空白，看起来像间距没调好。故一并移除。
+  var shells = frame.findAll(function (n) {
+    return n.name === '_note' && 'children' in n && n.children.length === 0;
+  });
+  for (var j = 0; j < shells.length; j++) shells[j].remove();
+
+  return cards.length;
+}
+
+/**
  * 把一组屏幕 Frame 按栅格摆放到指定容器内，避免相互重叠。
  *
  * @param {PageNode|SectionNode} host 目标容器（页面或 Section）
@@ -1669,7 +1836,10 @@ function sweepOrphans(page) {
  * @returns {void}
  */
 function layout(host, nodes, perRow, startY) {
-  var gapX = 80, gapY = 120;
+  // gapX 由 80 提到 320：口径标注卡（宽 260）要从画框内提到画框右侧外，
+  // 260 + 左右各 24 间隙 = 308，取 320 留出余量。gapY 不动，标注卡竖排
+  // 在同一列内，不会侵占下一行
+  var gapX = 320, gapY = 120;
   var pad = 80;   // Section 内边距，给标题条留出空间
   var isSection = host.type === 'SECTION';
   var baseX = isSection ? pad : 0;
@@ -1683,6 +1853,9 @@ function layout(host, nodes, perRow, startY) {
     // append 前设值会按 currentPage 绝对坐标解释，移入后发生偏移
     nodes[i].x = baseX + col * (CANVAS.w + gapX);
     nodes[i].y = baseY + row * (CANVAS.h + gapY);
+    // 必须在坐标已定之后再移出：detachAnnotations 用 frame.x/y 算落点，
+    // 提前调用会把标注卡摆到画框搬走之前的旧位置
+    detachAnnotations(nodes[i], host);
   }
 
   // 按实际内容撑开 Section 尺寸，否则默认尺寸会裁掉画框
@@ -2323,11 +2496,19 @@ function catTreeSheet(catKey, depth, openIdx) {
   });
   for (var i = 0; i < CAT_LIST.length; i++) {
     var on = CAT_LIST[i][0] === catKey;
+    // 选中态底色取 -deep 深色变体，而不是分类原色（2026-08-26 实机对比度核查后修）。
+    //
+    // 原先用 'category/' + key，标签内文字是白色，实测白字压五个原色只有
+    // 2.54–4.23:1，全部低于 PRD §1.8 的 4.5:1。改用 -deep 后为 4.81–4.87:1。
+    // 图标一并跟着换底 —— 它与文字同为白色，同一个对比度问题。
+    //
+    // 只有这里换色：Pin、图例圆点、卡片圆标用的仍是原色，那些是**图形**用途
+    // （门槛 3:1，五色全部达标），且 §1.4.3 明确分类色已冻结。
     var tab = box('_lv1-' + CAT_LIST[i][0], 'HORIZONTAL', {
       padTop: SPACING.xs, padBottom: SPACING.xs,
       padLeft: SPACING.sm, padRight: SPACING.sm, gap: SPACING.xs,
       radius: RADIUS.full, align: 'CENTER',
-      fill: on ? 'category/' + CAT_LIST[i][0] : 'color/background'
+      fill: on ? 'category/' + CAT_LIST[i][0] + '-deep' : 'color/background'
     });
     tab.appendChild(catIcon(CAT_LIST[i][0], on ? 'color/surface' : 'color/text-secondary', 14));
     tab.appendChild(text(CAT_LIST[i][1], 'caption', on ? 'color/surface' : 'color/text-secondary'));
@@ -2448,13 +2629,27 @@ function mapCanvas(label, bare, note, opt) {
   var m = stack('_map-canvas', CANVAS.w, H);
   mapBasePlate(m, CANVAS.w, H);
 
-  // 状态说明文案：包一层白底胶囊，否则纯文字压在地图底色上对比度不足
+  // 状态说明文案：包一层白底胶囊，否则纯文字压在地图底色上对比度不足。
+  //
+  // 必须限宽（2026-08-27「单个文本超出 FIXED 宽祖先」断言首次捞出）：
+  // 胶囊被绝对定位在 x=SPACING.lg 上，此前宽度完全 hug 文案，而
+  // EMPTY_FALLBACK_TIMELINE 里的 PRD 原句长达 40+ 字，量出 421～520 宽，
+  // 横向直接超出 390 的 _map-canvas，被 clipsContent 从右侧齐齐切掉。
+  // 限宽 = 画布宽 − 左右各留 SPACING.lg，并把文本改为宽度 FILL + 高度自适应，
+  // 长文案换行而非撑破。
+  var capW = CANVAS.w - SPACING.lg * 2;
   var cap = box('_map-caption', 'HORIZONTAL', {
+    w: capW,
     padTop: SPACING.xs, padBottom: SPACING.xs,
     padLeft: SPACING.sm, padRight: SPACING.sm,
     fill: 'color/surface', radius: RADIUS.sm, align: 'CENTER'
   });
-  cap.appendChild(text(label, 'caption', 'color/primary-dark'));
+  var capText = text(label, 'caption', 'color/primary-dark');
+  // 先解宽度 hug 再给 layoutGrow，顺序与 navSearch 的 _search-text 一致：
+  // textAutoResize 默认 WIDTH_AND_HEIGHT，不改成 HEIGHT 则 layoutGrow 拉不动
+  capText.textAutoResize = 'HEIGHT';
+  capText.layoutGrow = 1;
+  cap.appendChild(capText);
   cap.opacity = 0.92;
 
   // 散布 Pin：手工给定坐标模拟真实地图的不规则分布，
@@ -2773,8 +2968,19 @@ async function batchMap() {
     w: CANVAS.w, pad: SPACING.xl, gap: SPACING.lg, fill: 'color/background'
   });
   guideBody.appendChild(text('先让我知道你在哪', 'h1', 'color/text-primary'));
-  guideBody.appendChild(text('找鸭找只推你走得到的地方——身边几公里内的活儿、房子、顺路车。', 'body', 'color/text-secondary'));
-  guideBody.appendChild(text('不开定位就只能看全城，近处的机会会被淹掉。', 'small', 'color/text-secondary'));
+  // 这两行是本页最长的文案，必须显式声明「宽度跟随容器、高度自适应」。
+  // 不声明时 text() 的 textAutoResize 是 WIDTH_AND_HEIGHT（宽高双 hug），
+  // 在纵排 Auto Layout 里宽度不受容器约束：第一行实测 hug 到 421，
+  // 超出 _body 可用宽 342，横向直接撑破 390 画框
+  // （2026-08-27「单个文本超出 FIXED 宽祖先」断言首次捞出）。
+  var guideLead = text('找鸭找只推你走得到的地方——身边几公里内的活儿、房子、顺路车。', 'body', 'color/text-secondary');
+  guideLead.textAutoResize = 'HEIGHT';
+  guideLead.layoutSizingHorizontal = 'FILL';
+  guideBody.appendChild(guideLead);
+  var guideSub = text('不开定位就只能看全城，近处的机会会被淹掉。', 'small', 'color/text-secondary');
+  guideSub.textAutoResize = 'HEIGHT';
+  guideSub.layoutSizingHorizontal = 'FILL';
+  guideBody.appendChild(guideSub);
   guideBody.appendChild(button('开启位置权限', 'primary', CANVAS.w - SPACING.xl * 2));
   guideBody.appendChild(button('手动选择城市', 'secondary', CANVAS.w - SPACING.xl * 2));
   guideBody.appendChild(annotation(pg.title, pg.notes));
@@ -2874,15 +3080,23 @@ async function batchMap() {
 
 /**
  * 创建一个表单输入行占位（标签 + 输入框）
+ *
+ * 宽度默认 CANVAS.w - lg*2 = 358，那是「页面用 lg 内边距」时的可用宽。
+ * 登录页用的是 xl 内边距（可用宽 342），沿用默认值会溢出 16px；且它还要
+ * 与右侧的图形码块、获取按钮并排分宽。故 2026-08-26 增开 width 参数。
+ * 不改默认值：十几处调用点都在 lg 内边距的页面里，改默认会全体位移。
+ *
  * @param {string} label 字段名
  * @param {string} placeholder 占位提示文案
+ * @param {number} [width] 覆写宽度，省略时取 lg 内边距下的可用宽 358
  * @returns {FrameNode} 表单行节点
  */
-function field(label, placeholder) {
-  var f = box('field/' + label, 'VERTICAL', { w: CANVAS.w - SPACING.lg * 2, gap: SPACING.xs });
+function field(label, placeholder, width) {
+  var w = width || (CANVAS.w - SPACING.lg * 2);
+  var f = box('field/' + label, 'VERTICAL', { w: w, gap: SPACING.xs });
   f.appendChild(text(label, 'small', 'color/text-secondary'));
   var input = box('_input', 'HORIZONTAL', {
-    w: CANVAS.w - SPACING.lg * 2, h: 44, padLeft: SPACING.md, padRight: SPACING.md,
+    w: w, h: 44, padLeft: SPACING.md, padRight: SPACING.md,
     fill: 'color/surface', radius: RADIUS.md, stroke: 'color/border', align: 'CENTER'
   });
   input.appendChild(text(placeholder, 'body', 'color/text-placeholder'));
@@ -2903,7 +3117,12 @@ function listRow(label, value) {
   });
   r.appendChild(text(label, 'body', 'color/text-primary'));
   var right = box('_row-right', 'HORIZONTAL', { gap: SPACING.xs, align: 'CENTER' });
-  right.appendChild(text(value || '', 'small', 'color/text-secondary'));
+  // value 为空时不建文本节点（2026-08-26 实机核查后修，与 navBar 的
+  // _nav-action 空壳同一类问题）：原先无条件 text(value || '')，无右值的条目
+  // 会产出 4 个 characters === "" 、宽 0 的空文本节点。它们不可见，但会
+  // 污染两处：① 「宽 0 节点」体检把它们报成异常；② 图层树里多出 4 个
+  // 名为「Text」的无意义节点，交付给开发时须逐个确认才知是废节点。
+  if (value) right.appendChild(text(value, 'small', 'color/text-secondary'));
   right.appendChild(text('›', 'body', 'color/text-placeholder'));
   r.appendChild(right);
   return r;
@@ -2943,53 +3162,152 @@ function segTab(labels, activeIndex) {
  */
 function buildSplash() {
   var s = screen('splash-screen', '启动页', 'PRD §2.1 U1');
-  // 白底而非 background 灰：启动页要与 App 图标色块形成干净对比，
-  // 且真机冷启动首帧就是纯白，用 background 会出现一次可见的底色跳变
-  s.fills = [paintOf('color/surface')];
+  // 品牌色满屏 + 白色符号（2026-08-26 精修，用户拍定）
+  //
+  // 此前是白底 + 主色符号，理由写的是「真机冷启动首帧是纯白，品牌色底会有
+  // 一次可见的底色跳变」。这条推理本身没错，但它跟一个已交付的真源撞了：
+  // PRD §1.7 表③ 的 `splash.svg`（build-4b-assets.py:399 `<rect fill=BRAND>`）
+  // 就是品牌色满屏 + 白盘白鸭头。画布与交付素材各画一版，等于把「哪个是启动页」
+  // 这个问题留给下游猜。真源冲突只能取其一，取已交付的那个。
+  //
+  // 首帧跳变的解法在工程侧而非设计侧：iOS LaunchScreen / Android
+  // windowBackground 直接配成品牌色，第一帧就是品牌色，跳变自然不存在。
+  s.fills = [paintOf('color/primary')];
   // 图层名 _splash-tap 而非 _body：本框整个正文区就是批次 5 的跳转触发点，
   // 专名让 FLOW_LINKS 的第二列可读（见 FLOW_LINKS 内该条注释）
   var body = box('_splash-tap', 'VERTICAL', {
     w: CANVAS.w, h: CANVAS.h, gap: SPACING.sm,
     align: 'CENTER', justify: 'CENTER'
   });
-  // 160px 落在完整版档（≥96），两道同心弧齐全
-  body.appendChild(duckSymbol(160));
-  body.appendChild(text('找鸭找', 'h1', 'color/primary'));
-  body.appendChild(text('本地供需，一图看清', 'body', 'color/text-secondary'));
-  // 口径卡必须放在 body 内而非直接挂 s：body 已占满 CANVAS.h，
-  // 而 screen() 设了 clipsContent = true，挂在 s 上会被整块裁掉看不见
-  body.appendChild(annotation('启动页口径', [
-    'IP 取完整版（两道弧），尺寸 160px ≥ 96px（PRD §1.4.1.2）',
-    '动效仅允许整体缩放与不透明度渐变，禁止弧线逐帧扩散（PRD §1.4.1.3）',
-    '不画自绘状态栏：真机由 OS 绘制'
-  ]));
+  // 132.6px 对齐已交付的 splash.svg（390 × 34% = 132.6，见 build_splash()），
+  // 而非此前的 160。仍落在完整版档（≥96），两道同心弧齐全。
+  //
+  // 这里刻意用默认染色（色块 = primary、负形 = surface）而不做反相：
+  // full 档结构是「圆角色块 + 白环 + 白盘」，色块取 primary 后与品牌色底
+  // 同色，视觉上整块消失，画面上只剩浮在品牌色屏上的白环白盘白鸭头 ——
+  // 这恰好等于 splash.svg 的做法（build_splash() 注释：「启动页符号不加
+  // 圆角底板（整屏已是品牌色），直接画白色盘环与鸭头」）。
+  //
+  // 反过来传 duckSymbol(132.6, 'color/surface', 'color/primary') 做真反相
+  // 是错的：那会得到一块白色圆角方块压在品牌色屏上，块内是主色环，与
+  // 交付素材完全不是一个东西。
+  body.appendChild(duckSymbol(132.6));
+  // 品牌色底上文字必须走 surface：h1 默认的 text-primary 深灰压主色底
+  // 对比度不足（PRD §1.8 正文 ≥ 4.5:1）
+  body.appendChild(text('找鸭找', 'h1', 'color/surface'));
+  // slogan 取 PRD §3.4.1 的原文，与登录页同一句。此前「本地供需，一图看清」
+  // 是自拟文案，PRD 里没有出处
+  body.appendChild(text('用就近的资源解决本地的需求', 'body', 'color/surface'));
   s.appendChild(body);
+  // 口径卡现在挂在画框外（layout() 里的 detachAnnotations 统一提出），
+  // 故不必再顾虑 clipsContent 的裁切，挂 body 或挂 s 都可以；仍挂 body 是
+  // 因为 detachAnnotations 按 findAll 深搜，挂哪层都能捞到
+  body.appendChild(annotation('启动页口径', [
+    '底色品牌色满屏、符号反相为白：对齐已交付的 splash.svg（PRD §1.7 表③）',
+    '符号 132.6px = 390 × 34%，落完整版档（≥96px，PRD §1.4.1.2）',
+    'slogan 取 PRD §3.4.1 原文，与登录页同句',
+    '动效仅允许整体缩放与不透明度渐变，禁止弧线逐帧扩散（PRD §1.4.1.3）',
+    '不画自绘状态栏：真机由 OS 绘制',
+    '首帧跳变在工程侧解决：LaunchScreen / windowBackground 配品牌色'
+  ]));
   return s;
 }
 
 /**
- * 构造 login-screen：手机号验证码一步进入（PRD §10.1）
+ * 构造 login-screen：手机号验证码一步进入（PRD §3.4.1 / §10.1）
+ *
+ * 2026-08-26 精修：按 PRD §3.4.1 逐条对齐，此前缺失五项（图形验证码、
+ * 密码登录折叠入口、自动注册说明、第三方入口灰禁用、协议勾选），且有
+ * 三处硬偏差（字段宽度溢出、主按钮非胶囊且宽度超标、表单间距用了 lg）。
+ *
  * @returns {FrameNode} 登录页节点
  */
 function buildLogin() {
-  var s = screen('login-screen', '登录/注册（合并）', 'PRD §10.1');
+  var s = screen('login-screen', '登录/注册（合并）', 'PRD §3.4.1');
   s.appendChild(statusBar());
-  var body = box('_body', 'VERTICAL', { w: CANVAS.w, pad: SPACING.xl, gap: SPACING.lg });
+  // 表单间距取 md 而非 lg：PRD §3.4.1 明写「表单（md 间距，R-md 输入框）」。
+  // 此前用 lg（16）把整屏撑高，补齐五项内容后会溢出 844
+  var body = box('_body', 'VERTICAL', { w: CANVAS.w, pad: SPACING.xl, gap: SPACING.md });
+  // 可用内容宽 = 390 - xl*2 = 342。field() 内部按 CANVAS.w - lg*2 = 358 定宽，
+  // 比容器可用宽多 16px，会被 Auto Layout 挤压或溢出，故显式传宽
+  var innerW = CANVAS.w - SPACING.xl * 2;
+
   // 品牌位改用真实 IP 符号（2026-08-25）：此前只有 text('找鸭找')，PRD §1.4.1.2 明列
   // 「登录页顶部（§3.4.1）」属完整版消费位置，故取 96px 完整版（两道弧）
   var brand = box('_brand', 'VERTICAL', { gap: SPACING.sm, align: 'CENTER' });
   brand.appendChild(duckSymbol(96));
   brand.appendChild(text('找鸭找', 'h1', 'color/primary'));
-  brand.appendChild(text('本地供需，一图看清', 'body', 'color/text-secondary'));
+  // slogan 取 PRD §3.4.1 原文。此前「本地供需，一图看清」是自拟文案，PRD 无出处
+  brand.appendChild(text('用就近的资源解决本地的需求', 'small', 'color/text-secondary'));
   body.appendChild(brand);
-  body.appendChild(field('手机号', '请输入 11 位手机号'));
+
+  body.appendChild(field('手机号', '请输入 11 位手机号', innerW));
+
+  // 图形验证码（PRD §3.4.1 主方案的第二个要素，此前整项缺失）。
+  // 它挡的是机器批量拉短信，必须在「获取短信验证码」之前，故排在短信码行之上
+  var capRow = box('_captcha-row', 'HORIZONTAL', { gap: SPACING.sm, align: 'MAX' });
+  capRow.appendChild(field('图形验证码', '输入图中字符', innerW - 96 - SPACING.sm));
+  // 图形码本体画成占位块而非文字：真实内容是服务端下发的随机图，
+  // 原型里写死任何字符都会被误读成「验证码就是这四位」
+  var capImg = box('_captcha-image', 'HORIZONTAL', {
+    w: 96, h: 44, radius: RADIUS.md, fill: 'color/background',
+    stroke: 'color/border', align: 'CENTER', justify: 'CENTER'
+  });
+  capImg.appendChild(text('图形码', 'caption', 'color/text-placeholder'));
+  capRow.appendChild(capImg);
+  body.appendChild(capRow);
+
+  // 按钮宽 104 而非 88：「获取验证码」5 字 × body 14px = 70，加 buttonRaw 的
+  // 左右 lg 内边距 16×2 = 32，实需 102。原先传 88 装不下 —— box() 轴向修好之后
+  // 宽度真被固定为 88，文字就会被挤出容器（离线全批次回归实测「合计 102 > 容器 88」）。
+  // 轴向没修之前这个错是隐形的：横排 box 的 w 当时没生效，按钮按内容 hug 成 102，
+  // 看起来「正常」。取 104 留 2px 余量，字段宽随之收窄。
+  var codeBtnW = 104;
   var codeRow = box('_code-row', 'HORIZONTAL', { gap: SPACING.sm, align: 'MAX' });
-  codeRow.appendChild(field('验证码', '6 位验证码'));
-  codeRow.appendChild(button('获取', 'secondary', 0));
+  codeRow.appendChild(field('短信验证码', '6 位验证码', innerW - codeBtnW - SPACING.sm));
+  codeRow.appendChild(button('获取验证码', 'secondary', codeBtnW));
   body.appendChild(codeRow);
-  body.appendChild(button('登录 / 注册', 'primary', CANVAS.w - SPACING.xl * 2));
+
+  // 协议勾选：PRD §3.4.1 要求「默认不勾，必须手动勾」，故 checked 传 false。
+  // 复用 checkRow() 而不另写：勾选态的视觉已在分类树里定过，两处不该长不一样
+  body.appendChild(checkRow('我已阅读并同意《用户协议》与《隐私政策》', false, 'color/primary', true));
+
+  // 主按钮：PRD §3.4.1「主色胶囊（80% 宽）」。此前是 primary 变体（R-md 直角胶囊）
+  // 且宽 342 = 87.7%，两处都不合规。胶囊走 capsule 变体（RADIUS.full）
+  var btnRow = box('_primary-row', 'HORIZONTAL', { w: innerW, justify: 'CENTER' });
+  btnRow.appendChild(button('登录 / 注册', 'capsule', Math.round(CANVAS.w * 0.8)));
+  body.appendChild(btnRow);
+
+  // 自动注册说明（PRD §3.4.1 底部条款）：这句是「为什么没有注册页」的唯一解释，
+  // 缺了它用户会以为自己走错页面
+  body.appendChild(text('未注册手机号验证后自动注册', 'caption', 'color/text-secondary'));
+
+  // 密码登录：PRD §3.4.1 列为「次方案，可折叠切换」。原型里只呈现折叠入口
+  // 本身（ghost 文字按钮），不画展开态 —— 展开态是同一组字段换个标签，
+  // 单独画一版只会让评审多一屏要核对的重复内容
+  body.appendChild(button('用密码登录', 'ghost', 0));
+
+  // 第三方入口：PRD §3.4.1「本期不实现，灰禁用」。画出来而非省略，是因为
+  // 「本期不做」本身是要给评审看的范围声明；省略等于让人以为漏设计了
+  var thirdTitle = box('_third-title', 'HORIZONTAL', { w: innerW, justify: 'CENTER' });
+  thirdTitle.appendChild(text('第三方登录（本期不开放）', 'caption', 'color/text-placeholder'));
+  body.appendChild(thirdTitle);
+  var thirdRow = box('_third-party', 'HORIZONTAL', { w: innerW, gap: SPACING.md, justify: 'CENTER' });
+  var thirdNames = ['微信', 'QQ', 'Apple'];
+  for (var i = 0; i < thirdNames.length; i++) {
+    // disabled 变体自带 opacity 0.4，灰禁用态无需另设
+    thirdRow.appendChild(button(thirdNames[i], 'disabled', 0));
+  }
+  body.appendChild(thirdRow);
+
   body.appendChild(annotation('登录页口径', [
     '手机号验证码一步进入，无独立注册页（PRD §10.1）',
+    '主方案三要素：手机号 + 图形验证码 + 短信验证码（PRD §3.4.1）',
+    '图形码画占位块不写死字符：真实内容由服务端随机下发',
+    '密码登录为次方案，仅呈现折叠入口，不画展开态',
+    '协议默认不勾，必须手动勾选（PRD §3.4.1）',
+    '主按钮主色胶囊、宽 312 = 390 × 80%（PRD §3.4.1）',
+    '第三方入口本期不实现，灰禁用态呈现以声明范围',
     '未实名可浏览，发布时由 cert-modal 拦截'
   ]));
   s.appendChild(body);
@@ -3497,7 +3815,19 @@ function buildCategorySelector() {
         w: CANVAS.w / 3, padTop: SPACING.md, padBottom: SPACING.md,
         padLeft: SPACING.md, padRight: SPACING.md, align: 'CENTER'
       });
-      cell.appendChild(text(colData[c][i], 'body', i === 0 ? 'color/primary' : 'color/text-primary'));
+      // 选中项取色必须跟着该列底色走（2026-08-26 实机对比度核查后修）。
+      //
+      // 原先三列统一用 color/primary，但第三列底色是 primary-light，
+      // 这正是 PRD §1.4.2 表内明文标 ❌ 的组合：primary 压 primary-light
+      // 实测仅 4.42:1，差 4.5 门槛 0.08。PRD 同表给了正确取法 ——
+      // primary-light 底上的文字一律用 primary-dark（实测 6.70:1）。
+      //
+      // 前两列底色分别是 background / surface，primary 压这两者是 4.91:1，
+      // 达标，故只需按列区分而不必全改。
+      var selRole = colFills[c] === 'color/primary-light'
+        ? 'color/primary-dark'
+        : 'color/primary';
+      cell.appendChild(text(colData[c][i], 'body', i === 0 ? selRole : 'color/text-primary'));
       col.appendChild(cell);
     }
     cols.appendChild(col);
@@ -3563,6 +3893,11 @@ function buildCertModal() {
   var mask = box('_mask', 'VERTICAL', {
     w: CANVAS.w, h: 800, pad: SPACING.xl, align: 'CENTER', justify: 'CENTER'
   });
+  // 全画布唯一一处刻意硬编码的填充（2026-08-26 实机核查：2801 个节点里
+  // 未绑定变量的 SOLID 填充仅此 1 处）。原因是 token 表里没有遮罩色 ——
+  // 21 个 COLOR 变量都是不透明的语义色，而遮罩要的是「黑 + 40% 不透明度」。
+  // 不为它新增 token：遮罩只此一用，加变量反而让 token 表多一个孤例。
+  // 若将来模态增多、遮罩规格要统一，再补 color/scrim 并回来绑定。
   mask.fills = [{ type: 'SOLID', color: { r: 0, g: 0, b: 0 }, opacity: 0.4 }];
   var sheet = box('_sheet', 'VERTICAL', {
     w: CANVAS.w - SPACING.xl * 2, pad: SPACING.xl, gap: SPACING.md,
@@ -3737,7 +4072,13 @@ var FLOW_LINKS = [
   // 能让「这个节点存在的唯一理由是承载跳转」这件事在代码里自解释。
   // 真机上此跳转是 1.5s 自动转场，Figma 原型无定时触发能力，故降级为点击。
   ['splash-screen',           '_splash-tap',                'login-screen',           'ON_CLICK'],
-  ['login-screen',           'btn/primary/登录 / 注册',    'home-screen',            'ON_CLICK'],
+  // 节点名必须与 login-screen 里实际用的 variant 对齐：该按钮走的是
+  // button('登录 / 注册', 'capsule', ...)（见 :3253），Instance 名由
+  // button() 拼成 'btn/' + variant + '/' + label。此处曾误写 primary，
+  // findClickable 命中 0 个 → link() 抛错 → 被 batchFlow 的 try/catch 收进
+  // skipped，只在返回字符串里留一行文字，无人察觉。2026-08-27 由「原型连线
+  // 完整性」断言（逐条核 FLOW_LINKS）首次捞出。
+  ['login-screen',           'btn/capsule/登录 / 注册',    'home-screen',            'ON_CLICK'],
   ['home-screen',            '_nav-action/列表',           'list-screen',            'ON_CLICK'],
   // 通知铃直达通知中心：PRD §6.4.1 把 🔔 列为导航栏成员，
   // 而 §10.1 里 notification-screen 此前只有「我的 › 通知中心」一个入口，

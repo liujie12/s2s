@@ -215,10 +215,43 @@ for grp, table, prefix in (
     ok = f"'{prefix}' + key" in body
     check(f"{grp} {len(table)} 项经 {prefix}* 入表", ok)
 
+def parse_hex_table(name):
+    """从 code.js 解析形如 `var X = { 'a': '#112233' };` 的单层色表。
+
+    与 parse_scale 分开写是因为色值是带引号的字符串而非裸数字，
+    正则不同；两者都必须从真源解析，不得在探针里手写第二份副本。
+
+    Args:
+        name: 变量名，如 "SEMANTIC_COLORS"
+    Returns:
+        dict[str, str]: role 键到 HEX 的映射
+    """
+    m = re.search(r"var\s+" + name + r"\s*=\s*\{(.*?)\};", code, re.S)
+    assert m, f"未找到真源表 {name}"
+    return dict(re.findall(r"'([\w-]+)'\s*:\s*'(#[0-9A-Fa-f]{6})'", m.group(1)))
+
+
+semantic_colors = parse_hex_table("SEMANTIC_COLORS")
+category_colors = parse_hex_table("CATEGORY_COLORS")
+category_deep = parse_hex_table("CATEGORY_DEEP")
+color_total = len(semantic_colors) + len(category_colors) + len(category_deep)
+float_total = len(type_scale) + len(spacing) + len(radius)
+
+# 计数从真源表长度算出，不写死数字（2026-08-26 改）：
+# 原先标题写死「COLOR 21」而断言只验 FLOAT == 17，新增 5 个 category/*-deep
+# 后标题就与事实脱节，且没有任何断言会报错 —— 这正是「断言看着绿其实没在看」
+# 的形态。现在把 COLOR 也纳入实际计数。
 check(
-    "变量总数 = COLOR 21 + FLOAT 17 = 38",
-    len(type_scale) + len(spacing) + len(radius) == 17,
-    f"FLOAT {len(type_scale) + len(spacing) + len(radius)} 项",
+    f"变量总数 = COLOR {color_total} + FLOAT {float_total} = {color_total + float_total}",
+    float_total == 17 and color_total == 26,
+    f"语义 {len(semantic_colors)} + 分类 {len(category_colors)}"
+    f" + 分类深色 {len(category_deep)} = COLOR {color_total}；FLOAT {float_total}",
+)
+
+check(
+    "五个分类色各有对应的 -deep 深色变体（缺一个就有一类选中态白字不达标）",
+    set(category_deep) == set(category_colors),
+    f"deep={sorted(category_deep)} base={sorted(category_colors)}",
 )
 
 check("FLOAT 查询已加入", "getLocalVariablesAsync('FLOAT')" in code)
@@ -320,6 +353,179 @@ check(
 check("PRD §1.4.7 内边距规格未被改动", "内边距 lg（16）" in prd)
 
 # ============================================================
+# 六之二、口径标注卡必须移出画框
+#
+# 为什么要探针守：漏移不会报错，画面照样生成，只是每张画框里多一块蓝框。
+# 这正是原则 ㊱ 说的「静默降级」—— 失败后画面依旧「正确」，只能离线查。
+# 而这次的失败模式尤其隐蔽：detachAnnotations 写好了但没在 layout 里调用，
+# 代码看着完整，跑起来什么都没发生（本轮就差点停在这一步）。
+# ============================================================
+
+detach_body = func_body(code, "function detachAnnotations(frame, host)")
+check("detachAnnotations() 存在", bool(detach_body))
+
+check(
+    "按 _annotation/ 前缀收集（与 annotation() 的命名对齐）",
+    "n.name.indexOf('_annotation/') === 0" in detach_body,
+)
+check(
+    "标注卡挂到 host 而非留在画框内",
+    "host.appendChild(c)" in detach_body,
+)
+check(
+    "移出后 opacity 复位为 1（mapCanvas 曾设 0.92/0.96）",
+    "c.opacity = 1" in detach_body,
+)
+check(
+    "清掉被搬空的 _note 壳",
+    "n.name === '_note'" in detach_body and "children.length === 0" in detach_body,
+)
+
+layout_body = func_body(code, "function layout(host, nodes, perRow, startY)")
+check("layout() 存在", bool(layout_body))
+
+# 最关键的一条：函数写了不等于接上了
+check(
+    "layout() 确实调用了 detachAnnotations",
+    "detachAnnotations(nodes[i], host)" in layout_body,
+)
+
+# 调用必须在坐标赋值之后，否则 frame.x 还是旧值，标注卡落到搬走前的位置
+_pos_x = layout_body.find("nodes[i].x =")
+_pos_call = layout_body.find("detachAnnotations(")
+check(
+    "detachAnnotations 在坐标赋值之后调用",
+    _pos_x >= 0 and _pos_call > _pos_x,
+    f"x@{_pos_x} call@{_pos_call}",
+)
+
+# gapX 要容得下宽 260 的标注卡加左右间隙
+m_gap = re.search(r"var gapX = (\d+)", layout_body)
+check(
+    "gapX 足够容纳标注卡（≥308）",
+    m_gap is not None and int(m_gap.group(1)) >= 308,
+    f"gapX={m_gap.group(1) if m_gap else '未找到'} 卡宽 260 + 间隙 48",
+)
+
+# annotation() 产出的宽度是上一条断言的前提，一起钉住
+ann_body = func_body(code, "function annotation(title, lines)")
+check(
+    "annotation() 卡宽仍为 260（gapX 断言的前提）",
+    "w: 260" in ann_body,
+)
+
+# ============================================================
+# 六之三、splash / login 与 PRD 逐条对齐（M3 精修第 1-2 页）
+#
+# 判定标准由用户拍定：只改与 PRD 不一致处，不靠审美。故每条断言都必须
+# 同时钉住「PRD 那句话还在」与「code.js 照做了」两端 —— 只钉一端的话，
+# 顺手改 PRD 就能让断言变绿，等于没守（原则 ㉑）。
+# ============================================================
+
+splash_body = func_body(code, "function buildSplash()")
+check("buildSplash() 存在", bool(splash_body))
+
+# 底色：PRD §1.7 表③ 的 splash.svg 是品牌色满屏，画布须一致（用户 08-26 拍定）
+check(
+    "splash 底色 = primary（对齐已交付 splash.svg）",
+    "s.fills = [paintOf('color/primary')]" in splash_body,
+)
+# 真源那一端：build-4b-assets.py 的启动页必须仍是品牌色满铺
+with open(os.path.join(BASE, "build-4b-assets.py"), encoding="utf-8") as fh:
+    build_assets = fh.read()
+check(
+    "splash.svg 真源仍为品牌色满铺（上一条断言的依据）",
+    re.search(r'<rect width="\{w:g\}" height="\{h:g\}" fill="\{BRAND\}"', build_assets)
+    is not None,
+)
+# 符号尺寸 132.6 = 390 × 34%，与 build_splash() 的 w * 0.34 同源
+check(
+    "splash 符号 132.6px（= 390 × 34%，同 build_splash）",
+    "duckSymbol(132.6)" in splash_body,
+)
+check(
+    "splash.svg 真源符号仍取 34%（上一条的依据）",
+    "sym = w * 0.34" in build_assets,
+)
+# 品牌色底上文案必须反白，否则对比度不达 PRD §1.8 的 4.5:1
+check(
+    "splash 品牌名与 slogan 均反白为 surface",
+    splash_body.count("'color/surface'") >= 2,
+)
+
+# slogan 文案：两页同句，且必须是 PRD §3.4.1 的原文
+SLOGAN = "用就近的资源解决本地的需求"
+check("PRD §3.4.1 slogan 原文仍在", SLOGAN in prd)
+check("splash slogan 取 PRD 原文", SLOGAN in splash_body)
+check(
+    "splash 已弃用自拟文案「本地供需，一图看清」",
+    "本地供需，一图看清" not in splash_body,
+)
+
+login_body = func_body(code, "function buildLogin()")
+check("buildLogin() 存在", bool(login_body))
+
+check("login slogan 与 splash 同句", SLOGAN in login_body)
+
+# PRD §3.4.1 主方案三要素，此前缺图形验证码
+check("PRD §3.4.1 图形验证码条款仍在", "图形验证码" in prd)
+check("login 有图形验证码字段", "field('图形验证码'" in login_body)
+check("login 图形码画占位块而非写死字符", "_captcha-image" in login_body)
+
+# 次方案与底部四条款，此前全缺
+check("PRD §3.4.1 密码登录条款仍在", "密码登录保留" in prd)
+check("login 有密码登录折叠入口", "用密码登录" in login_body)
+
+check("PRD §3.4.1 自动注册条款仍在", "未注册手机号验证后自动注册" in prd)
+check("login 有自动注册说明", "未注册手机号验证后自动注册" in login_body)
+
+check("PRD §3.4.1 第三方灰禁用条款仍在", "第三方入口折叠" in prd)
+check(
+    "login 三个第三方入口走 disabled 变体",
+    "'微信', 'QQ', 'Apple'" in login_body and "'disabled'" in login_body,
+)
+
+check("PRD §3.4.1 协议默认不勾条款仍在", "默认不勾" in prd)
+check(
+    "login 协议勾选 checked 传 false",
+    re.search(r"checkRow\('我已阅读并同意[^']*', false", login_body) is not None,
+)
+
+# 主按钮：PRD 要求「主色胶囊（80% 宽）」，此前是 primary 变体 + 87.7% 宽
+check("PRD §3.4.1 主按钮胶囊 80% 条款仍在", "主色胶囊（80% 宽）" in prd)
+check(
+    "login 主按钮走 capsule 变体且宽 = 80%",
+    "button('登录 / 注册', 'capsule', Math.round(CANVAS.w * 0.8))" in login_body,
+)
+# capsule 变体必须仍是 RADIUS.full，否则上一条断言名不副实
+check(
+    "capsule 变体圆角仍为 RADIUS.full",
+    re.search(r"capsule:\s*\{[^}]*radius:\s*RADIUS\.full", func_body(code, "function buttonRaw(label, variant, width)"))
+    is not None,
+)
+
+# 表单间距：PRD 明写 md，此前用 lg
+check("PRD §3.4.1 表单 md 间距条款仍在", "表单（md 间距，R-md 输入框）" in prd)
+check(
+    "login 表单间距 = md",
+    "pad: SPACING.xl, gap: SPACING.md" in login_body,
+)
+
+# 字段溢出 bug：xl 内边距下可用宽 342，field 默认 358
+check(
+    "field() 开放了 width 参数（修 login 溢出 16px）",
+    "function field(label, placeholder, width)" in code,
+)
+check(
+    "field() 默认宽未被改动（十几处 lg 内边距调用点依赖它）",
+    "var w = width || (CANVAS.w - SPACING.lg * 2)" in code,
+)
+check(
+    "login 三个字段全部显式传宽",
+    login_body.count("innerW") >= 4,
+)
+
+# ============================================================
 # 七、反向用例：逐项造假，确认断言真会失败
 # ============================================================
 print("\n--- 反向用例（确认断言不是永真） ---")
@@ -363,6 +569,23 @@ reverse = [
         "bindRadius 改绑 cornerRadius 应被检出",
         lambda t: t.replace("node.setBoundVariable('topLeftRadius', v);", "node.setBoundVariable('cornerRadius', v);"),
         lambda c: "'topLeftRadius'" in func_body(c, "function bindRadius(node, value)"),
+    ),
+    (
+        "layout 漏调 detachAnnotations 应被检出",
+        lambda t: t.replace("detachAnnotations(nodes[i], host);", ""),
+        lambda c: "detachAnnotations(nodes[i], host)"
+        in func_body(c, "function layout(host, nodes, perRow, startY)"),
+    ),
+    (
+        "gapX 退回 80 应被检出（标注卡会压在下一列画框上）",
+        lambda t: t.replace("var gapX = 320, gapY = 120;", "var gapX = 80, gapY = 120;"),
+        lambda c: int(
+            re.search(
+                r"var gapX = (\d+)",
+                func_body(c, "function layout(host, nodes, perRow, startY)"),
+            ).group(1)
+        )
+        >= 308,
     ),
 ]
 
