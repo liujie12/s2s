@@ -477,7 +477,7 @@
 
 ### 外部依赖
 
-- 高德地图开放平台**原生 SDK** 可用性与配额（Android AMapSDK 10.1.200 / minSdk 21，iOS 10.1.200 / iOS 12.0+），经 `amap_map` + `x_amap_base` Flutter 插件桥接，Android Key 绑定 SHA1、iOS Key 绑定 Bundle ID；
+- 高德地图开放平台**原生 SDK** 可用性与配额（Android AMapSDK 10.1.200 / **minSdk 24**，iOS 10.1.200 / iOS 12.0+），经 `amap_map` + `x_amap_base` Flutter 插件桥接，Android Key 绑定 SHA1、iOS Key 绑定 Bundle ID；
 - 实名认证服务可用性；
 - 短信与内容审核服务；
 - 合规政策稳定性（招聘/房屋/二手）。

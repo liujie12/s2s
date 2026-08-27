@@ -19,3 +19,33 @@ docs/probe_*.txt
 .idea/
 Thumbs.db
 Desktop.ini
+
+# ── Flutter / Dart ──
+# 构建产物与工具缓存，均可由 pubspec.yaml 重新生成，不入库
+.dart_tool/
+build/
+.flutter-plugins-dependencies
+*.iml
+# pubspec.lock：应用（非 library）应当入库以锁定依赖版本，故不忽略
+
+# ── Android 构建 ──
+android/.gradle/
+android/local.properties
+android/app/debug/
+android/app/profile/
+android/app/release/
+
+# ── 签名密钥（绝不入库）──
+# 正式签名证书泄露等于应用可被伪造，且证书一旦启用不可更换（上架前置手册 P7）
+*.jks
+*.keystore
+android/key.properties
+
+# ── iOS ──
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/Flutter.framework/
+ios/Flutter/flutter_export_environment.sh
+
+# ── Windows 构建 ──
+windows/flutter/ephemeral/

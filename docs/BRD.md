@@ -309,7 +309,7 @@ v2 不是 v1 的功能叠加，而是**一次聚焦式重构**：
 
 ### 9.2 外部依赖
 
-- 高德地图开放平台**原生 SDK**（Android AMapSDK 10.1.200 / minSdk 21，iOS 10.1.200 / iOS 12.0+），经 `amap_map` + `x_amap_base` Flutter 插件桥接；Android Key 绑定 SHA1、iOS Key 绑定 Bundle ID，两端 Key 分别申请；
+- 高德地图开放平台**原生 SDK**（Android AMapSDK 10.1.200 / **minSdk 24**，iOS 10.1.200 / iOS 12.0+），经 `amap_map` + `x_amap_base` Flutter 插件桥接；Android Key 绑定 SHA1、iOS Key 绑定 Bundle ID，两端 Key 分别申请；
 - 实名认证服务（身份证二要素/三要素）；
 - 企业资质核验服务（营业执照 OCR + 工商核验）；
 - 短信服务（注册/验证码）；
