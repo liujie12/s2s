@@ -265,6 +265,177 @@ check(
 )
 
 # ============================================================
+# 三之二、Dart 单向出口与真源逐项一致（条目 [58] / I2）
+#
+# 为什么必须有这条：lib/design_tokens.dart 由 export-dart-tokens.js 生成，而
+# 「改了 code.js 忘记重跑」不会有任何征兆 —— 产物依旧是合法 Dart，编译照过，
+# 只是取值停留在旧版。这正是原则 ㊱ 的静默降级形态。
+#
+# 为什么产物值得留（与本文件 docstring 末句「跑完即删，不留产物」不冲突）：
+# 那句话防的是可被双向编辑的副本。本产物是单向出口，有本节断言把它钉在真源上，
+# 脱钩当场变红，不存在需要人去手工同步的第二份。留它的唯一理由是让 Token 取值
+# 变更进 git diff —— Figma 侧 figma_diff_versions 不追踪变量值变更，主色对比度
+# 余量只 0.41，悄悄调深一档此前没有任何机制会报警（条目 [57] 查明）。
+#
+# 断言按产物里的 `/// <Figma 变量名>` 注释取值，不复制导出脚本的 camelCase
+# 转换规则 —— 复制一份转换规则就是新的手抄副本（原则 ㊾）。
+# ============================================================
+
+DART_OUT = os.path.join(os.path.dirname(BASE), "lib", "design_tokens.dart")
+
+
+def parse_dart_tokens(path):
+    """从生成的 Dart 产物里解析「Figma 变量名 → 值」映射。
+
+    产物的每个常量都由一行 `/// <变量名>[  ·  <备注>]` 紧跟一行 `static const`
+    组成，故按相邻两行配对即可，无需理解 Dart 语法。
+
+    Args:
+        path: Dart 产物路径
+    Returns:
+        tuple[dict, dict, dict]: (颜色 变量名→0xAARRGGBB 字符串,
+                                  数值 变量名→float,
+                                  字阶 变量名→(size, weight, lineHeight))
+    """
+    with open(path, encoding="utf-8") as fh:
+        src = fh.read()
+    colors = dict(
+        re.findall(
+            r"///\s+((?:color|category)/[\w-]+)\s+·[^\n]*\n\s*static const int \w+ = (0x[0-9A-F]{8});",
+            src,
+        )
+    )
+    numbers = {
+        k: float(v)
+        for k, v in re.findall(
+            r"///\s+((?:spacing|radius)/[\w-]+)\n\s*static const double \w+ = ([\d.]+);",
+            src,
+        )
+    }
+    styles = {
+        k: (float(size), weight, float(lh))
+        for k, size, weight, lh in re.findall(
+            r"///\s+(size/[\w-]+)\s+·[^\n]*\n\s*static const AppTextStyleToken \w+ = "
+            r"AppTextStyleToken\(size: ([\d.]+), weight: '(\w+)', lineHeight: ([\d.]+)\);",
+            src,
+        )
+    }
+    return colors, numbers, styles
+
+
+def hex_to_argb(hex_value):
+    """把 #RRGGBB 转成 Dart 侧的 0xAARRGGBB 字面量文本（不透明）。
+
+    Args:
+        hex_value: 形如 '#0B7C8C' 的色值
+    Returns:
+        str: 形如 '0xFF0B7C8C'
+    """
+    return "0xFF" + hex_value[1:].upper()
+
+
+check("Dart 产物存在（未生成则整个单向出口形同不存在）", os.path.exists(DART_OUT), DART_OUT)
+
+if os.path.exists(DART_OUT):
+    dart_colors, dart_numbers, dart_styles = parse_dart_tokens(DART_OUT)
+
+    # 由真源表现算出「产物应当长什么样」，再整体比对。
+    # 逐键循环会漏掉「产物多了一项真源已删的 Token」，整表相等才两个方向都守住。
+    want_colors = {}
+    for k, v in semantic_colors.items():
+        want_colors["color/" + k] = hex_to_argb(v)
+    for k, v in category_colors.items():
+        want_colors["category/" + k] = hex_to_argb(v)
+    for k, v in category_deep.items():
+        want_colors["category/" + k + "-deep"] = hex_to_argb(v)
+
+    check(
+        f"Dart 产物颜色与真源逐项一致（{len(want_colors)} 项）",
+        dart_colors == want_colors,
+        f"产物 {len(dart_colors)} 项"
+        + (
+            ""
+            if dart_colors == want_colors
+            else "；差异 "
+            + str(sorted(set(want_colors.items()) ^ set(dart_colors.items())))
+            + "  —— 请重跑 node prototype-figma/export-dart-tokens.js"
+        ),
+    )
+
+    want_numbers = {}
+    for k, v in spacing.items():
+        want_numbers["spacing/" + k] = float(v)
+    for k, v in radius.items():
+        want_numbers["radius/" + k] = float(v)
+
+    check(
+        f"Dart 产物间距与圆角与真源逐项一致（{len(want_numbers)} 项）",
+        dart_numbers == want_numbers,
+        f"产物 {len(dart_numbers)} 项"
+        + (
+            ""
+            if dart_numbers == want_numbers
+            else "；差异 "
+            + str(sorted(set(want_numbers.items()) ^ set(dart_numbers.items())))
+            + "  —— 请重跑导出脚本"
+        ),
+    )
+
+    # 字阶三个字段都要比：只比 size 的话，字重或行高倍数改了照样绿。
+    # 行高倍数不在 Variables 里（派生值），Dart 侧是它唯一的机器可读落点，
+    # 漏比等于这一项完全没人守。
+    m_full_type = re.search(r"var\s+TYPE_SCALE\s*=\s*\{(.*?)\n\};", code, re.S)
+    want_styles = {
+        "size/" + k: (float(size), weight, float(lh))
+        for k, size, weight, lh in re.findall(
+            r"([a-z0-9]+):\s*\{\s*size:\s*(\d+),\s*weight:\s*'(\w+)',\s*lineHeight:\s*([\d.]+)\s*\}",
+            m_full_type.group(1),
+        )
+    }
+    check(
+        "真源字阶三字段可解析（size/weight/lineHeight 全取到）",
+        len(want_styles) == len(type_scale),
+        f"{len(want_styles)}/{len(type_scale)} 档",
+    )
+    check(
+        f"Dart 产物字阶与真源逐项一致（{len(want_styles)} 档 × 3 字段）",
+        dart_styles == want_styles,
+        f"产物 {len(dart_styles)} 档"
+        + (
+            ""
+            if dart_styles == want_styles
+            else "；差异 "
+            + str(sorted(set(want_styles.items()) ^ set(dart_styles.items())))
+            + "  —— 请重跑导出脚本"
+        ),
+    )
+
+    # 产物必须保持「任何 Dart 项目可用」：一旦 import 了 Flutter，还没有 Flutter
+    # 工程的当下就引用不了，用户拍板选纯常量文件正是为此。
+    #
+    # 按行首匹配而非全文含有 "import"：产物的头注释里写着「刻意不 import
+    # 'package:flutter/material.dart'」来交代这个设计决定，全文搜会被这句自我
+    # 说明误伤（本轮实际踩到）。Dart 的 import 只能顶格在行首，按行首判定既准
+    # 又不会因注释措辞变化而漂移。
+    with open(DART_OUT, encoding="utf-8") as fh:
+        dart_src = fh.read()
+    check(
+        "Dart 产物无任何 import（不依赖 Flutter，颜色以 int 存）",
+        re.search(r"(?m)^\s*import\s", dart_src) is None,
+        "无行首 import",
+    )
+    check(
+        "Dart 产物标明禁止手改并给出重跑命令",
+        "请勿手改" in dart_src and "export-dart-tokens.js" in dart_src,
+    )
+    # 动效刻意不导出：ease: 'spring' 在 Flutter 是 SpringSimulation、在 CSS 无
+    # 对应值，替设计师把语义词落成具体参数超出「冻结契约」的范围（条目 [51] 红线）。
+    check(
+        "动效未被导出到 Dart（annotation-only 契约，不替实现侧选参）",
+        "spring" not in dart_src and "MOTION" not in dart_src,
+    )
+
+# ============================================================
 # 四、反查索引：必须由真源表派生，不得手写第二份副本
 # ============================================================
 
@@ -731,7 +902,63 @@ reverse = [
         lambda t: t.replace("dur: 240, ease: 'spring'", "dur: 240, ease: 'cubic-bezier(.2,.8,.2,1)'"),
         lambda c: "dur: 240, ease: 'spring'" in c,
     ),
+    # I2 三条：Dart 单向出口的断言必须自证会红。这组尤其需要 ——
+    # 它防的场景就是「真源改了、产物没重跑」，而反向用例恰好就是造出这个场景：
+    # 只改 code.js 文本、不动磁盘上的产物，比对必须失败。
+    (
+        "改主色应被 Dart 产物一致性检出（本条断言存在的首要理由）",
+        lambda t: t.replace("'primary':        '#0B7C8C'", "'primary':        '#0A7280'"),
+        lambda c: dart_colors.get("color/primary")
+        == hex_to_argb(parse_hex_table_in(c, "SEMANTIC_COLORS")["primary"]),
+    ),
+    (
+        "改圆角 lg 应被 Dart 产物一致性检出",
+        lambda t: t.replace("RADIUS = { sm: 4, md: 8, lg: 12", "RADIUS = { sm: 4, md: 8, lg: 14"),
+        lambda c: dart_numbers.get("radius/lg")
+        == float(parse_scale_in(c, "RADIUS")["lg"]),
+    ),
+    (
+        "只改字重（size 不变）也应被 Dart 产物一致性检出",
+        lambda t: t.replace("h2:      { size: 18, weight: 'SemiBold'", "h2:      { size: 18, weight: 'Bold'"),
+        lambda c: dart_styles.get("size/h2")
+        == parse_type_scale_in(c)["size/h2"],
+    ),
 ]
+
+
+def parse_hex_table_in(text, name):
+    """在给定源码文本里解析单层色表（供反向用例用）。
+
+    Args:
+        text: 已去注释的源码
+        name: 变量名
+    Returns:
+        dict[str, str]: role 键到 HEX 的映射
+    """
+    m = re.search(r"var\s+" + name + r"\s*=\s*\{(.*?)\};", text, re.S)
+    if not m:
+        return {}
+    return dict(re.findall(r"'([\w-]+)'\s*:\s*'(#[0-9A-Fa-f]{6})'", m.group(1)))
+
+
+def parse_type_scale_in(text):
+    """在给定源码文本里解析字阶三字段（供反向用例用）。
+
+    Args:
+        text: 已去注释的源码
+    Returns:
+        dict[str, tuple[float, str, float]]: 'size/<档>' 到 (size, weight, lineHeight)
+    """
+    m = re.search(r"var\s+TYPE_SCALE\s*=\s*\{(.*?)\n\};", text, re.S)
+    if not m:
+        return {}
+    return {
+        "size/" + k: (float(size), weight, float(lh))
+        for k, size, weight, lh in re.findall(
+            r"([a-z0-9]+):\s*\{\s*size:\s*(\d+),\s*weight:\s*'(\w+)',\s*lineHeight:\s*([\d.]+)\s*\}",
+            m.group(1),
+        )
+    }
 
 
 def parse_scale_in(text, name):
