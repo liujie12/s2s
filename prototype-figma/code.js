@@ -1160,6 +1160,27 @@ function screen(pageId, title, prdRef, isVariant) {
 }
 
 /**
+ * 六类按钮的配色与形状规格（PRD §1.4.6）——本表是这六档在本文件内的唯一取值来源。
+ *
+ * 为什么从 buttonRaw 内提到模块级（2026-08-27，I5 前置）：Component master 的
+ * description 要写明每一类的填充/文字/描边/圆角，而这些值原先只存在于
+ * buttonRaw 的函数体内。若 description 另抄一份，改了配色却忘改说明就会分叉，
+ * 且分叉方向最坏 —— 交棒人读到的契约与画布上的实物不一致（同原则㊾）。
+ * 提为共享真源后，buttonRaw 与 describeComponents 消费同一张表。
+ *
+ * usage 只写「什么时候该用哪一类」，这是 description 里代码看不出、
+ * 但接棒人最需要的那部分信息。
+ */
+var BUTTON_SPECS = {
+  primary:   { fill: 'color/primary',    textColor: 'color/surface',          radius: RADIUS.md,   stroke: null,            usage: '页面唯一主操作，一屏不得出现两个' },
+  secondary: { fill: 'color/surface',    textColor: 'color/primary',          radius: RADIUS.md,   stroke: 'color/primary', usage: '与主操作并列的次选项，如「获取验证码」' },
+  ghost:     { fill: null,               textColor: 'color/primary',          radius: RADIUS.md,   stroke: null,            usage: '弱化的辅助入口，如「用密码登录」' },
+  danger:    { fill: 'color/error-text', textColor: 'color/surface',          radius: RADIUS.md,   stroke: null,            usage: '不可逆操作，如删除、下架' },
+  capsule:   { fill: 'color/primary',    textColor: 'color/surface',          radius: RADIUS.full, stroke: null,            usage: '表单底部通栏提交，宽度取 390×80% = 312（PRD §3.4.1）' },
+  disabled:  { fill: 'color/border',     textColor: 'color/text-placeholder', radius: RADIUS.md,   stroke: null,            usage: '本期不开放的功能占位，须同时降至 40% 不透明度以声明范围' }
+};
+
+/**
  * 创建一个通用按钮（PRD §1.4.6 六类按钮规范）
  * @param {string} label 按钮文案
  * @param {string} variant primary/secondary/ghost/danger/capsule/disabled
@@ -1167,14 +1188,7 @@ function screen(pageId, title, prdRef, isVariant) {
  * @returns {FrameNode} 按钮节点
  */
 function buttonRaw(label, variant, width) {
-  var conf = {
-    primary:   { fill: 'color/primary',   textColor: 'color/surface',      radius: RADIUS.md,   stroke: null },
-    secondary: { fill: 'color/surface',   textColor: 'color/primary',      radius: RADIUS.md,   stroke: 'color/primary' },
-    ghost:     { fill: null,              textColor: 'color/primary',      radius: RADIUS.md,   stroke: null },
-    danger:    { fill: 'color/error-text', textColor: 'color/surface',     radius: RADIUS.md,   stroke: null },
-    capsule:   { fill: 'color/primary',   textColor: 'color/surface',      radius: RADIUS.full, stroke: null },
-    disabled:  { fill: 'color/border',    textColor: 'color/text-placeholder', radius: RADIUS.md, stroke: null }
-  }[variant] || {};
+  var conf = BUTTON_SPECS[variant] || {};
 
   var b = box('btn/' + variant + '/' + label, 'HORIZONTAL', {
     padTop: SPACING.md, padBottom: SPACING.md,
@@ -1792,6 +1806,113 @@ function registerComponents(page) {
   return host;
 }
 
+/**
+ * 给全部 Component master 写入 description（2026-08-27，条目 [51] 第 5 步）。
+ *
+ * 为什么必须写（实测当前 20 个 master 的 description 全为空）：Figma 的
+ * description 是**组件契约唯一的常驻承载体** —— 它显示在右侧 Inspect 面板与
+ * 组件库列表里，不需要进 Dev Mode，也不会像画布标注卡那样被误删或搬走。
+ * M3 的范围决策是「冻结契约而非像素」，而契约里最容易丢的恰恰是
+ * 「这个组件什么时候该用、哪些值不可改、结构约束是什么」这三件事：
+ * 尺寸和配色能从画布量出来，使用边界量不出来。
+ *
+ * 为什么与画布标注卡不重复：标注卡讲的是「这一页为什么这么设计」（按页组织），
+ * description 讲的是「这个组件在任何页都成立的约束」（按组件组织）。
+ * 同一条信息不会两处都写 —— 页级判据留在标注卡，组件级约束留在这里。
+ *
+ * 为什么规格值一律从真源表现算（SPACING/RADIUS/BUTTON_SPECS/CATEGORY_COLORS）：
+ * description 若手抄字面值，就成了第二份会静默脱钩的副本（原则㊾）。
+ *
+ * @param {Object} cache 组件名 -> ComponentNode 的映射，通常传 COMP_CACHE
+ * @returns {number} 实际写入 description 的组件数
+ */
+function describeComponents(cache) {
+  /** 每档按钮的规格描述由 BUTTON_SPECS 现算，不手抄配色 */
+  function buttonDesc(variant) {
+    var s = BUTTON_SPECS[variant];
+    var shape = s.radius === RADIUS.full ? '全圆角胶囊' : '圆角 ' + s.radius;
+    var parts = [
+      '【用途】' + s.usage,
+      '【规格】填充 ' + (s.fill || '无（透明）')
+        + '｜文字 ' + s.textColor
+        + (s.stroke ? '｜描边 ' + s.stroke + ' 1px' : '')
+        + '｜' + shape
+        + '｜内边距 ' + SPACING.md + '/' + SPACING.lg + '（纵/横）',
+      '【不可改】高度由内边距与字号撑出，勿写死；文案改写走 Instance 内 TEXT，勿脱离 master',
+      '【判据】PRD §1.4.6'
+    ];
+    if (variant === 'disabled') {
+      parts.splice(3, 0, '【无障碍】此档对比度刻意不达标（它表达「不可用」），故禁止用于任何可点元素');
+    }
+    return parts.join('\n');
+  }
+
+  /** Pin 描述按供需态与分类现算 */
+  function pinDesc(catKey, catName, supplyDemand) {
+    var isDemand = supplyDemand === 'demand';
+    return [
+      '【用途】地图 Marker · ' + catName + '（' + (isDemand ? '需求态' : '资源态') + '）',
+      '【规格】40×40，分类色 ' + CATEGORY_COLORS[catKey] + '（category/' + catKey + '）｜'
+        + (isDemand
+          ? '白底 + 分类色 2px 描边 + 分类色图标，右上角 16×16 的「?」角标标明供需'
+          : '分类色实心圆 + 白色图标'),
+      '【命中区】视觉 40×40 落在 WCAG 2.5.8 的地图 pin「Essential」豁免内；'
+        + '实现侧命中区须外扩至 ≥44×44，不得靠放大图形达标（见首页主态标注）',
+      '【结构约束】Figma 禁止对 Instance 增删子节点。选中态（48×48 + 阴影）与'
+        + '带完整度角标态属结构差异，一律回退 pinRaw 原生构造，不复用本 master',
+      '【不可改】Marker 只承载两类信息：分类（底色+图标）+ 供需态（实心/空心）。'
+        + '完整度由点击后的信息卡承载，不回到 Marker',
+      '【判据】PRD §6.4.2 / §1.4.3'
+    ].join('\n');
+  }
+
+  var descs = {
+    'shell/status-bar': [
+      '【用途】iOS 状态栏占位条，每个 390×844 画框的第一个子节点',
+      '【规格】390×44，底 color/surface，左右内边距 ' + SPACING.lg + '，两端对齐',
+      '【不可改】纯视觉留白，内容为固定假值（9:41 与信号占位符）；'
+        + '真机由系统绘制，Flutter 侧对应 SafeArea 顶部内边距，不要照此实现',
+      '【判据】画布规格 ' + CANVAS.w + '×' + CANVAS.h + '（iPhone 14 逻辑分辨率）'
+    ].join('\n')
+  };
+
+  // 三个底部 Tab 态：只有高亮项不同，故描述里点明「按高亮项各注册一个 master」
+  for (var t = 0; t < SHELL_TABS.length; t++) {
+    var tab = SHELL_TABS[t];
+    descs['shell/bottom-tab/' + tab] = [
+      '【用途】底部主导航 · 当前高亮「' + tab + '」。三个态各自一个 master，'
+        + '切页时换 Instance 而非改 Instance 内部',
+      '【规格】390×64，底 color/surface + 顶部 1px color/border；'
+        + '三个单元格各 130 宽 × 44 高，图标 24 + 间隙 ' + SPACING.xs + ' + caption 文字',
+      '【无障碍】单元格高 44 是「透明扩展命中区」的产物：图标与文字的视觉尺寸位置'
+        + '全不变，只把承载点击的容器撑到 44 以满足 PRD §1.8，栏高仍为 64',
+      '【不可改】三键图标一律矢量（tab-map / 鸭子 IP / tab-person），禁用 emoji —— '
+        + 'emoji 由系统字体渲染，选中时不随 paintOf(role) 变主色，且风格与矢量断裂',
+      '【判据】PRD §1.8 触控区 / §1.4.1.2 IP 微缩版消费位置'
+    ].join('\n');
+  }
+
+  for (var v = 0; v < BUTTON_VARIANTS.length; v++) {
+    descs['ui/button/' + BUTTON_VARIANTS[v]] = buttonDesc(BUTTON_VARIANTS[v]);
+  }
+
+  for (var c = 0; c < CAT_LIST.length; c++) {
+    var ck = CAT_LIST[c][0];
+    var cn = CAT_LIST[c][1];
+    descs['ui/pin/' + ck + '/resource'] = pinDesc(ck, cn, 'resource');
+    descs['ui/pin/' + ck + '/demand'] = pinDesc(ck, cn, 'demand');
+  }
+
+  var n = 0;
+  for (var name in descs) {
+    var comp = cache[name];
+    if (!comp || comp.type !== 'COMPONENT') continue;
+    comp.description = descs[name];
+    n++;
+  }
+  return n;
+}
+
 // ============================================================
 // 六、画布布局与页面管理
 // ============================================================
@@ -2202,6 +2323,17 @@ async function batchSetup() {
       + '。请同步 planStats() 的 masters 分项与 registerComponents()。');
   }
 
+  // 写组件契约（2026-08-27，条目 [51] 第 5 步）。必须在数量校验之后：
+  // 那时才确定 COMP_CACHE 是全的，否则漏写的 master 会被下面这道校验放过。
+  var describedCount = describeComponents(COMP_CACHE);
+  // 「有 master 却没 description」是本步唯一会静默发生的失败：新增一类 master
+  // 而忘了补描述时，画布上一切正常、数量校验也过，只有 Inspect 面板里空着 ——
+  // 而那正是接棒人读契约的地方，最不该是空的。故一个不写就当场炸掉。
+  if (describedCount !== compCount) {
+    throw new Error('Component description 缺失：' + compCount + ' 个 master 只写了 '
+      + describedCount + ' 个描述。请在 describeComponents() 的 descs 表内补齐。');
+  }
+
   return '批次 1 完成\n字体族：' + family + (family === FONT_FALLBACK ? '（未检测到 Noto Sans SC，已降级）' : '')
     + '\nVariables：新建 ' + stat.created + ' / 沿用 ' + stat.reused + ' / 改值 ' + stat.updated
     + '（应为 ' + st.tokens.total + ' 项：COLOR ' + st.tokens.color + ' + FLOAT ' + st.tokens.float + '）'
@@ -2209,6 +2341,7 @@ async function batchSetup() {
     + '\n主色：A 深湖青 #0B7C8C（白字 4.91:1 过 WCAG AA）'
     + '\nComponent master：' + compCount + ' 个（状态栏' + st.masters.statusBar
     + ' + 底部Tab' + st.masters.tabs + ' + 按钮' + st.masters.buttons + ' + Pin' + st.masters.pins + '）'
+    + '\n组件契约：' + describedCount + ' 个 description 已写入（右侧 Inspect 面板可见，无需 Dev Mode）'
     + '\n画板：语义色板 / 分类色Pin矩阵 / 字阶与按钮';
 }
 

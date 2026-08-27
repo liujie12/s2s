@@ -457,6 +457,11 @@ const figma = {
   createComponentFromNode: (node) => {
     const c = makeNode('COMPONENT');
     c.name = node.name;
+    // 真 API 里 ComponentNode.description 是可写字符串，未设时为空串。
+    // 这里必须显式给初值：不给的话 describeComponents() 的赋值会静默创建一个
+    // 全新属性，断言读到的是探针自己造出来的东西 ——「写没写」和「有没有这个
+    // 字段」就分不清了，也验不出「漏写」这种失败（同 I1 那轮 pluginData 的坑）。
+    c.description = '';
     // 尺寸必须在搬走子节点【之前】就锁定。
     //
     // 2026-08-27 修：原实现在 for 循环之后又读了一次 node.width/height，
@@ -569,7 +574,11 @@ const wrapped = new Function(
       'SEMANTIC_COLORS', 'CATEGORY_COLORS', 'CATEGORY_DEEP', 'SHELL_TABS', 'BUTTON_VARIANTS',
       // 标注分级与节点级引用（2026-08-27，I1）：severity 配色、pluginData 传值、
       // 节点级 annotation 落点全部要能被断言直接查真源，不能只看画布卡还在不在
-      'SEVERITY', 'ANNO_CATEGORY', 'attachNodeAnnotation', 'paintOf', 'box']
+      'SEVERITY', 'ANNO_CATEGORY', 'attachNodeAnnotation', 'paintOf', 'box',
+      // 组件契约（2026-08-27，条目 [51] 第 5 步）：description 里写的规格值必须
+      // 与 BUTTON_SPECS 等真源逐项对齐，故两者都要能被断言直接取到 —— 在探针里
+      // 手抄一份期望文本，验的就是抄本自己（原则㊾）
+      'describeComponents', 'BUTTON_SPECS', 'CAT_LIST']
       .map((k) => k + ': typeof ' + k + " !== 'undefined' ? " + k + ' : undefined')
       .join(', ') +
     ' };'
@@ -2289,6 +2298,183 @@ function allText(root) {
       '落地 ' + foundCards.length + ' / ' + wantCards.length +
       (foundCards.length < wantCards.length
         ? '，缺：' + wantCards.filter((w) => foundCards.indexOf(w) < 0).join(', ')
+        : '')
+    );
+  }
+
+  // ============================================================
+  // 十一、组件契约（description，条目 [51] 第 5 步）
+  //
+  // 为什么要单独一节：description 是唯一「画布上看不见」的产出 —— 它不影响
+  // 任何一个像素，所以前面 146 条断言全绿也完全不能说明它写没写、写对没写对。
+  // 它偏偏又是接棒人在 Inspect 面板里第一眼读到的东西，静默为空的代价最大。
+  //
+  // 全部期望值一律从真源现算（BUTTON_SPECS / CATEGORY_COLORS / SHELL_TABS /
+  // SPACING / RADIUS），不在探针里抄一份期望文本：抄本与 code.js 脱钩时，
+  // 断言验的是抄本自己，永远绿（原则㊾）。
+  // ============================================================
+  console.log('\n--- 组件契约（Component description）---');
+  if (typeof M.describeComponents !== 'function') {
+    check('describeComponents 已导出', false, '未导出或不是函数');
+  } else {
+    // pj 在 I1 那节是块内局部变量，这里够不到，故自带一份
+    const pj = (x) => JSON.stringify(x);
+    // 期望的 20 个 master 名单由真源表派生，与 registerComponents 同源
+    const wantNames = ['shell/status-bar']
+      .concat(M.SHELL_TABS.map((t) => 'shell/bottom-tab/' + t))
+      .concat(M.BUTTON_VARIANTS.map((v) => 'ui/button/' + v));
+    for (const ck of Object.keys(M.CATEGORY_COLORS)) {
+      wantNames.push('ui/pin/' + ck + '/resource', 'ui/pin/' + ck + '/demand');
+    }
+
+    // CAT_LIST 是 Pin 描述取中文分类名的来源，CATEGORY_COLORS 是 Pin master 的
+    // 注册来源。两张表的 key 一旦分叉，就会有 Pin 拿不到描述 —— 这正是
+    // batchSetup 里 describedCount !== compCount 抛错校验要拦的头号情形。
+    const catKeys = Object.keys(M.CATEGORY_COLORS).slice().sort();
+    const listKeys = (M.CAT_LIST || []).map((r) => r[0]).slice().sort();
+    check(
+      'CAT_LIST 与 CATEGORY_COLORS 的分类 key 完全一致（否则有 Pin 拿不到描述）',
+      pj(catKeys) === pj(listKeys),
+      pj(listKeys) + ' vs ' + pj(catKeys)
+    );
+
+    // 建一套干净的 master 交给 describeComponents，避免受前面批次实跑的影响
+    const descPage = figma.createPage();
+    descPage.name = 'probe/desc';
+    const descHost = M.registerComponents(descPage);
+    const cache = {};
+    for (const c of descHost.children) {
+      if (c.type === 'COMPONENT') cache[c.name] = c;
+    }
+    const written = M.describeComponents(cache);
+
+    check(
+      'describeComponents 写入数 == 真源派生的 master 数（一个不漏）',
+      written === wantNames.length && Object.keys(cache).length === wantNames.length,
+      '写入 ' + written + ' / master ' + Object.keys(cache).length + ' / 期望 ' + wantNames.length
+    );
+
+    // 名单逐项核对：只数个数会漏掉「多写一个、少写一个」正好抵消的情形
+    const missing = wantNames.filter((n) => !cache[n] || !cache[n].description);
+    check(
+      '20 个 master 逐项都有非空 description（名单与真源派生一致）',
+      missing.length === 0,
+      missing.length ? '缺：' + missing.join(', ') : '全部 ' + wantNames.length + ' 项已写'
+    );
+
+    // 四段式结构：缺一段就意味着少了一类信息（用途/规格/不可改/判据）
+    const sectionBad = [];
+    for (const n of wantNames) {
+      const d = (cache[n] || {}).description || '';
+      for (const seg of ['【用途】', '【规格】', '【不可改】', '【判据】']) {
+        if (d.indexOf(seg) < 0) sectionBad.push(n + ' 缺 ' + seg);
+      }
+    }
+    check(
+      '每条 description 四段式齐全（用途/规格/不可改/判据）',
+      sectionBad.length === 0,
+      sectionBad.length ? sectionBad.slice(0, 5).join('; ') : '全部 ' + wantNames.length + ' 项齐全'
+    );
+
+    // 按钮档：描述里的配色/圆角/内边距必须与 BUTTON_SPECS 现算值逐项对上。
+    // 这条是「description 会不会与画布脱钩」的正面拦截 —— 手抄配色时必红。
+    const btnBad = [];
+    for (const v of M.BUTTON_VARIANTS) {
+      const s = M.BUTTON_SPECS[v];
+      const d = (cache['ui/button/' + v] || {}).description || '';
+      const shape = s.radius === M.RADIUS.full ? '全圆角胶囊' : '圆角 ' + s.radius;
+      const wantBits = [
+        s.usage,
+        s.fill || '无（透明）',
+        s.textColor,
+        shape,
+        M.SPACING.md + '/' + M.SPACING.lg
+      ];
+      if (s.stroke) wantBits.push(s.stroke + ' 1px');
+      for (const bit of wantBits) {
+        if (d.indexOf(bit) < 0) btnBad.push(v + ' 缺「' + bit + '」');
+      }
+    }
+    check(
+      '六类按钮 description 的配色/圆角/内边距与 BUTTON_SPECS 现算值逐项对齐',
+      btnBad.length === 0,
+      btnBad.length ? btnBad.slice(0, 5).join('; ') : '6 档全部对齐（含 usage 与描边）'
+    );
+
+    // Pin 档：分类色十六进制取自 CATEGORY_COLORS，且必须带两段 Pin 专有约束 ——
+    // 命中区豁免与「Instance 不可增删子节点」，后者是本轮实测踩到过的硬约束
+    const pinBad = [];
+    for (const ck of Object.keys(M.CATEGORY_COLORS)) {
+      for (const sd of ['resource', 'demand']) {
+        const d = (cache['ui/pin/' + ck + '/' + sd] || {}).description || '';
+        if (d.indexOf(M.CATEGORY_COLORS[ck]) < 0) pinBad.push(ck + '/' + sd + ' 缺分类色');
+        if (d.indexOf('【命中区】') < 0) pinBad.push(ck + '/' + sd + ' 缺命中区');
+        if (d.indexOf('【结构约束】') < 0) pinBad.push(ck + '/' + sd + ' 缺结构约束');
+      }
+    }
+    check(
+      '十个 Pin description 的分类色取自 CATEGORY_COLORS，且带命中区与结构约束两段',
+      pinBad.length === 0,
+      pinBad.length ? pinBad.slice(0, 5).join('; ') : '10 项全部对齐'
+    );
+
+    // 无障碍声明只该出现在需要它的档位上：disabled 是刻意不达标的，
+    // 不声明就会被当成可点元素复用；Tab 的 44 高来自命中区扩展，须留痕
+    const a11yBad = [];
+    if (((cache['ui/button/disabled'] || {}).description || '').indexOf('【无障碍】') < 0) {
+      a11yBad.push('ui/button/disabled');
+    }
+    for (const t of M.SHELL_TABS) {
+      if (((cache['shell/bottom-tab/' + t] || {}).description || '').indexOf('【无障碍】') < 0) {
+        a11yBad.push('shell/bottom-tab/' + t);
+      }
+    }
+    check(
+      'disabled 档与三个 Tab 档带【无障碍】声明',
+      a11yBad.length === 0,
+      a11yBad.length ? '缺：' + a11yBad.join(', ') : 'disabled + 3 个 Tab 全部声明'
+    );
+
+    // 反向①：删掉一个 master 后写入数必须随之减少 ——
+    // 这是 batchSetup 里 describedCount !== compCount 抛错校验的触发条件
+    const cache2 = {};
+    for (const k of Object.keys(cache)) cache2[k] = cache[k];
+    delete cache2['ui/button/primary'];
+    for (const k of Object.keys(cache2)) cache2[k].description = '';
+    const written2 = M.describeComponents(cache2);
+    check(
+      '[反向] 少一个 master 时写入数随之减少（抛错校验的触发条件成立）',
+      written2 === wantNames.length - 1,
+      '写入 ' + written2 + '，期望 ' + (wantNames.length - 1)
+    );
+
+    // 反向②：非 COMPONENT 节点不该被写描述（避免把契约写到 Instance 上）
+    const fakeCache = { 'ui/button/primary': M.box('not-a-component', 'VERTICAL', {}) };
+    const written3 = M.describeComponents(fakeCache);
+    check(
+      '[反向] cache 里的非 COMPONENT 节点被跳过，不写描述',
+      written3 === 0 && !fakeCache['ui/button/primary'].description,
+      '写入 ' + written3 + ' 条'
+    );
+
+    // 端到端：批次真跑后画布上确有带描述的 master。
+    // 前面几条都是探针自己调 describeComponents 造的场景 —— 若 batchSetup 忘了
+    // 接上这个调用，它们照样全绿，只有这条会红。
+    // 名单用「集合相等」而非「全部 COMPONENT 都有描述」：本探针在 planStats
+    // 那节为核对数量又裸注册过一套 master（无描述），那是探针自身的临时产物。
+    const describedNames = [];
+    for (const pg of figma.root.children) {
+      if (pg.name === 'probe/desc') continue;
+      for (const n of pg.findAll((x) => x.type === 'COMPONENT')) {
+        if (n.description && describedNames.indexOf(n.name) < 0) describedNames.push(n.name);
+      }
+    }
+    check(
+      '端到端：批次真跑后画布上带描述的 master 名单 == 真源派生的 20 项',
+      pj(describedNames.slice().sort()) === pj(wantNames.slice().sort()),
+      '画布上 ' + describedNames.length + ' 项' +
+      (describedNames.length !== wantNames.length
+        ? '，差集：' + wantNames.filter((n) => describedNames.indexOf(n) < 0).join(', ')
         : '')
     );
   }

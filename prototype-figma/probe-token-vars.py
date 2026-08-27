@@ -500,11 +500,24 @@ check(
     "login 主按钮走 capsule 变体且宽 = 80%",
     "button('登录 / 注册', 'capsule', Math.round(CANVAS.w * 0.8))" in login_body,
 )
-# capsule 变体必须仍是 RADIUS.full，否则上一条断言名不副实
+# capsule 变体必须仍是 RADIUS.full，否则上一条断言名不副实。
+# 2026-08-27（条目 [51] 第 5 步）：六类按钮的配色/圆角已从 buttonRaw 函数体内
+# 提为模块级 BUTTON_SPECS —— 因为 component description 也要写这些值，留在函数
+# 体内就必然抄出第二份副本（原则㊾）。故此处取值路径跟着改到 BUTTON_SPECS，
+# 断言语义不变。这也是「按字符串抓函数体」的固有脆性，好在失败方向安全：
+# 抓不到就恒失败，不会假绿。
+specs_body = re.search(r"var BUTTON_SPECS = \{(.*?)\n\};", code, re.S)
+check("BUTTON_SPECS 已提为模块级真源（下一条断言的前提）", specs_body is not None)
 check(
     "capsule 变体圆角仍为 RADIUS.full",
-    re.search(r"capsule:\s*\{[^}]*radius:\s*RADIUS\.full", func_body(code, "function buttonRaw(label, variant, width)"))
-    is not None,
+    specs_body is not None
+    and re.search(r"capsule:\s*\{[^}]*radius:\s*RADIUS\.full", specs_body.group(1)) is not None,
+)
+# buttonRaw 必须真的从 BUTTON_SPECS 取值：否则表改了而画布不变，
+# 上面两条就成了对一张没人读的表的断言。
+check(
+    "buttonRaw 从 BUTTON_SPECS 取档位配置（表与画布不脱钩）",
+    "BUTTON_SPECS[variant]" in func_body(code, "function buttonRaw(label, variant, width)"),
 )
 
 # 表单间距：PRD 明写 md，此前用 lg
