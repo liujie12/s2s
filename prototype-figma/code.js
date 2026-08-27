@@ -118,6 +118,103 @@ var RADIUS = { sm: 4, md: 8, lg: 12, xl: 16, full: 999 };
 var CANVAS = { w: 390, h: 844 };
 
 /**
+ * 动效规格真源（PRD §1.4.8 + §6.8，2026-08-27 条目 [51] 第 6 步 / I5）。
+ *
+ * 为什么这张表不进 Figma Variables：条目 [48] 首次查明的硬约束 —— TIMING 与
+ * EASING **无法经 Plugin API 创建为变量**（`figma.variables.createVariable`
+ * 只接受 COLOR / FLOAT / STRING / BOOLEAN 四种 resolvedType，没有时间与缓动
+ * 类型）。这是 I5 存在的唯一原因：色彩字号间距圆角都能进 Token 层，动效不能，
+ * 故只能落 annotation。**不要再尝试把它建成变量**。
+ *
+ * 那为什么还要在 code.js 里建这张表：annotation 的文字要写这些值，而画布上
+ * 已有 3 处手抄了「240ms spring」（`categorySheet` 头注释、`mapCanvas` 弹层
+ * 定位处、首页筛选展开态的卡片文案）。第 5 步刚在 BUTTON_SPECS 上吃过同样的
+ * 教训 —— 写引用之前先统一真源，否则每处引用都是一份会静默脱钩的副本
+ * （原则㊾、原则 55）。**此处刻意不写行号：行号会随改动漂移，指错位置的注释
+ * 比没有注释更误导**。
+ *
+ * `dur` 单位统一 ms；`ease` 用 PRD 原词，不擅自换成 CSS 或 Flutter 的具名曲线：
+ * 「spring」在 Flutter 是 `SpringSimulation`、在 CSS 里根本没有对应值，替设计师
+ * 把语义词落成具体参数属于替他做决定，超出「冻结契约」的范围（条目 [51] 红线）。
+ * 实现侧取值时按 `impl` 字段的口径自行选参。
+ */
+var MOTION = {
+  page: {
+    scene: '页面切换', dur: 260, ease: 'ease-out',
+    impl: '前进右侧滑入 / 返回左侧滑出',
+    prd: 'PRD §1.4.8'
+  },
+  sheet: {
+    scene: '弹窗/抽屉', dur: 240, ease: 'spring',
+    impl: '底部上滑；遮罩渐显单列见 mask 档',
+    prd: 'PRD §1.4.8 / §6.9'
+  },
+  mask: {
+    scene: '遮罩渐显', dur: 180, ease: 'ease-out',
+    impl: '不透明度 0 → 40%，与 sheet 同时起步',
+    prd: 'PRD §1.4.8'
+  },
+  press: {
+    scene: '按钮反馈', dur: 80, ease: 'ease-out',
+    impl: '按下缩放至 0.97，释放回弹',
+    prd: 'PRD §1.4.8'
+  },
+  fade: {
+    scene: '内容淡入', dur: 180, ease: 'ease-out',
+    impl: '骨架屏占位 → 内容淡入，两者不叠加',
+    prd: 'PRD §1.4.8'
+  },
+  layer: {
+    scene: '图层切换', dur: 200, ease: 'ease-out',
+    impl: '分类 Tab 切换 Marker 颜色重刷；资源/需求切换形状立即变、颜色渐变',
+    prd: 'PRD §6.8'
+  }
+};
+
+/**
+ * 把一档动效渲染成标注用的一行文字。
+ *
+ * 为什么要有这个函数而不在各处拼串：拼串就是把「ms」「｜」这些格式散布到调用点，
+ * 改一次格式要改 N 处；更要紧的是断言得以拿同一个函数核对画布文本，
+ * 而不是在探针里手抄一份期望字符串（原则㊾）。
+ *
+ * @param {string} key MOTION 的键
+ * @returns {string} 形如「页面切换 260ms ease-out ｜ 前进右侧滑入 / 返回左侧滑出」
+ */
+function motionLine(key) {
+  var m = MOTION[key];
+  return m.scene + ' ' + m.dur + 'ms ' + m.ease + ' ｜ ' + m.impl;
+}
+
+/**
+ * 动效规格 annotation 的正文（六档全量 + 承载方式说明）。
+ *
+ * 为什么正文要复述「不进 Variables」这件事：读 annotation 的人在 Dev Mode 里，
+ * 手边只有这张卡。他找不到 motion 变量时的第一反应是「设计漏配了」，然后就会
+ * 自己拟一套时长 —— 规格于是在实现侧分叉。把原因写进正文，是让「这里没有变量」
+ * 从疑点变成结论。
+ *
+ * 六档全列而不只列本页相关档：动效档之间有联动（sheet 240ms 与 mask 180ms 必须
+ * 同时起步、layer 200ms 的形状切换不参与渐变），只给单档会让实现侧看不出配合关系。
+ *
+ * @returns {string[]} annotation 正文行；每档一行，内容由 motionLine 现算
+ */
+function motionSpecLines() {
+  var lines = [
+    '动效规格无法进 Token 层：Plugin API 的 createVariable 只接受 '
+      + 'COLOR/FLOAT/STRING/BOOLEAN，没有时间与缓动类型。以下六档即唯一判据，'
+      + '不要去 Variables 面板找 motion/*。'
+  ];
+  for (var k in MOTION) {
+    lines.push('motion/' + k + '：' + motionLine(k) + '（' + MOTION[k].prd + '）');
+  }
+  // ease 用 PRD 原词的后果要交代清楚，否则实现侧会把 spring 当成某条具名贝塞尔
+  lines.push('缓动一律沿用 PRD 原词：spring 指弹性模拟（Flutter 用 SpringSimulation，'
+    + 'CSS 无对应值需自行近似），此处不代设计师定参数。');
+  return lines;
+}
+
+/**
  * 数值型 Token 的反查表（值 → 变量名），供 box()/text() 把字面数字换成变量绑定。
  *
  * 为什么需要反查而不是改调用点：字号/间距/圆角在 42 个画框里共有数百处消费点，
@@ -2306,6 +2403,52 @@ async function batchSetup() {
   }
   boards.push(typeBoard);
 
+  // 画板 D：动效规格总览（2026-08-27，I5）
+  //
+  // 为什么动效要单独占一个画板，而不是像色彩字号那样只当 Token 表的一行：
+  // 前三块画板都能「看见」——色卡是颜色本身、字阶是字本身。动效在静态画布上
+  // 根本无法呈现，它只能以文字规格存在。这恰恰是它最容易在交接中蒸发的原因：
+  // 没有任何一处画面会因为漏了动效而显得不对。故给它一块专属版面 + 全部六档
+  // 挂 interact 档 annotation（Dev Mode 的 Interaction 分类，见 ANNO_CATEGORY）。
+  var motionBoard = box('board/动效规格 [PRD §1.4.8]', 'VERTICAL', {
+    pad: SPACING.xl, gap: SPACING.md, fill: 'color/surface', radius: RADIUS.lg
+  });
+  motionBoard.appendChild(text('动效规格六档（PRD §1.4.8 + §6.8）', 'h3'));
+  motionBoard.appendChild(text(
+    '这是唯一无法进 Figma Variables 的一类 Token：Plugin API 的 createVariable 只接受 '
+    + 'COLOR/FLOAT/STRING/BOOLEAN，没有时间与缓动类型。故动效规格以 annotation 承载，'
+    + '实现侧从本板取值，不要去 Variables 面板找。',
+    'caption', 'color/text-secondary'));
+  // 六档逐行铺开，行内容由 motionLine 现算 —— 与下面 annotation 的文本同源
+  for (var mk in MOTION) {
+    var mrow = box('_motion-' + mk, 'HORIZONTAL', { gap: SPACING.md, align: 'CENTER' });
+    // 时长条：把 ms 数值同时表达成宽度，让「80ms 的按钮反馈比 260ms 的页面切换快得多」
+    // 在静态画布上也看得出来。1ms = 0.5px，260ms 档最宽 130px，不撑破画板
+    mrow.appendChild(box('_motion-bar-' + mk, 'HORIZONTAL', {
+      w: Math.round(MOTION[mk].dur * 0.5), h: SPACING.md,
+      radius: RADIUS.sm, fill: 'color/primary'
+    }));
+    var mmeta = box('_motion-meta-' + mk, 'VERTICAL', { gap: 2 });
+    mmeta.appendChild(text(motionLine(mk), 'small'));
+    mmeta.appendChild(text('motion/' + mk + ' ｜ ' + MOTION[mk].prd, 'caption', 'color/text-secondary'));
+    mrow.appendChild(mmeta);
+    motionBoard.appendChild(mrow);
+  }
+  motionBoard.appendChild(annotation('动效规格六档', motionSpecLines(), {
+    severity: 'interact', target: '_motion-bar-sheet'
+  }));
+  // 两条 PRD 未定的口径单独一张 info 卡：它们不是判据，是「为什么这里没有规格」。
+  // 混进上面那张会让评审把待补项当成已冻结的规格读。
+  motionBoard.appendChild(annotation('动效规格的两处待补', [
+    'PRD §1.4.8「地图 Marker 首次出现渐入 + 轻微上浮」未给时长与位移量，'
+      + '本板不替它拟值（替设计师做动效决定超出「冻结契约」范围）',
+    'PRD §1.4.8「发布成功 Lottie 确认勾」未给时长；Lottie 时长由素材本身决定，'
+      + '须在素材交付时一并冻结',
+    '§1.5 U2 要求发布链路动效「统一 200-300ms」，而 §1.4.8 的按钮反馈为 80ms —— '
+      + '两者口径不同层（U2 说的是转场，80ms 说的是按压反馈），不构成冲突，此处记档以免被当成矛盾修掉'
+  ], { severity: 'info' }));
+  boards.push(motionBoard);
+
   layout(page, boards, 3, 0);
   // master 容器摆到画板下方，避免与规格板重叠
   host.x = 0;
@@ -3245,12 +3388,23 @@ async function batchMap() {
   var expanded = screen('home-screen', '筛选展开态', 'PRD §6.4.1', true);
   expanded.appendChild(statusBar());
   expanded.appendChild(navBar('鸭圈', HOME_NAV));
-  expanded.appendChild(mapCanvas('筛选展开：范围 + 供需 + 五大类', false,
+  expanded.appendChild(mapCanvas('筛选展开：范围 + 供需 + 五大类', false, [
     annotation('展开态', [
       '展开时占用约 200px，故不作为默认态',
       '选择完成后收起，回到主态的 44px 摘要胶囊',
-      '展开/收起动效：底部上滑 240ms spring（PRD §1.4.8）'
-    ]), { collapsed: false }));
+      // 原为手抄「底部上滑 240ms spring（PRD §1.4.8）」。改从 MOTION 现算：
+      // 这是三处手抄里唯一会渲染到画布的一处，也就是唯一会被评审当成判据读的一处
+      '展开/收起动效：' + motionLine('sheet') + '（' + MOTION.sheet.prd + '）'
+    ]),
+    // motion/layer 钉在分类圆排上（2026-08-27，I5）：这一档是全部六档里最容易
+    // 被实现成「整屏重绘」的一档 —— §6.8 要的是 Marker 颜色渐变而形状立即切换，
+    // 两个属性不同步。不钉到具体控件上，这条差别在交接时没有落点。
+    annotation('图层切换动效', [
+      motionLine('layer') + '（' + MOTION.layer.prd + '）',
+      '颜色渐变与形状切换不同步：形状（实心↔空心）立即变，颜色走 200ms 渐变',
+      '切换期间不重建 Marker 节点，只改属性 —— 重建会看到闪一下'
+    ], { severity: 'interact', target: '_overlay-cats' })
+  ], { collapsed: false }));
   expanded.appendChild(bottomTab('鸭圈'));
   frames.push(expanded);
 
@@ -3326,13 +3480,26 @@ async function batchMap() {
     var ts = screen('home-screen', 'T3 三级树 · ' + treeSteps[t][3], 'PRD §6.9', true);
     ts.appendChild(statusBar());
     ts.appendChild(navBar('鸭圈', HOME_NAV));
-    ts.appendChild(mapCanvas('三点入口唤起分类三级树', false,
+    // 弹层与遮罩两档只挂在第 1 层（2026-08-27，I5）：三个下钻框是同一个弹层的
+    // 三个内部状态，进场动效只发生在第 1 层出现的那一刻。三框各挂一份会让人
+    // 以为每次切层都要重播一次上滑。
+    var treeNotes = [
       annotation(treeSteps[t][3], [
         treeSteps[t][4],
         '入口：地图右上角三竖点（PRD §6.13 T6-②）',
         '类目取 PRD §2.4 分类三级树，§6.9 举例文案已同步修正',
         '「确定并收起」后回到主态摘要胶囊'
-      ]),
+      ])
+    ];
+    if (t === 0) {
+      treeNotes.push(annotation('弹层进场动效', [
+        motionLine('sheet') + '（' + MOTION.sheet.prd + '）',
+        motionLine('mask') + '（' + MOTION.mask.prd + '）',
+        '两者同时起步而时长不同：遮罩 180ms 先到位，弹层 240ms 带回弹后到',
+        '层内切换（第 1→2→3 层）不重播进场，只换内容'
+      ], { severity: 'interact', target: '_sheet-mask' }));
+    }
+    ts.appendChild(mapCanvas('三点入口唤起分类三级树', false, treeNotes,
       { sheet: catTreeSheet(treeSteps[t][0], treeSteps[t][1], treeSteps[t][2]) }));
     ts.appendChild(bottomTab('鸭圈'));
     frames.push(ts);
@@ -3460,6 +3627,14 @@ async function batchMap() {
     '与地图共享同一套筛选与范围状态',
     '5 大类 + 二级筛选 + 三种排序'
   ]));
+  // motion/fade 钉在列表体上（2026-08-27，I5）：这一档规定的是「骨架屏与内容
+  // 不叠加」——两者同时可见 180ms 会看成重影。列表体是骨架屏的宿主，规格钉在
+  // 这里，实现列表的人才读得到；钉在画板 D 上他不会去翻。
+  listBody.appendChild(annotation('列表加载动效', [
+    motionLine('fade') + '（' + MOTION.fade.prd + '）',
+    '骨架屏与真实内容不得同时可见：骨架屏移除后内容才起淡入',
+    '首屏之后的分页加载不重放淡入，只在底部追加'
+  ], { severity: 'interact', target: '_list-body' }));
   list.appendChild(listBody);
   list.appendChild(bottomTab('鸭圈'));
   frames.push(list);
@@ -3712,6 +3887,15 @@ function buildLogin() {
     '第三方入口本期不实现，灰禁用态呈现以声明范围',
     '未实名可浏览，发布时由 cert-modal 拦截'
   ]));
+  // motion/press 挂在这里而不是画板 D（2026-08-27，I5）：按压反馈是全局规格，
+  // 但「全局」在交接里等于「没有具体归属」。钉到主按钮上，实现这颗按钮的人
+  // 才会在 Dev Mode 里读到它。选主按钮而非三个禁用的第三方按钮 —— disabled
+  // 态本就不该有按下反馈。
+  body.appendChild(annotation('按压反馈动效', [
+    motionLine('press') + '（' + MOTION.press.prd + '）',
+    '本档为全站按钮通用，不限本页；disabled 态不触发',
+    '缩放中心取按钮几何中心，不位移'
+  ], { severity: 'interact', target: 'btn/capsule/登录 / 注册' }));
   s.appendChild(body);
   return s;
 }
@@ -3753,6 +3937,15 @@ function buildDetail() {
   trust.appendChild(text('不含信誉评价、不含交易记录（Scope 红线）', 'caption', 'color/primary-dark'));
   body.appendChild(trust);
   body.appendChild(button('联系 TA', 'primary', CANVAS.w - SPACING.lg * 2));
+  // motion/page 钉在返回入口所在的 _nav-left 上（2026-08-27，I5）：详情页是
+  // 全站唯一「有明确前进/返回方向」的页面（首页与列表页互切属同级视图切换），
+  // 转场方向的规格必须落在有方向可言的地方。target 不用返回箭头本身 ——
+  // 它是 text('‹') 产出的节点，名字就是那个字符，与文案耦合太紧。
+  body.appendChild(annotation('页面转场动效', [
+    motionLine('page') + '（' + MOTION.page.prd + '）',
+    '方向与手势一致：返回手势拖动量直接驱动位移，不是松手后才播 260ms',
+    '首页↔列表页属同级视图切换，不走本档（无前进/返回语义）'
+  ], { severity: 'interact', target: '_nav-left' }));
   s.appendChild(body);
   return s;
 }

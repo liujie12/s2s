@@ -542,6 +542,118 @@ check(
 )
 
 # ============================================================
+# 六之二、动效规格与 PRD §1.4.8 / §6.8 逐项一致（条目 [51] 第 6 步 / I5）
+#
+# 为什么动效的一致性必须在本探针里守：TIMING/EASING 进不了 Figma Variables，
+# 所以本文件前面那套「Token 值 == PRD 表格值」的机制完全覆盖不到它。动效唯一
+# 的一致性保障就是这一段 —— MOTION 表若与 PRD 对不上，画布上照样正常渲染，
+# 截图验收看不出任何异常（这正是动效最容易在交接中蒸发的原因）。
+#
+# 判据从 PRD 原文取，而不是在这里手抄一份期望时长（原则㊾）：写死 260/240/180
+# 只是把 PRD 的数字复制到第三个地方，PRD 改了它照样绿。
+# ============================================================
+print("\n--- 动效规格与 PRD 一致性（I5） ---")
+
+motion_body_m = re.search(r"var MOTION = \{(.*?)\n\};", code, re.S)
+check("MOTION 已建为模块级真源（下列断言的前提）", motion_body_m is not None)
+motion_body = motion_body_m.group(1) if motion_body_m else ""
+
+# 逐档解析出 dur 与 ease，供下面与 PRD 原文对照
+motion_parsed = {
+    k: (int(dur), ease)
+    for k, dur, ease in re.findall(
+        r"(\w+):\s*\{[^}]*?dur:\s*(\d+),\s*ease:\s*'([^']+)'", motion_body, re.S
+    )
+}
+check(
+    "MOTION 六档均可解析出 dur 与 ease",
+    len(motion_parsed) == 6,
+    f"解析到 {sorted(motion_parsed)}",
+)
+
+# PRD §1.4.8 的六行表是唯一真源。每档时长必须能在 PRD 原文里找到对应表述 ——
+# 用「时长 + 场景关键词同现于一行」判定，而非全文含某个数字：全文含 260ms
+# 会被别处任意一个 260 误命中。
+prd_lines = prd.splitlines()
+
+
+def prd_row(*keywords):
+    """在 PRD 原文里找同时含全部关键词的那一行。
+
+    动效判据一律按「关键词同现于一行」定位，而不是全文包含：PRD 里 180/200
+    这类数字在别的章节也出现，全文匹配会假绿。
+
+    Args:
+        *keywords: 需在同一行同时出现的关键词
+    Returns:
+        str: 命中的第一行原文；未命中返回空串
+    """
+    for line in prd_lines:
+        if all(k in line for k in keywords):
+            return line
+    return ""
+
+
+motion_prd_cases = [
+    ("page", "页面切换", ["页面切换", "260ms", "ease-out"]),
+    ("sheet", "弹窗/抽屉上滑", ["弹窗", "240ms", "spring"]),
+    ("mask", "遮罩渐显", ["遮罩渐显", "180ms"]),
+    ("press", "按钮按下反馈", ["按钮反馈", "80ms"]),
+    ("fade", "列表内容淡入", ["骨架屏", "180ms"]),
+    # layer 档必须带上场景词：只写 200ms 会命中任意含该数字的行，
+    # 而 §6.8 那行的判据恰恰是「颜色渐变 200ms」这个组合
+    ("layer", "图层切换颜色渐变", ["Marker", "渐变", "200ms"]),
+]
+motion_bad = []
+for key, desc, kws in motion_prd_cases:
+    row = prd_row(*kws)
+    if not row:
+        motion_bad.append(f"{key}({desc}) 在 PRD 找不到对应行：{kws}")
+        continue
+    dur = motion_parsed.get(key, (None, None))[0]
+    if dur is None or f"{dur}ms" not in row:
+        motion_bad.append(f"{key} dur={dur} 与 PRD 行不符：{row.strip()[:40]}")
+check(
+    "MOTION 六档的时长逐项能在 PRD §1.4.8/§6.8 原文里回标",
+    not motion_bad,
+    "; ".join(motion_bad) if motion_bad else "6 档全部回标成功",
+)
+
+# 缓动必须沿用 PRD 原词。这条防的是「顺手把 spring 换成某条具名贝塞尔」——
+# 替设计师把语义词落成具体参数超出「冻结契约」的范围（条目 [51] 红线）。
+check(
+    "sheet 档缓动仍为 PRD 原词 spring（未被替换成具名曲线）",
+    motion_parsed.get("sheet", (None, None))[1] == "spring",
+    f"实测 {motion_parsed.get('sheet', (None, 'n/a'))[1]}",
+)
+# §1.5 U2 的「200-300ms」说的是转场，与 press 的 80ms 不同层。这条断言把
+# 两者都钉住：若哪天有人为了「消除矛盾」把 80ms 改成 200ms，这里会红。
+check(
+    "PRD §1.5 U2 的 200-300ms 转场口径仍在（与 press 80ms 不同层，不得互相修改）",
+    "200-300ms" in prd or "200–300ms" in prd,
+)
+check(
+    "press 档仍为 80ms（未被 U2 的转场口径误改）",
+    motion_parsed.get("press", (None, None))[0] == 80,
+    f"实测 {motion_parsed.get('press', (None,))[0]}ms",
+)
+
+# 画布与标注必须从 MOTION 取值，不能各处手抄。三个消费点缺一个，
+# 那一处就会在改 MOTION 后静默脱钩。
+check(
+    "motionSpecLines 从 MOTION 现算（annotation 正文与表不脱钩）",
+    "motionLine(k)" in func_body(code, "function motionSpecLines()"),
+)
+check(
+    "首页展开态卡的动效行改为 motionLine 现算（画布上不留手抄的 240ms spring）",
+    "'展开/收起动效：' + motionLine('sheet')" in code,
+)
+check(
+    "规格板画板 D 的六行文本由 motionLine 现算",
+    "mmeta.appendChild(text(motionLine(mk), 'small'))" in code,
+)
+
+# ============================================================
 # 七、反向用例：逐项造假，确认断言真会失败
 # ============================================================
 print("\n--- 反向用例（确认断言不是永真） ---")
@@ -602,6 +714,22 @@ reverse = [
             ).group(1)
         )
         >= 308,
+    ),
+    # I5 两条：动效断言全部是「新写的」，必须自证不是永真 —— 上面那些断言
+    # 有 PRD 表格与 Variables 双侧兜着，动效只有这一层。
+    (
+        "改 MOTION.press.dur 应被 PRD 回标断言检出",
+        lambda t: t.replace("scene: '按钮反馈', dur: 80", "scene: '按钮反馈', dur: 200"),
+        lambda c: re.search(
+            r"scene: '按钮反馈', dur: (\d+)",
+            re.search(r"var MOTION = \{(.*?)\n\};", c, re.S).group(1),
+        ).group(1)
+        == "80",
+    ),
+    (
+        "把 spring 换成具名曲线应被检出",
+        lambda t: t.replace("dur: 240, ease: 'spring'", "dur: 240, ease: 'cubic-bezier(.2,.8,.2,1)'"),
+        lambda c: "dur: 240, ease: 'spring'" in c,
     ),
 ]
 

@@ -578,7 +578,11 @@ const wrapped = new Function(
       // 组件契约（2026-08-27，条目 [51] 第 5 步）：description 里写的规格值必须
       // 与 BUTTON_SPECS 等真源逐项对齐，故两者都要能被断言直接取到 —— 在探针里
       // 手抄一份期望文本，验的就是抄本自己（原则㊾）
-      'describeComponents', 'BUTTON_SPECS', 'CAT_LIST']
+      'describeComponents', 'BUTTON_SPECS', 'CAT_LIST',
+      // 动效规格（2026-08-27，条目 [51] 第 6 步 / I5）：TIMING/EASING 进不了
+      // Variables，动效唯一的机读承载体就是 annotation 的 pluginData。断言必须
+      // 拿 MOTION 与 motionLine 现算出期望文本去核对画布，不能手抄
+      'MOTION', 'motionLine', 'motionSpecLines']
       .map((k) => k + ': typeof ' + k + " !== 'undefined' ? " + k + ' : undefined')
       .join(', ') +
     ' };'
@@ -990,6 +994,10 @@ function allText(root) {
     (a, f) => a + f.findAll((n) => n.name.indexOf('_annotation/') === 0).length,
     0
   );
+  // 必须在 layout() 之前采样：layout 会把卡全部提到画框外，之后再数逐框数恒为 0
+  const cardsPerFrame = frames.map(
+    (f) => f.findAll((n) => n.name.indexOf('_annotation/') === 0).length
+  );
   M.layout(page, frames, 5, 0);
   const afterInFrames = frames.reduce(
     (a, f) => a + f.findAll((n) => n.name.indexOf('_annotation/') === 0).length,
@@ -999,8 +1007,15 @@ function allText(root) {
     (n) => n.name.indexOf('_annotation/') === 0
   ).length;
 
-  check('layout 前画框内共 ' + beforeTotal + ' 张口径卡', beforeTotal === 2,
-    beforeTotal + ' 张');
+  // 基线数改为逐画框判定（2026-08-27，条目 [51] 第 6 步 / I5）：
+  // 原先写死 beforeTotal === 2，I5 给登录页主按钮补挂 motion/press 档标注后
+  // 变成 3，断言即失败。但不能简单把 2 改成 3 —— 那只是把一个魔数换成另一个，
+  // 下次再加一张还得再改，且「总数对了」并不说明卡挂在了该挂的画框上。
+  // 逐画框判定同时守住两件事：卡数没少（漏挂 press 档会失败）、卡没跑错画框。
+  check('layout 前 splash 画框内 1 张口径卡', cardsPerFrame[0] === 1,
+    cardsPerFrame[0] + ' 张');
+  check('layout 前 login 画框内 2 张（页面口径 + motion/press 交互档）',
+    cardsPerFrame[1] === 2, cardsPerFrame[1] + ' 张');
   check('layout 后画框内口径卡清零', afterInFrames === 0, afterInFrames + ' 张残留');
   check('layout 后口径卡挂到了 page 上', onPage === beforeTotal,
     onPage + ' / ' + beforeTotal);
@@ -2476,6 +2491,232 @@ function allText(root) {
       (describedNames.length !== wantNames.length
         ? '，差集：' + wantNames.filter((n) => describedNames.indexOf(n) < 0).join(', ')
         : '')
+    );
+  }
+
+  // ============================================================
+
+  // ============================================================
+  // 十二、动效规格（annotation，条目 [51] 第 6 步 / I5）
+  //
+  // 为什么这一节的断言比别的维度更要紧：色彩字号间距圆角都进了 Variables，
+  // 有 Figma 自己的一致性机制兜着 —— 改了变量，画布上所有消费点跟着变。
+  // 动效进不了 Variables（createVariable 只接受 COLOR/FLOAT/STRING/BOOLEAN），
+  // 它的唯一一致性机制就是这几条断言。这里漏了，动效规格就没有任何东西守着。
+  //
+  // 要守住四件事：
+  // ① MOTION 六档齐全且字段完整（缺一档就是漏一类动效，画布上看不出来）；
+  // ② 画布文本与 annotation 正文都由 motionLine 现算，不存在第二份手抄副本；
+  // ③ 四个挂到具体页面的档（page/press/fade/layer + 弹层两档）真的钉在了
+  //    target 节点上，且分类是 Interaction —— 不然 Dev Mode 里读不到；
+  // ④ 时长条宽度真的由 dur 派生（它是「快慢差异」在静态画布上唯一的表达）。
+  // ============================================================
+  console.log('\n--- 动效规格（I5）---');
+  {
+    const pj = (x) => JSON.stringify(x);
+    const motionKeys = Object.keys(M.MOTION || {});
+
+    // ① 六档齐全 + 字段完整。档名写死是有意的：它们是 PRD §1.4.8/§6.8 的场景
+    // 枚举，少一个就是漏一类动效，而漏动效在画布上完全看不出来（这正是 I5
+    // 存在的理由）。改档名必须同步改 PRD，故让它在这里亮红。
+    const wantMotion = ['page', 'sheet', 'mask', 'press', 'fade', 'layer'];
+    check(
+      'MOTION 六档齐全（对应 PRD §1.4.8 的场景枚举 + §6.8 图层切换）',
+      pj(motionKeys.slice().sort()) === pj(wantMotion.slice().sort()),
+      pj(motionKeys)
+    );
+    const fieldBad = [];
+    for (const k of motionKeys) {
+      const m = M.MOTION[k];
+      if (typeof m.scene !== 'string' || !m.scene) fieldBad.push(k + '.scene');
+      if (typeof m.dur !== 'number' || m.dur <= 0) fieldBad.push(k + '.dur');
+      if (typeof m.ease !== 'string' || !m.ease) fieldBad.push(k + '.ease');
+      if (typeof m.impl !== 'string' || !m.impl) fieldBad.push(k + '.impl');
+      // prd 字段是判据回标，缺了就无法核对到条款，等于规格没来源
+      if (typeof m.prd !== 'string' || m.prd.indexOf('PRD §') !== 0) fieldBad.push(k + '.prd');
+    }
+    check(
+      'MOTION 每档的 scene/dur/ease/impl/prd 五字段齐全且 prd 可回标',
+      fieldBad.length === 0,
+      fieldBad.length ? '缺失：' + fieldBad.join(', ') : motionKeys.length + ' 档全部齐全'
+    );
+
+    // ② motionSpecLines 必须逐档现算，不能只写一部分。
+    // 「六档全列」是设计决定（动效档之间有联动，只给单档看不出配合关系），
+    // 这条断言把那个决定钉死。
+    const specLines = M.motionSpecLines();
+    const lineMiss = motionKeys.filter(
+      (k) => !specLines.some((l) => l.indexOf('motion/' + k + '：' + M.motionLine(k)) === 0)
+    );
+    check(
+      'motionSpecLines 六档全列，且每行内容由 motionLine 现算（无手抄副本）',
+      lineMiss.length === 0 && specLines.length === motionKeys.length + 2,
+      lineMiss.length ? '缺档：' + lineMiss.join(', ') : specLines.length + ' 行（六档 + 承载说明 + 缓动口径）'
+    );
+    // 正文首行必须交代「为什么这里没有变量」：读卡的人手边只有这张卡，
+    // 找不到 motion 变量时若无解释，他会自己拟一套时长，规格随即分叉。
+    check(
+      'motionSpecLines 正文交代了「动效无法进 Token 层」的原因（防实现侧自拟时长）',
+      specLines[0].indexOf('createVariable') > 0 &&
+      specLines[0].indexOf('COLOR/FLOAT/STRING/BOOLEAN') > 0,
+      '首行含 API 层原因'
+    );
+
+    // ③ 画板 D 的六行文本与时长条：文本必须等于 motionLine 现算值（全等，
+    // 不是包含），宽度必须等于 dur * 0.5。前者防手抄，后者防「条画了但不表意」。
+    let motionBoard = null;
+    for (const pg of figma.root.children) {
+      const hit = pg.findAll((n) => n.name === 'board/动效规格 [PRD §1.4.8]');
+      if (hit.length) { motionBoard = hit[0]; break; }
+    }
+    check('画板 D「动效规格」已落到画布上', !!motionBoard,
+      motionBoard ? '已找到' : '未找到 —— batchSetup 未 push motionBoard？');
+    if (motionBoard) {
+      const rowBad = [];
+      for (const k of motionKeys) {
+        const bar = motionBoard.findAll((n) => n.name === '_motion-bar-' + k)[0];
+        const meta = motionBoard.findAll((n) => n.name === '_motion-meta-' + k)[0];
+        if (!bar) { rowBad.push(k + ':无时长条'); continue; }
+        if (!meta) { rowBad.push(k + ':无文本'); continue; }
+        if (Math.round(bar.width) !== Math.round(M.MOTION[k].dur * 0.5)) {
+          rowBad.push(k + ':条宽 ' + Math.round(bar.width) + '≠' + Math.round(M.MOTION[k].dur * 0.5));
+        }
+        const txt = meta.children[0];
+        if (!txt || txt.characters !== M.motionLine(k)) {
+          rowBad.push(k + ':文本≠motionLine（' + (txt ? txt.characters : 'n/a') + '）');
+        }
+      }
+      check(
+        '画板 D 六行：文本全等 motionLine 现算值，条宽全等 dur × 0.5',
+        rowBad.length === 0,
+        rowBad.length ? rowBad.join('; ') : motionKeys.length + ' 行全部对齐'
+      );
+      // 两张卡要在 page 级找，不能限定在画板内（本轮首跑即被这条捞出）：
+      // 规格板同样走 layout()，detachAnnotations 已把卡提到画板右侧外部、
+      // 挂到 page 上。限定在 motionBoard 内找必然为空 —— 这是探针自身的错，
+      // 不是被测代码的错。判据仍是「卡确实存在且档位/靶标/正文对」。
+      const findCard = (name) => {
+        for (const pg of figma.root.children) {
+          const hit = pg.findAll((n) => n.name === name);
+          if (hit.length) return hit[0];
+        }
+        return null;
+      };
+      const readAnno = (card) => {
+        if (!card) return null;
+        try { return JSON.parse(card.getPluginData('anno')); } catch (e) { return null; }
+      };
+      // 六档总览卡挂 interact 档、钉在 sheet 档时长条上
+      const ovData = readAnno(findCard('_annotation/动效规格六档'));
+      check(
+        '六档总览卡为 interact 档且 target 钉在 _motion-bar-sheet 上',
+        !!ovData && ovData.severity === 'interact' && ovData.target === '_motion-bar-sheet' &&
+        pj(ovData.lines) === pj(specLines),
+        ovData ? ovData.severity + ' / ' + ovData.target : '取不到 pluginData'
+      );
+      // 待补项必须是 info 档：它们不是判据。混成 interact/spec 会让评审
+      // 把「PRD 还没定」当成「已经冻结的规格」去实现。
+      const todoData = readAnno(findCard('_annotation/动效规格的两处待补'));
+      check(
+        '「两处待补」卡为 info 档（待补项不得被当成已冻结规格读）',
+        !!todoData && todoData.severity === 'info' && todoData.lines.length === 3,
+        todoData ? todoData.severity + ' / ' + todoData.lines.length + ' 条' : '取不到 pluginData'
+      );
+      // 靶标节点必须真的被钉上节点级 annotation：卡的 pluginData 对了不等于
+      // Dev Mode 里读得到 —— target 拼错时 detachAnnotations 会静默退回整页。
+      const barSheet = motionBoard.findAll((n) => n.name === '_motion-bar-sheet')[0];
+      check(
+        '_motion-bar-sheet 真的被钉上 Interaction 分类的节点级标注',
+        !!barSheet && !!barSheet.annotations && barSheet.annotations.length > 0 &&
+        barSheet.annotations[0].categoryId === M.ANNO_CATEGORY.interact,
+        barSheet && barSheet.annotations && barSheet.annotations.length
+          ? '分类 ' + barSheet.annotations[0].categoryId
+          : '未钉上'
+      );
+    }
+
+    // ④ 四处页面级落点：卡在不在、档位对不对、target 钉中没有。
+    // 逐条列出而非只数总量：动效档漏挂一处在画面上零征兆，只有点名才拦得住。
+    const wantAnchors = [
+      ['_annotation/按压反馈动效', 'btn/capsule/登录 / 注册'],
+      ['_annotation/图层切换动效', '_overlay-cats'],
+      ['_annotation/列表加载动效', '_list-body'],
+      ['_annotation/页面转场动效', '_nav-left'],
+      ['_annotation/弹层进场动效', '_sheet-mask']
+    ];
+    const anchorBad = [];
+    for (const [cardName, targetName] of wantAnchors) {
+      let card = null;
+      for (const pg of figma.root.children) {
+        const hit = pg.findAll((n) => n.name === cardName);
+        if (hit.length) { card = hit[0]; break; }
+      }
+      if (!card) { anchorBad.push(cardName + ':卡未落地'); continue; }
+      let d = null;
+      try { d = JSON.parse(card.getPluginData('anno')); } catch (e) { d = null; }
+      if (!d) { anchorBad.push(cardName + ':无 pluginData'); continue; }
+      if (d.severity !== 'interact') anchorBad.push(cardName + ':档位=' + d.severity);
+      if (d.target !== targetName) anchorBad.push(cardName + ':target=' + d.target);
+    }
+    check(
+      '四类动效档钉到对应页面节点上（按压/图层/列表/转场 + 弹层进场）',
+      anchorBad.length === 0,
+      anchorBad.length ? anchorBad.join('; ') : wantAnchors.length + ' 处全部命中'
+    );
+
+    // ⑤ 页面级卡的正文也必须走 motionLine：这是最容易退化成手抄的地方 ——
+    // 挂卡时顺手把「80ms ease-out」敲进去，改 MOTION 后画布纹丝不动。
+    const inlineBad = [];
+    for (const [cardName] of wantAnchors) {
+      let card = null;
+      for (const pg of figma.root.children) {
+        const hit = pg.findAll((n) => n.name === cardName);
+        if (hit.length) { card = hit[0]; break; }
+      }
+      if (!card) continue;
+      let d = null;
+      try { d = JSON.parse(card.getPluginData('anno')); } catch (e) { d = null; }
+      if (!d) continue;
+      // 卡内至少一行须与某一档的 motionLine 现算值前缀相符
+      const anyMatch = motionKeys.some((k) => d.lines.some((l) => l.indexOf(M.motionLine(k)) === 0));
+      if (!anyMatch) inlineBad.push(cardName);
+    }
+    check(
+      '页面级动效卡的正文取自 motionLine，未在挂卡处手抄时长',
+      inlineBad.length === 0,
+      inlineBad.length ? '疑似手抄：' + inlineBad.join(', ') : '全部现算'
+    );
+
+    // ⑥ 首页筛选展开态的画布文案也必须现算（三处手抄里唯一会渲染到画布、
+    // 也就是唯一会被评审当判据读的一处，本轮已改）。这条查的是**画布文本**，
+    // 与上面查 pluginData 的那几条互补。
+    let expandedCard = null;
+    for (const pg of figma.root.children) {
+      const hit = pg.findAll((n) => n.name === '_annotation/展开态');
+      if (hit.length) { expandedCard = hit[0]; break; }
+    }
+    const expandedTexts = expandedCard
+      ? expandedCard.findAll((n) => n.type === 'TEXT').map((n) => n.characters)
+      : [];
+    check(
+      '首页展开态卡的动效行由 motionLine 现算（画布上不再有手抄的 240ms spring）',
+      expandedTexts.some((t) => t.indexOf(M.motionLine('sheet')) > 0),
+      expandedCard ? pj(expandedTexts.slice(-1)) : '未找到展开态卡'
+    );
+
+    // ⑦ 反向用例：改一档 dur 后，画板行文本与 annotation 正文必须同步变。
+    // 若哪天有人把 motionLine 里的现算换成常量串，这条会红。
+    const savedDur = M.MOTION.press.dur;
+    M.MOTION.press.dur = 999;
+    const afterLine = M.motionLine('press');
+    const afterSpec = M.motionSpecLines();
+    M.MOTION.press.dur = savedDur;
+    check(
+      '[反向] 改 MOTION.press.dur 后 motionLine 与 motionSpecLines 同步变（未退化为常量）',
+      afterLine.indexOf('999ms') > 0 &&
+      afterSpec.some((l) => l.indexOf('999ms') > 0) &&
+      M.motionLine('press').indexOf(savedDur + 'ms') > 0,
+      '现算生效且已复原为 ' + savedDur + 'ms'
     );
   }
 
