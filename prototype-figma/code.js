@@ -172,6 +172,16 @@ var MOTION = {
 };
 
 /**
+ * 时长条的换算比例：1ms 对应多少 px。
+ *
+ * 单独提出来而不是在画板里写两遍 0.5：条宽与槽位宽都要用它，写两处就是
+ * 一份手抄副本 —— 只改一处时条会溢出槽位或槽位留下多余空白，而两者都是
+ * 「看着还算正常」的错（原则㊾）。取 0.5 是因为最长的 260ms 档得到 130px，
+ * 既能看出档间差距又不撑破画板宽度。
+ */
+var MOTION_PX_PER_MS = 0.5;
+
+/**
  * 把一档动效渲染成标注用的一行文字。
  *
  * 为什么要有这个函数而不在各处拼串：拼串就是把「ms」「｜」这些格式散布到调用点，
@@ -2420,14 +2430,29 @@ async function batchSetup() {
     + '实现侧从本板取值，不要去 Variables 面板找。',
     'caption', 'color/text-secondary'));
   // 六档逐行铺开，行内容由 motionLine 现算 —— 与下面 annotation 的文本同源
+  //
+  // 槽位宽度取最长档现算，不写死 130：PRD 若把某档时长调大，写死的槽宽会把
+  // 条截短，从此条长与 ms 不再成比例，而画面上看不出错（原则 56 的同类陷阱）。
+  var motionSlotW = 0;
+  for (var mw in MOTION) {
+    var barW = Math.round(MOTION[mw].dur * MOTION_PX_PER_MS);
+    if (barW > motionSlotW) motionSlotW = barW;
+  }
   for (var mk in MOTION) {
     var mrow = box('_motion-' + mk, 'HORIZONTAL', { gap: SPACING.md, align: 'CENTER' });
     // 时长条：把 ms 数值同时表达成宽度，让「80ms 的按钮反馈比 260ms 的页面切换快得多」
     // 在静态画布上也看得出来。1ms = 0.5px，260ms 档最宽 130px，不撑破画板
-    mrow.appendChild(box('_motion-bar-' + mk, 'HORIZONTAL', {
-      w: Math.round(MOTION[mk].dur * 0.5), h: SPACING.md,
+    //
+    // 条外面再套一层等宽槽位（2026-08-27 实机复验后补）：条宽各档不同，若直接
+    // 与文本同排，六行文本的左边缘会随条长参差，最短档比最长档右突出近 90px，
+    // 六档无法竖向对照扫读 —— 而这个画板存在的意义就是并列对照。槽位等宽后
+    // 条仍以长度表达时长，文本左边缘齐平。截图才看得出来，探针查不出。
+    var mslot = box('_motion-slot-' + mk, 'HORIZONTAL', { w: motionSlotW, align: 'CENTER' });
+    mslot.appendChild(box('_motion-bar-' + mk, 'HORIZONTAL', {
+      w: Math.round(MOTION[mk].dur * MOTION_PX_PER_MS), h: SPACING.md,
       radius: RADIUS.sm, fill: 'color/primary'
     }));
+    mrow.appendChild(mslot);
     var mmeta = box('_motion-meta-' + mk, 'VERTICAL', { gap: 2 });
     mmeta.appendChild(text(motionLine(mk), 'small'));
     mmeta.appendChild(text('motion/' + mk + ' ｜ ' + MOTION[mk].prd, 'caption', 'color/text-secondary'));

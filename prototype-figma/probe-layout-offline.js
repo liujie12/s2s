@@ -582,7 +582,7 @@ const wrapped = new Function(
       // 动效规格（2026-08-27，条目 [51] 第 6 步 / I5）：TIMING/EASING 进不了
       // Variables，动效唯一的机读承载体就是 annotation 的 pluginData。断言必须
       // 拿 MOTION 与 motionLine 现算出期望文本去核对画布，不能手抄
-      'MOTION', 'motionLine', 'motionSpecLines']
+      'MOTION', 'MOTION_PX_PER_MS', 'motionLine', 'motionSpecLines']
       .map((k) => k + ': typeof ' + k + " !== 'undefined' ? " + k + ' : undefined')
       .join(', ') +
     ' };'
@@ -2563,7 +2563,8 @@ function allText(root) {
     );
 
     // ③ 画板 D 的六行文本与时长条：文本必须等于 motionLine 现算值（全等，
-    // 不是包含），宽度必须等于 dur * 0.5。前者防手抄，后者防「条画了但不表意」。
+    // 不是包含），宽度必须等于 dur × MOTION_PX_PER_MS。前者防手抄，后者防
+    // 「条画了但不表意」。比例也从被测模块取，不在这里手抄 0.5。
     let motionBoard = null;
     for (const pg of figma.root.children) {
       const hit = pg.findAll((n) => n.name === 'board/动效规格 [PRD §1.4.8]');
@@ -2572,14 +2573,16 @@ function allText(root) {
     check('画板 D「动效规格」已落到画布上', !!motionBoard,
       motionBoard ? '已找到' : '未找到 —— batchSetup 未 push motionBoard？');
     if (motionBoard) {
+      const pxPerMs = M.MOTION_PX_PER_MS;
+      const barW = (k) => Math.round(M.MOTION[k].dur * pxPerMs);
       const rowBad = [];
       for (const k of motionKeys) {
         const bar = motionBoard.findAll((n) => n.name === '_motion-bar-' + k)[0];
         const meta = motionBoard.findAll((n) => n.name === '_motion-meta-' + k)[0];
         if (!bar) { rowBad.push(k + ':无时长条'); continue; }
         if (!meta) { rowBad.push(k + ':无文本'); continue; }
-        if (Math.round(bar.width) !== Math.round(M.MOTION[k].dur * 0.5)) {
-          rowBad.push(k + ':条宽 ' + Math.round(bar.width) + '≠' + Math.round(M.MOTION[k].dur * 0.5));
+        if (Math.round(bar.width) !== barW(k)) {
+          rowBad.push(k + ':条宽 ' + Math.round(bar.width) + '≠' + barW(k));
         }
         const txt = meta.children[0];
         if (!txt || txt.characters !== M.motionLine(k)) {
@@ -2587,14 +2590,47 @@ function allText(root) {
         }
       }
       check(
-        '画板 D 六行：文本全等 motionLine 现算值，条宽全等 dur × 0.5',
+        '画板 D 六行：文本全等 motionLine 现算值，条宽全等 dur × MOTION_PX_PER_MS',
         rowBad.length === 0,
         rowBad.length ? rowBad.join('; ') : motionKeys.length + ' 行全部对齐'
       );
+
+      // ③之二 槽位等宽（2026-08-27 实机截图发现后补的断言）：
+      // 条宽各档不同，若不套等宽槽位，右侧文本左边缘会随条长参差，六档没法
+      // 竖向对照扫读。这是**只有看图才发现、探针原先完全查不出**的一类错 ——
+      // 六行文本内容全对、条宽也全对，唯独排布让人读不成。补两条：
+      //   槽位全部等宽，且宽度等于最长档（不是某个写死的数）。
+      const slotWs = motionKeys.map((k) => {
+        const slot = motionBoard.findAll((n) => n.name === '_motion-slot-' + k)[0];
+        return slot ? Math.round(slot.width) : -1;
+      });
+      const wantSlotW = Math.max(...motionKeys.map(barW));
+      check(
+        '画板 D 六档时长条套等宽槽位，文本左边缘对齐（六槽同宽）',
+        slotWs.length === motionKeys.length && slotWs.every((w) => w === wantSlotW),
+        '槽宽 ' + pj(slotWs) + '，期望全部 = 最长档 ' + wantSlotW
+      );
+      // 槽位不能比条还窄：那样条会被 Auto Layout 压缩，长度不再等于时长，
+      // 而画面上只是「条短了一点」，看不出是错的
+      const slotTooNarrow = motionKeys.filter((k, i) => slotWs[i] < barW(k));
+      check(
+        '无槽位窄于其内时长条（否则条被压缩、长度不再表意）',
+        slotTooNarrow.length === 0,
+        slotTooNarrow.length ? '过窄：' + slotTooNarrow.join(', ') : '六档槽位均 ≥ 条宽'
+      );
+
       // 两张卡要在 page 级找，不能限定在画板内（本轮首跑即被这条捞出）：
       // 规格板同样走 layout()，detachAnnotations 已把卡提到画板右侧外部、
       // 挂到 page 上。限定在 motionBoard 内找必然为空 —— 这是探针自身的错，
       // 不是被测代码的错。判据仍是「卡确实存在且档位/靶标/正文对」。
+      //
+      // ⚠ 真机复核盲区（2026-08-27 实机复验时踩到）：下面 readAnno 读的
+      // setPluginData 是**按插件 ID 分命名空间**的。批次脚本由 s2s 插件写入，
+      // 而 figma-console-mcp 的 figma_execute 跑在 Desktop Bridge 插件里，
+      // 读同一个 key 只会得到空字符串 —— 那不是数据丢了，是换了命名空间。
+      // 故凡依赖 pluginData 的断言，真机侧无法用 Bridge 独立复核；真机要核
+      // 只能走另两条不分插件的路径：① 节点的 annotations 属性；② 卡内 TEXT
+      // 文本。两者与 pluginData 同源（见 code.js 的 annotation()），可互证。
       const findCard = (name) => {
         for (const pg of figma.root.children) {
           const hit = pg.findAll((n) => n.name === name);
