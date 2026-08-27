@@ -69,8 +69,6 @@ function makeNode(type) {
     // 真要模拟 grow 的拉伸效果需要完整的剩余空间分配算法，超出本 mock 的
     // 定位（见文件头：只保证主轴累加 + 交叉轴取最大）。
     layoutGrow: 0,
-    layoutSizingHorizontal: 'HUG',
-    layoutSizingVertical: 'HUG',
     fills: [],
     strokes: [],
     strokeWeight: 1,
@@ -151,6 +149,45 @@ function makeNode(type) {
     get: () => n._h,
     enumerable: false,
   });
+
+  // layoutSizing* 必须带真机的前置约束，不能做成裸字段。
+  //
+  // 2026-08-27：这两个属性原本是普通字段，纯存取、不校验。于是我在
+  // buildPermissionGuide 里写出「先设 FILL、后 appendChild」的顺序错误时，
+  // 离线一路全绿，直到实机跑批次 2 才抛错。Figma 的规则是：
+  // **只有 FILL** 要求节点已是 Auto Layout 父级的直接子节点，否则报
+  // "Setting layoutSizingHorizontal to FILL requires an auto-layout parent"。
+  // FIXED 无此要求（它只是把该轴尺寸固定），所以 button() 里那句
+  // inst.layoutSizingHorizontal = 'FIXED'（code.js:1555，在 appendChild 之前）
+  // 在真机上是合法的 —— 首版约束写成「FILL 或 FIXED 都校验」，
+  // 立刻把这处合法代码误报成错，是检查器过严的典型（说明文档 ㊲）。
+  //
+  // 这是第二次栽在「mock 把有前置条件的 API 做成无条件成功」上
+  //（前一次是 setReactionsAsync 完全没实现）：
+  // **凡真机会因调用顺序/上下文抛错的 API，mock 必须把那个条件也实现出来，
+  // 且条件要照真机原样收窄，不能宁严勿松 —— 过严会造出成批假阳性。**
+  const layoutSizingGuard = (axis) => ({
+    get: () => n['_layoutSizing' + axis],
+    set: (v) => {
+      if (v === 'FILL') {
+        const p = n.parent;
+        if (!p || p.layoutMode === 'NONE' || p.layoutMode === undefined) {
+          throw new Error(
+            'Cannot set layoutSizing' + axis + '="FILL" on node "' + n.name +
+            '"：FILL 要求节点已是 Auto Layout 父级的直接子节点。' +
+            '当前 parent=' + (p ? p.name + '(layoutMode=' + p.layoutMode + ')' : 'null') +
+            ' —— 把赋值移到 appendChild 之后'
+          );
+        }
+      }
+      n['_layoutSizing' + axis] = v;
+    },
+    enumerable: false,
+  });
+  n._layoutSizingHorizontal = 'HUG';
+  n._layoutSizingVertical = 'HUG';
+  Object.defineProperty(n, 'layoutSizingHorizontal', layoutSizingGuard('Horizontal'));
+  Object.defineProperty(n, 'layoutSizingVertical', layoutSizingGuard('Vertical'));
 
   n.appendChild = function (child) {
     // 必须让【旧父】也重算：Figma 里节点被移走后，原父级会立刻收缩。
@@ -307,6 +344,11 @@ function makeNode(type) {
         // 变量绑定要浅拷一份而非共引：Instance 上再绑会污染 master
         cc.boundVariables = Object.assign({}, c.boundVariables);
         dst.appendChild(cc);
+        // layoutSizing* 必须在 appendChild 之后抄：它带「父级须是 Auto Layout」
+        // 的前置约束（见 makeNode 里的 layoutSizingGuard），
+        // 在挂上父级前赋值会抛错 —— 与真机同规则。
+        cc.layoutSizingHorizontal = c.layoutSizingHorizontal;
+        cc.layoutSizingVertical = c.layoutSizingVertical;
         deepCopy(c, cc);
       }
     };
@@ -1808,15 +1850,26 @@ function allText(root) {
   }
 
   // ⑧ 反向之二：同一个节点标上 FILL 后必须被放行（证明豁免分支也是活的，
-  // 否则「跳过 FILL」写成永真跳过，整条断言就等于关掉了）
+  // 否则「跳过 FILL」写成永真跳过，整条断言就等于关掉了）。
+  // 顺带验 layoutSizingGuard 本身：FILL 必须先挂进 Auto Layout 父级才能设。
   {
+    const holder = figma.createFrame();
+    holder.layoutMode = 'VERTICAL';
     const t = figma.createText();
     t.characters = '测试';
-    t.layoutSizingHorizontal = 'FILL';
+    let threw = false;
+    try {
+      t.layoutSizingHorizontal = 'FILL'; // 还没挂父级，须抛错
+    } catch (e) {
+      threw = true;
+    }
+    holder.appendChild(t);
+    t.layoutSizingHorizontal = 'FILL';   // 挂上之后才合法
     check(
-      '[反向] 标了 layoutSizingHorizontal=FILL 的文本会被判据放行',
-      t.layoutSizingHorizontal === 'FILL',
-      '放行条件成立（宽度由容器给定，量 hug 宽无意义）'
+      '[反向] FILL 未挂 Auto Layout 父级时抛错、挂上后可设，且被超宽判据放行',
+      threw && t.layoutSizingHorizontal === 'FILL',
+      '无父级赋值' + (threw ? '已抛错' : '未抛错（约束失效）') +
+      '；挂父后取值=' + t.layoutSizingHorizontal
     );
   }
 

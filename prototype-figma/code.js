@@ -2973,14 +2973,18 @@ async function batchMap() {
   // 在纵排 Auto Layout 里宽度不受容器约束：第一行实测 hug 到 421，
   // 超出 _body 可用宽 342，横向直接撑破 390 画框
   // （2026-08-27「单个文本超出 FIXED 宽祖先」断言首次捞出）。
+  //
+  // layoutSizingHorizontal='FILL' 必须在 appendChild【之后】赋值：
+  // 该属性要求节点已经是某个 Auto Layout 父级的直接子节点，
+  // 提前赋值真机会抛「requires an auto-layout parent」（实机批次 2 报错处）。
   var guideLead = text('找鸭找只推你走得到的地方——身边几公里内的活儿、房子、顺路车。', 'body', 'color/text-secondary');
   guideLead.textAutoResize = 'HEIGHT';
-  guideLead.layoutSizingHorizontal = 'FILL';
   guideBody.appendChild(guideLead);
+  guideLead.layoutSizingHorizontal = 'FILL';
   var guideSub = text('不开定位就只能看全城，近处的机会会被淹掉。', 'small', 'color/text-secondary');
   guideSub.textAutoResize = 'HEIGHT';
-  guideSub.layoutSizingHorizontal = 'FILL';
   guideBody.appendChild(guideSub);
+  guideSub.layoutSizingHorizontal = 'FILL';
   guideBody.appendChild(button('开启位置权限', 'primary', CANVAS.w - SPACING.xl * 2));
   guideBody.appendChild(button('手动选择城市', 'secondary', CANVAS.w - SPACING.xl * 2));
   guideBody.appendChild(annotation(pg.title, pg.notes));
