@@ -1537,20 +1537,84 @@ function card(title, sub, catRole, tag) {
 }
 
 /**
+ * Figma 内置 annotation 分类 ID（2026-08-27 实机实测取得，非推测）。
+ *
+ * 四个预设分类固定为 Development / Interaction / Accessibility / Content，
+ * 通过 `figma.annotations.getAnnotationCategoriesAsync()` 枚举得到 id 为 354:0~354:3。
+ *
+ * 为什么写死而不每次异步查：查询是 async，而标注写入发生在同步的摆放阶段
+ * （detachAnnotations），为四个固定值把整条调用链改成异步不值得。
+ * 风险处置见 attachNodeAnnotation：categoryId 若在别的文件里无效，
+ * 会降级为「不带分类」重写一次，标注本体不会丢。
+ */
+var ANNO_CATEGORY = {
+  dev: '354:0',      // Development · green
+  interact: '354:1', // Interaction · blue
+  a11y: '354:2',     // Accessibility · pink
+  content: '354:3'   // Content · orange
+};
+
+/**
+ * 规格标注的严重度分档。
+ *
+ * 为什么必须分档：改造前 24 处调用点产出的标注卡视觉完全同构 —— 「永久 Scope
+ * 红线（做了就是违约）」与「这里留白 16px」长得一模一样。评审时红线因此淹没在
+ * 一堆等权重的说明里，而红线一旦被漏掉就是隐性返工，这正是 M3 决定「冻结契约
+ * 而非像素」要防的事。
+ *
+ * 为什么 spec 档保持原样：改造前全部卡片都是 primary 系配色，spec 是默认档，
+ * 不传 severity 的调用点视觉零变化 —— 本轮范围红线是「不做逐页像素精修」，
+ * 分级不该顺带引发一次全画布视觉 diff。只有真红线与无障碍项会换色。
+ *
+ * 为什么不新增浅色 Token：红线用 error-text（白底 6.47:1）、无障碍用 accent
+ * （白底 5.01:1），两者都已在 SEMANTIC_COLORS 内且实测过对比度。标注卡是画布
+ * 上的评审辅助物、不是产品界面，为它单独造 error-light 之类的产品 Token 会污染
+ * 命名空间（同 detachAnnotations 里「Token 管产品界面」的既有口径）。
+ *
+ * 为什么前缀用【】而不是 emoji：中文全角括号在 Noto Sans SC 内有字形，
+ * emoji 需回退到系统字体，在 Figma 里可能渲染成豆腐块。
+ */
+var SEVERITY = {
+  // 永久红线 / Scope 边界：做了即违约，评审必须一眼看到
+  redline: { tag: '【红线】', fill: 'color/surface', stroke: 'color/error-text', ink: 'color/error-text', category: 'dev' },
+  // 无障碍硬指标：对比度、触控区、命中区
+  a11y: { tag: '【无障碍】', fill: 'color/surface', stroke: 'color/accent', ink: 'color/accent', category: 'a11y' },
+  // 实现口径（默认档）：尺寸、Token、组件契约，配色与改造前完全一致
+  spec: { tag: '', fill: 'color/primary-light', stroke: 'color/primary', ink: 'color/primary-dark', category: 'dev' },
+  // 交互与动效规格（I5 的落点）
+  interact: { tag: '【交互】', fill: 'color/primary-light', stroke: 'color/primary', ink: 'color/primary-dark', category: 'interact' },
+  // 背景说明：为什么这么设计，不构成验收判据
+  info: { tag: '【说明】', fill: 'color/background', stroke: 'color/border', ink: 'color/text-secondary', category: 'dev' }
+};
+
+/**
  * 创建一个带标题的规格标注块，用于在原型旁标注 PRD 依据与验收口径
  * @param {string} title 标注标题
  * @param {Array<string>} lines 标注正文行
+ * @param {{severity?:string,target?:string}} [opts] severity 取 SEVERITY 的键（默认 spec）；
+ *        target 为同一画框内被标注节点的精确名，留空则整页标注挂到画框自身
  * @returns {FrameNode} 标注节点
  */
-function annotation(title, lines) {
+function annotation(title, lines, opts) {
+  var o = opts || {};
+  var sev = SEVERITY[o.severity] || SEVERITY.spec;
   var a = box('_annotation/' + title, 'VERTICAL', {
     w: 260, pad: SPACING.md, gap: SPACING.xs,
-    fill: 'color/primary-light', radius: RADIUS.md, stroke: 'color/primary'
+    fill: sev.fill, radius: RADIUS.md, stroke: sev.stroke
   });
-  a.appendChild(text(title, 'small', 'color/primary-dark'));
+  a.appendChild(text(sev.tag + title, 'small', sev.ink));
   for (var i = 0; i < lines.length; i++) {
-    a.appendChild(text('· ' + lines[i], 'caption', 'color/primary-dark'));
+    a.appendChild(text('· ' + lines[i], 'caption', sev.ink));
   }
+  // 机读副本：画布卡是给评审看的，节点级 annotation 是给 Dev Mode 与代码交付看的。
+  // 存一份原始数据而非到时反向解析卡片里的文本，保证两个承载体永远是同一份内容
+  // （反向解析要剥「· 」前缀与 tag，多一道转换就多一处会脱钩的地方）。
+  a.setPluginData('anno', JSON.stringify({
+    severity: o.severity || 'spec',
+    target: o.target || '',
+    title: title,
+    lines: lines
+  }));
   return a;
 }
 
@@ -1870,6 +1934,46 @@ function sweepOrphans(page) {
 }
 
 /**
+ * 把画布标注卡的内容同时写成被标注节点的 Dev Mode annotation。
+ *
+ * 为什么要两个承载体而不是二选一（2026-08-27，I1）：
+ * ① 画布卡在设计模式可见、适合整页评审，但**对被标注对象零引用** —— 卡片飘在
+ *    画框右侧，「这条讲的是哪个元素」只能靠人读文字猜；
+ * ② 节点级 annotation 钉在元素旁、随元素移动、进 Dev Mode 代码交付面板，
+ *    但只在 Dev Mode 可见（`Shift + D`），设计模式看不到，无法用于整页评审。
+ * 两者受众与可见范围都不同，故并存；内容同出一源（卡片的 pluginData），不会分叉。
+ *
+ * 降级而非抛错的理由：annotations 是较新的 API，且 categoryId 是本文件实测值，
+ * 换文件后不保证有效。标注写不上只是少一份机读副本，画布卡仍在、规格没丢，
+ * 为此中断整批生成不成比例。
+ *
+ * @param {SceneNode} node 被标注节点
+ * @param {{severity:string,title:string,lines:Array<string>}} data 标注数据
+ * @returns {boolean} 是否写入成功
+ */
+function attachNodeAnnotation(node, data) {
+  if (!node || !('annotations' in node)) return false;
+  var sev = SEVERITY[data.severity] || SEVERITY.spec;
+  // labelMarkdown 而非 label：Dev Mode 面板渲染 markdown，多行规格用列表可读性
+  // 远好于挤成一行。首行加粗标题，其后每条一个列表项。
+  var md = '**' + sev.tag + data.title + '**\n\n'
+    + data.lines.map(function (l) { return '- ' + l; }).join('\n');
+  var entry = { labelMarkdown: md, categoryId: ANNO_CATEGORY[sev.category] };
+  try {
+    node.annotations = (node.annotations || []).concat([entry]);
+    return true;
+  } catch (e) {
+    // categoryId 无效是唯一可预期的失败原因，去掉分类再试一次
+    try {
+      node.annotations = (node.annotations || []).concat([{ labelMarkdown: md }]);
+      return true;
+    } catch (e2) {
+      return false;
+    }
+  }
+}
+
+/**
  * 把一个画框内的全部口径标注卡提出到画框右侧外部
  *
  * 为什么必须移出（2026-08-26，M3 精修）：口径卡是给评审看的规格依据，
@@ -1887,6 +1991,9 @@ function sweepOrphans(page) {
  * 为什么不直接不生成：口径依据仍要能在画布上核对（PRD 条款与画面的对应
  * 关系是评审的主要内容）。删掉等于把依据赶回代码里，画布上无从查证。
  *
+ * 节点级标注也在这里落（2026-08-27，I1）：必须在卡片搬走**之前**做，
+ * 那时 opts.target 指定的兄弟节点还与卡片同在一个画框内，能按名精确定位。
+ *
  * @param {FrameNode} frame 屏幕画框
  * @param {PageNode|SectionNode} host 画框所在容器，标注卡将挂到同一容器
  * @returns {number} 移出的标注卡数量
@@ -1898,6 +2005,26 @@ function detachAnnotations(frame, host) {
     return n.name.indexOf('_annotation/') === 0;
   });
   if (!cards.length) return 0;
+
+  // ---- 先落节点级 annotation（此时 target 兄弟节点尚未与卡片分离）----
+  for (var k = 0; k < cards.length; k++) {
+    var rawData = cards[k].getPluginData('anno');
+    if (!rawData) continue;
+    var data;
+    try {
+      data = JSON.parse(rawData);
+    } catch (e) {
+      continue;
+    }
+    var host2 = frame;
+    if (data.target) {
+      // 精确等值匹配，与 FLOW_LINKS 的 findClickable 同口径：关键字模糊匹配会
+      // 深度优先命中语义无关的靠前节点。找不到时退回整页，不静默丢标注。
+      var hits = frame.findAll(function (n) { return n.name === data.target; });
+      if (hits.length === 1) host2 = hits[0];
+    }
+    attachNodeAnnotation(host2, data);
+  }
 
   // 竖向堆在画框右侧，与画框顶部对齐。gap 取 SPACING.md 的视觉延续，
   // 但这里是画布级布局而非组件内间距，故不绑 Token（Token 管产品界面）
@@ -2027,12 +2154,19 @@ async function batchSetup() {
     crow.appendChild(pin('category/' + ck, 'resource', null, true));
     catBoard.appendChild(crow);
   }
-  catBoard.appendChild(annotation('Pin 规格依据', [
+  // 原为一张 4 条混合卡：既讲尺寸（无障碍触控区判据）又讲信息维度约束（永久红线），
+  // 视觉同权重导致「Marker 只承载两类信息」这条红线淹没在尺寸说明里。
+  // 按 severity 拆两张，并把尺寸那张用 target 钉到实际的选中态 Pin 节点上。
+  catBoard.appendChild(annotation('Pin 尺寸与形态', [
     '正常 40×40，选中态 48×48 + 阴影（PRD §6.4.2）',
     '资源态=大类色实心；需求态=大类色描边空心+内部 ?',
-    '本板第 1-3 列的 🟢🟡🔴 角标仅为规格演示；地图 Marker 不带角标',
-    '地图 Marker 只承载两类信息：分类（底色+图标）+ 供需态（实心/空心），完整度改由点击后的信息卡承载（PRD §6.4.2）'
-  ]));
+    '本板第 1-3 列的 🟢🟡🔴 角标仅为规格演示；地图 Marker 不带角标'
+  ], { severity: 'a11y', target: 'pin/cat-service/resource/selected' }));
+  catBoard.appendChild(annotation('Marker 信息维度红线', [
+    '只承载两类信息：分类（底色+图标）+ 供需态（实心/空心）',
+    '完整度改由点击后的信息卡承载，不回到 Marker（PRD §6.4.2）',
+    '新增第三类信息前须先做「是新维度还是同类强调」判定（§6.9 已有范式）'
+  ], { severity: 'redline' }));
   boards.push(catBoard);
 
   // 画板 C：字阶与按钮
@@ -2849,12 +2983,19 @@ function mapCanvas(label, bare, note, opt) {
     lg.y = H - lg.height - SPACING.md;
   }
 
-  // 标注卡：右对齐叠在说明文案之下
+  // 标注卡：右对齐叠在说明文案之下。
+  // 接受单张或数组（2026-08-27，I1）：同一屏往往既有实现口径又有无障碍红线，
+  // severity 分档后它们已不该合成一张卡，故容器必须能放多张。
   if (note) {
-    m.appendChild(note);
-    note.x = CANVAS.w - note.width - SPACING.lg;
-    note.y = cap.y + cap.height + SPACING.sm;
-    note.opacity = 0.96;
+    var notes = note.length === undefined ? [note] : note;
+    var ny = cap.y + cap.height + SPACING.sm;
+    for (var ni = 0; ni < notes.length; ni++) {
+      m.appendChild(notes[ni]);
+      notes[ni].x = CANVAS.w - notes[ni].width - SPACING.lg;
+      notes[ni].y = ny;
+      notes[ni].opacity = 0.96;
+      ny += notes[ni].height + SPACING.sm;
+    }
   }
 
   // 点击 Marker 后的信息卡：贴地图底缘，不加遮罩（地图仍可继续浏览）
@@ -2944,12 +3085,26 @@ async function batchMap() {
   var home = screen('home-screen', '鸭圈首页·主态（筛选收起）', 'PRD §10.1');
   home.appendChild(statusBar());
   home.appendChild(navBar('鸭圈', HOME_NAV));
-  home.appendChild(mapCanvas('地图画布（高德 SDK 承载区）', false,
+  home.appendChild(mapCanvas('地图画布（高德 SDK 承载区）', false, [
     annotation('主态 = 筛选收起', [
       '常驻件仅三竖点入口 44px + 摘要胶囊 44px，其余全收起',
       '摘要胶囊回显当前条件，点它或三点入口即展开',
       '图例改为「?」按需唤起，不再常驻占位'
-    ])));
+    ]),
+    // 条目 [52] 取证真缺口 #5：外部先例（Apple MapKit / Material）普遍显式
+    // 声明「视觉尺寸」与「命中区」是两个值，我们此前只声明了视觉尺寸
+    annotation('命中区与视觉区分离', [
+      'Marker 视觉 40×40，命中区须补足 ≥44×44（外扩透明区，不放大图形）',
+      '摘要胶囊、三竖点入口同理：视觉高度可小于 44，命中高度不可',
+      '实现侧对应 Flutter 的 GestureDetector 外扩，不是把 Pin 画大'
+    ], { severity: 'a11y' }),
+    // 条目 [52] 取证真缺口 #2：聚合圆缺尺寸分档，4 条与 40 条视觉同大
+    annotation('聚合圆三档尺寸', [
+      '2-9 条 → 32×32；10-99 条 → 40×40；100+ → 48×48',
+      '数量差异必须由尺寸表达，仅靠圆内数字在缩放后不可读',
+      '本档位为新增规格，PRD §6.4.2 待补'
+    ], { severity: 'a11y' })
+  ]));
   home.appendChild(bottomTab('鸭圈'));
   frames.push(home);
 
@@ -3577,7 +3732,7 @@ function buildContact() {
     '不做 IM 聊天、不做撮合结果追踪（永久红线）',
     '二选一单轨：一次只走一条路径，不并列引导',
     '联系行为不产生交易记录、不产生信誉评价'
-  ]));
+  ], { severity: 'redline' }));
   s.appendChild(body);
   return s;
 }
@@ -3675,7 +3830,7 @@ function buildNotification() {
   note.appendChild(annotation('通知中心口径', [
     '纯通知，不可回复，不做消息列表页与聊天详情页（PRD §10.1）',
     '三类：系统 / 互动 / 认证'
-  ]));
+  ], { severity: 'redline' }));
   s.appendChild(note);
   return s;
 }
@@ -3707,7 +3862,7 @@ function buildTrust() {
   body.appendChild(annotation('认证 Scope 红线', [
     '只做二层认证，不做信誉评价体系、不做信誉详情页',
     '不售卖商业化角标（永久红线）'
-  ]));
+  ], { severity: 'redline' }));
   s.appendChild(body);
   return s;
 }

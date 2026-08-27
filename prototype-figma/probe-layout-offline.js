@@ -281,8 +281,15 @@ function makeNode(type) {
   };
 
   n.setRelaunchData = function () {};
-  n.setPluginData = function () {};
-  n.getPluginData = function () { return ''; };
+  // pluginData 必须如实存取（2026-08-27 补）：annotation() 把 severity/target
+  // 存进 pluginData，detachAnnotations 再读出来落节点级标注。原先 set 是空实现、
+  // get 恒返回空串 —— 离线跑时节点级标注**一条都不会落**，而断言看不出来。
+  n._pluginData = {};
+  n.setPluginData = function (k, v) { n._pluginData[k] = v; };
+  n.getPluginData = function (k) { return n._pluginData[k] || ''; };
+  // Dev Mode annotation：真 API 是可读写数组属性，mock 只需如实存取。
+  // 要判定的是「标注落到了哪个节点、内容对不对、分类对不对」。
+  n.annotations = [];
   // 原型连线（2026-08-27 补）：批次 5 全靠 setReactionsAsync 落跳转，而 mock
   // 此前完全没实现它 —— 于是离线跑批次 5 时，24 条连线**每一条都静默失败**，
   // 被 batchFlow 内的 try/catch 收进 skipped 后只体现为返回字符串里的文字，
@@ -559,7 +566,10 @@ const wrapped = new Function(
       // 产出规模自报（2026-08-27，I4）：ui.html 首屏计数改为运行时回填后，
       // 「回填的数是不是真的」必须由断言守住，否则 planStats 自己算错就没人能发现
       'planStats', 'MAIN_SCREENS', 'CORE_PAGES', 'screen',
-      'SEMANTIC_COLORS', 'CATEGORY_COLORS', 'CATEGORY_DEEP', 'SHELL_TABS', 'BUTTON_VARIANTS']
+      'SEMANTIC_COLORS', 'CATEGORY_COLORS', 'CATEGORY_DEEP', 'SHELL_TABS', 'BUTTON_VARIANTS',
+      // 标注分级与节点级引用（2026-08-27，I1）：severity 配色、pluginData 传值、
+      // 节点级 annotation 落点全部要能被断言直接查真源，不能只看画布卡还在不在
+      'SEVERITY', 'ANNO_CATEGORY', 'attachNodeAnnotation', 'paintOf', 'box']
       .map((k) => k + ': typeof ' + k + " !== 'undefined' ? " + k + ' : undefined')
       .join(', ') +
     ' };'
@@ -2066,6 +2076,220 @@ function allText(root) {
       '[反向] screen() 未登记主态抛错，已登记主态与变体均不被误伤',
       unregisteredThrew && registeredOk && variantOk,
       '未登记抛错=' + unregisteredThrew + '，已登记放行=' + registeredOk + '，变体放行=' + variantOk
+    );
+  }
+
+  // ============================================================
+  // 十、规格标注分级与节点级引用（I1）
+  //
+  // 要守住的三件事：
+  // ① severity 分档真的改了配色与前缀（否则「红线」与「留白 16px」仍视觉同构）；
+  // ② spec 档与改造前**完全一致**（本轮范围红线是「不做逐页像素精修」，
+  //    分级不许顺带引发全画布视觉 diff）；
+  // ③ 节点级 annotation 真的落到 target 指定的那个节点上，而不是笼统挂画框 ——
+  //    这是 I1 的全部意义所在（改造前 35 张卡对被标注对象零引用）。
+  //
+  // 判据一律从 code.js 导出的 SEVERITY / ANNO_CATEGORY / paintOf 现算，
+  // 探针内不抄任何配色副本（见原则㊾：计数与配色只能有一个出处）。
+  // ============================================================
+  console.log('\n--- 规格标注分级与节点级引用（I1）---');
+  {
+    const pj = (x) => JSON.stringify(x);
+    const sevKeys = Object.keys(M.SEVERITY);
+
+    // ① 五档逐项对齐：底色/描边/文字色/前缀四项都要跟 SEVERITY 表现算的值一致
+    const sevBad = [];
+    for (const k of sevKeys) {
+      const s = M.SEVERITY[k];
+      const card = M.annotation('档位样例', ['第一条', '第二条'], { severity: k });
+      const head = card.children[0];
+      if (pj(card.fills) !== pj([M.paintOf(s.fill)])) sevBad.push(k + '.fill');
+      if (pj(card.strokes) !== pj([M.paintOf(s.stroke)])) sevBad.push(k + '.stroke');
+      if (pj(head.fills) !== pj([M.paintOf(s.ink)])) sevBad.push(k + '.ink');
+      if (head.characters !== s.tag + '档位样例') sevBad.push(k + '.tag');
+      // 正文行数必须等于传入条数 + 1 行标题，少一行说明循环写漏
+      if (card.children.length !== 3) sevBad.push(k + '.lines(' + card.children.length + ')');
+    }
+    check(
+      'SEVERITY 五档的底色/描边/文字色/前缀逐项与真源表对齐',
+      sevBad.length === 0,
+      sevBad.length ? '不一致：' + sevBad.join(', ') : sevKeys.length + ' 档全部对齐：' + sevKeys.join('/')
+    );
+
+    // ② spec 是默认档，且配色必须仍是改造前那三个 role。
+    // 这里刻意写死字面 role 名 —— 它是「不引发视觉 diff」这个承诺的锚点，
+    // 若哪天有人顺手改了 SEVERITY.spec 的配色，必须在这里当场亮红。
+    const plain = M.annotation('无档位', ['x']);
+    const asSpec = M.annotation('无档位', ['x'], { severity: 'spec' });
+    check(
+      'spec 为默认档且配色仍为 primary-light/primary/primary-dark（守住零视觉 diff）',
+      pj(plain.fills) === pj(asSpec.fills) &&
+      pj(plain.strokes) === pj(asSpec.strokes) &&
+      pj(plain.children[0].fills) === pj(asSpec.children[0].fills) &&
+      plain.children[0].characters === '无档位' &&
+      M.SEVERITY.spec.fill === 'color/primary-light' &&
+      M.SEVERITY.spec.stroke === 'color/primary' &&
+      M.SEVERITY.spec.ink === 'color/primary-dark' &&
+      M.SEVERITY.spec.tag === '',
+      '不传 severity 与显式 spec 完全同构，且无前缀'
+    );
+
+    // ③ 未知档位不崩、不掉色：拼错 severity 只该退回 spec，不该让卡片失去配色
+    const typo = M.annotation('拼错档位', ['x'], { severity: 'redlin' });
+    check(
+      '[反向] severity 拼错时退回 spec 而非无填充（不静默产出白卡）',
+      pj(typo.fills) === pj(asSpec.fills) && typo.children[0].characters === '拼错档位',
+      '退回 spec 配色'
+    );
+
+    // ④ pluginData 是两个承载体之间唯一的传值通道，必须真存真取
+    const withTarget = M.annotation('带靶标', ['甲', '乙'], { severity: 'a11y', target: '_the-target' });
+    let raw = null;
+    try {
+      raw = JSON.parse(withTarget.getPluginData('anno'));
+    } catch (e) {
+      raw = null;
+    }
+    check(
+      'annotation 把 severity/target/title/lines 如实存进 pluginData',
+      !!raw && raw.severity === 'a11y' && raw.target === '_the-target' &&
+      raw.title === '带靶标' && pj(raw.lines) === pj(['甲', '乙']),
+      raw ? pj(raw) : '读不出或非法 JSON'
+    );
+
+    /**
+     * 造一个「画框 + 一个具名目标子节点 + 一张标注卡」的最小场景并跑 detachAnnotations
+     * @param {string} target 卡片声明的目标节点名
+     * @param {string} realName 画框内真实存在的那个子节点名
+     * @returns {{frame:Object,node:Object,card:Object}} 供断言查的三个节点
+     */
+    const scene = (target, realName) => {
+      const host = figma.createPage();
+      const frame = M.box('screen/靶标场景', 'VERTICAL', { w: 390, h: 844 });
+      const node = M.box(realName, 'VERTICAL', { w: 100, h: 44 });
+      frame.appendChild(node);
+      const card = M.annotation('节点级靶标', ['规格一', '规格二'], { severity: 'redline', target });
+      frame.appendChild(card);
+      host.appendChild(frame);
+      M.detachAnnotations(frame, host);
+      return { frame, node, card };
+    };
+
+    // ⑤ target 命中：标注必须钉在那个节点上，画框自身不该被顺带标注
+    const hit = scene('_the-target', '_the-target');
+    check(
+      'target 命中时节点级标注落到该节点，画框自身不被标注',
+      hit.node.annotations.length === 1 && hit.frame.annotations.length === 0,
+      '目标节点 ' + hit.node.annotations.length + ' 条 / 画框 ' + hit.frame.annotations.length + ' 条'
+    );
+
+    // ⑥ 反向：target 写错时退回整页标注，绝不静默丢弃 ——
+    // 「找不到就不标」是最坏结果：规格没了，而且没人会发现
+    const miss = scene('_名字写错了', '_the-target');
+    check(
+      '[反向] target 写错时退回画框标注，标注不丢',
+      miss.frame.annotations.length === 1 && miss.node.annotations.length === 0,
+      '画框 ' + miss.frame.annotations.length + ' 条 / 目标节点 ' + miss.node.annotations.length + ' 条'
+    );
+
+    // ⑦ 两个承载体内容同源：labelMarkdown 的每一行都要能在画布卡文本里找到。
+    // 只比标题会漏掉「正文改了一处、只改了一边」这种分叉。
+    const md = hit.node.annotations[0].labelMarkdown;
+    const cardTexts = hit.card.children.map((c) => c.characters);
+    const sameSource =
+      md.indexOf('**' + M.SEVERITY.redline.tag + '节点级靶标**') === 0 &&
+      md.indexOf('- 规格一') > 0 && md.indexOf('- 规格二') > 0 &&
+      cardTexts[0] === M.SEVERITY.redline.tag + '节点级靶标' &&
+      cardTexts[1] === '· 规格一' && cardTexts[2] === '· 规格二';
+    check(
+      'labelMarkdown 与画布卡文本同源（标题与每条正文逐条对上）',
+      sameSource,
+      pj(md.slice(0, 40)) + ' ↔ ' + pj(cardTexts)
+    );
+
+    // ⑧ categoryId 必须按 SEVERITY.category 映射，不能全落到 Development 里 ——
+    // 否则 Dev Mode 面板里无障碍项与实现口径混在一格，分级白做
+    const catBad = [];
+    for (const k of sevKeys) {
+      const n = M.box('probe/cat/' + k, 'VERTICAL', {});
+      M.attachNodeAnnotation(n, { severity: k, title: 'T', lines: ['L'] });
+      const want = M.ANNO_CATEGORY[M.SEVERITY[k].category];
+      if (!n.annotations.length || n.annotations[0].categoryId !== want) {
+        catBad.push(k + '→' + (n.annotations[0] || {}).categoryId + '(应为 ' + want + ')');
+      }
+    }
+    check(
+      'categoryId 按 SEVERITY.category 逐档映射到 ANNO_CATEGORY',
+      catBad.length === 0,
+      catBad.length ? catBad.join(', ') : sevKeys.map((k) => k + '→' + M.ANNO_CATEGORY[M.SEVERITY[k].category]).join(' / ')
+    );
+
+    // ⑨ 降级路径：categoryId 在别的 Figma 文件里可能无效（本文件实测值）。
+    // 那时必须去掉分类重写一次，而不是让标注整条丢掉。
+    const strict = { name: 'strict', _anno: [] };
+    Object.defineProperty(strict, 'annotations', {
+      get() { return this._anno; },
+      set(v) {
+        if (v.some((e) => 'categoryId' in e)) throw new Error('categoryId 无效');
+        this._anno = v;
+      },
+      enumerable: true
+    });
+    const degraded = M.attachNodeAnnotation(strict, { severity: 'a11y', title: 'T', lines: ['L'] });
+    check(
+      'categoryId 被拒时降级为不带分类重写，标注本体不丢',
+      degraded === true && strict.annotations.length === 1 &&
+      !('categoryId' in strict.annotations[0]) &&
+      strict.annotations[0].labelMarkdown.indexOf('T') > 0,
+      '降级写入成功且无 categoryId'
+    );
+
+    // ⑩ 不支持 annotations 的节点要安静跳过（返回 false），不能抛异常中断整批生成
+    check(
+      '[反向] 节点不支持 annotations 时返回 false 而非抛错',
+      M.attachNodeAnnotation({ name: 'no-anno' }, { severity: 'spec', title: 'T', lines: ['L'] }) === false &&
+      M.attachNodeAnnotation(null, { severity: 'spec', title: 'T', lines: ['L'] }) === false,
+      '两种缺失形态均安静返回 false'
+    );
+
+    // ⑪ 端到端：全批次真跑之后，画布上必须真的存在节点级标注，
+    // 且 batchSetup 里用 target 钉到具体 Pin 的那条必须落在那个 Pin 上。
+    // 前面十条都是构造场景，这条才验真实调用链（离线 mock 的 pluginData 若是
+    // 空实现，前十条照样能绿，只有这条会红 —— 本轮实际踩到过）。
+    let annotatedNodes = 0;
+    let pinHit = null;
+    for (const pg of figma.root.children) {
+      for (const n of pg.findAll(() => true)) {
+        if (n.annotations && n.annotations.length) annotatedNodes++;
+        if (n.name === 'pin/cat-service/resource/selected' && n.annotations && n.annotations.length) {
+          pinHit = n;
+        }
+      }
+    }
+    check(
+      '端到端：批次真跑后节点级标注确有落地，且 target 指定的 Pin 被钉上',
+      annotatedNodes > 0 && !!pinHit &&
+      pinHit.annotations[0].categoryId === M.ANNO_CATEGORY.a11y,
+      '带标注节点 ' + annotatedNodes + ' 个；Pin 靶标 ' + (pinHit ? '命中，分类 ' + pinHit.annotations[0].categoryId : '未命中')
+    );
+
+    // ⑫ mapCanvas 的 note 参数已从「单张」放开为「单张或数组」。
+    // 首页主态一次挂三张（主态 / 命中区 / 聚合圆），若数组分支写错，
+    // 后两张会静默消失 —— 而画面看起来毫无异常。
+    const wantCards = ['_annotation/主态 = 筛选收起', '_annotation/命中区与视觉区分离', '_annotation/聚合圆三档尺寸'];
+    const foundCards = [];
+    for (const pg of figma.root.children) {
+      for (const n of pg.findAll((x) => wantCards.indexOf(x.name) >= 0)) {
+        if (foundCards.indexOf(n.name) < 0) foundCards.push(n.name);
+      }
+    }
+    check(
+      'mapCanvas note 数组分支：首页主态三张卡全部落地（含 a11y 两张）',
+      wantCards.every((w) => foundCards.indexOf(w) >= 0),
+      '落地 ' + foundCards.length + ' / ' + wantCards.length +
+      (foundCards.length < wantCards.length
+        ? '，缺：' + wantCards.filter((w) => foundCards.indexOf(w) < 0).join(', ')
+        : '')
     );
   }
 

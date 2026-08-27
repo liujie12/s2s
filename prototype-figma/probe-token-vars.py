@@ -407,8 +407,11 @@ check(
     f"gapX={m_gap.group(1) if m_gap else '未找到'} 卡宽 260 + 间隙 48",
 )
 
-# annotation() 产出的宽度是上一条断言的前提，一起钉住
-ann_body = func_body(code, "function annotation(title, lines)")
+# annotation() 产出的宽度是上一条断言的前提，一起钉住。
+# 签名随 I1 加了第三个参数 opts（2026-08-27）：此处按签名全文匹配，
+# 参数一变就抓不到函数体、断言恒失败 —— 这是「按字符串抓函数体」的固有脆性，
+# 失败方向是安全的（不会假绿），故只需跟着更新签名。
+ann_body = func_body(code, "function annotation(title, lines, opts)")
 check(
     "annotation() 卡宽仍为 260（gapX 断言的前提）",
     "w: 260" in ann_body,
