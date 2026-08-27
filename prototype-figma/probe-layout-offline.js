@@ -555,7 +555,11 @@ const wrapped = new Function(
       // 连线表与变体标记（2026-08-27）：「原型连线完整性」那条断言必须拿
       // code.js 的真源表去逐条核，不能在探针里手抄一份副本 —— 抄的那份
       // 与真源脱节时，断言验的是副本自己，永远绿
-      'FLOW_LINKS', 'VARIANT_TAG', 'PAGE_NAMES']
+      'FLOW_LINKS', 'VARIANT_TAG', 'PAGE_NAMES',
+      // 产出规模自报（2026-08-27，I4）：ui.html 首屏计数改为运行时回填后，
+      // 「回填的数是不是真的」必须由断言守住，否则 planStats 自己算错就没人能发现
+      'planStats', 'MAIN_SCREENS', 'CORE_PAGES', 'screen',
+      'SEMANTIC_COLORS', 'CATEGORY_COLORS', 'CATEGORY_DEEP', 'SHELL_TABS', 'BUTTON_VARIANTS']
       .map((k) => k + ': typeof ' + k + " !== 'undefined' ? " + k + ' : undefined')
       .join(', ') +
     ' };'
@@ -1959,6 +1963,109 @@ function allText(root) {
       judge('_nav-action/取消', 28, 44) &&
       !judge('_nav-action/取消', 28, 20),
       'btn 24×24 报错；_nav-action 28×44 放行；_nav-action 28×20 仍报错'
+    );
+  }
+
+  // ============================================================
+  // 九、产出规模自报（I4）：ui.html 首屏计数改为运行时回填后，
+  // 断言必须守住「回填的数就是真源的数」这件事。
+  // 判据全部从 code.js 导出的真源表现算，探针内不抄任何数字副本。
+  // ============================================================
+  console.log('\n--- 产出规模自报（planStats 与真源一致性）---');
+  {
+    const st = M.planStats();
+    const cnt = (o) => Object.keys(o).length;
+
+    // COLOR/FLOAT 分项必须逐张表对齐，只验 total 会让「一项多算、另项少算」互相抵消
+    const colorOk =
+      st.tokens.semantic === cnt(M.SEMANTIC_COLORS) &&
+      st.tokens.category === cnt(M.CATEGORY_COLORS) &&
+      st.tokens.categoryDeep === cnt(M.CATEGORY_DEEP) &&
+      st.tokens.color === cnt(M.SEMANTIC_COLORS) + cnt(M.CATEGORY_COLORS) + cnt(M.CATEGORY_DEEP);
+    check(
+      'planStats COLOR 分项逐张表对齐（含长期漏计的 CATEGORY_DEEP）',
+      colorOk,
+      '语义 ' + st.tokens.semantic + ' + 分类 ' + st.tokens.category
+      + ' + 深色 ' + st.tokens.categoryDeep + ' = ' + st.tokens.color
+    );
+
+    const floatOk =
+      st.tokens.size === cnt(M.TYPE_SCALE) &&
+      st.tokens.spacing === cnt(M.SPACING) &&
+      st.tokens.radius === cnt(M.RADIUS) &&
+      st.tokens.float === cnt(M.TYPE_SCALE) + cnt(M.SPACING) + cnt(M.RADIUS) &&
+      st.tokens.total === st.tokens.color + st.tokens.float;
+    check(
+      'planStats FLOAT 分项与总计对齐',
+      floatOk,
+      '字号 ' + st.tokens.size + ' + 间距 ' + st.tokens.spacing + ' + 圆角 ' + st.tokens.radius
+      + ' = ' + st.tokens.float + '，合计 ' + st.tokens.total
+    );
+
+    // master 数以 registerComponents 真跑一遍的实际产出为准，不信 planStats 自述
+    const host = M.registerComponents(figma.currentPage);
+    const actualMasters = host.children.filter((n) => n.type === 'COMPONENT').length;
+    check(
+      'planStats master 总数 == registerComponents 实际注册数',
+      st.masters.total === actualMasters &&
+      st.masters.tabs === M.SHELL_TABS.length &&
+      st.masters.buttons === M.BUTTON_VARIANTS.length &&
+      st.masters.pins === cnt(M.CATEGORY_COLORS) * 2,
+      '自报 ' + st.masters.total + '（Tab' + st.masters.tabs + '/按钮' + st.masters.buttons
+      + '/Pin' + st.masters.pins + '）vs 实际 ' + actualMasters
+    );
+
+    check(
+      'planStats corePages == CORE_PAGES 登记表长度，且全部构造器可用',
+      st.corePages === M.CORE_PAGES.length &&
+      M.CORE_PAGES.every((p) => typeof p[0] === 'function' && typeof p[1] === 'string'),
+      '核心流程页 ' + st.corePages + ' 页'
+    );
+
+    check(
+      'planStats flowLinks == FLOW_LINKS 长度',
+      st.flowLinks === M.FLOW_LINKS.length,
+      '跳转 ' + st.flowLinks + ' 条'
+    );
+
+    // FLOW_LINKS 的源与目标必须全在主态登记表内：登记表若少一项，
+    // 连线就会指向一个不进跳转索引的画框，Present 模式点下去无反应
+    const outsiders = [];
+    for (const link of M.FLOW_LINKS) {
+      if (M.MAIN_SCREENS.indexOf(link[0]) < 0) outsiders.push('源:' + link[0]);
+      if (M.MAIN_SCREENS.indexOf(link[2]) < 0) outsiders.push('目标:' + link[2]);
+    }
+    check(
+      'FLOW_LINKS 全部源/目标画框均在 MAIN_SCREENS 登记表内',
+      outsiders.length === 0,
+      outsiders.length ? '未登记：' + outsiders.join(', ') : '全部 ' + M.FLOW_LINKS.length + ' 条两端均已登记'
+    );
+
+    // 反向：未登记的 pageId 必须当场抛错，而不是静默产出一个错计数；
+    // 同时已登记者与变体都不能被误伤（否则这道校验会挡住正常生成）
+    let unregisteredThrew = false;
+    try {
+      M.screen('ghost-screen', '未登记页', 'PRD §0');
+    } catch (e) {
+      unregisteredThrew = true;
+    }
+    let registeredOk = true;
+    let variantOk = true;
+    try {
+      M.screen('splash-screen', '启动页', 'PRD §2.1 U1');
+    } catch (e) {
+      registeredOk = false;
+    }
+    try {
+      // 变体的 pageId 允许不在登记表内（它不参与主态计数）
+      M.screen('ghost-screen', '某变体', 'PRD §0', true);
+    } catch (e) {
+      variantOk = false;
+    }
+    check(
+      '[反向] screen() 未登记主态抛错，已登记主态与变体均不被误伤',
+      unregisteredThrew && registeredOk && variantOk,
+      '未登记抛错=' + unregisteredThrew + '，已登记放行=' + registeredOk + '，变体放行=' + variantOk
     );
   }
 

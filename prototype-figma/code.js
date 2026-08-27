@@ -270,6 +270,101 @@ function log(text) {
   figma.ui.postMessage({ type: 'log', text: text });
 }
 
+// ============================================================
+// 二之二、产出规模自报（I4）
+// ============================================================
+
+/**
+ * 外壳底部 Tab 的三个态，与 Component master 注册、规格板共用同一份声明。
+ * 提到模块级的原因：此前 registerComponents 与 batchSetup 各持一份字面量副本，
+ * 加一个 Tab 要改两处，漏一处则 master 与规格板对不上。
+ */
+var SHELL_TABS = ['鸭圈', '发布', '我的'];
+
+/** 按钮六类（PRD §1.4.6），同样由 master 注册与规格板共用 */
+var BUTTON_VARIANTS = ['primary', 'secondary', 'ghost', 'danger', 'capsule', 'disabled'];
+
+/**
+ * 主态画框登记表：18 个参与跳转索引的 pageId。
+ *
+ * 为什么要显式登记而不是数 screen() 调用点：主态数是对外契约（交棒第一屏要报的数、
+ * FLOW_LINKS 的合法目标集、indexMainFrames 的期望产出），而调用点散落在四个批次的
+ * 29 处，靠人数必然数错 —— ui.html 上那个错了很久的计数就是这么来的。
+ *
+ * 登记后 screen() 会强制校验：新增主态忘了登记、或把变体漏传 isVariant，都会当场抛错，
+ * 而不是等到跳转索引出现重名告警时才被发现。
+ */
+var MAIN_SCREENS = [
+  'home-screen', 'list-screen',
+  'splash-screen', 'login-screen', 'detail-screen', 'publish-screen', 'ai-confirm-screen',
+  'publish-success-screen', 'contact-screen', 'profile-screen', 'my-publish-screen',
+  'my-favorite-screen', 'notification-screen', 'trust-screen', 'settings-screen',
+  'category-selector', 'map-selector', 'cert-modal'
+];
+
+/**
+ * 汇总全部产出规模，供 UI 首屏与各批次返回串取值。
+ *
+ * 一切数字都从真源表现算，不接受手写常量 —— 这是 I4 的全部要点：
+ * ui.html 里的静态数字与代码各自演化，最终四处计数全错（如 Variables 标 38，
+ * 而 CATEGORY_DEEP 那 5 项在 2026-08-26 新增后无人回改，真值是 43）。
+ *
+ * FLOW_LINKS / CORE_PAGES 声明在本函数之后，但函数体只在调用时求值，
+ * 那时整个文件已执行完毕，故不存在时序问题。
+ *
+ * @returns {{tokens:Object,masters:Object,corePages:number,mainScreens:number,flowLinks:number}}
+ *          tokens 为 Variables 分项与合计；masters 为 Component 分项与合计；
+ *          其余三项分别为核心流程页数、主态画框数、原型跳转条数
+ */
+function planStats() {
+  /**
+   * 数一个对象的自有键个数
+   * @param {Object} obj 待统计对象
+   * @returns {number} 键个数
+   */
+  function size(obj) {
+    var n = 0;
+    for (var k in obj) n++;
+    return n;
+  }
+
+  var semantic = size(SEMANTIC_COLORS);
+  var category = size(CATEGORY_COLORS);
+  var deep = size(CATEGORY_DEEP);
+  var sizeScale = size(TYPE_SCALE);
+  var spacing = size(SPACING);
+  var radius = size(RADIUS);
+
+  var statusBar = 1;
+  var tabs = SHELL_TABS.length;
+  var buttons = BUTTON_VARIANTS.length;
+  var pins = category * 2; // 每个大类各一枚资源态 + 需求态
+
+  return {
+    tokens: {
+      semantic: semantic,
+      category: category,
+      categoryDeep: deep,
+      color: semantic + category + deep,
+      size: sizeScale,
+      spacing: spacing,
+      radius: radius,
+      float: sizeScale + spacing + radius,
+      total: semantic + category + deep + sizeScale + spacing + radius
+    },
+    masters: {
+      statusBar: statusBar,
+      tabs: tabs,
+      buttons: buttons,
+      pins: pins,
+      total: statusBar + tabs + buttons + pins
+    },
+    corePages: CORE_PAGES.length,
+    mainScreens: MAIN_SCREENS.length,
+    flowLinks: FLOW_LINKS.length
+  };
+}
+
 /**
  * 加载生成过程需要的全部字重；若思源黑体缺失则整体降级到 Inter
  * @returns {Promise<string>} 实际生效的字体族名
@@ -310,8 +405,10 @@ function styleOf(weight) {
 var COLLECTION_NAME = 'ZhaoYaZhao Tokens';
 
 /**
- * 创建或复用 Variables 集合，写入 COLOR 变量（语义色 16 + 分类色 5）
- * 与 FLOAT 变量（字号 6 + 间距 6 + 圆角 5），共 38 项
+ * 创建或复用 Variables 集合，写入 COLOR 变量（语义色 + 分类色 + 分类深色变体）
+ * 与 FLOAT 变量（字号 + 间距 + 圆角）。
+ * 具体项数一律以 planStats().tokens 现算为准，此处不写死数字 —— 曾因写死「38 项」
+ * 而在 CATEGORY_DEEP 新增 5 项后与真值（43）长期不符。
  * 幂等语义为「值对齐」：同名变量已存在则比对当前值，不一致时改写为最新 Token 值
  * @returns {Promise<{created:number,reused:number,updated:number}>} 新建/沿用/改值的变量计数
  */
@@ -424,7 +521,7 @@ async function ensureNumberVariables(collection, modeId) {
 /**
  * 把已建好的 Variables 载入内存缓存，供后续批次（map/core/modal）引用
  * 批次之间插件可能被重新执行，故每批开头都需调用
- * @returns {Promise<number>} 载入的变量数量（COLOR 21 + FLOAT 17 = 38）
+ * @returns {Promise<number>} 载入的变量数量，应等于 planStats().tokens.total
  */
 async function hydrateVariables() {
   var n = 0;
@@ -1045,6 +1142,13 @@ var VARIANT_TAG = '⟨变体⟩';
  * @returns {FrameNode} 屏幕级 Frame
  */
 function screen(pageId, title, prdRef, isVariant) {
+  // 主态必须在 MAIN_SCREENS 登记，变体必须不在其中被误当主态计数。
+  // 这道校验把「计数正确」变成代码约束而非人的记性：新增页忘登记会当场抛错，
+  // 而不是让 UI 首屏与跳转索引各自报一个错数字。
+  if (!isVariant && MAIN_SCREENS.indexOf(pageId) < 0) {
+    throw new Error('主态画框 ' + pageId + ' 未在 MAIN_SCREENS 登记。'
+      + '若它是变体请传 isVariant=true，若是新增主态请补进 MAIN_SCREENS。');
+  }
   var nm = pageId + ' · ' + title + ' [' + prdRef + ']';
   if (isVariant) nm += ' ' + VARIANT_TAG;
   var f = box(nm, 'VERTICAL', {
@@ -1606,15 +1710,13 @@ function registerComponents(page) {
 
   // 外壳组件：状态栏 + 三个底部 Tab 态
   host.appendChild(toComponent('shell/status-bar', statusBarRaw()));
-  var tabs = ['鸭圈', '发布', '我的'];
-  for (var t = 0; t < tabs.length; t++) {
-    host.appendChild(toComponent('shell/bottom-tab/' + tabs[t], bottomTabRaw(tabs[t])));
+  for (var t = 0; t < SHELL_TABS.length; t++) {
+    host.appendChild(toComponent('shell/bottom-tab/' + SHELL_TABS[t], bottomTabRaw(SHELL_TABS[t])));
   }
 
   // 按钮六类
-  var variants = ['primary', 'secondary', 'ghost', 'danger', 'capsule', 'disabled'];
-  for (var v = 0; v < variants.length; v++) {
-    host.appendChild(toComponent('ui/button/' + variants[v], buttonRaw('按钮', variants[v], 0)));
+  for (var v = 0; v < BUTTON_VARIANTS.length; v++) {
+    host.appendChild(toComponent('ui/button/' + BUTTON_VARIANTS[v], buttonRaw('按钮', BUTTON_VARIANTS[v], 0)));
   }
 
   // Pin 十个基础态（5 分类 × 资源/需求，不含完整度角标与选中态）
@@ -1944,9 +2046,8 @@ async function batchSetup() {
     typeBoard.appendChild(text(sk.toUpperCase() + ' · ' + TYPE_SCALE[sk].size + 'sp · 找鸭找 Sample', sk));
   }
   typeBoard.appendChild(text('按钮六类', 'h3'));
-  var variants = ['primary', 'secondary', 'ghost', 'danger', 'capsule', 'disabled'];
-  for (var vi = 0; vi < variants.length; vi++) {
-    typeBoard.appendChild(button(variants[vi], variants[vi], 0));
+  for (var vi = 0; vi < BUTTON_VARIANTS.length; vi++) {
+    typeBoard.appendChild(button(BUTTON_VARIANTS[vi], BUTTON_VARIANTS[vi], 0));
   }
   boards.push(typeBoard);
 
@@ -1959,12 +2060,21 @@ async function batchSetup() {
 
   var compCount = 0;
   for (var cn in COMP_CACHE) compCount++;
+  var st = planStats();
+  // 实际注册数与登记表推算数必须一致：不一致说明 master 注册被改动而
+  // planStats 的分项未同步，此时 UI 首屏报的数就是假的，宁可当场炸掉
+  if (compCount !== st.masters.total) {
+    throw new Error('Component master 数不符：实际 ' + compCount + '，登记表推算 ' + st.masters.total
+      + '。请同步 planStats() 的 masters 分项与 registerComponents()。');
+  }
 
   return '批次 1 完成\n字体族：' + family + (family === FONT_FALLBACK ? '（未检测到 Noto Sans SC，已降级）' : '')
     + '\nVariables：新建 ' + stat.created + ' / 沿用 ' + stat.reused + ' / 改值 ' + stat.updated
-    + (stat.updated > 0 ? '（Token 已变更，全画布绑定处自动同步）' : '')
+    + '（应为 ' + st.tokens.total + ' 项：COLOR ' + st.tokens.color + ' + FLOAT ' + st.tokens.float + '）'
+    + (stat.updated > 0 ? '\n（Token 已变更，全画布绑定处自动同步）' : '')
     + '\n主色：A 深湖青 #0B7C8C（白字 4.91:1 过 WCAG AA）'
-    + '\nComponent master：' + compCount + ' 个（状态栏1 + 底部Tab3 + 按钮6 + Pin10）'
+    + '\nComponent master：' + compCount + ' 个（状态栏' + st.masters.statusBar
+    + ' + 底部Tab' + st.masters.tabs + ' + 按钮' + st.masters.buttons + ' + Pin' + st.masters.pins + '）'
     + '\n画板：语义色板 / 分类色Pin矩阵 / 字阶与按钮';
 }
 
@@ -3759,7 +3869,21 @@ function buildPublishSuccess() {
 }
 
 /**
- * 执行批次 3：生成核心流程十二页
+ * 批次 3 的核心流程页登记表：[画框构造器, 短名]。
+ *
+ * 短名用于日志回报，与 pageId 去掉 -screen 后缀一致。此前构造器数组与日志里的
+ * 页名清单是两份手写副本（改了数组忘改文案就会对不上），改为单表派生。
+ */
+var CORE_PAGES = [
+  [buildSplash, 'splash'], [buildLogin, 'login'], [buildDetail, 'detail'],
+  [buildDetailOffline, 'detail-offline'], [buildPublish, 'publish'], [buildAiConfirm, 'ai-confirm'],
+  [buildPublishSuccess, 'publish-success'], [buildContact, 'contact'], [buildProfile, 'profile'],
+  [buildMyPublish, 'my-publish'], [buildMyFavorite, 'my-favorite'],
+  [buildNotification, 'notification'], [buildTrust, 'trust'], [buildSettings, 'settings']
+];
+
+/**
+ * 执行批次 3：生成核心流程十四页
  * @returns {Promise<string>} 执行结果摘要
  */
 async function batchCore() {
@@ -3770,18 +3894,16 @@ async function batchCore() {
   await hydrateComponents();
   var reset = await resetSection(SECTION_NAMES.core, SECTION_Y.core);
   var page = reset.page;
-  var frames = [
-    buildSplash(), buildLogin(), buildDetail(), buildDetailOffline(), buildPublish(), buildAiConfirm(),
-    buildPublishSuccess(), buildContact(), buildProfile(), buildMyPublish(),
-    buildMyFavorite(), buildNotification(), buildTrust(), buildSettings()
-  ];
+  var frames = [];
+  var names = [];
+  for (var i = 0; i < CORE_PAGES.length; i++) {
+    frames.push(CORE_PAGES[i][0]());
+    names.push(CORE_PAGES[i][1]);
+  }
   layout(reset.section, frames, 6, 0);
   var orphans = sweepOrphans(page);
   figma.viewport.scrollAndZoomIntoView(frames);
-  return '批次 3 完成\n生成 ' + frames.length + ' 页：\n'
-    + 'splash / login / detail / detail-offline / publish\n'
-    + 'ai-confirm / publish-success / contact / profile\n'
-    + 'my-publish / my-favorite / notification / trust / settings'
+  return '批次 3 完成\n生成 ' + frames.length + ' 页：\n' + names.join(' / ')
     + '\n清空旧内容 ' + reset.cleared + ' 个｜清扫游离零件 ' + orphans + ' 个';
 }
 
@@ -4372,7 +4494,15 @@ async function batchClean() {
  * 所有异常统一捕获并回传到 UI 日志，避免插件静默失败
  */
 figma.ui.onmessage = async function (msg) {
-  if (!msg || msg.type !== 'run') return;
+  if (!msg) return;
+  // UI 就绪时索取产出规模，由主线程从真源现算后回填首屏各处计数。
+  // 用「UI 主动索取」而非「showUI 后立即推送」：postMessage 早于 UI 脚本注册
+  // onmessage 时消息会丢，索取模型天然没有这个竞态。
+  if (msg.type === 'stats') {
+    figma.ui.postMessage({ type: 'stats', stats: planStats() });
+    return;
+  }
+  if (msg.type !== 'run') return;
   try {
     var result;
     if (msg.step === 'setup')      result = await batchSetup();

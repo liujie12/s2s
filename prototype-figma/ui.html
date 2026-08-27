@@ -17,17 +17,19 @@
   .tip{background:#E6F6F8;color:#075E6B;padding:8px 10px;border-radius:6px;font-size:11px;line-height:1.6;margin-top:10px}
   .tip b{display:block;margin-bottom:3px}
   .tip ol{margin:4px 0 0;padding-left:16px}
+  /* 运行时回填位：填充前显示 · 占位，避免首帧闪现空白或旧数字 */
+  .n{font-variant-numeric:tabular-nums;font-weight:600}
 </style>
 </head>
 <body>
 <h3>找鸭找 v2 原型生成器</h3>
-<div class="sub">按 PRD v2.1 §10.1 生成 15 页 + 3 模态（18 个主态画框，另含若干过程态/降级态变体）+ T6 五组规格。颜色、字号、间距、圆角全部绑定 Figma Variables，改一处全局同步；公用元素为 Component。</div>
+<div class="sub">按 PRD v2.1 §10.1 生成 <span class="n" id="n-main">·</span> 个主态画框（含 <span class="n" id="n-core">·</span> 个核心流程页 + 3 模态），另含若干过程态/降级态变体 + T6 五组规格。颜色、字号、间距、圆角全部绑定 Figma Variables，改一处全局同步；公用元素为 Component。</div>
 
 <div class="warn">分批执行，避免单次超时。必须按 1→2→3→4→5 顺序点，批次 5 依赖前面全部画框已生成。</div>
 
 <div class="batch">
   <b>批次 1 · 基础设施</b>
-  <span>Variables（语义色 16 + 分类色 5 + 字号 6 + 间距 6 + 圆角 5 = 38 个）+ Component master 20 个 + 字体 + 规格板</span>
+  <span>Variables（语义色 <span class="n" id="n-semantic">·</span> + 分类色 <span class="n" id="n-cat">·</span> + 分类深色 <span class="n" id="n-deep">·</span> + 字号 <span class="n" id="n-size">·</span> + 间距 <span class="n" id="n-space">·</span> + 圆角 <span class="n" id="n-radius">·</span> = <span class="n" id="n-token">·</span> 个）+ Component master <span class="n" id="n-master">·</span> 个 + 字体 + 规格板</span>
   <button onclick="run('setup')">执行批次 1</button>
 </div>
 
@@ -39,7 +41,7 @@
 
 <div class="batch">
   <b>批次 3 · 核心流程页</b>
-  <span>splash / login / detail / detail-offline / publish / ai-confirm / publish-success / contact / profile / my-publish / my-favorite / notification / trust / settings 共 14 页</span>
+  <span>splash / login / detail / detail-offline / publish / ai-confirm / publish-success / contact / profile / my-publish / my-favorite / notification / trust / settings 共 <span class="n" id="n-core2">·</span> 页</span>
   <button onclick="run('core')">执行批次 3</button>
 </div>
 
@@ -51,7 +53,7 @@
 
 <div class="batch">
   <b>批次 5 · 原型跳转连线</b>
-  <span>为主流程 23 条跳转补 reactions，并设 splash-screen 为起点；完成后用 Present 模式测试</span>
+  <span>为主流程 <span class="n" id="n-flow">·</span> 条跳转补 reactions，并设 splash-screen 为起点；完成后用 Present 模式测试</span>
   <button onclick="run('flow')">执行批次 5</button>
 </div>
 
@@ -73,16 +75,61 @@
 <div id="log">就绪。</div>
 
 <script>
+  /**
+   * 触发一个批次：清空日志并把 step 发给主线程
+   * @param {string} step setup/map/core/modal/flow/clean
+   * @returns {void}
+   */
   function run(step){
     document.getElementById('log').textContent = '执行中…';
     parent.postMessage({pluginMessage:{type:'run',step:step}},'*');
   }
+
+  /**
+   * 把一个运行时数字填进对应占位位
+   * @param {string} id 占位 span 的 id
+   * @param {number} value 主线程算出的真值
+   * @returns {void}
+   */
+  function fill(id, value){
+    var el = document.getElementById(id);
+    if(el) el.textContent = String(value);
+  }
+
+  /**
+   * 用主线程回传的产出规模回填首屏全部计数。
+   * 首屏所有数字都必须走这里 —— HTML 里不留任何硬编码计数，
+   * 否则真源（code.js 的 Token 表 / 登记表 / FLOW_LINKS）一变，说明文字就悄悄变成假的。
+   * @param {Object} s planStats() 的返回值
+   * @returns {void}
+   */
+  function fillStats(s){
+    fill('n-main', s.mainScreens);
+    fill('n-core', s.corePages);
+    fill('n-core2', s.corePages);
+    fill('n-flow', s.flowLinks);
+    fill('n-master', s.masters.total);
+    fill('n-semantic', s.tokens.semantic);
+    fill('n-cat', s.tokens.category);
+    fill('n-deep', s.tokens.categoryDeep);
+    fill('n-size', s.tokens.size);
+    fill('n-space', s.tokens.spacing);
+    fill('n-radius', s.tokens.radius);
+    fill('n-token', s.tokens.total);
+  }
+
   onmessage = function(e){
     var msg = e.data.pluginMessage;
-    if(msg && msg.type === 'log'){
+    if(!msg) return;
+    if(msg.type === 'log'){
       document.getElementById('log').textContent = msg.text;
+    } else if(msg.type === 'stats'){
+      fillStats(msg.stats);
     }
   };
+
+  // 脚本已就绪，向主线程索取产出规模（不用等主线程主动推，避免早于本行注册 onmessage 而丢消息）
+  parent.postMessage({pluginMessage:{type:'stats'}},'*');
 </script>
 </body>
 </html>
