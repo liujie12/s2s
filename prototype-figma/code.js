@@ -2462,13 +2462,17 @@ async function batchSetup() {
   motionBoard.appendChild(annotation('动效规格六档', motionSpecLines(), {
     severity: 'interact', target: '_motion-bar-sheet'
   }));
-  // 两条 PRD 未定的口径单独一张 info 卡：它们不是判据，是「为什么这里没有规格」。
-  // 混进上面那张会让评审把待补项当成已冻结的规格读。
-  motionBoard.appendChild(annotation('动效规格的两处待补', [
-    'PRD §1.4.8「地图 Marker 首次出现渐入 + 轻微上浮」未给时长与位移量，'
-      + '本板不替它拟值（替设计师做动效决定超出「冻结契约」范围）',
-    'PRD §1.4.8「发布成功 Lottie 确认勾」未给时长；Lottie 时长由素材本身决定，'
-      + '须在素材交付时一并冻结',
+  // 这张 info 卡记的是「本板六档之外的口径」，不是判据。混进上面那张会让评审
+  // 把它当成已冻结的六档规格读。
+  // 2026-08-27 条目 [60]：原前两条写「PRD 未给，本板不替它拟值」，用户已拍板补齐，
+  // 故改为指向 PRD 新规格。**不能只在 PRD 补而留着这里说「未给」** —— 画布会成为
+  // 与 PRD 相矛盾的第二个口径，而评审看的是画布（原则㊾）。
+  motionBoard.appendChild(annotation('动效规格的三条补充口径', [
+    'Marker 首次出现：渐入 180ms ease-out + 上浮 8px（SPACING.sm），两者同起同止；'
+      + '多 Marker 相邻错开 20ms、上限 10 个。平移带出的增量 Pin 不做入场动画。详见 PRD §1.4.8',
+    'Lottie 确认勾：时长由素材本身决定，素材未制作，故 PRD §1.4.8 只冻结约束 '
+      + '（600-1000ms、不循环、不阻塞交互、自带静态收尾帧、主色取 color/primary），'
+      + '交付时把实测值填回 PRD 与 MOTION 表',
     '§1.5 U2 要求发布链路动效「统一 200-300ms」，而 §1.4.8 的按钮反馈为 80ms —— '
       + '两者口径不同层（U2 说的是转场，80ms 说的是按压反馈），不构成冲突，此处记档以免被当成矛盾修掉'
   ], { severity: 'info' }));
@@ -3403,7 +3407,7 @@ async function batchMap() {
     annotation('聚合圆三档尺寸', [
       '2-9 条 → 32×32；10-99 条 → 40×40；100+ → 48×48',
       '数量差异必须由尺寸表达，仅靠圆内数字在缩放后不可读',
-      '本档位为新增规格，PRD §6.4.2 待补'
+      '已于 2026-08-27 回写 PRD §6.4.2（条目 [60]），不再是待补项'
     ], { severity: 'a11y' })
   ]));
   home.appendChild(bottomTab('鸭圈'));

@@ -2650,11 +2650,14 @@ function allText(root) {
         pj(ovData.lines) === pj(specLines),
         ovData ? ovData.severity + ' / ' + ovData.target : '取不到 pluginData'
       );
-      // 待补项必须是 info 档：它们不是判据。混成 interact/spec 会让评审
-      // 把「PRD 还没定」当成「已经冻结的规格」去实现。
-      const todoData = readAnno(findCard('_annotation/动效规格的两处待补'));
+      // 补充口径卡必须是 info 档：它们不是判据。混成 interact/spec 会让评审
+      // 把「另一节的口径」当成本板六档的一部分去实现。
+      // 2026-08-27 条目 [60]：卡名由「动效规格的两处待补」改为「动效规格的三条补充
+      // 口径」（前两条已回写 PRD §1.4.8），本断言随之改名。**改的是卡名不是判据**，
+      // info 档与 3 条这两项要求原样保留。
+      const todoData = readAnno(findCard('_annotation/动效规格的三条补充口径'));
       check(
-        '「两处待补」卡为 info 档（待补项不得被当成已冻结规格读）',
+        '「三条补充口径」卡为 info 档（补充口径不得被当成本板六档规格读）',
         !!todoData && todoData.severity === 'info' && todoData.lines.length === 3,
         todoData ? todoData.severity + ' / ' + todoData.lines.length + ' 条' : '取不到 pluginData'
       );
