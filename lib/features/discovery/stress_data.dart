@@ -94,7 +94,7 @@ List<Listing> buildStressListings(int count) {
         28,
         12,
       ).subtract(Duration(minutes: random.nextInt(7 * 24 * 60))),
-      priceLabel: null,
+      price: null,
     );
   }, growable: false);
 }

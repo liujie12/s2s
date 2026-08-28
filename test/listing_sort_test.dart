@@ -23,8 +23,7 @@ Listing _listing(String id, {int minutesAgo = 0, double? price}) {
     latitude: 30.0,
     longitude: 120.0,
     createdAt: _now.subtract(Duration(minutes: minutesAgo)),
-    priceValue: price,
-    priceLabel: price == null ? null : '$price 元',
+    price: price,
   );
 }
 

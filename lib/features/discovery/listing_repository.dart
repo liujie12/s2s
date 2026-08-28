@@ -78,7 +78,7 @@ List<Listing> _buildSampleListings() {
           ListingCategory.values[random.nextInt(ListingCategory.values.length)];
       // 有价与无价约各半：列表页要能同时验证「有价格显示」与「无价格不留空行」，
       // 也让价格排序有 null 需要处理。
-      final double? priceValue = random.nextBool()
+      final double? price = random.nextBool()
           ? (random.nextInt(20) * 10 + 30).toDouble()
           : null;
       listings.add(
@@ -97,14 +97,30 @@ List<Listing> _buildSampleListings() {
           createdAt: _sampleNow.subtract(
             Duration(minutes: random.nextInt(7 * 24 * 60)),
           ),
-          priceValue: priceValue,
-          priceLabel: priceValue == null ? null : '${priceValue.toInt()} 元',
+          price: price,
+          // 单位随分类而定（PRD §13.2 `price_unit` 取模板 price_units 之一）。
+          // 模板引擎（§5.7）尚未实现，这里按大类给一个合理默认，
+          // 目的是让详情页与列表页能验证「50 元/小时」这类带单位文案的排版。
+          priceUnit: price == null ? null : _sampleUnitOf(category),
         ),
       );
     }
   }
   return List.unmodifiable(listings);
 }
+
+/// 样例数据的价格单位。
+///
+/// 真实单位应由 §5.7 模板 Schema 的 `price_units` 提供，模板引擎未实现前
+/// 用大类兜底 —— 目的只是让展示层能验证带单位文案的排版与截断，
+/// **不代表最终业务口径**（例如房屋实际还应有「元/日」短租选项）。
+String _sampleUnitOf(ListingCategory category) => switch (category) {
+  ListingCategory.work => '天',
+  ListingCategory.house => '月',
+  ListingCategory.vehicle => '次',
+  ListingCategory.life => '件',
+  ListingCategory.service => '小时',
+};
 
 /// 全量信息（未筛选）。
 ///

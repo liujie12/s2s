@@ -398,68 +398,92 @@ class _ListingInfoCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: Color(AppColors.surface),
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x1F000000),
-            blurRadius: 12,
-            offset: Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: listing.category.color,
-              shape: BoxShape.circle,
+    return GestureDetector(
+      // 整卡可点进详情（PRD §7.5 旅程第 1 步）。整卡而非只给一个小按钮：
+      // 卡片本身就是「这条信息」的代表，用户的直觉是点它。
+      onTap: () => context.push('/detail/${listing.id}'),
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        decoration: BoxDecoration(
+          color: Color(AppColors.surface),
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x1F000000),
+              blurRadius: 12,
+              offset: Offset(0, 2),
             ),
-            child: Icon(
-              listing.category.icon,
-              size: 20,
-              color: Color(AppColors.surface),
+          ],
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: listing.category.color,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                listing.category.icon,
+                size: 20,
+                color: Color(AppColors.surface),
+              ),
             ),
-          ),
-          const SizedBox(width: AppSpacing.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  listing.title,
-                  style: TextStyle(
-                    fontSize: AppTypeScale.h3.size,
-                    fontWeight: FontWeight.w600,
-                    color: Color(AppColors.textPrimary),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    listing.title,
+                    style: TextStyle(
+                      fontSize: AppTypeScale.h3.size,
+                      fontWeight: FontWeight.w600,
+                      color: Color(AppColors.textPrimary),
+                    ),
                   ),
-                ),
-                const SizedBox(height: AppSpacing.xs),
-                Text(
-                  '${listing.supplyDemand.label} · ${listing.category.label}'
-                  '${listing.priceLabel == null ? '' : ' · ${listing.priceLabel}'}',
-                  style: TextStyle(
-                    fontSize: AppTypeScale.small.size,
-                    color: Color(AppColors.textSecondary),
+                  const SizedBox(height: AppSpacing.xs),
+                  Text(
+                    '${listing.supplyDemand.label} · ${listing.category.label}'
+                    '${listing.priceLabel == null ? '' : ' · ${listing.priceLabel}'}',
+                    style: TextStyle(
+                      fontSize: AppTypeScale.small.size,
+                      color: Color(AppColors.textSecondary),
+                    ),
                   ),
-                ),
-              ],
+                  const SizedBox(height: AppSpacing.xs),
+                  Row(
+                    children: [
+                      Text(
+                        '查看详情',
+                        style: TextStyle(
+                          fontSize: AppTypeScale.small.size,
+                          fontWeight: FontWeight.w600,
+                          color: Color(AppColors.primary),
+                        ),
+                      ),
+                      Icon(
+                        Icons.chevron_right,
+                        size: 16,
+                        color: Color(AppColors.primary),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
-          IconButton(
-            onPressed: onClose,
-            icon: const Icon(Icons.close, size: 18),
-            // 视觉 18px，但命中区仍按 44 下限。
-            constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
-            color: Color(AppColors.textSecondary),
-          ),
-        ],
+            IconButton(
+              onPressed: onClose,
+              icon: const Icon(Icons.close, size: 18),
+              // 视觉 18px，但命中区仍按 44 下限。
+              constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+              color: Color(AppColors.textSecondary),
+            ),
+          ],
+        ),
       ),
     );
   }

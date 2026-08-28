@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../features/detail/detail_screen.dart';
 import '../features/discovery/list_screen.dart';
 import '../features/map/map_screen.dart';
 import '../features/placeholder/placeholder_screen.dart';
@@ -121,11 +122,8 @@ final List<RouteBase> _routes = [
   ),
   GoRoute(
     path: AppRoutes.detail,
-    builder: (context, state) => PlaceholderScreen(
-      pageId: 'detail-screen',
-      pageName: '详情页',
-      note: '模板字段 + 信任卡 + 联系主按钮 · id=${state.pathParameters['id']}',
-    ),
+    builder: (context, state) =>
+        DetailScreen(listingId: state.pathParameters['id']!),
   ),
   GoRoute(
     path: AppRoutes.publish,

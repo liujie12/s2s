@@ -114,8 +114,8 @@ List<Listing> sortListings(
 
 /// 价格比较。无价格恒沉底（与 [ascending] 无关）。
 int _comparePrice(Listing a, Listing b, {required bool ascending}) {
-  final pa = a.priceValue;
-  final pb = b.priceValue;
+  final pa = a.price;
+  final pb = b.price;
   if (pa == null && pb == null) return 0;
   if (pa == null) return 1;
   if (pb == null) return -1;

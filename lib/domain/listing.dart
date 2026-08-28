@@ -18,8 +18,8 @@ class Listing {
     required this.latitude,
     required this.longitude,
     required this.createdAt,
-    this.priceLabel,
-    this.priceValue,
+    this.price,
+    this.priceUnit,
   });
 
   final String id;
@@ -43,22 +43,33 @@ class Listing {
   /// 允许为空就得在排序里造一个假时间，那等于让数据缺陷伪装成排序结果。
   final DateTime createdAt;
 
-  /// 价格展示文案，如「50 元/小时」。无价格（如借物、求助）为 null。
+  /// 价格数值（元）。「面议」或无价格场景为 null（PRD §13.2 `price` 允许 NULL）。
   ///
-  /// 存文案而非数值：单位随分类而变（元/小时、元/月、元/件），
-  /// 存数值就得再存一个单位字段，且展示侧还要拼一次。
-  final String? priceLabel;
+  /// 字段名与类型对齐 §13.2 `post.price`（decimal(12,2)）。Dart 侧用 double
+  /// 承载，接后端时须注意 decimal→double 的精度问题：金额超过 2^53 分才会失真，
+  /// 本业务量级不会触及，但若日后出现按分计价的大额场景需改回字符串或整型分。
+  final double? price;
 
-  /// 价格排序用的数值（元）。无价格为 null。
+  /// 价格单位（PRD §13.2 `post.price_unit`，取模板 `price_units` 之一）。
   ///
-  /// 与 [priceLabel] 并存而非从文案里解析：文案含单位且格式不固定
-  /// （「面议」「50 元/小时」「1500-2000 元/月」），解析必然出现歧义，
+  /// **与 [price] 分开存而非合成一个「50 元/小时」的文案字段**：文案不可比较，
+  /// 排序时从文案反解单位必然出现歧义（「面议」「1500-2000 元/月」都无法解析），
   /// 而歧义在排序里的表现是「顺序看着差不多但就是不对」，极难被发现。
   ///
-  /// **单位不可比是已知局限**：50 元/小时与 1500 元/月放在一起排没有实义。
-  /// 本期先按裸数值排（PRD §6.4.3 只写了「价格升序/降序」，未定义跨单位口径），
-  /// 待 §7.4.1 模板字段落地、单位随分类固定后再定归一化规则。
-  final double? priceValue;
+  /// 展示文案由 [priceLabel] 现拼，不落库 —— 落库会产生两份可能不一致的真相。
+  final String? priceUnit;
+
+  /// 价格展示文案，由 [price] 与 [priceUnit] 拼出，如「50 元/小时」。
+  ///
+  /// PRD §5.8 允许价格为空（「面议」），此时返回 null 由调用方决定是否留白。
+  String? get priceLabel {
+    if (price == null) return null;
+    // 去掉整数价格的小数尾巴：「50 元」而不是「50.0 元」。
+    final String amount = price! % 1 == 0
+        ? price!.toInt().toString()
+        : price!.toStringAsFixed(2);
+    return priceUnit == null ? '$amount 元' : '$amount 元/$priceUnit';
+  }
 }
 
 /// 地球平均半径（米）。
