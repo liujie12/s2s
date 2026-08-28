@@ -20,6 +20,7 @@ import '../../domain/listing.dart';
 import '../../domain/listing_category.dart';
 import '../discovery/discovery_filter.dart';
 import '../discovery/listing_repository.dart';
+import '../perf/perf_panel.dart';
 import '../privacy/privacy_consent.dart';
 import 'amap_init_guard.dart';
 import 'clustering/grid_cluster.dart';
@@ -81,10 +82,16 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             ),
           );
           final markers = _buildMarkersFor(listings, projection);
+          // 供需查表在此建一次，而不是让 MarkerLayer 每画一个 Marker 就
+          // firstWhere 一遍 —— 后者是 O(n²)，5 万点档位下会被真机测成
+          // 「CustomPaint 画不动」，从而把优化引向完全错误的方向。
+          final supplyDemandById = {
+            for (final l in listings) l.id: l.supplyDemand,
+          };
 
           return Stack(
             children: [
-              _buildMapBody(consent, projection, markers, listings),
+              _buildMapBody(consent, projection, markers, supplyDemandById),
               const Positioned(
                 left: AppSpacing.lg,
                 top: AppSpacing.md,
@@ -114,6 +121,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     onClose: () => setState(() => _selectedListingId = null),
                   ),
                 ),
+              // POC-B 性能面板（PRD §6.10.1）。放右下而非顶部：顶部已被筛选
+              // 入口占据，且压测时要频繁点它，靠近拇指自然位置。
+              const Positioned(
+                right: AppSpacing.md,
+                bottom: AppSpacing.md,
+                child: PerfPanel(),
+              ),
             ],
           );
         },
@@ -167,7 +181,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     PrivacyConsentStatus consent,
     MapProjection projection,
     List<MapMarker> markers,
-    List<Listing> listings,
+    Map<String, SupplyDemand> supplyDemandById,
   ) {
     // 🔴 上架驳回点：构建 AMapWidget 即触发高德原生 SDK 初始化。
     // 未同意隐私协议时走到这一步就是违规，判据见 amap_init_guard.dart 文件头。
@@ -193,8 +207,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             ),
           MarkerLayer(
             markers: markers,
-            supplyDemandOf: (id) =>
-                listings.firstWhere((l) => l.id == id).supplyDemand,
+            supplyDemandById: supplyDemandById,
             selectedListingId: _selectedListingId,
             onTapMarker: _onTapMarker,
           ),

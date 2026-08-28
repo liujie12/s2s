@@ -15,6 +15,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/listing.dart';
 import '../../domain/listing_category.dart';
 import 'discovery_filter.dart';
+import 'stress_data.dart';
 
 /// 默认地图中心（杭州市中心附近，GCJ-02）。
 ///
@@ -91,9 +92,17 @@ List<Listing> _buildSampleListings() {
 }
 
 /// 全量信息（未筛选）。
-final allListingsProvider = Provider<List<Listing>>(
-  (ref) => _buildSampleListings(),
-);
+///
+/// 压测档位开启时返回压测数据（PRD §6.10.1 POC-B）。在此处切换而不是另建
+/// 一个 demo 页：POC-B 要测的是首页这条完整链路，绕开筛选与信息卡会让数字
+/// 偏乐观，而这个数字要用来对外承诺 SLA。
+final allListingsProvider = Provider<List<Listing>>((ref) {
+  final stress = ref.watch(stressLevelProvider);
+  if (stress != StressLevel.off) {
+    return buildStressListings(stress.pointCount);
+  }
+  return _buildSampleListings();
+});
 
 /// 按当前筛选条件过滤后的信息。
 ///

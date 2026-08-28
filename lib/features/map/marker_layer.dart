@@ -21,7 +21,7 @@ class MarkerLayer extends StatelessWidget {
   const MarkerLayer({
     super.key,
     required this.markers,
-    required this.supplyDemandOf,
+    required this.supplyDemandById,
     this.selectedListingId,
     this.onTapMarker,
   });
@@ -29,11 +29,16 @@ class MarkerLayer extends StatelessWidget {
   /// 待渲染的 Marker（已含聚合判定，见 [buildMarkers]）。
   final List<MapMarker> markers;
 
-  /// 查询某条信息是资源还是需求 —— 决定画实心圆还是空心圆 + ? 角标。
+  /// 信息 ID → 供需 —— 决定画实心圆还是空心圆 + ? 角标。
   ///
-  /// 注入而非让 Marker 自带该字段：聚合模块无 Flutter 依赖、也不该知道供需概念，
-  /// 让 `ClusterPoint` 多背一个字段会把业务语义漏进纯算法层。
-  final SupplyDemand Function(String listingId) supplyDemandOf;
+  /// 传**已建好的表**而非查询回调：回调很容易被实现成对原始列表的
+  /// `firstWhere`，那样每画一个 Marker 就扫一遍全表，5 万点档位下是 O(n²)。
+  /// 而这类开销发生在 `paint()` 内，真机上表现为掉帧，极易被误判成
+  /// 「CustomPaint 画不动」，把优化引向降 Pin 上限这种错误方向。
+  ///
+  /// 用 Map 而非让 [MapMarker] 自带该字段：聚合模块无 Flutter 依赖、也不该
+  /// 知道供需概念，让 `ClusterPoint` 多背一个字段会把业务语义漏进纯算法层。
+  final Map<String, SupplyDemand> supplyDemandById;
 
   /// 当前选中的信息 ID，选中态放大到 48×48（PRD §6.4.2）。
   final String? selectedListingId;
@@ -54,7 +59,7 @@ class MarkerLayer extends StatelessWidget {
       child: CustomPaint(
         painter: _MarkerPainter(
           markers: markers,
-          supplyDemandOf: supplyDemandOf,
+          supplyDemandById: supplyDemandById,
           selectedListingId: selectedListingId,
         ),
         // 铺满父级：CustomPaint 无 child 时默认尺寸为零，画不出任何东西。
@@ -95,15 +100,83 @@ double _radiusOf(MapMarker marker, String? selectedListingId) {
   };
 }
 
+/// 已完成整形的文本缓存。
+///
+/// **为什么必须缓存**：`TextPainter.layout()` 做的是完整的文字整形（字体查找、
+///字形映射、度量），成本远高于 `paint()`。原实现每个 Marker 每帧新建一个
+/// TextPainter，5 万点即每帧 5 万次整形 —— 实测单帧 2.48 秒，且每点耗时
+/// 从 1 万点的 25.7µs 反弹到 5 万点的 49.7µs（超线性，来自大量短命对象的
+/// GC 压力）。而实际组合极少：图标只有 5 分类 × 2 配色 × 2 尺寸。
+///
+/// **为什么是顶层而非 painter 字段**：`_MarkerPainter` 每帧都是新实例，
+/// 挂在实例上等于没缓存。
+///
+/// **为什么有容量上限**：聚合数字的取值不封闭（1–999+），无上限则缓存会随
+/// 用户浏览不断增长。超限直接清空而非 LRU：命中率在稳态下本就接近 1，
+/// 维护 LRU 的成本高于偶尔重建一次。
+final Map<_TextKey, TextPainter> _textCache = {};
+
+const int _kTextCacheCapacity = 512;
+
+/// 字体族要进键：图标走 MaterialIcons，数字走默认族，同一码位在两族下是
+/// 完全不同的字形，漏掉它会让图标画成方框。
+typedef _TextKey = ({
+  String text,
+  int color,
+  double size,
+  int weight,
+  String? family,
+});
+
+TextPainter _cachedPainter({
+  required String text,
+  required Color color,
+  required double fontSize,
+  required FontWeight fontWeight,
+  String? fontFamily,
+  String? fontPackage,
+}) {
+  final key = (
+    text: text,
+    // 用 toARGB32 而非 Color 本身作键的一部分：Color 的 == 可用，但把值摊平
+    // 成 int 能让 record 的哈希更廉价，而这里每帧要查几万次。
+    color: color.toARGB32(),
+    size: fontSize,
+    // 用 value（100–900 的字重数值）而非已废弃的 index。
+    weight: fontWeight.value,
+    family: fontFamily,
+  );
+  final cached = _textCache[key];
+  if (cached != null) return cached;
+
+  if (_textCache.length >= _kTextCacheCapacity) _textCache.clear();
+
+  final painter = TextPainter(
+    text: TextSpan(
+      text: text,
+      style: TextStyle(
+        color: color,
+        fontSize: fontSize,
+        fontWeight: fontWeight,
+        fontFamily: fontFamily,
+        package: fontPackage,
+      ),
+    ),
+    textDirection: TextDirection.ltr,
+  )..layout();
+  _textCache[key] = painter;
+  return painter;
+}
+
 class _MarkerPainter extends CustomPainter {
   _MarkerPainter({
     required this.markers,
-    required this.supplyDemandOf,
+    required this.supplyDemandById,
     required this.selectedListingId,
   });
 
   final List<MapMarker> markers;
-  final SupplyDemand Function(String listingId) supplyDemandOf;
+  final Map<String, SupplyDemand> supplyDemandById;
   final String? selectedListingId;
 
   @override
@@ -158,7 +231,13 @@ class _MarkerPainter extends CustomPainter {
         : kSinglePointMarkerDiameter;
     final double radius = diameter / 2;
     final center = Offset(marker.x, marker.y);
-    final isSupply = supplyDemandOf(marker.listingId) == SupplyDemand.supply;
+    // 查不到按资源处理：Marker 的 listingId 来自同一批 listings，缺失说明
+    // 两个入参不配套，是编码错误而非数据情况，故用 assert 暴露而不静默兜底。
+    assert(
+      supplyDemandById.containsKey(marker.listingId),
+      '${marker.listingId} 不在 supplyDemandById 内，markers 与该表不是同一批数据',
+    );
+    final isSupply = supplyDemandById[marker.listingId] != SupplyDemand.demand;
 
     if (isSelected) {
       // 选中态阴影：单靠放大 8px 在密集区域看不出来，须有阴影把它从同色邻居中拔出。
@@ -231,18 +310,14 @@ class _MarkerPainter extends CustomPainter {
     required double size,
     required Color color,
   }) {
-    final painter = TextPainter(
-      text: TextSpan(
-        text: String.fromCharCode(icon.codePoint),
-        style: TextStyle(
-          fontSize: size,
-          fontFamily: icon.fontFamily,
-          package: icon.fontPackage,
-          color: color,
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
+    final painter = _cachedPainter(
+      text: String.fromCharCode(icon.codePoint),
+      color: color,
+      fontSize: size,
+      fontWeight: FontWeight.normal,
+      fontFamily: icon.fontFamily,
+      fontPackage: icon.fontPackage,
+    );
     painter.paint(
       canvas,
       center - Offset(painter.width / 2, painter.height / 2),
@@ -257,17 +332,12 @@ class _MarkerPainter extends CustomPainter {
     required double fontSize,
     required FontWeight fontWeight,
   }) {
-    final painter = TextPainter(
-      text: TextSpan(
-        text: text,
-        style: TextStyle(
-          color: color,
-          fontSize: fontSize,
-          fontWeight: fontWeight,
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
+    final painter = _cachedPainter(
+      text: text,
+      color: color,
+      fontSize: fontSize,
+      fontWeight: fontWeight,
+    );
     painter.paint(
       canvas,
       center - Offset(painter.width / 2, painter.height / 2),

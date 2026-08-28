@@ -1370,6 +1370,16 @@ POC 拆为**算法级（POC-A）与定标级（POC-B）两级**，二者回答�
 
 **POC-B 不依赖开发机连线**：帧耗时与切换耗时由 demo **内置埋点**采集（`SchedulerBinding.addTimingsCallback` + 切换入口 `Stopwatch`），结果在应用内直接显示 P95 与帧耗时直方图并落 JSON。因此任何能安装 APK 的安卓设备均可出数，无需在该设备上搭建 Flutter 环境。该埋点与兜底方案第 1 条为同一套代码，不重复实现。
 
+**POC-B 当前状态（2026-08-28）**：埋点与压测档位已实现并随包发布，**剩余唯一依赖是安卓真机到位**。已落地件：
+
+- `lib/features/perf/frame_metrics.dart` —— `addTimingsCallback` 采集 `FrameTiming.totalSpan`，产出 P50/P95/P99、Max、>16ms 掉帧率与六桶直方图，可导出 JSON；
+- `lib/features/perf/perf_panel.dart` —— 应用内面板，折叠态直显 P95，一键复制 JSON 到剪贴板（不写外部存储，免权限适配）；
+- `lib/features/discovery/stress_data.dart` —— 四档压测数据（关闭 / 500 / 1 万 / 5 万），聚集分布（POC-A 已证其为最坏情况），走 `allListingsProvider` 与真实数据同一条链路，档位入口不受 `kDebugMode` 限制，故 release 包可测。
+
+**跑真机前先做的一次开发机基准**（`tool/poc_b_paint_benchmark.dart`，CPU 侧，**绝对毫秒数不得写入 SLA**）暴露出一处必须先修的缺陷：Marker 绘制每点耗时在 1 万→5 万点之间从 25.73µs **反弹**到 49.68µs（超线性），5 万点单帧 2483.9ms。根因两处：① `MarkerLayer` 的供需查询是对原始列表 `firstWhere`，5 万点即 O(n²)；② `TextPainter` 每个 Marker 每帧重建并 `layout()`（完整文字整形）。改为预建 Map + 顶层文本缓存后，5 万点降至 126.9ms / 每点 2.54µs，曲线转为单调下降。
+
+若不先修，真机会把这两处 CPU 开销测成「CustomPaint 画不动」，从而把优化引向「下调 Pin 上限」这一错误方向 —— 而那恰是本节兜底方案第 2 条的降级动作，会造成「降级已生效但根因未除」的假象。
+
 **🔴 iOS 性能数据缺口（已知、明示、不含糊）**：iOS 安装包必须由 Xcode 签名，Xcode 仅有 macOS 版，当前开发环境为 Windows，**iOS 真机与云真机路径均不可行**（云真机同样需先产出 `.ipa`）。这是平台限制，非配置问题。故：
 
 - iOS 侧 POC 与 iOS 出包**一并延后**至 macOS 环境就绪；
