@@ -39,13 +39,18 @@ dependencies:
   # 禁止用 setState 跨页同步。
   flutter_riverpod: ^3.3.2
 
-  # 路由：声明式路由表，承载 PRD §10.1 的 12 个 M4 必需页面 + 3 个模态。
+  # 路由：声明式路由表，承载 PRD §10.1 的 13 个 M4 必需页面 + 3 个模态。
   go_router: ^17.5.0
 
   # 高德地图原生 SDK 桥接（PRD §6.7）。注意 amap_map 不提供原生 MarkerCluster，
   # 聚合须在 Dart 侧自实现（PRD §6.7 + §6.10.1 POC）。
   amap_map: ^1.0.15
   x_amap_base: ^1.0.3
+
+  # 本地持久化：承载隐私协议同意状态与已同意版本号（PRD §6.5.1）。
+  # 必须持久化的原因：同意状态若只存内存，每次冷启动都会重弹协议门；
+  # 而版本号必须一起存，否则隐私政策改版后无法触发重新征得同意。
+  shared_preferences: ^2.5.5
 
 dev_dependencies:
   flutter_test:

@@ -141,9 +141,11 @@ void main() {
       final ms = r[0] as double;
       final clusters = r[1] as int;
       results[dist]![n] = ms;
-      print('  ${n.toString().padLeft(5)} 点 → '
-          '${ms.toStringAsFixed(2).padLeft(8)} ms · '
-          '${clusters.toString().padLeft(5)} 簇');
+      print(
+        '  ${n.toString().padLeft(5)} 点 → '
+        '${ms.toStringAsFixed(2).padLeft(8)} ms · '
+        '${clusters.toString().padLeft(5)} 簇',
+      );
     }
     print('');
   }
@@ -159,13 +161,17 @@ void main() {
     // 平方复杂度会到 25 附近，两者区分度足够，不会误判
     final ok = ratio < 10;
     if (!ok) allLinear = false;
-    print('  $dist：点数 ×5 → 耗时 ×${ratio.toStringAsFixed(2)}  '
-        '${ok ? "线性 PASS" : "疑似超线性 FAIL"}');
+    print(
+      '  $dist：点数 ×5 → 耗时 ×${ratio.toStringAsFixed(2)}  '
+      '${ok ? "线性 PASS" : "疑似超线性 FAIL"}',
+    );
   }
 
   print('');
-  print(allLinear
-      ? 'POC-A 结论：未发现数量级缺陷，算法可继续（D2 = 留）。'
-        '\n注意：本结论不含 SLA 数字，P95 须由 POC-B 在安卓真机实测（PRD §6.10.1）。'
-      : 'POC-A 结论：存在超线性退化，须改用空间索引后重跑（PRD §6.10.1 不通过处置）。');
+  print(
+    allLinear
+        ? 'POC-A 结论：未发现数量级缺陷，算法可继续（D2 = 留）。'
+              '\n注意：本结论不含 SLA 数字，P95 须由 POC-B 在安卓真机实测（PRD §6.10.1）。'
+        : 'POC-A 结论：存在超线性退化，须改用空间索引后重跑（PRD §6.10.1 不通过处置）。',
+  );
 }

@@ -137,6 +137,11 @@ function numberBlock(table, varPrefix) {
  * 平行表后可以单侧改动。weight 保留 PRD 原词字符串，不映射成 FontWeight 数值
  * —— 那是实现侧的选参，替它决定超出「冻结契约」的范围。
  *
+ * **构造参数刻意逐行展开**（而非挤在一行）：产物会被 `dart format` 处理，
+ * 而单行写法超过 80 列必被它拆成多行 —— 于是每次跑完 format，产物就与本脚本
+ * 的输出不一致，`git status` 永远显示这个文件被改过，掩盖真正的 Token 变更。
+ * 直接按 format 后的形态生成，两者才能稳定一致。
+ *
  * @param {Object<string,{size:number,weight:string,lineHeight:number}>} table 真源字阶表
  * @returns {string} 拼好的 Dart 代码片段
  */
@@ -144,8 +149,11 @@ function typeScaleBlock(table) {
   return Object.keys(table).map((key) => {
     const s = table[key];
     return '  /// size/' + key + '  ·  ' + s.size + 'px / ' + s.weight + ' / ×' + s.lineHeight + '\n'
-      + '  static const AppTextStyleToken ' + toCamel(key) + ' = AppTextStyleToken(size: '
-      + s.size + ", weight: '" + s.weight + "', lineHeight: " + s.lineHeight + ');\n';
+      + '  static const AppTextStyleToken ' + toCamel(key) + ' = AppTextStyleToken(\n'
+      + '    size: ' + s.size + ',\n'
+      + "    weight: '" + s.weight + "',\n"
+      + '    lineHeight: ' + s.lineHeight + ',\n'
+      + '  );\n';
   }).join('\n');
 }
 

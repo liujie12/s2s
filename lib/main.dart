@@ -5,10 +5,10 @@
 ///   2. go_router 路由表（PRD §10.1 页面清单）；
 ///   3. Design Token 主题（I2 产物 lib/design_tokens.dart，43 项）。
 ///
-/// 注意：**此处刻意不初始化高德地图 SDK**。PRD §6.7 规定必须先获得隐私协议
-/// 同意才能调 AMapInitializer.updatePrivacyAgree，未同意不初始化。
-/// 在 main() 里图省事初始化会直接导致上架驳回（🔴），故初始化点放在
-/// 隐私协议同意回调里（M4-3 实现）。
+/// 注意：**此处刻意不初始化高德地图 SDK**。PRD §6.5.1 规定必须先获得隐私协议
+/// 同意才能写入合规声明，未同意不得构建地图组件。在 main() 里图省事初始化
+/// 会直接导致上架驳回（🔴）。同意后的写入点在 features/map/amap_init_guard.dart，
+/// 由隐私协议门（features/privacy/privacy_gate_screen.dart）调用。
 library;
 
 import 'package:flutter/material.dart';
@@ -22,14 +22,17 @@ void main() {
 }
 
 /// 应用根组件。
-class ZhaoYaZhaoApp extends StatelessWidget {
+///
+/// 用 ConsumerWidget 而非 StatelessWidget：路由表需读取隐私同意状态来
+/// 决定是否强制跳转协议门，故 routerConfig 来自 Provider。
+class ZhaoYaZhaoApp extends ConsumerWidget {
   const ZhaoYaZhaoApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return MaterialApp.router(
       title: '找鸭找',
-      routerConfig: appRouter,
+      routerConfig: ref.watch(routerProvider),
       theme: _buildTheme(),
       // 暗色模式与多语言本期不做（PRD §14.6 附近条目已明确）
       debugShowCheckedModeBanner: false,

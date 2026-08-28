@@ -58,37 +58,28 @@ void main() {
     });
 
     test('单点簇标记为 isSinglePoint，供调用方决定画 Pin 还是聚合圈', () {
-      final clusters = clusterByGrid(
-        [const ClusterPoint(id: 'a', x: 5, y: 5, categoryId: 3)],
-        gridSize: 80,
-      );
+      final clusters = clusterByGrid([
+        const ClusterPoint(id: 'a', x: 5, y: 5, categoryId: 3),
+      ], gridSize: 80);
 
       expect(clusters.single.isSinglePoint, isTrue);
       expect(clusters.single.categoryId, 3);
     });
 
     test('memberIds 不可变 —— 防调用方误改聚合结果', () {
-      final clusters = clusterByGrid(
-        [const ClusterPoint(id: 'a', x: 5, y: 5, categoryId: 1)],
-        gridSize: 80,
-      );
+      final clusters = clusterByGrid([
+        const ClusterPoint(id: 'a', x: 5, y: 5, categoryId: 1),
+      ], gridSize: 80);
 
-      expect(
-        () => clusters.single.memberIds.add('x'),
-        throwsUnsupportedError,
-      );
+      expect(() => clusters.single.memberIds.add('x'), throwsUnsupportedError);
     });
 
     test('所有点都被计入，一个不丢', () {
       // 分散在多格，总数守恒是聚合最基本的正确性要求
       final points = List.generate(
         100,
-        (i) => ClusterPoint(
-          id: 'p$i',
-          x: i * 7.0,
-          y: i * 11.0,
-          categoryId: i % 5,
-        ),
+        (i) =>
+            ClusterPoint(id: 'p$i', x: i * 7.0, y: i * 11.0, categoryId: i % 5),
       );
       final clusters = clusterByGrid(points, gridSize: 80);
       final total = clusters.fold<int>(0, (sum, c) => sum + c.count);

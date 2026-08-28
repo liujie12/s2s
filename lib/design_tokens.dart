@@ -142,22 +142,46 @@ class AppTypeScale {
   const AppTypeScale._();
 
   /// size/h1  ·  24px / Bold / ×1.3
-  static const AppTextStyleToken h1 = AppTextStyleToken(size: 24, weight: 'Bold', lineHeight: 1.3);
+  static const AppTextStyleToken h1 = AppTextStyleToken(
+    size: 24,
+    weight: 'Bold',
+    lineHeight: 1.3,
+  );
 
   /// size/h2  ·  18px / SemiBold / ×1.3
-  static const AppTextStyleToken h2 = AppTextStyleToken(size: 18, weight: 'SemiBold', lineHeight: 1.3);
+  static const AppTextStyleToken h2 = AppTextStyleToken(
+    size: 18,
+    weight: 'SemiBold',
+    lineHeight: 1.3,
+  );
 
   /// size/h3  ·  16px / SemiBold / ×1.4
-  static const AppTextStyleToken h3 = AppTextStyleToken(size: 16, weight: 'SemiBold', lineHeight: 1.4);
+  static const AppTextStyleToken h3 = AppTextStyleToken(
+    size: 16,
+    weight: 'SemiBold',
+    lineHeight: 1.4,
+  );
 
   /// size/body  ·  14px / Regular / ×1.5
-  static const AppTextStyleToken body = AppTextStyleToken(size: 14, weight: 'Regular', lineHeight: 1.5);
+  static const AppTextStyleToken body = AppTextStyleToken(
+    size: 14,
+    weight: 'Regular',
+    lineHeight: 1.5,
+  );
 
   /// size/small  ·  12px / Regular / ×1.5
-  static const AppTextStyleToken small = AppTextStyleToken(size: 12, weight: 'Regular', lineHeight: 1.5);
+  static const AppTextStyleToken small = AppTextStyleToken(
+    size: 12,
+    weight: 'Regular',
+    lineHeight: 1.5,
+  );
 
   /// size/caption  ·  11px / Medium / ×1.2
-  static const AppTextStyleToken caption = AppTextStyleToken(size: 11, weight: 'Medium', lineHeight: 1.2);
+  static const AppTextStyleToken caption = AppTextStyleToken(
+    size: 11,
+    weight: 'Medium',
+    lineHeight: 1.2,
+  );
 }
 
 /// 间距阶（PRD §1.4.5）。对应 Figma 变量 spacing/*。

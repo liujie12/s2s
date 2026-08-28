@@ -287,8 +287,14 @@ DART_OUT = os.path.join(os.path.dirname(BASE), "lib", "design_tokens.dart")
 def parse_dart_tokens(path):
     """从生成的 Dart 产物里解析「Figma 变量名 → 值」映射。
 
-    产物的每个常量都由一行 `/// <变量名>[  ·  <备注>]` 紧跟一行 `static const`
-    组成，故按相邻两行配对即可，无需理解 Dart 语法。
+    产物的每个常量都由一行 `/// <变量名>[  ·  <备注>]` 紧跟 `static const`
+    组成，故按注释行锚定即可，无需理解 Dart 语法。
+
+    字阶的构造参数**跨多行**（`dart format` 的产物形态，见 export-dart-tokens.js
+    里 typeScaleBlock 的注释），故其正则须允许参数间出现换行与缩进。写成单行匹配
+    的话，格式化一跑正则就全部落空、本函数返回空字典 —— 之所以那样也不会酿成
+    「静默通过」，是因为调用方用的是**整表相等**比对（dart_styles == want_styles），
+    空字典与 6 项字典不等，断言会失败。若哪天把它改成逐键循环校验，这层保护就没了。
 
     Args:
         path: Dart 产物路径
@@ -316,7 +322,8 @@ def parse_dart_tokens(path):
         k: (float(size), weight, float(lh))
         for k, size, weight, lh in re.findall(
             r"///\s+(size/[\w-]+)\s+·[^\n]*\n\s*static const AppTextStyleToken \w+ = "
-            r"AppTextStyleToken\(size: ([\d.]+), weight: '(\w+)', lineHeight: ([\d.]+)\);",
+            r"AppTextStyleToken\(\s*size:\s*([\d.]+),\s*weight:\s*'(\w+)',"
+            r"\s*lineHeight:\s*([\d.]+),?\s*\);",
             src,
         )
     }
