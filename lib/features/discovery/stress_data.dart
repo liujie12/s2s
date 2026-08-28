@@ -86,6 +86,14 @@ List<Listing> buildStressListings(int count) {
           : SupplyDemand.demand,
       latitude: hotspot.lat + (random.nextDouble() - 0.5) * spreadDeg,
       longitude: hotspot.lng + (random.nextDouble() - 0.5) * spreadDeg,
+      // 时间也错开：压测若要覆盖列表页，「最新」排序对 5 万条全相同的时间
+      // 会退化成原序，测不出排序本身的开销。
+      createdAt: DateTime(
+        2026,
+        8,
+        28,
+        12,
+      ).subtract(Duration(minutes: random.nextInt(7 * 24 * 60))),
       priceLabel: null,
     );
   }, growable: false);

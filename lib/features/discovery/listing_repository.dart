@@ -24,6 +24,12 @@ import 'stress_data.dart';
 const double kDefaultCenterLat = 30.2741;
 const double kDefaultCenterLng = 120.1551;
 
+/// 样例数据的时间基准。
+///
+/// 用固定时刻而非 `DateTime.now()`：随时间漂移的数据会让「最新排序对不对」
+/// 这类判断每天得到不同结果，也让截图与实测无法对照。
+final DateTime _sampleNow = DateTime(2026, 8, 28, 12);
+
 /// 生成样例数据。
 ///
 /// 固定随机种子：每次启动看到同样的分布，聚合效果的前后对比才有意义。
@@ -70,6 +76,11 @@ List<Listing> _buildSampleListings() {
       final double spreadDeg = zone.spreadKm * 0.009;
       final category =
           ListingCategory.values[random.nextInt(ListingCategory.values.length)];
+      // 有价与无价约各半：列表页要能同时验证「有价格显示」与「无价格不留空行」，
+      // 也让价格排序有 null 需要处理。
+      final double? priceValue = random.nextBool()
+          ? (random.nextInt(20) * 10 + 30).toDouble()
+          : null;
       listings.add(
         Listing(
           id: 'sample-${seq++}',
@@ -81,9 +92,13 @@ List<Listing> _buildSampleListings() {
           // nextDouble() - 0.5 使点以 zone 中心对称分布。
           latitude: zone.lat + (random.nextDouble() - 0.5) * spreadDeg,
           longitude: zone.lng + (random.nextDouble() - 0.5) * spreadDeg,
-          priceLabel: random.nextBool()
-              ? '${random.nextInt(20) * 10 + 30} 元'
-              : null,
+          // 铺开在过去 7 天内，分钟级错开：同分钟会让「最新」排序出现并列，
+          // 而并列项的相对顺序取决于原始顺序，看起来像排序不稳定。
+          createdAt: _sampleNow.subtract(
+            Duration(minutes: random.nextInt(7 * 24 * 60)),
+          ),
+          priceValue: priceValue,
+          priceLabel: priceValue == null ? null : '${priceValue.toInt()} 元',
         ),
       );
     }

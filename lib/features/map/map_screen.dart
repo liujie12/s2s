@@ -14,11 +14,14 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../design_tokens.dart';
 import '../../domain/listing.dart';
 import '../../domain/listing_category.dart';
+import '../../router/app_router.dart';
 import '../discovery/discovery_filter.dart';
+import '../discovery/filter_panel.dart';
 import '../discovery/listing_repository.dart';
 import '../perf/perf_panel.dart';
 import '../privacy/privacy_consent.dart';
@@ -26,7 +29,6 @@ import 'amap_init_guard.dart';
 import 'clustering/grid_cluster.dart';
 import 'clustering/marker_builder.dart';
 import 'fallback_map_canvas.dart';
-import 'filter_panel.dart';
 import 'map_projection.dart';
 import 'marker_layer.dart';
 
@@ -101,6 +103,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 right: AppSpacing.lg,
                 top: AppSpacing.md,
                 child: _FilterEntryButton(),
+              ),
+              // 列表视图入口（PRD §10.1：地图与列表是同层级的两个视图）。
+              // 放在筛选入口正下方而非底部中央：底部要留给筛选面板与信息卡，
+              // 三者叠在一起会互相遮挡。
+              const Positioned(
+                right: AppSpacing.lg,
+                top: AppSpacing.md + 44 + AppSpacing.sm,
+                child: _ListViewEntryButton(),
               ),
               if (ref.watch(filterPanelExpandedProvider))
                 const Positioned(
@@ -343,6 +353,37 @@ class _FilterEntryButton extends ConsumerWidget {
           expanded ? Icons.close : Icons.more_vert,
           color: Color(AppColors.textPrimary),
         ),
+      ),
+    );
+  }
+}
+
+/// 列表视图入口。
+///
+/// 用 `go` 而非 `push`：两个视图同层级，push 会让返回栈累积成
+/// 「地图→列表→地图→列表」，用户连按返回要按很多次才退出。
+class _ListViewEntryButton extends StatelessWidget {
+  const _ListViewEntryButton();
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => context.go(AppRoutes.list),
+      child: Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          color: Color(AppColors.surface),
+          shape: BoxShape.circle,
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x1F000000),
+              blurRadius: 8,
+              offset: Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Icon(Icons.list, color: Color(AppColors.textPrimary)),
       ),
     );
   }

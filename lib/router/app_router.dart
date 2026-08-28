@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../features/discovery/list_screen.dart';
 import '../features/map/map_screen.dart';
 import '../features/placeholder/placeholder_screen.dart';
 import '../features/privacy/privacy_consent.dart';
@@ -116,11 +117,7 @@ final List<RouteBase> _routes = [
   ),
   GoRoute(
     path: AppRoutes.list,
-    builder: (context, state) => const PlaceholderScreen(
-      pageId: 'list-screen',
-      pageName: '列表页',
-      note: '与地图共享同一套筛选与范围状态',
-    ),
+    builder: (context, state) => const ListScreen(),
   ),
   GoRoute(
     path: AppRoutes.detail,

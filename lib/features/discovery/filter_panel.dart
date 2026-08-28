@@ -1,8 +1,9 @@
 /// 筛选面板（PRD §6.4.1 展开态：范围条 + 供需胶囊 + 五大类栏）。
 ///
-/// 独立成文件而非嵌在地图页里：PRD §10.1 要求列表页复用同一套控件本体
-/// （列表页只是外层套白底容器、不做收起）。写在地图页内部，列表页要么复制一份，
-/// 要么 import 地图页 —— 前者会让两页筛选样式各自漂移，后者是错误的依赖方向。
+/// **为什么放在 `features/discovery/` 而不是 `features/map/`**：PRD §10.1 要求
+/// 列表页复用同一套控件本体（列表页只是外层套白底容器、不做收起）。它先在地图页
+/// 用上，但「谁先用」不是归属依据 —— 放在 map 下会逼着列表页 import 地图模块，
+/// 那是反向依赖；而复制一份则会让两页筛选样式各自漂移。
 library;
 
 import 'package:flutter/material.dart';
@@ -10,11 +11,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../design_tokens.dart';
 import '../../domain/listing_category.dart';
-import '../discovery/discovery_filter.dart';
+import 'discovery_filter.dart';
 
 /// 筛选面板本体。
 class FilterPanel extends ConsumerWidget {
-  const FilterPanel({super.key});
+  const FilterPanel({super.key, this.elevated = true});
+
+  /// 是否自带白底与阴影。
+  ///
+  /// 地图页把它浮在底图上，须有底与影才看得清；列表页把它嵌在已是白底的
+  /// 顶部区域内，再叠一层白底加阴影会出现「卡中卡」的视觉断层。
+  final bool elevated;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -22,14 +29,18 @@ class FilterPanel extends ConsumerWidget {
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
         color: Color(AppColors.surface),
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x1F000000),
-            blurRadius: 12,
-            offset: Offset(0, 2),
-          ),
-        ],
+        borderRadius: elevated
+            ? BorderRadius.circular(AppRadius.lg)
+            : BorderRadius.zero,
+        boxShadow: elevated
+            ? const [
+                BoxShadow(
+                  color: Color(0x1F000000),
+                  blurRadius: 12,
+                  offset: Offset(0, 2),
+                ),
+              ]
+            : null,
       ),
       child: const Column(
         mainAxisSize: MainAxisSize.min,
