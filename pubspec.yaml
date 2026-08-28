@@ -52,6 +52,14 @@ dependencies:
   # 而版本号必须一起存，否则隐私政策改版后无法触发重新征得同意。
   shared_preferences: ^2.5.5
 
+  # 外呼与跳外部应用（PRD §7.4.2 联系中转页 / §7.5 旅程第 4-5 步）。
+  #
+  # 用于 tel: 拨号与打开微信。之所以必须引入真实实现而非留 TODO：
+  # §7.8 规定「外呼失败（模拟器/Pad 无拨号能力）自动降级为复制到剪贴板」，
+  # 而这条降级分支只有真实调用 canLaunchUrl 才会被触发 —— 假实现下它永远
+  # 走不到，等于该分支从未被验证过。
+  url_launcher: ^6.3.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

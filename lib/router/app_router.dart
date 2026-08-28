@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../features/contact/contact_screen.dart';
 import '../features/detail/detail_screen.dart';
 import '../features/discovery/list_screen.dart';
 import '../features/map/map_screen.dart';
@@ -151,11 +152,8 @@ final List<RouteBase> _routes = [
   ),
   GoRoute(
     path: AppRoutes.contact,
-    builder: (context, state) => PlaceholderScreen(
-      pageId: 'contact-screen',
-      pageName: '联系中转页',
-      note: '电话 / 微信二选一单轨 · id=${state.pathParameters['id']}',
-    ),
+    builder: (context, state) =>
+        ContactScreen(listingId: state.pathParameters['id']!),
   ),
   GoRoute(
     path: AppRoutes.profile,

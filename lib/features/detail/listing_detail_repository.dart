@@ -48,7 +48,12 @@ ListingDetail _deriveDetail(Listing listing) {
     // §5.11：默认有效期 7 天，自发布时刻起算。
     expireAt: listing.createdAt.add(const Duration(days: 7)),
     contactChannel: seed.isEven ? ContactChannel.phone : ContactChannel.wechat,
-    contactMasked: seed.isEven
+    // 约 1/7 未留联系方式：§7.8 有「对方联系方式未填 → 主按钮禁用」这条边界，
+    // 样例里不出现这一档，该分支的排版与禁用态就只能靠想象验收。
+    // 用 % 7 而非 % 3 是为了让它足够罕见 —— 它是异常态，不该在样例里占三分之一。
+    contactMasked: seed % 7 == 0
+        ? null
+        : seed.isEven
         ? '138****${8000 + seed % 1000}'
         : 'wx_h***${seed % 100}',
     categoryPath: _samplePath(listing.category),

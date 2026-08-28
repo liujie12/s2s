@@ -80,7 +80,7 @@ class ListingDetail {
     required this.completeness,
     required this.expireAt,
     required this.contactChannel,
-    required this.contactMasked,
+    this.contactMasked,
     this.categoryPath = const [],
     this.templateFields = const [],
     this.address,
@@ -109,7 +109,14 @@ class ListingDetail {
   /// **完整值不在本模型中**：§14.3 规定「全系统仅 `/contact` 一个接口返回
   /// 完整值」，且 §7.7 要求「完整号码不写入前端初始状态」。若详情接口顺手
   /// 带上完整号码，前端不显示也照样能被抓包批量采集 —— 那正是反爬要防的。
-  final String contactMasked;
+  ///
+  /// **可空**：§7.8 有「对方联系方式未填」这条边界（主按钮禁用 + 提示去举报）。
+  /// 若设成必填并用空串代替，「未填」与「填了个空串」在类型上就无法区分，
+  /// 判空逻辑会散落到每个使用处，而漏判的表现是按钮可点但拨出一个空号。
+  final String? contactMasked;
+
+  /// 是否留了联系方式（§7.8 边界：未填时主按钮禁用）。
+  bool get hasContact => contactMasked != null;
 
   /// 三级分类路径，如 `['家政', '保洁', '日常保洁']`（§7.4.1 面包屑）。
   ///
