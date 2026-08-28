@@ -34,6 +34,9 @@ android/local.properties
 android/app/debug/
 android/app/profile/
 android/app/release/
+# .kotlin/ 是 in-process 编译策略（见 gradle.properties）产生的会话缓存，
+# 每次构建重新生成
+android/.kotlin/
 
 # ── 签名密钥（绝不入库）──
 # 正式签名证书泄露等于应用可被伪造，且证书一旦启用不可更换（上架前置手册 P7）
