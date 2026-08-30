@@ -3460,6 +3460,34 @@ function listHintRow(content) {
 }
 
 /**
+ * 构造分页列表底部的「没有更多了」收尾条（2026-08-30 条目 [70]）。
+ *
+ * 为什么需要它：PRD §6.7 交互表（:1291）写明「列表滑到底部 → 加载下一页，每次
+ * 20 条；『没有更多了』→ 显示鸭子空状态」。三个「我的」列表页（通知/收藏/发布）
+ * 走的都是这套分页（§7 接口表里三条 GET 均标「分页」），却都没画收尾态 ——
+ * 于是页面底部只剩一段无名空白，评审无从判断是「还能再滑」还是「已经到底」。
+ *
+ * 为什么不用 annotation 来交代这件事：annotation 会被 detachAnnotations() 移出
+ * 画框（见 :2314），交代在那里等于稿面上没有。收尾态是真实上屏元素，必须画进画框。
+ *
+ * 鸭子取 40px：落 duckSymbol 的 mini 档（§1.4.1.2 三档位，<64 用圆盘+实体鸭头）。
+ * 收尾条是页脚配角，用 96px 完整版会抢主列表的视觉重心。
+ *
+ * @param {number} [width] 条宽，默认满屏 390。挂进带 lg 内边距的 _body 时须传
+ *   CANVAS.w - SPACING.lg * 2，否则满宽条会把容器顶到溢出
+ * @returns {FrameNode} 收尾条节点
+ */
+function listEndRow(width) {
+  var r = box('_list-end', 'VERTICAL', {
+    w: width || CANVAS.w, padTop: SPACING.xl, padBottom: SPACING.xl,
+    gap: SPACING.sm, align: 'CENTER'
+  });
+  r.appendChild(duckSymbol(40));
+  r.appendChild(text('没有更多了', 'caption', 'color/text-secondary'));
+  return r;
+}
+
+/**
  * 构造地图主区：底图 + 散布 Pin + 悬浮控件（可收起）+ 图例 + 可选 T3 弹层。
  *
  * 容器为 stack（非 Auto Layout）：悬浮效果要求子节点重叠，
@@ -3981,8 +4009,16 @@ async function batchMap() {
     '骨架屏与真实内容不得同时可见：骨架屏移除后内容才起淡入',
     '首屏之后的分页加载不重放淡入，只在底部追加'
   ], { severity: 'interact', target: '_list-body' }));
+  // 分页收尾（2026-08-30 条目 [70]）：§6.7 :1291 那条交互约定本就是写给本页的
+  //（「列表滑到底部 → 加载下一页，每次 20 条；『没有更多了』→ 鸭子空状态」），
+  // 三个「我的」列表页只是同规格的复用方
+  listBody.appendChild(listEndRow(CANVAS.w - SPACING.lg * 2));
   list.appendChild(listBody);
-  list.appendChild(bottomTab('鸭圈'));
+  // 底部 Tab 贴底（2026-08-30 条目 [70]）：Tab 是全局导航，在其余 23 处落点里
+  // 都在屏幕最下沿（home 系列靠 _map-canvas 的 grow=1 撑满，profile 靠 _spacer）。
+  // 本页原先是裸 appendChild，Tab 随内容高度悬在 693px、离底 151px，评审会
+  // 误以为列表页的 Tab 是另一种形态。
+  pushToBottom(list, [bottomTab('鸭圈')]);
   frames.push(list);
 
   layout(reset.section, frames, 5, 0);
@@ -4610,6 +4646,9 @@ function buildMyPublish() {
     [CONTENT.marker.title, '未发布｜草稿保存于昨天', CONTENT.marker.catKey, '草稿', 'red', ['继续编辑', '删除']]
   ];
   for (var i = 0; i < items.length; i++) body.appendChild(pubItem(items[i]));
+  // 分页收尾（2026-08-30 条目 [70]）：§7 接口表 /posts/mine 标「分页」，
+  // 四条即首页全量，故落「没有更多了」终态（§6.7 :1291）
+  body.appendChild(listEndRow(CANVAS.w - SPACING.lg * 2));
   s.appendChild(body);
   return s;
 }
@@ -4655,6 +4694,9 @@ function buildMyFavorite() {
   for (var i = 0; i < favs.length; i++) {
     body.appendChild(card(favs[i][0], favs[i][1], 'category/' + favs[i][2], '资源'));
   }
+  // 分页收尾（2026-08-30 条目 [70]）：§7 接口表 /favorites 标「分页」，
+  // 五张即首页全量，故落「没有更多了」终态（§6.7 :1291）
+  body.appendChild(listEndRow(CANVAS.w - SPACING.lg * 2));
   s.appendChild(body);
   var note = box('_note', 'VERTICAL', { w: CANVAS.w, padLeft: SPACING.lg, padRight: SPACING.lg });
   note.appendChild(annotation('收藏页口径', [
@@ -4699,6 +4741,9 @@ function buildNotification() {
     '预计 1 个工作日内出结果', '3 天前', false));
   body.appendChild(notifyRow('dots', '版本更新 v2.1',
     '新增 AI 帮我发、类目三级精筛', '一周前', false));
+  // 分页收尾（2026-08-30 条目 [70]）：§7 接口表 /notifications 标「分页」，
+  // 五条即为首页全量，故落到「没有更多了」终态（§6.7 :1291）
+  body.appendChild(listEndRow());
   s.appendChild(body);
   var note = box('_note', 'VERTICAL', { w: CANVAS.w, pad: SPACING.lg });
   note.appendChild(annotation('通知中心口径', [

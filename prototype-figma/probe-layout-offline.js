@@ -597,7 +597,9 @@ const wrapped = new Function(
       // 这四页的病根是「PRD 明列的条目没画全」，判据必须真跑构造器去数条目，
       // 源码正则数不出「五种触发种类是否齐备」这类语义完整性
       'buildNotification', 'buildMyFavorite', 'buildMyPublish', 'buildSettings',
-      'notifyRow', 'groupTitle', 'certRow']
+      'notifyRow', 'groupTitle', 'certRow',
+      // 条目 [70] 第三段（2026-08-30）：分页收尾条，三个「我的」列表页 + list 页共用
+      'listEndRow']
       .map((k) => k + ': typeof ' + k + " !== 'undefined' ? " + k + ' : undefined')
       .join(', ') +
     ' };'
@@ -1608,6 +1610,59 @@ function allText(root) {
       0
     );
     check(label + ' 画框内无残留口径卡', leftover === 0, leftover + ' 张残留');
+
+    // ⑬ 底部 Tab 一律贴在画框最下沿（2026-08-30 条目 [70] 第三段）。
+    //
+    // 为什么必须扫全部批次而不是点名某页：Tab 是全局导航，实机横扫 24 处落点
+    // 只有 list 一处悬在 693px（离底 151px）—— 上一轮修 profile 时没顺手扫其余
+    // 12 处 bottomTab() 调用，正是原则 110「同类缺陷必须全量横扫」的又一次命中。
+    // 点名式断言下一次新增页面照样会漏，故改为「凡出现 Tab 的画框都验」。
+    //
+    // 判据用「Tab 是其父级的最后一个子节点，且父链上每一层都排在末位」：
+    // 离线 mock 不实现 layoutGrow 的实际撑开效果（见 ⑤ 那条断言的说明），拿
+    // 绝对坐标去量底边在离线永远是理想值，量不出真问题。而「排末位」是静态
+    // 结构特征 —— 配合 grow=1 的 spacer 在前，就等价于贴底。
+    const tabFloat = [];
+    for (const g of got) {
+      const tabs = g.frame.findAll(
+        (n) => n.name.indexOf('bottom-tab') >= 0 && n.parent
+      );
+      for (const t of tabs) {
+        let cur = t;
+        while (cur.parent && cur.parent !== g.frame.parent) {
+          const sibs = cur.parent.children.filter((c) => c.layoutPositioning !== 'ABSOLUTE');
+          if (sibs.indexOf(cur) !== sibs.length - 1) {
+            tabFloat.push(g.frame.name.slice(0, 22) + '：' + cur.name + ' 非 '
+              + cur.parent.name + ' 末位');
+            break;
+          }
+          if (cur.parent === g.frame) break;
+          cur = cur.parent;
+        }
+        // 贴底还要求「内容真能到底」，否则 Tab 排末位也只是悬在内容尽头。
+        // 两条路任一即可，因为稿子里确实有两种正当写法：
+        // ① 前面有 grow>0 的兄弟把它顶下去（profile 的 _spacer、trust 的 _body）；
+        // ② 前面兄弟的固定高合计已填满画框（home 系列的 _map-canvas 是固定高
+        //    stack，layoutMode 为 NONE 不可能有 grow）。
+        // 只认 ① 会把 home 系列 22 个画框全报成失败（首跑实测），那是判据错。
+        const sibs = t.parent.children.filter((c) => c.layoutPositioning !== 'ABSOLUTE');
+        const idx = sibs.indexOf(t);
+        const before = sibs.slice(0, idx);
+        const hasGrow = before.some((c) => c.layoutGrow > 0);
+        const filledH = before.reduce((a, c) => a + c.height, 0) + t.height
+          + t.parent.itemSpacing * Math.max(0, sibs.length - 1)
+          + t.parent.paddingTop + t.parent.paddingBottom;
+        if (!hasGrow && filledH < t.parent.height - 0.5) {
+          tabFloat.push(g.frame.name.slice(0, 22) + '：Tab 前既无 grow>0 兄弟、'
+            + '内容也只到 ' + Math.round(filledH) + ' < ' + Math.round(t.parent.height));
+        }
+      }
+    }
+    check(
+      label + ' 底部 Tab 贴画框下沿（排末位 + 前有 grow 兄弟；实机曾有 list 页悬空 151px）',
+      tabFloat.length === 0,
+      tabFloat.length ? tabFloat.length + ' 处：' + tabFloat.slice(0, 5).join('; ') : '全部贴底'
+    );
 
     // ============================================================
     // ⑦～⑫ 一次性补齐的六个新维度（2026-08-27）
@@ -3623,6 +3678,69 @@ function allText(root) {
         '退出登录只在个人中心、不在设置页（§3.4.3 尾注；两侧都验，防「两边都没有」）',
         !setHasQuit && profHasQuit,
         '设置页有=' + setHasQuit + '，个人中心有=' + profHasQuit
+      );
+    }
+
+    // ---------- 分页列表页必须画「没有更多了」收尾态（PRD §6.7 :1291）----------
+    //
+    // 为什么点名三页而不是「凡列表页」：判据得能机械枚举。§7 接口表里标了「分页」
+    // 的「我的」系列恰是这三条 GET（/notifications、/favorites、/posts/mine），
+    // list 页则由 §6.7 那条交互约定直管，四处口径同源。
+    //
+    // 为什么必须是画框内的真元素而不是 annotation：annotation 会被
+    // detachAnnotations() 移出画框（见 code.js:2314），写在那里等于稿面上没有 ——
+    // 与「annotation 不得作为唯一尾部元素」是同一个坑的两种形态。
+    //
+    // 两段都验：鸭子在（§6.7 写的是「鸭子空状态」，只有文字等于丢了 IP 载体）、
+    // 文案在（色弱/小图不可辨时文字是唯一通道，同 completenessTag 的理由）。
+    {
+      const endPages = [
+        ['buildNotification', '通知中心 /notifications'],
+        ['buildMyFavorite', '我的收藏 /favorites'],
+        ['buildMyPublish', '我的发布 /posts/mine']
+      ];
+      const endBad = [];
+      for (const [fn, label] of endPages) {
+        const frame = M[fn]();
+        const end = frame.findOne((n) => n.name === '_list-end');
+        if (!end) { endBad.push(label + ':无 _list-end'); continue; }
+        // 鸭子取 40px → mini 档，节点名带档位后缀
+        if (!end.findOne((n) => n.name.indexOf('_duck-symbol') === 0)) {
+          endBad.push(label + ':收尾条无鸭子符号');
+        }
+        const words = end.findAll((n) => n.type === 'TEXT').map((n) => n.characters);
+        if (!words.some((w) => w.indexOf('没有更多了') >= 0)) {
+          endBad.push(label + ':收尾条无「没有更多了」文案(' + pj(words) + ')');
+        }
+        // 收尾条必须排在列表条目之后，排在前面等于「一进页面就说到底了」
+        const holder = end.parent;
+        if (holder.children.indexOf(end) !== holder.children.length - 1) {
+          endBad.push(label + ':收尾条不在 ' + holder.name + ' 末位');
+        }
+      }
+      check(
+        '三个分页列表页画出「没有更多了」收尾态（鸭子 + 文案 + 排末位；§6.7 :1291）',
+        endBad.length === 0,
+        endBad.length ? endBad.join('; ') : endPages.length + ' 页全部命中'
+      );
+
+      // 收尾条不得满宽塞进带 lg 内边距的容器：390 宽的条挂进 padding 16 的 _body
+      // 会把容器顶到 422，画框随之变形。这是 listEndRow(width) 那个参数存在的
+      // 唯一理由，故须有断言守住调用方真的传了
+      const endWide = [];
+      for (const [fn, label] of endPages) {
+        const end = M[fn]().findOne((n) => n.name === '_list-end');
+        if (!end) continue;
+        const h = end.parent;
+        const avail = h.width - h.paddingLeft - h.paddingRight;
+        if (end.width > avail + 0.5) {
+          endWide.push(label + ':收尾条 ' + Math.round(end.width) + ' > 可用 ' + Math.round(avail));
+        }
+      }
+      check(
+        '收尾条宽度不超出宿主容器可用宽（满宽条挂进带 padding 的 _body 会顶变形）',
+        endWide.length === 0,
+        endWide.length ? endWide.join('; ') : '三页宽度全部合规'
       );
     }
 
