@@ -1664,6 +1664,90 @@ function allText(root) {
       tabFloat.length ? tabFloat.length + ' 处：' + tabFloat.slice(0, 5).join('; ') : '全部贴底'
     );
 
+    // ⑭ 凡设了 layoutGrow 的节点，其父容器主轴方向不得是 hug（2026-08-30 条目 [71]）。
+    //
+    // 这是本项目第三次踩同一个坑，也是唯一能机械拦住它的判据：
+    //   · :1514 searchBar 注释早写明「宽度既然由内容决定，layoutGrow 就拉不动它」；
+    //   · notifyRow(:3380)、card(:1717) 都在容器上显式写了 w；
+    //   · 而 certRow 漏了 —— 容器 hug、内部 main.layoutGrow = 1 无剩余宽可分，
+    //     main 塌成 0 宽，三行文字与右端动作坐标重合。实机渲染图上三行全部压字，
+    //     是条目 [71] 唯一的阻断级缺陷。
+    //
+    // 为什么此前 227 项全绿却没拦住：所有既有断言量的都是「节点自身的几何与
+    // 层级」，而这里错的是**父子两级属性的组合**（父 hug × 子 grow）。单看任一
+    // 级都合法，必须成对检查 —— 这类「组合非法」的缺陷是探针的结构性盲区。
+    //
+    // 判据只查主轴：横排父级看宽度、纵排父级看高度。副轴的 hug 与 grow 无关。
+    //
+    // 用 primaryAxisSizingMode === 'AUTO' 判 hug，这是 box() 真会写的字段
+    // （code.js:783：横排传 w 则 FIXED，不传则 AUTO）。两条走不通的路都试过：
+    //   ① 读 layoutSizingHorizontal —— mock 里初值恒为 'HUG'（:187），box() 传 w
+    //      不改它，据此判定把 _nav-search 等 77–102 处正常节点全报失败；
+    //   ② 量「父宽 - 固定子项宽是否还有剩余」—— hug 父级的宽本就等于内容合计，
+    //      grow 子节点的内容宽也计入了父宽，算下来恒有剩余，反向验证时一个都报
+    //      不出（撤掉 certRow 的 w 后仍 237 全绿，是假的绿）。
+    // 这两次误判都印证原则 117：断言首跑的结果要先对照「缺陷全集应该有多大」。
+    //
+    // 一个必须放行的例外：父级自己也 grow（且与祖父同向）时，它的主轴尺寸由祖父
+    // 供给，AUTO 只是「没显式写死」而非真 hug。detail/publish/contact 三页的
+    // _body 正是此形：box(...,'VERTICAL',{w:CANVAS.w}) 只传 w，纵排下 w 走
+    // counterAxis，primaryAxis 停在 AUTO，随后 body.layoutGrow = 1
+    // （code.js:4423/4525/4560）从画框取高，pushToBottom 的 _spacer 因此有空间可吃。
+    // 不排除这一形，⑭ 会把 pushToBottom 的每一处正当用法都报成缺陷。
+    const growInHug = [];
+    for (const g of got) {
+      const all = g.frame.findAll(() => true);
+      for (const n of all) {
+        if (!(n.layoutGrow > 0)) continue;
+        const p = n.parent;
+        if (!p || !p.layoutMode || p.layoutMode === 'NONE') continue;
+        // 父级自身沿同一轴向 grow → 主轴尺寸来自祖父，不是 hug
+        if (p.layoutGrow > 0 && p.parent && p.parent.layoutMode === p.layoutMode) continue;
+        if (p.primaryAxisSizingMode === 'AUTO') {
+          growInHug.push(g.frame.name.slice(0, 20) + '：' + n.name
+            + ' grow=' + n.layoutGrow + ' 但父 ' + p.name
+            + '(' + p.layoutMode + ') 主轴 AUTO/hug');
+        }
+      }
+    }
+    check(
+      label + ' 设了 layoutGrow 的节点其父级主轴不得 hug（hug 无剩余空间可分 → 子节点塌成 0 致文字重叠）',
+      growInHug.length === 0,
+      growInHug.length ? growInHug.length + ' 处：' + growInHug.slice(0, 5).join('; ') : '全部合规'
+    );
+
+    // ⑮ 同一横排 Auto Layout 内，相邻可见子节点的水平投影不得相交（条目 [71]）。
+    //
+    // 与 ⑭ 是同一缺陷的两个抓法：⑭ 抓成因（父 hug × 子 grow），本条抓现象
+    // （真的压字了）。两条都留，因为重叠的成因不止 hug 一种 —— 负 itemSpacing、
+    // 固定宽子节点合计超出父宽、ABSOLUTE 定位失手，都会压字而父级并非 hug。
+    //
+    // 离线 mock 不做真实坐标分配（x 恒为 0），所以不能量绝对坐标，改量
+    // 「子节点宽度合计 + 间距 + 内边距是否超出父级可用宽」—— 超出即必然重叠或
+    // 溢出。这与 ⑬ 那条用「填充高」替代「绝对底边」是同一套替代口径。
+    const rowOverflow = [];
+    for (const g of got) {
+      const rows = g.frame.findAll((n) => n.layoutMode === 'HORIZONTAL' && n.width > 0);
+      for (const r of rows) {
+        const kids = r.children.filter((c) => c.layoutPositioning !== 'ABSOLUTE'
+          && c.visible !== false);
+        if (kids.length < 2) continue;
+        // grow>0 的子节点会自行收缩，不参与溢出判定
+        if (kids.some((c) => c.layoutGrow > 0)) continue;
+        const sum = kids.reduce((a, c) => a + c.width, 0)
+          + r.itemSpacing * (kids.length - 1) + r.paddingLeft + r.paddingRight;
+        if (sum > r.width + 0.5) {
+          rowOverflow.push(g.frame.name.slice(0, 20) + '：' + r.name
+            + ' 子项合计 ' + Math.round(sum) + ' > 行宽 ' + Math.round(r.width));
+        }
+      }
+    }
+    check(
+      label + ' 横排行内子项合计不超行宽（超出即压字或溢出；实机 trust 页曾三行全部重叠）',
+      rowOverflow.length === 0,
+      rowOverflow.length ? rowOverflow.length + ' 处：' + rowOverflow.slice(0, 5).join('; ') : '全部合规'
+    );
+
     // ============================================================
     // ⑦～⑫ 一次性补齐的六个新维度（2026-08-27）
     //
@@ -3609,7 +3693,9 @@ function allText(root) {
     {
       // —— my-publish（PRD §8.3.1 / §8.6 状态机）——
       const pub = M.buildMyPublish();
-      const blocks = pub.findAll((n) => n.name.indexOf('_pub/') === 0);
+      // 条目 [71] 起，操作组下沉到卡片内部，透明的 _pub/ 中间层已取消，
+      // 故按卡片节点自身计数（card() 出来的节点名以 card/ 起头）
+      const blocks = pub.findAll((n) => n.name.indexOf('card/') === 0);
       // 三种发布状态同屏：§8.6 那张状态机图若在稿子上只落地「在架」一种，
       // 等于没落地。补「全部」页签正是为了让三态可以同屏
       const badges = pub.findAll((n) => n.type === 'TEXT').map((n) => n.characters);
@@ -3621,14 +3707,17 @@ function allText(root) {
         + ['在架', '已下架', '草稿'].filter((t) => badges.indexOf(t) >= 0).join('/')
       );
 
-      // 操作组必须逐条挂在卡下，不能是整页底部一组游离按钮：
-      // §8.3.1 写的是「右：操作组」——每行一组。整页一组会被读成「作用于全部条目」
+      // 操作组必须在卡片**内部**（2026-08-30 条目 [71] 改严）：
+      // §8.3.1 写的是「右：操作组」—— 操作与条目同属一个视觉单元。
+      // 旧判据只要求它挂在透明的 _pub/ 容器里，而那样操作组落在两卡之间的
+      // 页面底色上、左对齐悬空，渲染图上四组按钮看起来都像属于**下面**那张卡。
+      // 判据因此收紧为「父节点必须是 card/ 本身」。
       const acts = pub.findAll((n) => n.name === '_pub-actions');
-      const actsAllInBlock = acts.every((a) => a.parent && a.parent.name.indexOf('_pub/') === 0);
+      const actsAllInCard = acts.every((a) => a.parent && a.parent.name.indexOf('card/') === 0);
       check(
-        'my-publish 操作组逐条挂在卡下（整页一组会被读成作用于全部条目，§8.3.1）',
-        acts.length === blocks.length && actsAllInBlock,
-        acts.length + ' 组 / ' + blocks.length + ' 张卡，全部挂在卡块内=' + actsAllInBlock
+        'my-publish 操作组落在卡片内部（游离在卡外会被读成属于下一张卡，§8.3.1）',
+        acts.length === blocks.length && actsAllInCard,
+        acts.length + ' 组 / ' + blocks.length + ' 张卡，全部在卡内=' + actsAllInCard
       );
 
       // 操作组随状态变：在架给「下架」、已下架给「刷新重发」、草稿给「继续编辑」。

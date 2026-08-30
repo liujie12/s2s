@@ -3412,13 +3412,26 @@ function notifyRow(iconKey, title, summary, time, unread) {
  * @param {string} state 状态档，取 'passed' | 'reviewing' | 'none'
  * @param {string} meta 状态右侧补充文字（通过日期，或「发布 X 类必须」）
  * @param {string} [action] 右端动作文案，如「管理」；省略则不出动作
+ * @param {number} [width] 行宽。默认按「358 卡宽 - md 内边距 ×2」推算；宿主卡
+ *   padding 不同时必须显式传，否则行会顶出卡外或右端动作被挤掉
  * @returns {FrameNode} 认证行节点
  */
-function certRow(label, state, meta, action) {
+function certRow(label, state, meta, action, width) {
   var dotRole = { passed: 'color/success', reviewing: 'color/warning', none: 'color/error' }[state];
   var inkRole = { passed: 'color/success-text', reviewing: 'color/warning-text', none: 'color/error-text' }[state];
   var stateLabel = { passed: '已通过', reviewing: '审核中', none: '未认证' }[state];
-  var r = box('cert/' + label, 'HORIZONTAL', { gap: SPACING.sm, align: 'CENTER' });
+  // 必须显式给宽（2026-08-30 条目 [71]）：本行原先只写 { gap, align }，容器宽度
+  // 是 hug。hug 容器没有「剩余宽」可分，下面 main.layoutGrow = 1 便拉不动它 ——
+  // main 塌成 0 宽，于是「企业认证」与「查看 ›」坐标重合、meta 整段被挤出可视区。
+  // 实机渲染图（r64-trust.png）上三行全部文字压字，是本轮唯一的阻断级缺陷。
+  //
+  // 这个坑项目里早有定论：searchBar 的 :1514 注释写明「宽度既然由内容决定，
+  // layoutGrow 就拉不动它」，notifyRow(:3380) 与 card(:1717) 两处也都在容器上
+  // 显式写了 w —— 只有本函数漏了。故此处补 w，并把它做成必填参数由调用方传，
+  // 因为行宽取决于宿主卡片的可用宽（cw - padding），构造器无从自知。
+  var r = box('cert/' + label, 'HORIZONTAL', {
+    w: width || CANVAS.w - SPACING.lg * 2 - SPACING.md * 2, gap: SPACING.sm, align: 'CENTER'
+  });
   var main = box('_cert-main', 'VERTICAL', { gap: SPACING.xs });
   // grow=1：动作文案宽度不定（管理/查看/去认证 二到三字），左列吃剩余宽
   // 才能保证四行的动作文案右缘对齐
@@ -4585,15 +4598,18 @@ function buildProfile() {
   // 会被误点，稿图也是用一条分隔线把它单独隔出来的
   var quit = box('_quit', 'VERTICAL', { w: CANVAS.w, pad: SPACING.lg });
   quit.appendChild(button('退出登录', 'danger', CANVAS.w - SPACING.lg * 2));
-  s.appendChild(quit);
-  // 底部 Tab 贴到画框底边（2026-08-29 条目 [70]，P1 修复）：本页内容实测 479px，
-  // Tab 栏原先紧跟在设置行下方、悬在 479px 处，底下还空着 365px。
-  // 底部 Tab 是全局导航，它在其他所有页面上都在屏幕最下沿，这里悬在半空
-  // 会让评审以为「我的」页的 Tab 是另一种形态。
+  // 退出登录与 Tab 一起贴底（2026-08-30 条目 [71]）：上一轮只把 Tab 贴了底，
+  // _quit 仍按顺序挂在画框上，于是渲染图（r64-profile.png）上按钮浮在页面中部、
+  // 下方空着约 250px —— 既不像吸底也不像随内容，一个破坏性操作悬在半空最容易
+  // 被误读为「还有内容没画完」。
+  //
+  // 为什么归到 tailNodes 而不是给 _quit 前面单独插 spacer：pushToBottom 一次
+  // 只造一个 spacer，两个 spacer 会把剩余空间对半分、按钮反而卡在中间偏下。
+  // 顺序为 [quit, bottomTab] —— 退出键在 Tab 之上，与 §3.4.2 稿图一致。
   //
   // 与 contact/trust 用 pushToBottom 的差别：本页没有统一的 _body 容器，
   // 三段直接挂在画框上，故 spacer 直接插在画框层
-  pushToBottom(s, [bottomTab('我的')]);
+  pushToBottom(s, [quit, bottomTab('我的')]);
   return s;
 }
 
@@ -4621,19 +4637,44 @@ function buildMyPublish() {
   var body = box('_body', 'VERTICAL', { w: CANVAS.w, pad: SPACING.lg, gap: SPACING.md });
 
   /**
-   * 生成一条「卡片 + 逐条操作组」的组合块。
+   * 生成一条「卡片 + 卡内逐条操作组」的组合块。
+   *
+   * 操作组必须在卡片内（2026-08-30 条目 [71]）：原实现把 acts 与 card 并列挂在
+   * 一个透明 _pub 容器里，操作组落在两卡之间的页面底色上、左对齐悬空。渲染图
+   * （r64-my-publish.png）上四组按钮看起来都像属于**下面**那张卡 —— §8.3.1 写的
+   * 是「右：操作组」，即操作与条目同属一个视觉单元，游离在外就丢了这层归属。
+   *
+   * 做法是把 acts 追加进 card 返回的 Frame，并把 card 由横排改纵排容纳两行。
+   * card() 是纯原生 Frame（未走 COMP_CACHE，见 :1717），可安全增删子节点；
+   * 若它是 Instance 则 appendChild 会直接报错，那样就只能改 master。
+   *
    * @param {Array} it [标题, 副标题, catKey, 状态标, 完整度档或空, 操作文案数组]
-   * @returns {FrameNode} 组合块节点
+   * @returns {FrameNode} 卡片节点（操作组已在其内）
    */
   var pubItem = function (it) {
-    var g = box('_pub/' + it[0], 'VERTICAL', { w: CANVAS.w - SPACING.lg * 2, gap: SPACING.xs });
-    g.appendChild(card(it[0], it[1], 'category/' + it[2], it[3], it[4] || undefined));
+    var c = card(it[0], it[1], 'category/' + it[2], it[3], it[4] || undefined);
+    // card 原为 HORIZONTAL（色条 · 主体 · 状态标 三列）。要在其下再放一行操作组，
+    // 需把这三列先收进一个横排子容器，卡片本身改纵排
+    var top = box('_pub-top', 'HORIZONTAL', {
+      w: CANVAS.w - SPACING.lg * 2 - SPACING.lg * 2, gap: SPACING.md, align: 'MIN'
+    });
+    while (c.children.length) top.appendChild(c.children[0]);
+    c.layoutMode = 'VERTICAL';
+    c.itemSpacing = SPACING.sm;
+    bindNum(c, 'itemSpacing', 'spacing', SPACING.sm);
+    c.appendChild(top);
+    // 分隔线把「信息」与「操作」隔开：同色同底的两行紧贴时，按钮会被读成正文的
+    // 一部分（listRow 里也是用底线区分行边界的）
+    var sep = box('_pub-sep', 'HORIZONTAL', {
+      w: CANVAS.w - SPACING.lg * 2 - SPACING.lg * 2, h: 1, fill: 'color/border'
+    });
+    c.appendChild(sep);
     var acts = box('_pub-actions', 'HORIZONTAL', { gap: SPACING.sm });
     for (var j = 0; j < it[5].length; j++) {
       acts.appendChild(button(it[5][j], j === 0 ? 'secondary' : 'ghost', 0));
     }
-    g.appendChild(acts);
-    return g;
+    c.appendChild(acts);
+    return c;
   };
 
   // 三种状态标各占一条，操作组随状态变化：在架给「下架」、下架给「重发」、
@@ -4803,9 +4844,13 @@ function buildTrust() {
   l2.appendChild(text('第二层 · 资质认证', 'h3'));
   // 三行刻意各占一档状态（已通过 / 审核中 / 未认证）：本页是设计稿，评审要看的
   // 是三种状态的视觉差，全画成「已通过」等于只交付了三分之一的规格
-  l2.appendChild(certRow('企业认证', 'reviewing', '2026-08-09 提交', '查看'));
-  l2.appendChild(certRow('家政资质', 'none', '发布家政/保洁/维修类必须', '去认证'));
-  l2.appendChild(certRow('车辆认证', 'passed', '2026-05-12', '管理'));
+  //
+  // 显式传行宽（2026-08-30 条目 [71]）：宿主 _layer2 宽 cw、内边距 md，故行的
+  // 可用宽是 cw - md*2。不传则 certRow 落回 hug、内部 grow 拉不动、三行压字
+  var certW = cw - SPACING.md * 2;
+  l2.appendChild(certRow('企业认证', 'reviewing', '2026-08-09 提交', '查看', certW));
+  l2.appendChild(certRow('家政资质', 'none', '发布家政/保洁/维修类必须', '去认证', certW));
+  l2.appendChild(certRow('车辆认证', 'passed', '2026-05-12', '管理', certW));
   body.appendChild(l2);
 
   // ---- 信任指标卡（PRD §4.4）----
