@@ -4660,6 +4660,17 @@ function buildMyPublish() {
     });
     while (c.children.length) top.appendChild(c.children[0]);
     c.layoutMode = 'VERTICAL';
+    // 改轴向后必须同步纠正两轴 sizing（2026-08-30 实机复验发现，条目 [71]）：
+    // box() 里 primaryAxisSizingMode 指的是主轴（= layoutMode 方向）。card() 建时是
+    // HORIZONTAL 且只传了 w，于是 primary(横)=FIXED、counter(竖)=AUTO。此处把
+    // layoutMode 翻成 VERTICAL，两轴语义随之互换 —— 竖轴接过 FIXED 并锁死在原横排
+    // hug 出来的 45px，横轴反而变成 HUG。结果是三行内容（top 44 + sep 1 + acts 47）
+    // 被裁在 45px 高的卡里，实机渲染图上只剩标题那一行，分隔线与操作组全部不可见。
+    // 首轮机读验证只查了 _pub-sep 数量与 legacyPubLayer，两者都在，故没暴露 —— 光看
+    // 「节点存在」验不出「节点被裁掉」，高度必须一起断言。
+    c.primaryAxisSizingMode = 'AUTO';               // 竖轴：随三行内容 hug
+    c.counterAxisSizingMode = 'FIXED';              // 横轴：保持卡片满宽
+    c.resize(CANVAS.w - SPACING.lg * 2, c.height);
     c.itemSpacing = SPACING.sm;
     bindNum(c, 'itemSpacing', 'spacing', SPACING.sm);
     c.appendChild(top);

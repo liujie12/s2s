@@ -598,6 +598,8 @@ const wrapped = new Function(
       // 源码正则数不出「五种触发种类是否齐备」这类语义完整性
       'buildNotification', 'buildMyFavorite', 'buildMyPublish', 'buildSettings',
       'notifyRow', 'groupTitle', 'certRow',
+      // 条目 [71]：card 供「改 layoutMode 后卡高是否装得下」的反向断言直接构造用
+      'card',
       // 条目 [70] 第三段（2026-08-30）：分页收尾条，三个「我的」列表页 + list 页共用
       'listEndRow']
       .map((k) => k + ': typeof ' + k + " !== 'undefined' ? " + k + ' : undefined')
@@ -3718,6 +3720,39 @@ function allText(root) {
         'my-publish 操作组落在卡片内部（游离在卡外会被读成属于下一张卡，§8.3.1）',
         acts.length === blocks.length && actsAllInCard,
         acts.length + ' 组 / ' + blocks.length + ' 张卡，全部在卡内=' + actsAllInCard
+      );
+
+      // 「在卡内」还不够，卡还得**装得下**（2026-08-30 实机复验补，条目 [71]）：
+      // 上一条只查父子关系，四组操作全部命中、_pub-sep 也在，可实机渲染图上
+      // 分隔线与按钮统统看不见 —— 卡高被锁死在 45px，三行内容（top 44 + sep 1
+      // + acts 47）被裁掉了两行。根因是 card() 建时 layoutMode 为 HORIZONTAL，
+      // box() 按主轴映射把横轴设为 FIXED、竖轴设为 AUTO；pubItem 把 layoutMode
+      // 翻成 VERTICAL 后两轴语义互换，竖轴接过 FIXED 并保留了原横排 hug 出来的高。
+      //
+      // 教训：「节点存在」验不出「节点被裁」。凡改过 layoutMode 的容器，都要断言
+      // 它的尺寸容得下子节点之和。
+      const cardGeom = blocks.map((c) => {
+        const sum = c.children.reduce((a, k) => a + k.height, 0)
+          + (c.children.length - 1) * c.itemSpacing + c.paddingTop + c.paddingBottom;
+        return { n: c.name, h: Math.round(c.height), need: Math.round(sum), w: Math.round(c.width) };
+      });
+      const cardFits = cardGeom.every((g) => g.h >= g.need && g.w === 358);
+      check(
+        'my-publish 卡片高度容得下卡内三行（改 layoutMode 后两轴 sizing 会互换，高被锁死则操作组被裁不可见）',
+        cardFits,
+        cardGeom.map((g) => g.h + '≥' + g.need + '/w' + g.w).join(' ')
+      );
+
+      // [反向] 退回改前写法（只翻 layoutMode、不纠正两轴 sizing），上条必须报失败，
+      // 以证明它测的是真实几何而不是恒真式
+      const badCard = M.card('反向卡', '副标题', 'category/cat-work', '在架');
+      badCard.layoutMode = 'VERTICAL';
+      const badNeed = badCard.children.reduce((a, k) => a + k.height, 0)
+        + badCard.paddingTop + badCard.paddingBottom;
+      check(
+        '[反向] 只翻 layoutMode 不纠正 sizing 时，卡高确实装不下内容（证明上条测的是真几何）',
+        badCard.height < badNeed,
+        'h=' + Math.round(badCard.height) + ' < need=' + Math.round(badNeed)
       );
 
       // 操作组随状态变：在架给「下架」、已下架给「刷新重发」、草稿给「继续编辑」。
