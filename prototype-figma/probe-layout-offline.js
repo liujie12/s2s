@@ -586,7 +586,18 @@ const wrapped = new Function(
       // 像素精修（2026-08-27，条目 [61]）：三条不变量要真跑 markerInfoCard 与
       // listHintRow 去量左缘，不能只做源码正则 —— 写了容器却忘挂子节点时，
       // 正则全绿而画面照旧参差
-      'markerInfoCard', 'listHintRow', 'TIGHT_GAP', 'CHECKBOX_SIZE']
+      'markerInfoCard', 'listHintRow', 'TIGHT_GAP', 'CHECKBOX_SIZE',
+      // 条目 [70]（2026-08-29，P1–P5 修复）：新增的六个构造器必须能被断言直接
+      // 真跑。尤其 completenessTag/doneTag —— 它们替掉的是 emoji，而 emoji 的
+      // 危害（三端字形不一、色值不受 paintOf 控制）在离线与实机都看不出来，
+      // 只有「画布零 emoji」这条断言拦得住下一次随手写 🟢
+      'completenessTag', 'doneTag', 'selectField', 'flexSpacer', 'pushToBottom',
+      'ICON_PATHS', 'CONTENT', 'buildPublish', 'buildProfile', 'buildTrust', 'listRow',
+      // 条目 [70] 后补的四页（notification / my-favorite / my-publish / settings）：
+      // 这四页的病根是「PRD 明列的条目没画全」，判据必须真跑构造器去数条目，
+      // 源码正则数不出「五种触发种类是否齐备」这类语义完整性
+      'buildNotification', 'buildMyFavorite', 'buildMyPublish', 'buildSettings',
+      'notifyRow', 'groupTitle', 'certRow']
       .map((k) => k + ': typeof ' + k + " !== 'undefined' ? " + k + ' : undefined')
       .join(', ') +
     ' };'
@@ -3001,6 +3012,656 @@ function allText(root) {
       M.motionLine('press').indexOf(savedDur + 'ms') > 0,
       '现算生效且已复原为 ' + savedDur + 'ms'
     );
+  }
+
+  // ============================================================
+  // 十三、条目 [70]：五项图上问题的修复（P1–P5）
+  //
+  // 这一节守的四件事，共同点是「画布上看着都对，只有量过才知道错」：
+  // ① 画布正式内容零 emoji（P3）—— 本节最要紧的一条。emoji 的危害不在离线也
+  //    不在单端截图，而在三端字形不一 + 色值完全不受 paintOf(role) 控制：
+  //    §1.4.2 实算的对比度对它一概无效。这类错永远是「随手写一个 🟢」引入的，
+  //    源码 review 也极易放过（它就在一句正常文案里），故必须做成机读断言，
+  //    与 TIGHT_GAP 用量锁定同一防护思路。
+  // ② 完整度三档必须有文字通道（P3 的可访问性内核）—— 改之前颜色是三档唯一
+  //    载体，色弱用户无法区分。断言查「档名文字在不在」而不是「色点在不在」：
+  //    色点谁都不会漏，漏的恰恰是文字。
+  // ③ 五页尾部元素真的贴底（P1+P2）—— 判据是「spacer 存在且 layoutGrow=1 且
+  //    它后面还有节点」。三个条件缺一都会退回原状：有 spacer 没 grow 是死的
+  //    1px；有 grow 但 spacer 排在末位，则什么都没被推下去。
+  // ④ selectField 不超可用宽（P5 顺手修的几何 bug）—— listRow 写死 390 宽，
+  //    塞进 lg 内边距的页面里比可用宽 358 宽出 32px，画面上只是「贴边」，
+  //    看不出是溢出。
+  // ============================================================
+  console.log('\n--- 条目 [70]：P1–P5 修复 ---');
+  {
+    const pj = (x) => JSON.stringify(x);
+    // 可用宽从真源现算，不写死 358：SPACING.lg 若哪天调了，这里要跟着变，
+    // 而不是让断言拿一个过期数字去核（原则㊾：数字只能有一个出处）
+    const CANVAS_W_AVAIL = M.CANVAS.w - M.SPACING.lg * 2;
+
+    // ---------- P3：画布正式内容零 emoji ----------
+    //
+    // 扫的是**真跑出来的 TEXT 节点**而非源码：源码里的注释与 figma.notify 文案
+    // 允许留 emoji（不进画布、不受三端字体影响），查源码会把它们误报成问题。
+    //
+    // 区间取法：用 Unicode 属性 \p{Emoji_Presentation}（「默认按彩色 emoji 呈现」
+    // 的字符集）而非手写码点区间。首版手写 U+2600–27BF 等区间时踩了两头：
+    //   ① 漏 —— ✨(U+2728) 在区间内但我首版没把该区间写进去，画布上漏网一处；
+    //   ② 误 —— 该区间也含 ✓(U+2713)、→、‹›，它们是**标点/几何符号**，
+    //      默认黑白呈现、受 paintOf 控制，正是我们用来替代 emoji 的东西。
+    // Emoji_Presentation 恰好把这条线画准：✨🟢✅📞 全捕获，✓→‹› 全放过。
+    // 加 \uFE0F 是因为「⚠️」那类靠变体选择符强制彩色呈现的组合，基字符本身
+    // 不在该属性内。
+    const EMOJI_RE = /[\p{Emoji_Presentation}\uFE0F]/u;
+    const emojiHits = [];
+    for (const pg of figma.root.children) {
+      for (const t of pg.findAll((n) => n.type === 'TEXT')) {
+        if (EMOJI_RE.test(t.characters)) {
+          emojiHits.push('"' + t.characters.slice(0, 24) + '"@' + (t.parent ? t.parent.name : '?'));
+        }
+      }
+    }
+    check(
+      '画布正式内容零 emoji（三端字形不一且色值不受 paintOf 控制，§1.4.2 对比度对其无效）',
+      emojiHits.length === 0,
+      emojiHits.length
+        ? '发现 ' + emojiHits.length + ' 处：' + emojiHits.slice(0, 8).join(' | ')
+        : '全部页面 TEXT 节点已扫，零命中'
+    );
+
+    // 反向：往画布上注入一个 🟢，验上面那条判据真的会红。
+    // 不改源码而是直接改节点文本 —— 验的是判据本身，源码怎么写都拦得住。
+    {
+      const victim = figma.root.children[0].findAll((n) => n.type === 'TEXT')[0];
+      const saved = victim.characters;
+      victim.characters = '完整度 🟢';
+      const caught = EMOJI_RE.test(victim.characters);
+      victim.characters = saved;
+      check(
+        '[反向] 注入 🟢 后「零 emoji」判据确实触发（且已复原）',
+        caught && !EMOJI_RE.test(victim.characters),
+        caught ? '已检出并复原为 "' + saved.slice(0, 16) + '"' : '未检出 —— 判据区间需扩大'
+      );
+    }
+
+    // ---------- P3：completenessTag 三档的色点 role 与文字通道 ----------
+    //
+    // 期望 role 在这里写死是有意的：它们是 PRD §9.8「完整度三档」到 §1.4.2
+    // 语义色的映射本身，改映射必须同步改 PRD，故让它在此亮红。
+    const wantDot = { green: 'color/success', yellow: 'color/warning', red: 'color/error' };
+    const wantLabel = { green: '完整', yellow: '半完整', red: '待补充' };
+    /**
+     * 取一个 svgIcon 节点的实际着色。
+     *
+     * 必须往里钻一层：svgIcon() 把外框 fills 清空（node.fills = []），
+     * 颜色落在内部 VECTOR 上。首版直接比外框 fills，三档全报「role 不符」——
+     * 又一次「取值路径不对却报成内容问题」（同本轮 probe-token-vars 的 CARD_SIG）。
+     * @param {Object} icon svgIcon 产出的节点
+     * @returns {Array|null} 内部矢量的 fills，取不到时返回 null
+     */
+    const iconFills = (icon) => {
+      if (!icon) return null;
+      const vec = icon.findOne
+        ? icon.findOne((n) => n.type === 'VECTOR' || n.type === 'BOOLEAN_OPERATION')
+        : null;
+      return vec ? vec.fills : null;
+    };
+    const ctBad = [];
+    for (const lv of Object.keys(wantDot)) {
+      const tag = M.completenessTag(lv);
+      const dot = tag.children[0];
+      const lab = tag.children[1];
+      if (!dot) ctBad.push(lv + ':无色点节点');
+      else if (pj(iconFills(dot)) !== pj([M.paintOf(wantDot[lv])])) {
+        ctBad.push(lv + ':色点 role 不符(' + pj(iconFills(dot)) + ')');
+      }
+      // 文字通道是本次可访问性修正的全部内容：缺了就退回「颜色是唯一载体」
+      if (!lab || lab.type !== 'TEXT' || lab.characters !== wantLabel[lv]) {
+        ctBad.push(lv + ':档名文字缺失或不符(' + (lab ? lab.characters : 'n/a') + ')');
+      }
+    }
+    check(
+      'completenessTag 三档色点取 success/warning/error 且各带档名文字（颜色不再是唯一语义通道）',
+      ctBad.length === 0,
+      ctBad.length ? ctBad.join('; ') : '三档色点 role + 文字「完整/半完整/待补充」全部对齐'
+    );
+
+    // 色点边长必须跟随字阶派生，不许写死：写死 10px 配 h3 偏小、配 caption 会
+    // 盖过档名，把刚补上的文字通道又压回次要位置
+    const dotSizes = ['caption', 'small', 'h3'].map((sc) => {
+      const t = M.completenessTag('green', sc);
+      return Math.round(t.children[0].width);
+    });
+    check(
+      'completenessTag 色点边长随字阶派生（写死尺寸会让文字通道被色点压回次要位置）',
+      new Set(dotSizes).size === 3 && dotSizes[0] < dotSizes[2],
+      'caption/small/h3 三档色点边长 = ' + pj(dotSizes)
+    );
+
+    // dot-solid 图标定义必须真存在且是实心圆：completenessTag 的三处调用全靠它，
+    // 图标名拼错时 svgIcon 拿到 undefined，画面上只是「少个点」，不报错
+    const dotDef = (M.ICON_PATHS || {})['dot-solid'];
+    check(
+      "ICON_PATHS['dot-solid'] 已定义（三档色点的唯一矢量来源，缺失时只是静默少个点）",
+      !!dotDef && typeof dotDef.d === 'string' && dotDef.d.indexOf('<path') === 0 && !!dotDef.vb,
+      dotDef ? 'viewBox=' + dotDef.vb : '未定义'
+    );
+
+    // doneTag：勾是矢量而非 ✅，且文字如实透传
+    {
+      const dt = M.doneTag('已实名');
+      const tick = dt.children[0];
+      const lab = dt.children[1];
+      check(
+        'doneTag 用矢量勾 + 文字（替掉 ✅，勾色走 success role）',
+        !!tick && pj(iconFills(tick)) === pj([M.paintOf('color/success')]) &&
+        !!lab && lab.characters === '已实名',
+        lab ? '勾色 ' + pj(iconFills(tick)) + '，文字「' + lab.characters + '」' : '结构不符'
+      );
+    }
+
+    // ---------- P4：详情页描述区 ----------
+    {
+      const detail = M.buildDetail();
+      const desc = byName(detail, '_description');
+      const body = detail.children.find((c) => c.name === '_body');
+      const idxOf = (nm) => body.children.findIndex((c) => c.name === nm);
+      check(
+        '详情页有 _description 卡且正文非空（PRD §7.4.1 稿图要求，改前稿缺实现有）',
+        !!desc && desc.children.length === 2 &&
+        desc.children[1].type === 'TEXT' && desc.children[1].characters.length > 20,
+        desc ? '正文 ' + desc.children[1].characters.length + ' 字' : '未找到 _description'
+      );
+      // 长文本必须 FILL + HEIGHT：默认 WIDTH_AND_HEIGHT 会一路 hug 撑破 390 画框，
+      // 而 mock 的 HUG 计算同样会让宽度超出，故这条离线就能拦住
+      check(
+        '_description 正文设 textAutoResize=HEIGHT 且 layoutSizingHorizontal=FILL（否则撑破 390）',
+        !!desc && desc.children[1].textAutoResize === 'HEIGHT' &&
+        desc.children[1].layoutSizingHorizontal === 'FILL' &&
+        Math.round(desc.width) <= CANVAS_W_AVAIL,
+        desc ? 'autoResize=' + desc.children[1].textAutoResize +
+          '，sizing=' + desc.children[1].layoutSizingHorizontal +
+          '，卡宽 ' + Math.round(desc.width) : 'n/a'
+      );
+      // 次序：模板字段 → 描述 → 信任卡。「是什么 → 怎么说 → 信不信」的递进，
+      // 描述挪到信任卡之后就变成了先判可信度再给内容
+      check(
+        '详情页次序为 模板字段 → 描述 → 信任卡（PRD §7.4.1 稿图次序）',
+        idxOf('_template-fields') >= 0 &&
+        idxOf('_template-fields') < idxOf('_description') &&
+        idxOf('_description') < idxOf('_trust-card'),
+        '模板 ' + idxOf('_template-fields') + ' / 描述 ' + idxOf('_description') +
+        ' / 信任卡 ' + idxOf('_trust-card')
+      );
+    }
+
+    // ---------- P5：发布页字段形态统一 ----------
+    {
+      const pub = M.buildPublish();
+      const body = pub.children.find((c) => c.name === '_body');
+      // 四个字段全部走 field/* 命名：改前「选择分类/地点」是 row/*（listRow），
+      // 与另两个 field 并列时看不出哪个能输入、哪个是跳转
+      const fieldNames = body.children
+        .filter((c) => c.name.indexOf('field/') === 0)
+        .map((c) => c.name);
+      check(
+        '发布页四字段同为 field/* 形态且次序为 分类→标题→薪资→地点（分类决定后续模板，须在最前）',
+        pj(fieldNames) === pj(['field/选择分类', 'field/标题', 'field/薪资', 'field/地点']),
+        pj(fieldNames)
+      );
+      // 「可输入」与「可跳转」的差异必须留住：做成一模一样，用户会去点它然后
+      // 等键盘弹出。差异载体就是框内右端那个 ›
+      const sel = M.selectField('地点', null, '地图选点');
+      const ctrl = sel.children[1];
+      const inp = M.field('标题', '一句话说清你要发什么');
+      const inpCtrl = inp.children[1];
+      check(
+        'selectField 框内右端有 › 而 field 没有（区分可跳转与可输入，否则用户点了等键盘）',
+        allText(ctrl).indexOf('›') >= 0 && allText(inpCtrl).indexOf('›') < 0,
+        'select 内文本 ' + pj(allText(ctrl)) + '；field 内文本 ' + pj(allText(inpCtrl))
+      );
+      // 两者高度与宽度必须完全一致：形态统一的实质是同尺寸，只差那个 ›
+      check(
+        'selectField 与 field 同宽同高（形态统一的实质；宽须 = 可用宽 358，不是 listRow 的 390）',
+        Math.round(sel.width) === CANVAS_W_AVAIL &&
+        Math.round(sel.width) === Math.round(inp.width) &&
+        Math.round(ctrl.height) === Math.round(inpCtrl.height),
+        'select ' + Math.round(sel.width) + '×' + Math.round(ctrl.height) +
+        '，field ' + Math.round(inp.width) + '×' + Math.round(inpCtrl.height) +
+        '，可用宽 ' + CANVAS_W_AVAIL
+      );
+      // 反向：证明换掉 listRow 是必要的 —— 它写死 390 宽，塞进 lg 内边距页面
+      // 会比可用宽多出 2×lg，画面上只是「贴边」，看不出是溢出
+      const lr = M.listRow('地点', '地图选点');
+      check(
+        '[反向] listRow 宽 390 确实超出 lg 内边距下的可用宽 358（P5 换形态的几何依据）',
+        Math.round(lr.width) === M.CANVAS.w &&
+        Math.round(lr.width) - CANVAS_W_AVAIL === M.SPACING.lg * 2,
+        'listRow ' + Math.round(lr.width) + ' - 可用 ' + CANVAS_W_AVAIL +
+        ' = 超出 ' + (Math.round(lr.width) - CANVAS_W_AVAIL) + 'px'
+      );
+      // FLOW_LINKS 必须跟着改名走：selectField 让节点名从 row/* 变成 field/*，
+      // 漏改这两条则 Present 模式点下去无反应，而画布上毫无征兆
+      const renamed = M.FLOW_LINKS.filter(
+        (l) => l[0] === 'publish-screen' && l[1].indexOf('field/') === 0
+      ).map((l) => l[1] + '→' + l[2]);
+      const stale = M.FLOW_LINKS.filter(
+        (l) => l[0] === 'publish-screen' && l[1].indexOf('row/') === 0
+      );
+      check(
+        'FLOW_LINKS 已随 row/*→field/* 改名同步（漏改则 Present 模式点击无反应且画布无征兆）',
+        renamed.length === 2 && stale.length === 0,
+        pj(renamed) + (stale.length ? '；仍有旧名 ' + pj(stale.map((l) => l[1])) : '')
+      );
+    }
+
+    // ---------- P1+P2：四页尾部元素贴底 ----------
+    //
+    // 逐页点名而非只数总量：漏一页在画布上零征兆（就是「下面空着」，
+    // 而空着本来也没人能判断是有意留白还是稿子没画完 —— 这恰是 P1 的病灶）。
+    // 判据三件套：spacer 在、grow=1、它后面还有节点。
+    // 节点名口径：button() 把 Instance 名统一拼成 'btn/' + variant + '/' + label
+    //（code.js:1924），故必须带 variant 段 —— 首版写成 btn/capsule/… 五页全报
+    // 「尾部缺」，而实际用的是 primary/secondary。bottomTab 则走 instanceOf，
+    // 命中 master 时名为 shell/bottom-tab/我的、未命中时回落 _bottom-tab，
+    // 故只匹配两者共有的 'bottom-tab' 片段，不锁定其中任一形态。
+    //
+    // 2026-08-29 从五页减为四页：trust 页原先靠 pushToBottom 把红线 annotation
+    // 压到页脚，实机证明该修法失效（详见下方「annotation 不得作为唯一尾部元素」
+    // 一条），已改为补足 §4.4 内容让页面自然填满，不再用 spacer。
+    const tailPages = [
+      ['buildContact', '_body', ['btn/primary/拨打电话', 'btn/secondary/复制微信号']],
+      ['buildPublish', '_body', ['btn/primary/发布']],
+      ['buildDetail', '_body', ['btn/primary/联系 TA']],
+      // profile 无统一 _body，三段直接挂画框，故 spacer 插在画框层
+      ['buildProfile', null, ['bottom-tab']]
+    ];
+    const tailBad = [];
+    for (const [fn, holderName, wantTail] of tailPages) {
+      const frame = M[fn]();
+      const holder = holderName
+        ? frame.children.find((c) => c.name === holderName)
+        : frame;
+      if (!holder) { tailBad.push(fn + ':无容器 ' + holderName); continue; }
+      const kids = holder.children;
+      const spIdx = kids.findIndex((c) => c.name === '_spacer');
+      if (spIdx < 0) { tailBad.push(fn + ':无 _spacer'); continue; }
+      if (kids[spIdx].layoutGrow !== 1) {
+        tailBad.push(fn + ':_spacer.layoutGrow=' + kids[spIdx].layoutGrow + '（死的 1px）');
+      }
+      if (spIdx === kids.length - 1) { tailBad.push(fn + ':_spacer 排在末位，什么都没被推下去'); continue; }
+      // 期望的尾部节点必须都排在 spacer 之后。用包含匹配而非前缀匹配：
+      // bottomTab 命中 master 时名为 shell/bottom-tab/我的，前缀是 shell/
+      for (const nm of wantTail) {
+        const at = kids.findIndex((c) => c.name.indexOf(nm) >= 0);
+        if (at < 0) tailBad.push(fn + ':尾部缺 ' + nm);
+        else if (at < spIdx) tailBad.push(fn + ':' + nm + ' 仍在 spacer 之前');
+      }
+      // 容器本身也得 grow，否则 spacer 撑的是一个抱内容的容器，等于没撑
+      if (holderName && holder.layoutGrow !== 1) {
+        tailBad.push(fn + ':' + holderName + '.layoutGrow=' + holder.layoutGrow + '（容器不 grow，spacer 无空间可撑）');
+      }
+    }
+    check(
+      '四页尾部元素贴底：_spacer 存在 + grow=1 + 尾部节点排其后 + 容器自身 grow（改前空白 315–523px）',
+      tailBad.length === 0,
+      tailBad.length ? tailBad.join('; ') : tailPages.length + ' 页全部命中'
+    );
+
+    // ---------- annotation 不得作为 pushToBottom 的唯一尾部元素 ----------
+    //
+    // 这是本轮踩到的探针盲区，必须补：离线断言全绿而实机失败。
+    //
+    // 机制：detachAnnotations() 会把 annotation 卡从画框里**移出去**、改挂到
+    // 所在 SECTION 上（实机查得两张卡 parent 均为「02 · 核心流程<SECTION>」）。
+    // 若 pushToBottom 的尾部只有 annotation，卡一移出，spacer 后面什么都不剩，
+    // 页面回到「内容 293px + 空白 551px」—— 正是要修的那个病。
+    //
+    // 离线为何看不出：探针在 layout() 之前取节点树，那时 annotation 还在容器内，
+    // 所以位置判据全部成立。这是「探针取值时机与实机不一致」的又一形态，
+    // 与 CARD_SIG 那次的「取值路径不对却报成内容问题」并列记在案。
+    //
+    // 判据：扫全部构造器的 _spacer，凡其后节点全为 _annotation/* 的即判失败。
+    {
+      const annoOnlyTail = [];
+      const scanned = [];
+      for (const fn of Object.keys(M)) {
+        if (fn.indexOf('build') !== 0 || typeof M[fn] !== 'function') continue;
+        let frame;
+        try { frame = M[fn](); } catch (e) { continue; }
+        if (!frame || !frame.findAll) continue;
+        scanned.push(fn);
+        // 画框自身与所有子孙容器都要查：spacer 可能插在 _body 层也可能在画框层
+        const holders = [frame].concat(
+          frame.findAll((n) => n.children && n.children.length > 0)
+        );
+        for (const h of holders) {
+          const kids = h.children;
+          const spIdx = kids.findIndex((c) => c.name === '_spacer');
+          if (spIdx < 0 || spIdx === kids.length - 1) continue;
+          const after = kids.slice(spIdx + 1);
+          const allAnno = after.every((c) => c.name.indexOf('_annotation/') === 0);
+          if (allAnno) {
+            annoOnlyTail.push(fn + '/' + h.name + ' 尾部仅 ' + pj(after.map((c) => c.name)));
+          }
+        }
+      }
+      check(
+        'annotation 不得作为 pushToBottom 的唯一尾部元素（detachAnnotations 会把它移出画框，'
+        + '离线全绿而实机仍是原空白）；已扫 ' + scanned.length + ' 个构造器',
+        annoOnlyTail.length === 0,
+        annoOnlyTail.length ? annoOnlyTail.join('; ') : '无一处依赖 annotation 贴底'
+      );
+    }
+
+    // ---------- trust 页：PRD §4.4 的四类认证行 + 信任指标卡 ----------
+    //
+    // 为什么单独锁：这页的空白根子是「内容缺」而非布局。§4.3 表列四类认证、
+    // §4.4 稿图逐条画了状态 + 日期 + 动作，我原先只画两张概括卡，把「哪一类过了、
+    // 哪一类还没过」这个本页唯一核心信息糊掉了。缺内容在画布上的征兆就是「下面
+    // 空着」，而空着从来无法自证是留白还是没画完 —— 只有点名断言拦得住。
+    {
+      const frame = M.buildTrust();
+      const body = frame.children.find((c) => c.name === '_body');
+      const names = body ? body.children.map((c) => c.name) : [];
+
+      // 三类资质逐条列出，且三档状态各占一行（全画「已通过」等于只交付三分之一规格）
+      const l2 = body && body.children.find((c) => c.name === '_layer2');
+      const certs = l2 ? l2.children.filter((c) => c.name.indexOf('cert/') === 0) : [];
+      check(
+        'trust 页第二层逐条列出三类资质（企业/家政/车辆），不再是一张概括卡',
+        certs.length === 3
+        && certs.some((c) => c.name === 'cert/企业认证')
+        && certs.some((c) => c.name === 'cert/家政资质')
+        && certs.some((c) => c.name === 'cert/车辆认证'),
+        pj(certs.map((c) => c.name))
+      );
+
+      // 三档状态色点各自走对 role：色点是状态的加速通道，走错色比没有更糟。
+      // 取值口径两处易错，都踩过：① 色点要往 svgIcon 内部的 VECTOR 钻（iconFills）；
+      // ② paintOf() 返回的是**单个 Paint 对象**而非数组，故比对时须包一层
+      //（首版直接判 want.length 恒为 undefined，三行全报「无色点」——
+      // 又是取值路径错却报成内容问题）
+      const stateRole = { 'cert/企业认证': 'color/warning', 'cert/家政资质': 'color/error', 'cert/车辆认证': 'color/success' };
+      const roleBad = [];
+      for (const c of certs) {
+        const dot = c.findOne ? c.findOne((n) => n.name === '_dot') : null;
+        const got = iconFills(dot);
+        if (!got || !got.length) { roleBad.push(c.name + ':取不到色点填充'); continue; }
+        if (pj(got) !== pj([M.paintOf(stateRole[c.name])])) {
+          roleBad.push(c.name + ' 色点非 ' + stateRole[c.name] + '(' + pj(got) + ')');
+        }
+      }
+      check(
+        'trust 页三类资质的状态色点分别走 warning/error/success（审核中/未认证/已通过）',
+        roleBad.length === 0,
+        roleBad.length ? roleBad.join('; ') : '三档色点全部命中'
+      );
+
+      // 状态必须有文字通道，不能只靠色点（同 completenessTag 的可访问性理由）
+      const txtBad = [];
+      for (const c of certs) {
+        const st = c.findOne ? c.findOne((n) => n.name === '_cert-state') : null;
+        const words = st ? st.children.filter((n) => n.type === 'TEXT').map((n) => n.characters) : [];
+        if (!words.some((w) => ['已通过', '审核中', '未认证'].indexOf(w) >= 0)) {
+          txtBad.push(c.name + ':' + pj(words));
+        }
+      }
+      check(
+        'trust 页认证状态带文字档名（已通过/审核中/未认证），颜色不是唯一载体',
+        txtBad.length === 0,
+        txtBad.length ? txtBad.join('; ') : '三行状态文字齐备'
+      );
+
+      // 信任指标卡在位，且三档分布齐全
+      const tm = body && body.children.find((c) => c.name === '_trust-metrics');
+      const dist = tm ? tm.findOne((n) => n.name === '_dist') : null;
+      const cells = dist ? dist.children.map((c) => c.name) : [];
+      check(
+        'trust 页有 §4.4 信任指标卡，含完整度三档分布（_dist-green/yellow/red）',
+        !!tm && cells.length === 3
+        && cells.indexOf('_dist-green') >= 0
+        && cells.indexOf('_dist-yellow') >= 0
+        && cells.indexOf('_dist-red') >= 0,
+        (tm ? '卡在位；' : '卡缺失；') + pj(cells)
+      );
+
+      // T4 红线：卡内不得出现发布记录数与举报率。
+      // 这条不是形式检查 —— §4.2 明写「不做人的信誉评级」，一旦哪天有人往这张卡
+      // 里加「发布 8 条 · 举报率 0%」，那就是产品定位漂了，而它长得跟别的指标一样无害
+      const tmWords = tm ? tm.findAll((n) => n.type === 'TEXT').map((n) => n.characters).join('｜') : '';
+      check(
+        'trust 页信任指标卡不含发布记录数/举报率/信誉分（T4 永久红线，PRD §4.2）',
+        !!tm && !/举报率|信誉分|发布记录/.test(tmWords),
+        tmWords.slice(0, 90)
+      );
+
+      // 演示数据口径自洽：trust 页的条数必须与 profile 的「N 在架」一致。
+      // 同一份演示数据在两页互相矛盾，评审第一眼会去追哪个对，而它其实没有对错
+      const profRow = M.buildProfile().findOne((n) => n.name === 'row/我的发布');
+      const profNum = profRow
+        ? (profRow.findAll((n) => n.type === 'TEXT').map((n) => n.characters).join('').match(/(\d+)\s*在架/) || [])[1]
+        : null;
+      const trustNum = (tmWords.match(/在架的\s*(\d+)\s*条/) || [])[1];
+      check(
+        'trust 页条数与 profile「N 在架」口径一致（PRD §4.4 稿图的 5 条已回写为 3 条）',
+        !!profNum && profNum === trustNum,
+        'profile=' + profNum + '，trust=' + trustNum
+      );
+
+      // 认证行不复用 listRow：listRow 满宽 390 自带描边，塞进 358 卡内会双层边界
+      check(
+        'trust 页认证行不是 listRow（后者满宽 390 + 自带描边，卡内会出现双层边界）',
+        names.indexOf('row/企业认证') < 0
+        && certs.every((c) => Math.round(c.width) <= M.CANVAS.w - M.SPACING.lg * 2),
+        pj(certs.map((c) => Math.round(c.width)))
+      );
+    }
+
+    // ============================================================
+    // 条目 [70] 后补：四页留白（notification 577 / my-favorite 541 /
+    // my-publish 479 / settings 460）的内容补齐
+    //
+    // 为什么这一批要单独立断言而不是只看图：这四页的病根不是「排版没贴底」，
+    // 而是「PRD 明列的条目没画全」—— 前者看图就看出来了，后者要拿 PRD 逐条对
+    // 才发现。而一旦补齐后有人为了「精简」再删回去，页面照样能渲染、照样全绿，
+    // 只是又变回半页空白。故把 PRD 里逐项列举的那几处硬编成判据。
+    // ============================================================
+    {
+      // —— notification（PRD §8.3.3）——
+      const notif = M.buildNotification();
+      const rows = notif.findAll((n) => n.name.indexOf('notify/') === 0);
+      // §8.3.3 逐项列了系统类五种触发，缺任何一种都等于该状态在稿子上没落点。
+      // 「违规下架」是唯一的负向通知，最容易在"精简"时被删掉，故单独点名
+      const rowWords = rows.map((r) => r.name.slice('notify/'.length)).join('｜');
+      check(
+        'notification 覆盖 §8.3.3 系统类五种触发（含「违规下架」这条唯一的负向通知）',
+        rows.length === 5 && /违规下架/.test(rowWords),
+        rows.length + ' 条：' + rowWords
+      );
+
+      // 单条五段齐备：图标 / 标题 / 摘要 / 时间 / 未读红点。原实现用 listRow
+      // 顶替，只给得出标题 + 右值两段，摘要与未读态整个缺失
+      const r0 = rows[0];
+      const r0kids = r0 ? r0.children.map((c) => c.name) : [];
+      const r0main = r0 ? r0.findOne((n) => n.name === '_notify-main') : null;
+      check(
+        'notification 单条为五段式（图标+标题+摘要+时间+未读点），非 listRow 的两段',
+        r0kids.indexOf('_icon') >= 0 && r0kids.indexOf('_notify-right') >= 0
+        && !!r0main && r0main.children.length === 2
+        && !!r0.findOne((n) => n.name === '_unread'),
+        pj(r0kids) + '，主区 ' + (r0main ? r0main.children.length : 0) + ' 段'
+      );
+
+      // 未读态不得只靠红点：已读标题走 text-secondary、未读走 text-primary，
+      // 色阶差与红点互为冗余通道（同 completenessTag 的理由）
+      const unreadCnt = rows.filter((r) => !!r.findOne((n) => n.name === '_unread')).length;
+      const titleRole = (r) => {
+        const m = r.findOne((n) => n.name === '_notify-main');
+        const t = m ? m.children[0] : null;
+        return t ? pj(t.fills) : null;
+      };
+      const readRow = rows.filter((r) => !r.findOne((n) => n.name === '_unread'))[0];
+      check(
+        'notification 未读/已读同屏且标题色阶有别（红点不是唯一通道）',
+        unreadCnt > 0 && unreadCnt < rows.length
+        && titleRole(rows[0]) === pj([M.paintOf('color/text-primary')])
+        && titleRole(readRow) === pj([M.paintOf('color/text-secondary')]),
+        '未读 ' + unreadCnt + ' / 共 ' + rows.length + ' 条，两态标题色不同='
+        + (titleRole(rows[0]) !== titleRole(readRow))
+      );
+
+      // 行尾不得有 ›：§8.3.3 写「点击通知跳对应详情」，› 意味着展开下一级
+      const chevron = rows.filter((r) => r.findAll((n) => n.type === 'TEXT')
+        .some((t) => t.characters.indexOf('›') >= 0));
+      check(
+        'notification 行尾不带 ›（§8.3.3 是跳详情而非展开，› 会误导为可展开）',
+        chevron.length === 0,
+        chevron.length ? '仍带 ›：' + pj(chevron.map((r) => r.name)) : '五条均无 ›'
+      );
+    }
+
+    {
+      // —— my-favorite（PRD §8.3.2）——
+      const fav = M.buildMyFavorite();
+      const cards = fav.findAll((n) => n.name.indexOf('card/') === 0);
+      // 五大分类各一张：收藏页是全稿唯一「五种分类色同屏」的真实语境，
+      // 两张卡只验得到两种色，其余三种只在 T6 规格板上以脱离语境的纯色块出现过
+      const catRoles = cards.map((c) => {
+        const ic = c.findOne((n) => n.name.indexOf('_cat') === 0 || n.name === '_icon');
+        const f = iconFills(ic) || (ic ? ic.fills : null);
+        const bv = f && f[0] && f[0].boundVariables && f[0].boundVariables.color;
+        return bv ? bv.name : null;
+      });
+      const uniqCats = catRoles.filter((v, i) => v && catRoles.indexOf(v) === i);
+      check(
+        'my-favorite 五张卡覆盖五大分类色（全稿唯一的五色同屏语境，PRD §8.3.2）',
+        cards.length === 5 && uniqCats.length === 5,
+        cards.length + ' 张卡，分类色 ' + uniqCats.length + ' 种：' + pj(uniqCats)
+      );
+
+      // 页签补「全部」：§8.3.2 明列三个页签，原实现只有两个
+      const favTabs = fav.findAll((n) => n.type === 'TEXT')
+        .map((n) => n.characters);
+      check(
+        'my-favorite 页签为「资源/需求/全部」三项（§8.3.2 明列，原缺「全部」）',
+        favTabs.indexOf('资源') >= 0 && favTabs.indexOf('需求') >= 0 && favTabs.indexOf('全部') >= 0,
+        '命中 ' + ['资源', '需求', '全部'].filter((t) => favTabs.indexOf(t) >= 0).join('/')
+      );
+    }
+
+    {
+      // —— my-publish（PRD §8.3.1 / §8.6 状态机）——
+      const pub = M.buildMyPublish();
+      const blocks = pub.findAll((n) => n.name.indexOf('_pub/') === 0);
+      // 三种发布状态同屏：§8.6 那张状态机图若在稿子上只落地「在架」一种，
+      // 等于没落地。补「全部」页签正是为了让三态可以同屏
+      const badges = pub.findAll((n) => n.type === 'TEXT').map((n) => n.characters);
+      check(
+        'my-publish 四张卡覆盖在架/已下架/草稿三种状态标（§8.6 状态机的稿面落点）',
+        blocks.length === 4
+        && badges.indexOf('在架') >= 0 && badges.indexOf('已下架') >= 0 && badges.indexOf('草稿') >= 0,
+        blocks.length + ' 块；状态标命中 '
+        + ['在架', '已下架', '草稿'].filter((t) => badges.indexOf(t) >= 0).join('/')
+      );
+
+      // 操作组必须逐条挂在卡下，不能是整页底部一组游离按钮：
+      // §8.3.1 写的是「右：操作组」——每行一组。整页一组会被读成「作用于全部条目」
+      const acts = pub.findAll((n) => n.name === '_pub-actions');
+      const actsAllInBlock = acts.every((a) => a.parent && a.parent.name.indexOf('_pub/') === 0);
+      check(
+        'my-publish 操作组逐条挂在卡下（整页一组会被读成作用于全部条目，§8.3.1）',
+        acts.length === blocks.length && actsAllInBlock,
+        acts.length + ' 组 / ' + blocks.length + ' 张卡，全部挂在卡块内=' + actsAllInBlock
+      );
+
+      // 操作组随状态变：在架给「下架」、已下架给「刷新重发」、草稿给「继续编辑」。
+      // 四条卡若操作文案全一样，状态与可用操作的对应关系（本页核心规格）就丢了
+      const actWords = acts.map((a) => a.findAll((n) => n.type === 'TEXT')
+        .map((t) => t.characters).join('+'));
+      const uniqActs = actWords.filter((v, i) => actWords.indexOf(v) === i);
+      check(
+        'my-publish 操作组随状态变化（下架/刷新重发/继续编辑，非四条同一套）',
+        uniqActs.length >= 3
+        && actWords.some((w) => /刷新重发/.test(w))
+        && actWords.some((w) => /继续编辑/.test(w)),
+        pj(uniqActs)
+      );
+    }
+
+    {
+      // —— settings（PRD §3.4.3）——
+      const set = M.buildSettings();
+      const titles = set.findAll((n) => n.name.indexOf('_group-title/') === 0)
+        .map((n) => n.name.slice('_group-title/'.length));
+      check(
+        'settings 分四组（§3.4.3 本身分四组写；十余项平列是一堵没有落点的列表墙）',
+        pj(titles) === pj(['账号与安全', '通用', '隐私', '关于']),
+        pj(titles)
+      );
+
+      // §3.4.3 逐项列举的敏感项必须在：注销账号 / 默认范围 / 联系方式展示策略
+      // 这三项恰是原 5 条平列里缺掉的，且都需要单独确认口径
+      const setRows = set.findAll((n) => n.name.indexOf('row/') === 0)
+        .map((n) => n.name.slice('row/'.length));
+      const wantRows = ['注销账号', '默认范围', '联系方式展示策略', '位置权限说明', '清除缓存'];
+      const missRows = wantRows.filter((r) => setRows.indexOf(r) < 0);
+      check(
+        'settings 含 §3.4.3 逐项列举的敏感项（注销账号/默认范围/联系方式展示策略等）',
+        missRows.length === 0 && setRows.length >= 11,
+        missRows.length ? '缺：' + pj(missRows) : setRows.length + ' 条齐备'
+      );
+
+      // 退出登录：§3.4.3 尾注写「个人中心放，设置页不放重复」。
+      // 两侧都要验 —— 只验设置页没有，就会漏掉「两边都没有」这种更糟的情况
+      //（本轮真实发生过：按尾注从设置页删掉后，整份稿子丢了这个元素）
+      const setHasQuit = set.findAll((n) => n.type === 'TEXT')
+        .some((n) => n.characters.indexOf('退出登录') >= 0);
+      const profHasQuit = !!M.buildProfile().findOne((n) => n.name === 'btn/danger/退出登录');
+      check(
+        '退出登录只在个人中心、不在设置页（§3.4.3 尾注；两侧都验，防「两边都没有」）',
+        !setHasQuit && profHasQuit,
+        '设置页有=' + setHasQuit + '，个人中心有=' + profHasQuit
+      );
+    }
+
+    // flexSpacer 高给 1 而非 0：宽/高为 0 的节点会被体检脚本报成异常节点，
+    // 给 1px 且无填充，视觉不可见但体检认得出它是有意的占位
+    {
+      const sp = M.flexSpacer();
+      check(
+        'flexSpacer 尺寸 1×1 且无填充（0 尺寸会被体检报成异常节点，1px 则可辨识为有意占位）',
+        Math.round(sp.width) === 1 && Math.round(sp.height) === 1 && sp.fills.length === 0,
+        Math.round(sp.width) + '×' + Math.round(sp.height) + '，fills=' + sp.fills.length
+      );
+    }
+
+    // 反向：把 pushToBottom 的 layoutGrow 赋值去掉，验上面那条判据真会红。
+    // 这是最可能退化的一处 —— 「appendChild 之后再赋 grow」的顺序一旦被后来者
+    // 挪动，spacer 就成了死的 1px，而画面回到改前那个样子却无人报错。
+    //
+    // 用正则而非字面串替换：源文件是 CRLF，字面串里写 '\n' 会匹配不到
+    //（首版就栽在这里，报「替换未生效」）。正则里 \s* 同时吃掉 \r\n 与缩进。
+    const rawNoGrow = raw.replace(/\n\s*sp\.layoutGrow = 1;/, '');
+    check(
+      '[反向] 去掉 pushToBottom 的 layoutGrow 赋值成功（证明下一条测的是退化写法）',
+      rawNoGrow !== raw,
+      rawNoGrow !== raw ? '已去掉' : '替换未生效，源码片段可能已改动'
+    );
+    if (rawNoGrow !== raw) {
+      const ngM = new Function(
+        'figma', '__html__',
+        rawNoGrow + '\n;return { buildDetail: buildDetail };'
+      )(figma, '');
+      const ngBody = ngM.buildDetail().children.find((c) => c.name === '_body');
+      const ngSp = ngBody.children.find((c) => c.name === '_spacer');
+      check(
+        '[反向] 无 layoutGrow 时「贴底」判据确实触发（spacer 退化为死的 1px，画面回到改前）',
+        !!ngSp && ngSp.layoutGrow !== 1,
+        ngSp ? 'layoutGrow=' + ngSp.layoutGrow + ' —— 已检出' : '未检出 —— 判据无区分力，需重写'
+      );
+    }
   }
 
   // ============================================================

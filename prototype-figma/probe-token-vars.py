@@ -504,7 +504,13 @@ if hyd:
 # 六、card() 与 PRD §1.4.7 对齐
 # ============================================================
 
-card_body = func_body(code, "function card(title, sub, catRole, tag)")
+# 签名只截到 "function card(" 而不写全参数列表（2026-08-29 条目 [70] 修）：
+# card() 本轮加了第五参 completeness，写死 "(title, sub, catRole, tag)" 的
+# 签名当场失配，card_body 取到空串，随后 6 条断言连带全红 —— 报的却是
+# 「内边距不是 lg」「没有阴影」这类假问题，把「取值路径失效」伪装成了内容问题。
+# 这正是 func_body 文档里写的原则 ㉙ 形态，此前防住了正则截断，没防住签名硬编码。
+CARD_SIG = "function card("
+card_body = func_body(code, CARD_SIG)
 check("card() 存在", bool(card_body))
 
 check("card 内边距 = lg（PRD §1.4.7）", "pad: SPACING.lg" in card_body)
@@ -869,7 +875,7 @@ reverse = [
             "fill: 'color/surface', radius: RADIUS.lg, stroke: 'color/border', align: 'MIN'",
         ),
         lambda c: "stroke: 'color/border'"
-        not in func_body(c, "function card(title, sub, catRole, tag)"),
+        not in func_body(c, CARD_SIG),
     ),
     (
         "bindRadius 改绑 cornerRadius 应被检出",

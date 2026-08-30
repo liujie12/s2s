@@ -806,6 +806,44 @@ function box(name, dir, opt) {
 }
 
 /**
+ * 创建一个吃掉主轴剩余空间的弹性占位块（2026-08-29，条目 [70]，P1/P2 修复）
+ *
+ * 为什么需要它：画框固定 844 高，短页内容排完只占三四百，底部留下 300–500px
+ * 空白（实测 contact 空 523px / 62%）。这不只是难看 —— 评审看不出「内容就这么少」
+ * 还是「稿子没画完」，实现的人也无从判断这块空白是有意留白还是待填。
+ *
+ * 加一个 layoutGrow=1 的空块，把「剩余空间归谁」这件事显式写进图层树：
+ * 空块之前的内容顶部对齐，空块之后的内容（通常是主按钮）被推到底部。
+ * 这样一来空白有了归属，评审读到的是「这里是刻意的呼吸区 + 底部主操作」。
+ *
+ * 必须在 appendChild 之后再设 layoutGrow：该属性要求节点已有 Auto Layout 父级。
+ * 本函数只负责造块，赋值由 pushToBottom 完成。
+ *
+ * @param {string} [name] 图层名，默认 _spacer
+ * @returns {FrameNode} 零尺寸空块
+ */
+function flexSpacer(name) {
+  // 高给 1 而非 0：宽/高为 0 的节点会被体检脚本报成异常节点（同 listRow 空文本
+  // 那类问题），给 1px 且无填充，视觉上不可见但体检认得出它是有意的占位
+  return box(name || '_spacer', 'HORIZONTAL', { w: 1, h: 1 });
+}
+
+/**
+ * 把一批节点追加到容器底部，中间用弹性空块隔开（2026-08-29，条目 [70]）
+ *
+ * @param {FrameNode} container 纵排 Auto Layout 容器，须为 FIXED 高
+ * @param {SceneNode[]} tailNodes 要贴底的节点，按传入顺序自上而下排列
+ */
+function pushToBottom(container, tailNodes) {
+  var sp = flexSpacer();
+  container.appendChild(sp);
+  sp.layoutGrow = 1;
+  for (var i = 0; i < tailNodes.length; i++) {
+    container.appendChild(tailNodes[i]);
+  }
+}
+
+/**
  * 创建一个非 Auto Layout 的叠层容器，供悬浮图层使用。
  *
  * 为什么必须有它：box() 一律走 Auto Layout，子节点会被自动排流，
@@ -991,6 +1029,19 @@ var ICON_PATHS = {
   'tab-map': {
     vb: ICON_VIEWBOX_MS,
     d: '<path fill="#000" d="m600-120-240-84-186 72q-20 8-37-4.5T120-170v-560q0-13 7.5-23t20.5-15l212-72 240 84 186-72q20-8 37 4.5t17 33.5v560q0 13-7.5 23T812-192l-212 72Zm-40-98v-468l-160-56v468l160 56Z"/>'
+  },
+  // 实心圆点：完整度三档（🟢/🟡/🔴）的矢量替身（2026-08-29，条目 [70]）。
+  //
+  // 为什么必须换掉 emoji：🟢🟡🔴 由系统 emoji 字体渲染，iOS / Android / 鸿蒙
+  // 三套字形各不相同（大小、饱和度、有无高光渐变都不一致），且色值完全不受
+  // paintOf(role) 控制 —— 我们在 §1.4.2 实算过的对比度对它一概无效。
+  // 同一问题在 Tab 三键上已于条目 [47] 处理过，这几处是当时的漏网。
+  //
+  // 为什么是纯圆而不复刻 emoji 的高光渐变：createNodeFromSvg 会剥离渐变，
+  // 且渐变在 10px 下只会让色块显脏，无助于辨识。
+  'dot-solid': {
+    vb: ICON_VIEWBOX_20,
+    d: '<path fill="#000" d="M10 3a7 7 0 1 0 0 14 7 7 0 0 0 0-14"/>'
   },
   // 人像 = person：底部 Tab「我的」键（PRD §10.2）。同上，此前是 emoji 👤。
   // 为什么不用 account_circle（圆底+人像）：24px 下内部头像与圆底边缘粘连
@@ -1656,9 +1707,13 @@ function pinRaw(catRole, supplyDemand, completeness, selected, showCompleteness)
  * @param {string} sub 副标题（模板字段摘要）
  * @param {string} catRole 分类色 role，用于左侧色条
  * @param {string} tag 右上角标签文案，如 "资源" / "需求"
+ * @param {string} [completeness] 完整度档位 'green'|'yellow'|'red'。传入时副标题
+ *        前置一个矢量完整度标识（条目 [70]）。之所以做成参数而非让调用方把
+ *        「完整度 🟢｜」拼进 sub 字符串：拼进字符串就等于把状态语义降级成文案，
+ *        既换不掉 emoji，也无法参与 §1.4.2 的对比度体系
  * @returns {FrameNode} 卡片节点
  */
-function card(title, sub, catRole, tag) {
+function card(title, sub, catRole, tag, completeness) {
   var c = box('card/' + title, 'HORIZONTAL', {
     w: CANVAS.w - SPACING.lg * 2, pad: SPACING.lg, gap: SPACING.md,
     fill: 'color/surface', radius: RADIUS.lg, align: 'MIN'
@@ -1672,7 +1727,16 @@ function card(title, sub, catRole, tag) {
   var main = box('_card-main', 'VERTICAL', { gap: SPACING.xs });
   main.layoutGrow = 1;
   main.appendChild(text(title, 'h3', 'color/text-primary'));
-  main.appendChild(text(sub, 'small', 'color/text-secondary'));
+  if (completeness) {
+    // 完整度与摘要同排：两者都是「这条信息的元数据」，分两行会让卡片长出
+    // 第三层信息层级，而列表卡的扫读节奏只容得下标题 + 一行摘要
+    var subRow = box('_card-sub', 'HORIZONTAL', { gap: SPACING.xs, align: 'CENTER' });
+    subRow.appendChild(completenessTag(completeness, 'small', 'color/text-secondary'));
+    subRow.appendChild(text(sub, 'small', 'color/text-secondary'));
+    main.appendChild(subRow);
+  } else {
+    main.appendChild(text(sub, 'small', 'color/text-secondary'));
+  }
   c.appendChild(main);
   c.appendChild(text(tag, 'caption', 'color/primary'));
   return c;
@@ -2409,7 +2473,7 @@ async function batchSetup() {
   catBoard.appendChild(annotation('Pin 尺寸与形态', [
     '正常 40×40，选中态 48×48 + 阴影（PRD §6.4.2）',
     '资源态=大类色实心；需求态=大类色描边空心+内部 ?',
-    '本板第 1-3 列的 🟢🟡🔴 角标仅为规格演示；地图 Marker 不带角标'
+    '本板第 1-3 列的完整度角标仅为规格演示；地图 Marker 不带角标'
   ], { severity: 'a11y', target: 'pin/cat-service/resource/selected' }));
   catBoard.appendChild(annotation('Marker 信息维度红线', [
     '只承载两类信息：分类（底色+图标）+ 供需态（实心/空心）',
@@ -2625,7 +2689,22 @@ var CONTENT = {
       ['工时', '早 9 晚 6，月休 4 天'],
       ['位置', '距你 1.2km'],
       ['要求', '有餐饮经验优先']
-    ]
+    ],
+    /**
+     * 详情页描述正文（PRD §7.4.1 稿图第 6 行「描述：…」）。
+     *
+     * 2026-08-29（条目 [70]）补：此前详情页只有模板字段 + 信任卡，PRD 明列的
+     * 描述区在画布上缺失，已实现的 Flutter 详情页却按 PRD 画了 _DescriptionSection
+     * —— 稿与实现不一致，且往后照稿改 Flutter 会把这一区删掉。
+     *
+     * 刻意写到三行：描述区要验证的是「长段落在 body 字阶下的行高与扫读性」，
+     * 一句话的样例看不出段落排版是否舒适（同 listing_detail_repository.dart 的取值理由）。
+     * 内容与本条主线（餐饮全职、包吃住）自洽 —— 不直接搬 Flutter 那条
+     * 「长期招周末兼职」，它是兼职口径，与本条的全职招聘互相矛盾。
+     */
+    desc: '后厨帮工两名，主要做备菜和打荷，有师傅带，不要求会颠勺。'
+      + '包吃住，宿舍就在店后面，走路两分钟。月休 4 天可以自己排。'
+      + '做满三个月加 300，有意向先打电话聊，随时可以来店里看看。'
   },
   /**
    * 列表页另外三张卡。原先四张卡的类目路径全是编的
@@ -3205,6 +3284,156 @@ function checkRow(label, checked, catRole, isLeaf) {
   r.appendChild(bx);
   r.appendChild(text(label, isLeaf ? 'caption' : 'small',
     checked ? 'color/text-primary' : 'color/text-secondary'));
+  return r;
+}
+
+/**
+ * 构造一行「矢量圆点 + 档名文字」的完整度标识（2026-08-29，条目 [70]）。
+ *
+ * 替换此前散落 9 处的 🟢🟡🔴 emoji。两个必须一起做的改动：
+ *
+ * ① emoji 换矢量 —— 理由同 checkRow 里不用 ☑️：emoji 由系统字体渲染，三端
+ *    字形与配色都不一致，且不受 paintOf(role) 控制，§1.4.2 实算的对比度对它无效。
+ *
+ * ② 补上文字档名 —— 这是本次真正的可访问性修正。改之前「🟢」的颜色是三档的
+ *    **唯一**载体，色弱用户无法区分，这正是条目 [43] 给 Pin 角标标 ⚠️ 时的同一
+ *    问题。Pin 当时靠 2px 白描边补偿，但文字行里没有描边可留，只能补文字。
+ *    补完之后颜色降级为「加速识别的冗余通道」，而非唯一通道。
+ *
+ * @param {string} level 完整度档位，取 'green' | 'yellow' | 'red'
+ * @param {string} [scale] 档名文字的字阶，默认 'small'
+ * @param {string} [textRole] 档名文字颜色 role，默认跟随档位语义色的文字版
+ * @returns {FrameNode} 横排的「圆点 + 档名」节点
+ */
+function completenessTag(level, scale, textRole) {
+  var dotRole = { green: 'color/success', yellow: 'color/warning', red: 'color/error' }[level];
+  var inkRole = { green: 'color/success-text', yellow: 'color/warning-text', red: 'color/error-text' }[level];
+  var label = { green: '完整', yellow: '半完整', red: '待补充' }[level];
+  var r = box('_completeness-' + level, 'HORIZONTAL', {
+    gap: SPACING.xs, align: 'CENTER'
+  });
+  // 圆点边长跟随字阶而非写死：写死 10px 配 h3(16px) 会偏小、配 caption(11px)
+  // 会盖过档名，反而把刚补上的文字通道压回次要位置
+  var s = Math.round((TYPE_SCALE[scale] || TYPE_SCALE.small).size * 0.75);
+  r.appendChild(svgIcon('_dot', ICON_PATHS['dot-solid'], dotRole, s));
+  r.appendChild(text(label, scale || 'small', textRole || inkRole));
+  return r;
+}
+
+/**
+ * 构造一行「矢量勾 + 说明文字」的已完成标识（2026-08-29，条目 [70]）。
+ *
+ * 替换此前散落 4 处的 ✅ emoji，理由同 completenessTag 的 ①。
+ * 不需要补文字通道 —— ✅ 的语义本来就由紧随其后的「已实名」等文字承载，
+ * emoji 只是重复了一遍，去掉颜色也读得懂。
+ *
+ * @param {string} label 说明文字
+ * @param {string} [scale] 字阶，默认 'small'
+ * @param {string} [textRole] 文字颜色 role，默认 success-text
+ * @returns {FrameNode} 横排的「勾 + 文字」节点
+ */
+function doneTag(label, scale, textRole) {
+  var r = box('_done-tag', 'HORIZONTAL', { gap: SPACING.xs, align: 'CENTER' });
+  // 勾的边长跟随字阶：固定 12px 配 h3(16px) 会显得勾比字矮一截，
+  // 像是没对齐而不是有意的次要标记
+  var s = (TYPE_SCALE[scale] || TYPE_SCALE.small).size + 2;
+  r.appendChild(svgIcon('_tick', ICON_PATHS.tick, 'color/success', s));
+  r.appendChild(text(label, scale || 'small', textRole || 'color/success-text'));
+  return r;
+}
+
+/**
+ * 构造一行分组标题（2026-08-29 条目 [70] 后补，供设置页等长列表分组用）。
+ *
+ * 为什么需要：PRD §3.4.3 把设置项明确分成「账号与安全 / 通用 / 隐私 / 关于」
+ * 四组，而原实现是 5 条无分组的平列。平列在条目少时看不出问题，条目补齐到
+ * 十余条后就变成一堵没有落点的列表墙 —— 用户找「清除缓存」得从头扫到尾。
+ *
+ * @param {string} label 分组名
+ * @returns {FrameNode} 分组标题行节点
+ */
+function groupTitle(label) {
+  var r = box('_group-title/' + label, 'HORIZONTAL', {
+    w: CANVAS.w, padLeft: SPACING.lg, padRight: SPACING.lg,
+    padTop: SPACING.md, padBottom: SPACING.xs
+  });
+  r.appendChild(text(label, 'caption', 'color/text-secondary'));
+  return r;
+}
+
+/**
+ * 构造一条通知行（2026-08-29 条目 [70] 后补，对齐 PRD §8.3.3）。
+ *
+ * 为什么不继续用 listRow：§8.3.3 明列单条通知行是「图标 · 标题 · 摘要 · 时间 ·
+ * 未读红点」五段，listRow 只给得出「标题 + 右值 + ›」两段 —— 摘要与未读态整个
+ * 缺失，而未读态是通知中心唯一的交互状态。另外 listRow 尾部的 › 意味着「点进去
+ * 有下一级」，通知点击是跳对应详情而非展开，用 › 会误导。
+ *
+ * @param {string} iconKey ICON_PATHS 的键，按三类通知取 bell/dots/tick
+ * @param {string} title 通知标题
+ * @param {string} summary 摘要
+ * @param {string} time 时间文案
+ * @param {boolean} unread 是否未读，未读时右侧出红点
+ * @returns {FrameNode} 通知行节点
+ */
+function notifyRow(iconKey, title, summary, time, unread) {
+  var r = box('notify/' + title, 'HORIZONTAL', {
+    w: CANVAS.w, padLeft: SPACING.lg, padRight: SPACING.lg,
+    padTop: SPACING.md, padBottom: SPACING.md, gap: SPACING.sm,
+    fill: 'color/surface', stroke: 'color/border', align: 'MIN'
+  });
+  r.appendChild(svgIcon('_icon', ICON_PATHS[iconKey], 'color/primary', 20));
+  var main = box('_notify-main', 'VERTICAL', { gap: SPACING.xs });
+  main.layoutGrow = 1;
+  main.appendChild(text(title, 'body', unread ? 'color/text-primary' : 'color/text-secondary'));
+  main.appendChild(text(summary, 'small', 'color/text-secondary'));
+  r.appendChild(main);
+  var right = box('_notify-right', 'VERTICAL', { gap: SPACING.xs, align: 'MAX' });
+  right.appendChild(text(time, 'caption', 'color/text-secondary'));
+  // 未读红点是本页唯一状态，但它不能是唯一通道：已读标题走 text-secondary、
+  // 未读走 text-primary，色阶差与红点互为冗余（同 completenessTag 的理由）
+  if (unread) right.appendChild(svgIcon('_unread', ICON_PATHS['dot-solid'], 'color/error', 8));
+  r.appendChild(right);
+  return r;
+}
+
+/**
+ * 构造一行认证状态条目（2026-08-29 条目 [70] 后补，对齐 PRD §4.4 稿图）。
+ *
+ * 为什么不复用 listRow：listRow 满宽 390、自带底色与描边，是「设置页整段贴边
+ * 列表」的形态；本行活在 358 宽的卡内，宽度、底色、描边都由外层认证卡承担，
+ * 复用会出现「卡里再套一条通栏描边」的双层边界。
+ *
+ * 状态一律用「矢量色点 + 状态文字」而非稿图里的 ✅🟡❌：理由同
+ * completenessTag —— emoji 不受 paintOf(role) 控制，且颜色单独承载状态时
+ * 色弱用户读不出，必须补文字通道。
+ *
+ * @param {string} label 认证类型名，如「个人实名」
+ * @param {string} state 状态档，取 'passed' | 'reviewing' | 'none'
+ * @param {string} meta 状态右侧补充文字（通过日期，或「发布 X 类必须」）
+ * @param {string} [action] 右端动作文案，如「管理」；省略则不出动作
+ * @returns {FrameNode} 认证行节点
+ */
+function certRow(label, state, meta, action) {
+  var dotRole = { passed: 'color/success', reviewing: 'color/warning', none: 'color/error' }[state];
+  var inkRole = { passed: 'color/success-text', reviewing: 'color/warning-text', none: 'color/error-text' }[state];
+  var stateLabel = { passed: '已通过', reviewing: '审核中', none: '未认证' }[state];
+  var r = box('cert/' + label, 'HORIZONTAL', { gap: SPACING.sm, align: 'CENTER' });
+  var main = box('_cert-main', 'VERTICAL', { gap: SPACING.xs });
+  // grow=1：动作文案宽度不定（管理/查看/去认证 二到三字），左列吃剩余宽
+  // 才能保证四行的动作文案右缘对齐
+  main.layoutGrow = 1;
+  main.appendChild(text(label, 'body', 'color/text-primary'));
+  var st = box('_cert-state', 'HORIZONTAL', { gap: SPACING.xs, align: 'CENTER' });
+  // 色点边长跟随字阶派生，口径与 completenessTag 一致（同一页上两种色点
+  // 若一个 8px 一个 10px，会被当成两套语义）
+  st.appendChild(svgIcon('_dot', ICON_PATHS['dot-solid'], dotRole,
+    Math.round(TYPE_SCALE.small.size * 0.75)));
+  st.appendChild(text(stateLabel, 'small', inkRole));
+  if (meta) st.appendChild(text(meta, 'small', 'color/text-secondary'));
+  main.appendChild(st);
+  r.appendChild(main);
+  if (action) r.appendChild(text(action + ' ›', 'small', 'color/primary'));
   return r;
 }
 
@@ -3799,6 +4028,45 @@ function field(label, placeholder, width) {
 }
 
 /**
+ * 创建一个「点开选择器」型表单行（标签 + 可点区 + 右侧 ›）（2026-08-29，条目 [70]）
+ *
+ * 为什么新增而不复用 listRow（P5 修复）：发布页原先「标题/薪资」走 field（标签在上、
+ * 44 高白底框），「选择分类/地点」走 listRow（满宽白底行卡、标签与值同排）。同一张
+ * 表单里两种形态并存，评审与开发都会读成「这是两组性质不同的东西」，而它们其实
+ * 都是这条发布信息的字段，只是取值方式一个敲键盘一个开选择器。
+ *
+ * 还有一处几何问题：listRow 宽度写死 CANVAS.w = 390（它本是满宽设置行，
+ * 用于个人中心那种无内边距页面），塞进 lg 内边距的发布页 body 里超出可用宽 358。
+ *
+ * 与 field 的唯一差异是框内右端多一个 ›，用来区分「可输入」与「可跳转」——
+ * 这个差异必须留：把它也做成一模一样，用户会去点它然后等键盘弹出。
+ *
+ * @param {string} label 字段名
+ * @param {string} [value] 已选值；省略时按未选态渲染 placeholder
+ * @param {string} [placeholder] 未选态提示文案
+ * @param {number} [width] 覆写宽度，省略时取 lg 内边距下的可用宽 358
+ * @returns {FrameNode} 表单行节点
+ */
+function selectField(label, value, placeholder, width) {
+  var w = width || (CANVAS.w - SPACING.lg * 2);
+  var f = box('field/' + label, 'VERTICAL', { w: w, gap: SPACING.xs });
+  f.appendChild(text(label, 'small', 'color/text-secondary'));
+  var ctrl = box('_select', 'HORIZONTAL', {
+    w: w, h: 44, padLeft: SPACING.md, padRight: SPACING.md,
+    fill: 'color/surface', radius: RADIUS.md, stroke: 'color/border',
+    align: 'CENTER', justify: 'SPACE_BETWEEN'
+  });
+  // 已选值走 text-primary，未选走 placeholder 灰：同一个位置的两种状态靠色阶区分，
+  // 与 field 的输入框内文本口径一致
+  ctrl.appendChild(value
+    ? text(value, 'body', 'color/text-primary')
+    : text(placeholder || '请选择', 'body', 'color/text-placeholder'));
+  ctrl.appendChild(text('›', 'body', 'color/text-placeholder'));
+  f.appendChild(ctrl);
+  return f;
+}
+
+/**
  * 创建一个设置/我的页的列表条目行
  * @param {string} label 条目名
  * @param {string} value 右侧值或状态文案
@@ -4045,25 +4313,65 @@ function buildDetail() {
     tmpl.appendChild(pr);
   }
   body.appendChild(tmpl);
+
+  // 描述区（PRD §7.4.1，2026-08-29 条目 [70] 补）。
+  //
+  // 位置按 PRD 稿图：模板字段区之后、信任卡之前。这个次序不是随意的 ——
+  // 模板字段是「结构化事实」（可比价、可筛选），描述是「发布者自己的话」，
+  // 信任卡是「这话可不可信」。三者是「是什么 → 怎么说 → 信不信」的递进，
+  // 把描述放到信任卡之后就变成了先判断可信度再给内容。
+  var descBox = box('_description', 'VERTICAL', {
+    w: CANVAS.w - SPACING.lg * 2, pad: SPACING.md, gap: SPACING.sm,
+    fill: 'color/surface', radius: RADIUS.lg, stroke: 'color/border'
+  });
+  descBox.appendChild(text('描述', 'h3'));
+  // 三行长文本必须显式 FILL：text() 默认 textAutoResize 是 WIDTH_AND_HEIGHT，
+  // 在纵排 Auto Layout 里会一路 hug 到撑破 390 画框（同 guideLead 的处理）。
+  // 且 layoutSizingHorizontal 必须在 appendChild 之后赋值，否则真机抛
+  // 「requires an auto-layout parent」
+  var descText = text(CONTENT.job.desc, 'body', 'color/text-primary');
+  descText.textAutoResize = 'HEIGHT';
+  descBox.appendChild(descText);
+  descText.layoutSizingHorizontal = 'FILL';
+  body.appendChild(descBox);
+
   var trust = box('_trust-card', 'VERTICAL', {
     w: CANVAS.w - SPACING.lg * 2, pad: SPACING.md, gap: SPACING.xs,
     fill: 'color/primary-light', radius: RADIUS.lg
   });
   trust.appendChild(text('信任卡', 'h3', 'color/primary-dark'));
-  trust.appendChild(text('已实名 ✅｜资质认证 ✅｜信息完整度 🟢', 'small', 'color/primary-dark'));
+  // 三项资质横排：此前是一行 emoji 文本「已实名 ✅｜资质认证 ✅｜信息完整度 🟢」，
+  // 2026-08-29（条目 [70]）改为矢量组件。竖分隔符「｜」一并去掉 ——
+  // 它原本用来在一整行文本里切分三段，现在三段已是三个独立节点，
+  // 再留分隔符就是拿标点当布局用
+  var trustRow = box('_trust-items', 'HORIZONTAL', { gap: SPACING.md, align: 'CENTER' });
+  trustRow.appendChild(doneTag('已实名', 'small', 'color/primary-dark'));
+  trustRow.appendChild(doneTag('资质认证', 'small', 'color/primary-dark'));
+  trustRow.appendChild(completenessTag('green', 'small', 'color/primary-dark'));
+  trust.appendChild(trustRow);
   trust.appendChild(text('不含信誉评价、不含交易记录（Scope 红线）', 'caption', 'color/primary-dark'));
   body.appendChild(trust);
-  body.appendChild(button('联系 TA', 'primary', CANVAS.w - SPACING.lg * 2));
-  // motion/page 钉在返回入口所在的 _nav-left 上（2026-08-27，I5）：详情页是
-  // 全站唯一「有明确前进/返回方向」的页面（首页与列表页互切属同级视图切换），
-  // 转场方向的规格必须落在有方向可言的地方。target 不用返回箭头本身 ——
-  // 它是 text('‹') 产出的节点，名字就是那个字符，与文案耦合太紧。
-  body.appendChild(annotation('页面转场动效', [
-    motionLine('page') + '（' + MOTION.page.prd + '）',
-    '方向与手势一致：返回手势拖动量直接驱动位移，不是松手后才播 260ms',
-    '首页↔列表页属同级视图切换，不走本档（无前进/返回语义）'
-  ], { severity: 'interact', target: '_nav-left' }));
+  // 「联系 TA」贴底（2026-08-29 条目 [70]，P2 修复）：PRD §7.4.1 稿图末行明写
+  // 「底部固定主按钮胶囊」，此前按钮只是跟在信任卡后面，下方空 315px ——
+  // 既不吸底也不居中，看不出是「固定主按钮」。补了描述区后内容更长，
+  // 但仍不足 844，所以吸底仍需 _spacer 来实现。
+  //
+  // 转场 annotation 排在按钮之前而非之后：它钉在 _nav-left 上（见下注释），
+  // 属规格说明，不该插在主操作与页面底沿之间打断按钮的贴底关系
+  pushToBottom(body, [
+    // motion/page 钉在返回入口所在的 _nav-left 上（2026-08-27，I5）：详情页是
+    // 全站唯一「有明确前进/返回方向」的页面（首页与列表页互切属同级视图切换），
+    // 转场方向的规格必须落在有方向可言的地方。target 不用返回箭头本身 ——
+    // 它是 text('‹') 产出的节点，名字就是那个字符，与文案耦合太紧。
+    annotation('页面转场动效', [
+      motionLine('page') + '（' + MOTION.page.prd + '）',
+      '方向与手势一致：返回手势拖动量直接驱动位移，不是松手后才播 260ms',
+      '首页↔列表页属同级视图切换，不走本档（无前进/返回语义）'
+    ], { severity: 'interact', target: '_nav-left' }),
+    button('联系 TA', 'primary', CANVAS.w - SPACING.lg * 2)
+  ]);
   s.appendChild(body);
+  body.layoutGrow = 1;
   return s;
 }
 
@@ -4144,17 +4452,28 @@ function buildPublish() {
   }
   body.appendChild(text('T2 发布四模式', 'h3'));
   body.appendChild(modeRow);
-  body.appendChild(listRow('选择分类', CONTENT.job.path));
+  // 四个字段统一走「标签在上 + 44 高框」形态（2026-08-29 条目 [70]，P5 修复）。
+  // 「选择分类」「地点」原先走 listRow（满宽行卡），与「标题」「薪资」的 field
+  // 形态并存，读起来像两组性质不同的东西；且 listRow 写死 390 宽会超出本页可用宽 358。
+  // 次序也一并改成「分类 → 标题 → 薪资 → 地点」：分类决定后面出哪套模板字段，
+  // 它必须在最前；地点是发完还能改的收尾项，放最后
+  body.appendChild(selectField('选择分类', CONTENT.job.path));
   body.appendChild(field('标题', '一句话说清你要发什么'));
   body.appendChild(field('薪资', '如 4500-5500 元/月'));
-  body.appendChild(listRow('地点', '地图选点'));
-  body.appendChild(annotation('发布页口径', [
-    '三级分类模板由 category-selector 模态承载',
-    '发布记忆：默认回填上次同分类填写值',
-    '未实名点发布 → cert-modal 拦截（PRD §10.1）'
-  ]));
-  body.appendChild(button('发布', 'primary', CANVAS.w - SPACING.lg * 2));
+  body.appendChild(selectField('地点', null, '地图选点'));
+  // 「发布」按钮贴底（2026-08-29 条目 [70]，P1/P2 修复）：本页内容实测 512px，
+  // 底部空 332px，主按钮悬在四个字段下方、离屏幕底沿还有一大截。
+  // 表单页的提交键在底部是三端共识，且 PRD §3.4.1 已为通栏提交定过 capsule 档
+  pushToBottom(body, [
+    annotation('发布页口径', [
+      '三级分类模板由 category-selector 模态承载',
+      '发布记忆：默认回填上次同分类填写值',
+      '未实名点发布 → cert-modal 拦截（PRD §10.1）'
+    ]),
+    button('发布', 'primary', CANVAS.w - SPACING.lg * 2)
+  ]);
   s.appendChild(body);
+  body.layoutGrow = 1;
   return s;
 }
 
@@ -4169,14 +4488,27 @@ function buildContact() {
   var body = box('_body', 'VERTICAL', { w: CANVAS.w, pad: SPACING.xl, gap: SPACING.lg, align: 'CENTER' });
   body.appendChild(text('选择一种联系方式', 'h2'));
   body.appendChild(text('本产品不做站内 IM，联系走系统能力', 'small', 'color/text-secondary'));
-  body.appendChild(button('📞 拨打电话', 'primary', CANVAS.w - SPACING.xl * 2));
-  body.appendChild(button('💬 复制微信号', 'secondary', CANVAS.w - SPACING.xl * 2));
-  body.appendChild(annotation('联系页 Scope 红线', [
-    '不做 IM 聊天、不做撮合结果追踪（永久红线）',
-    '二选一单轨：一次只走一条路径，不并列引导',
-    '联系行为不产生交易记录、不产生信誉评价'
-  ], { severity: 'redline' }));
+  // 两个按钮改为贴底（2026-08-29 条目 [70]，P1/P2 修复）：本页内容实测只占 321px，
+  // 底部空着 523px（62%），按钮悬在页面上三分之一处。中转页的全部操作就是这两个键，
+  // 放到拇指够得着的底部才是这类页的常态；空白由 _spacer 显式占位，不再是无主的空档。
+  //
+  // 文案里的 📞 / 💬 一并去掉（P3 同批）：emoji 走系统字体，三端字形不一，
+  // 且色值不受 paintOf 控制 —— 主按钮上一个不受控的彩色字符会破坏按钮的单色块面。
+  // 这里不补矢量图标：「拨打电话」「复制微信号」六个字本身已说清，
+  // 加图标是重复编码（与 doneTag 保留勾的情形不同，那里勾承担的是「已完成」状态）。
+  pushToBottom(body, [
+    button('拨打电话', 'primary', CANVAS.w - SPACING.xl * 2),
+    button('复制微信号', 'secondary', CANVAS.w - SPACING.xl * 2),
+    annotation('联系页 Scope 红线', [
+      '不做 IM 聊天、不做撮合结果追踪（永久红线）',
+      '二选一单轨：一次只走一条路径，不并列引导',
+      '联系行为不产生交易记录、不产生信誉评价'
+    ], { severity: 'redline' })
+  ]);
   s.appendChild(body);
+  // 必须在 appendChild 之后：layoutGrow 要求已有 Auto Layout 父级。
+  // body 吃满 844 减去状态栏与导航栏的剩余高，内部的 _spacer 才有空间可伸
+  body.layoutGrow = 1;
   return s;
 }
 
@@ -4194,7 +4526,12 @@ function buildProfile() {
   head.appendChild(box('_avatar', 'HORIZONTAL', { w: 56, h: 56, radius: RADIUS.full, fill: 'color/primary-light' }));
   var info = box('_info', 'VERTICAL', { gap: SPACING.xs });
   info.appendChild(text('鸭友 138****8888', 'h3'));
-  info.appendChild(text('已实名 ✅ · 资质认证待完成', 'small', 'color/text-secondary'));
+  // 「已实名 ✅ · 资质认证待完成」拆成两段（条目 [70]）：前段已完成走 doneTag，
+  // 后段未完成不该带勾，保持纯文字
+  var idRow = box('_id-status', 'HORIZONTAL', { gap: SPACING.xs, align: 'CENTER' });
+  idRow.appendChild(doneTag('已实名', 'small', 'color/text-secondary'));
+  idRow.appendChild(text('· 资质认证待完成', 'small', 'color/text-secondary'));
+  info.appendChild(idRow);
   head.appendChild(info);
   s.appendChild(head);
   var group = box('_group', 'VERTICAL', { w: CANVAS.w, gap: 0 });
@@ -4202,132 +4539,315 @@ function buildProfile() {
   group.appendChild(listRow('我的收藏', '8'));
   group.appendChild(listRow('通知中心', '2 未读'));
   group.appendChild(listRow('信任与认证', '去完善'));
+  group.appendChild(listRow('帮助与反馈', ''));
   group.appendChild(listRow('设置', ''));
   s.appendChild(group);
-  s.appendChild(bottomTab('我的'));
+  // 退出登录（2026-08-29 条目 [70]）：§3.4.2 稿图把它明列为个人中心底部的独立
+  // Danger 按钮，§3.4.3 尾注又写「个人中心放，设置页不放重复」。本轮按尾注从设置页
+  // 删掉后，整份稿子一度丢了这个元素，故在此按稿图补回。
+  // 与列表分开一段：退出是破坏性操作，混在「我的发布/收藏」这类导航行里
+  // 会被误点，稿图也是用一条分隔线把它单独隔出来的
+  var quit = box('_quit', 'VERTICAL', { w: CANVAS.w, pad: SPACING.lg });
+  quit.appendChild(button('退出登录', 'danger', CANVAS.w - SPACING.lg * 2));
+  s.appendChild(quit);
+  // 底部 Tab 贴到画框底边（2026-08-29 条目 [70]，P1 修复）：本页内容实测 479px，
+  // Tab 栏原先紧跟在设置行下方、悬在 479px 处，底下还空着 365px。
+  // 底部 Tab 是全局导航，它在其他所有页面上都在屏幕最下沿，这里悬在半空
+  // 会让评审以为「我的」页的 Tab 是另一种形态。
+  //
+  // 与 contact/trust 用 pushToBottom 的差别：本页没有统一的 _body 容器，
+  // 三段直接挂在画框上，故 spacer 直接插在画框层
+  pushToBottom(s, [bottomTab('我的')]);
   return s;
 }
 
 /**
- * 构造 my-publish-screen：在架/下架/草稿 + 刷新重发（PRD §10.1）
+ * 构造 my-publish-screen：全部/在架/已下架/草稿 + 编辑重发下架（PRD §8.3.1）
+ *
+ * 2026-08-29 条目 [70] 后补：原实现 2 张卡 + 一组游离按钮，实机内容仅到 365px、
+ * 空白 479px。三处对齐 §8.3.1：
+ *
+ * ① Tab 补「全部」——§8.3.1 明列四个页签（全部 · 在架 · 已下架 · 草稿）。
+ * ② 卡补到 4 张并覆盖三种状态标（在架绿 / 下架灰 / 草稿黄）。本页页签停在
+ *    「全部」，故三种状态可以同屏 —— 这正是补「全部」页签换来的好处：原先停在
+ *    「在架」时，下架与草稿两种状态标在整份稿子里没有任何落点。
+ * ③ 操作组下沉到每张卡内。原实现把「刷新重发 / 下架」做成整页底部一组游离按钮，
+ *    可是 §8.3.1 写的是「右：操作组（编辑 · 重发 · 上下架切换）」—— 是每行一组。
+ *    做成整页一组会让人以为它作用于全部条目，而实际是逐条操作。
+ *
  * @returns {FrameNode} 我的发布页节点
  */
 function buildMyPublish() {
-  var s = screen('my-publish-screen', '我的发布', 'PRD §10.1');
+  var s = screen('my-publish-screen', '我的发布', 'PRD §8.3.1');
   s.appendChild(statusBar());
-  s.appendChild(navBar('我的发布', { back: true }));
-  s.appendChild(segTab(['在架', '下架', '草稿'], 0));
+  s.appendChild(navBar('我的发布', { back: true, right: '搜索' }));
+  s.appendChild(segTab(['全部', '在架', '已下架', '草稿'], 0));
   var body = box('_body', 'VERTICAL', { w: CANVAS.w, pad: SPACING.lg, gap: SPACING.md });
-  // 标题取 fixtures：与列表页/详情页同一条演示主线，设计师翻页时能对上是同一条信息
-  body.appendChild(card(CONTENT.job.title, '完整度 🟢｜浏览 42｜3 天前发布',
-    'category/' + CONTENT.job.catKey, '在架'));
-  body.appendChild(card(CONTENT.listExtra[1].title, '完整度 🟡｜浏览 11｜7 天前发布',
-    'category/' + CONTENT.listExtra[1].catKey, '在架'));
-  var actRow = box('_actions', 'HORIZONTAL', { gap: SPACING.sm });
-  actRow.appendChild(button('刷新重发', 'secondary', 0));
-  actRow.appendChild(button('下架', 'ghost', 0));
-  body.appendChild(actRow);
+
+  /**
+   * 生成一条「卡片 + 逐条操作组」的组合块。
+   * @param {Array} it [标题, 副标题, catKey, 状态标, 完整度档或空, 操作文案数组]
+   * @returns {FrameNode} 组合块节点
+   */
+  var pubItem = function (it) {
+    var g = box('_pub/' + it[0], 'VERTICAL', { w: CANVAS.w - SPACING.lg * 2, gap: SPACING.xs });
+    g.appendChild(card(it[0], it[1], 'category/' + it[2], it[3], it[4] || undefined));
+    var acts = box('_pub-actions', 'HORIZONTAL', { gap: SPACING.sm });
+    for (var j = 0; j < it[5].length; j++) {
+      acts.appendChild(button(it[5][j], j === 0 ? 'secondary' : 'ghost', 0));
+    }
+    g.appendChild(acts);
+    return g;
+  };
+
+  // 三种状态标各占一条，操作组随状态变化：在架给「下架」、下架给「重发」、
+  // 草稿给「继续编辑」。状态与可用操作的对应关系是本页的核心规格（§8.6 状态机），
+  // 四条卡若操作组全一样，那张状态机图在稿子上就等于没落地
+  var items = [
+    [CONTENT.job.title, '浏览 42｜3 天前发布', CONTENT.job.catKey, '在架', 'green', ['编辑', '下架']],
+    [CONTENT.listExtra[1].title, '浏览 11｜7 天前发布', CONTENT.listExtra[1].catKey, '在架', 'yellow', ['编辑', '下架']],
+    [CONTENT.listExtra[2].title, '浏览 8｜已过期自动下架', CONTENT.listExtra[2].catKey, '已下架', 'yellow', ['刷新重发', '删除']],
+    [CONTENT.marker.title, '未发布｜草稿保存于昨天', CONTENT.marker.catKey, '草稿', 'red', ['继续编辑', '删除']]
+  ];
+  for (var i = 0; i < items.length; i++) body.appendChild(pubItem(items[i]));
   s.appendChild(body);
   return s;
 }
 
 /**
- * 构造 my-favorite-screen：资源/需求 Tab（PRD §10.1）
+ * 构造 my-favorite-screen：资源/需求/全部 Tab（PRD §8.3.2）
+ *
+ * 2026-08-29 条目 [70] 后补：原实现 2 张卡，实机内容仅到 303px、空白 541px。
+ * 两处对齐 §8.3.2：
+ *
+ * ① Tab 补「全部」——§8.3.2 明列三个页签（资源 · 需求 · 全部），原先只有两个。
+ * ② 卡补到 5 张，且五大分类各占一张。收藏页是唯一一处「同屏出现全部五种分类色」
+ *    的真实场景，两张卡只能验到两种色，剩下三种分类色在真实卡片语境下从未被看过
+ *    （T6 规格板上的色块是脱离语境的纯色样）。
+ *
+ * 五张卡 kind 一律「资源」：本页页签停在「资源」，卡片供需属性必须与页签一致，
+ * 否则设计师会以为「资源」页签下也能出现需求卡。
+ *
  * @returns {FrameNode} 我的收藏页节点
  */
 function buildMyFavorite() {
-  var s = screen('my-favorite-screen', '我的收藏', 'PRD §10.1');
+  var s = screen('my-favorite-screen', '我的收藏', 'PRD §8.3.2');
   s.appendChild(statusBar());
   s.appendChild(navBar('我的收藏', { back: true }));
-  s.appendChild(segTab(['资源', '需求'], 0));
+  s.appendChild(segTab(['资源', '需求', '全部'], 0));
   var body = box('_body', 'VERTICAL', { w: CANVAS.w, pad: SPACING.lg, gap: SPACING.md });
-  // 收藏页两张卡取 fixtures 的服务类与房屋类（原先类目路径「服务 › 维修 › 水电」
-  // 与「房屋 › 租房 › 整租」在 CAT_TREE 里都不存在）。
-  // 注意 kind 一律传「资源」：本页 segTab 停在「资源」页签，卡片必须与页签一致，
-  // 故不沿用 fixtures 里房屋条目的「需求」，改用同类目的出租向标题。
-  body.appendChild(card(CONTENT.listExtra[2].title,
-    CONTENT.listExtra[2].path + '｜' + CONTENT.listExtra[2].distance,
-    'category/' + CONTENT.listExtra[2].catKey, '资源'));
-  body.appendChild(card(CONTENT.favoriteHouse.title,
-    CONTENT.favoriteHouse.path + '｜' + CONTENT.favoriteHouse.distance,
-    'category/' + CONTENT.favoriteHouse.catKey, CONTENT.favoriteHouse.kind));
+  // 五条按 catKey 覆盖工作/房屋/车辆/服务/生活，全部取 fixtures 真值。
+  // 生活类取 marker 那条（婴儿推车）：它本是首页信息卡的样例，在收藏页复用
+  // 恰好演示了「从地图 Pin 收藏来的信息长什么样」，不是随手凑数
+  var favs = [
+    [CONTENT.job.title, CONTENT.job.path + '｜' + CONTENT.job.distance, CONTENT.job.catKey],
+    [CONTENT.favoriteHouse.title,
+      CONTENT.favoriteHouse.path + '｜' + CONTENT.favoriteHouse.distance,
+      CONTENT.favoriteHouse.catKey],
+    [CONTENT.listExtra[1].title,
+      CONTENT.listExtra[1].path + '｜' + CONTENT.listExtra[1].distance,
+      CONTENT.listExtra[1].catKey],
+    [CONTENT.listExtra[2].title,
+      CONTENT.listExtra[2].path + '｜' + CONTENT.listExtra[2].distance,
+      CONTENT.listExtra[2].catKey],
+    [CONTENT.marker.title, CONTENT.marker.subtitle, CONTENT.marker.catKey]
+  ];
+  for (var i = 0; i < favs.length; i++) {
+    body.appendChild(card(favs[i][0], favs[i][1], 'category/' + favs[i][2], '资源'));
+  }
   s.appendChild(body);
+  var note = box('_note', 'VERTICAL', { w: CANVAS.w, padLeft: SPACING.lg, padRight: SPACING.lg });
+  note.appendChild(annotation('收藏页口径', [
+    '取消收藏：卡片上滑或点星标（PRD §8.3.2）',
+    '卡片为详情精简版，不重复展示模板字段全量'
+  ], { severity: 'spec' }));
+  s.appendChild(note);
   return s;
 }
 
 /**
- * 构造 notification-screen：系统/互动/认证三类纯通知（PRD §10.1）
+ * 构造 notification-screen：系统/互动/认证三类纯通知（PRD §8.3.3）
+ *
+ * 2026-08-29 条目 [70] 后补：原实现用 3 条 listRow 顶替通知行，实机内容仅到
+ * 267px、空白 577px（全画布最大一处）。两处偏差一起修：
+ *
+ * ① 行形态 —— §8.3.3 明列「图标 · 标题 · 摘要 · 时间 · 未读红点」五段，
+ *    listRow 只给两段，摘要与未读态整个缺失。改走新的 notifyRow。
+ * ② 条数与覆盖面 —— §8.3.3 逐项列了系统类五种触发（实名通过/审核中/资质通过/
+ *    违规下架/版本更新），只画 3 条等于评审看不到「违规下架」这类负向通知长什么样。
+ *
+ * 本页 segTab 停在「系统」，故只列系统类；互动与认证类的文案在 annotation 里
+ * 点明，不混进列表 —— 混进去会让人以为系统页签下也收互动通知。
+ *
  * @returns {FrameNode} 通知中心节点
  */
 function buildNotification() {
-  var s = screen('notification-screen', '通知中心（分类）', 'PRD §10.1');
+  var s = screen('notification-screen', '通知中心（分类）', 'PRD §8.3.3');
   s.appendChild(statusBar());
   s.appendChild(navBar('通知', { back: true, right: '全部已读' }));
   s.appendChild(segTab(['系统', '互动', '认证'], 0));
   var body = box('_body', 'VERTICAL', { w: CANVAS.w, gap: 0 });
-  body.appendChild(listRow('你的发布已通过审核', '2 小时前'));
-  body.appendChild(listRow('有人查看了你的「招后厨帮工」', '昨天'));
-  body.appendChild(listRow('实名认证已通过', '3 天前'));
+  // 五条覆盖 §8.3.3 系统类的全部触发种类，前两条未读、后三条已读：
+  // 未读/已读同页出现才看得出两态的色阶差，全未读或全已读都只交付了一半
+  body.appendChild(notifyRow('bell', '你的发布已通过审核',
+    '「' + CONTENT.job.title + '」已在架，附近的人可以看到', '2 小时前', true));
+  body.appendChild(notifyRow('tick', '实名认证已通过',
+    '身份证二要素核验成功，已获得实名标', '昨天', true));
+  body.appendChild(notifyRow('bell', '一条信息被违规下架',
+    '「小货车拉货」含疑似联系方式外露，可修改后重发', '3 天前', false));
+  body.appendChild(notifyRow('tick', '家政资质审核中',
+    '预计 1 个工作日内出结果', '3 天前', false));
+  body.appendChild(notifyRow('dots', '版本更新 v2.1',
+    '新增 AI 帮我发、类目三级精筛', '一周前', false));
   s.appendChild(body);
   var note = box('_note', 'VERTICAL', { w: CANVAS.w, pad: SPACING.lg });
   note.appendChild(annotation('通知中心口径', [
-    '纯通知，不可回复，不做消息列表页与聊天详情页（PRD §10.1）',
-    '三类：系统 / 互动 / 认证'
+    '纯通知，不可回复，不做消息列表页与聊天详情页（PRD §8.3.3）',
+    '三类：系统（本页）/ 互动（被联系 × 次）/ 认证（审核进度、年审提醒）',
+    '点击通知跳对应详情，不做展开态，故行尾不带 ›'
   ], { severity: 'redline' }));
   s.appendChild(note);
   return s;
 }
 
 /**
- * 构造 trust-screen：实名 + 资质二层认证（PRD §10.1）
+ * 构造 trust-screen：四类认证逐条状态 + 信任指标卡（PRD §4.4 / §10.1）
+ *
+ * 2026-08-29 条目 [70] 后补，两处改动一起做：
+ *
+ * ① 两层概括卡 → 四类认证行。原实现只画「第一层实名 / 第二层资质」两张概括卡，
+ *    而 §4.3 表列的是四类（个人实名 / 个人资质 / 企业认证 / 车辆认证）、§4.4
+ *    稿图逐条画了状态 + 日期 + 动作。概括卡把「哪一类过了、哪一类还没过」这个
+ *    本页最核心的信息糊掉了 —— 用户来这一页就是为了看这个。
+ *    「二层」说的是认证机制的深度（实名是门槛、资质是加成），不是只有两个条目，
+ *    故展开四行不违 T4 红线，红线 annotation 原样保留。
+ *
+ * ② 补 §4.4 的信任指标卡。这是把 Marker 卸下来的完整度信息在「我的」侧的汇总
+ *    落点（详情页信任卡是单条视角，本卡是全量视角）。
+ *
+ * 顺带这也是 P1 底部空白的真正解法：原先本页可见内容仅到 293px，我用
+ * pushToBottom 把红线 annotation 压到页脚，但 detachAnnotations() 会把
+ * annotation 卡移出画框挂到 SECTION 上 —— 唯一的尾部元素一走，spacer 之后什么
+ * 都不剩，实机仍是 551px 空白。空白的根子从来不是布局，是内容缺。
+ *
  * @returns {FrameNode} 信任与认证页节点
  */
 function buildTrust() {
-  var s = screen('trust-screen', '信任与认证', 'PRD §10.1');
+  var s = screen('trust-screen', '信任与认证', 'PRD §4.4');
+  var cw = CANVAS.w - SPACING.lg * 2;
   s.appendChild(statusBar());
   s.appendChild(navBar('信任与认证', { back: true }));
   var body = box('_body', 'VERTICAL', { w: CANVAS.w, pad: SPACING.lg, gap: SPACING.md });
+
+  // ---- 第一层：实名，单独成卡且描边走 success ----
+  // 与下面三类同列会丢掉「它是发布前置门槛」这层含义（§4.3：强推荐，未实名
+  // 每日仅看 3 条详情）。它是别的认证的前提，不是并列的第四种
   var l1 = box('_layer1', 'VERTICAL', {
-    w: CANVAS.w - SPACING.lg * 2, pad: SPACING.md, gap: SPACING.xs,
+    w: cw, pad: SPACING.md, gap: SPACING.xs,
     fill: 'color/surface', radius: RADIUS.lg, stroke: 'color/success'
   });
-  l1.appendChild(text('第一层 · 实名认证 ✅ 已完成', 'h3', 'color/success-text'));
-  l1.appendChild(text('身份证 + 人脸核验，发布前置门槛', 'small', 'color/text-secondary'));
+  l1.appendChild(doneTag('第一层 · 个人实名 已通过', 'h3', 'color/success-text'));
+  l1.appendChild(text('身份证二要素 + 手机号一致性，发布前置门槛', 'small', 'color/text-secondary'));
   body.appendChild(l1);
+
+  // ---- 第二层：三类资质逐条列状态 ----
   var l2 = box('_layer2', 'VERTICAL', {
-    w: CANVAS.w - SPACING.lg * 2, pad: SPACING.md, gap: SPACING.sm,
+    w: cw, pad: SPACING.md, gap: SPACING.md,
     fill: 'color/surface', radius: RADIUS.lg, stroke: 'color/border'
   });
-  l2.appendChild(text('第二层 · 资质认证 待完成', 'h3'));
-  l2.appendChild(text('营业执照 / 从业资质，提升信任卡展示', 'small', 'color/text-secondary'));
-  l2.appendChild(button('上传资质', 'secondary', 0));
+  l2.appendChild(text('第二层 · 资质认证', 'h3'));
+  // 三行刻意各占一档状态（已通过 / 审核中 / 未认证）：本页是设计稿，评审要看的
+  // 是三种状态的视觉差，全画成「已通过」等于只交付了三分之一的规格
+  l2.appendChild(certRow('企业认证', 'reviewing', '2026-08-09 提交', '查看'));
+  l2.appendChild(certRow('家政资质', 'none', '发布家政/保洁/维修类必须', '去认证'));
+  l2.appendChild(certRow('车辆认证', 'passed', '2026-05-12', '管理'));
   body.appendChild(l2);
+
+  // ---- 信任指标卡（PRD §4.4）----
+  var tm = box('_trust-metrics', 'VERTICAL', {
+    w: cw, pad: SPACING.md, gap: SPACING.sm,
+    fill: 'color/surface', radius: RADIUS.lg, stroke: 'color/border'
+  });
+  tm.appendChild(text('我的信任指标', 'h3'));
+  // 三项信号横排：§4.2 定义「信任信号 = 实名标 + 资质标 + 完整度三档」，
+  // 三者是并列的一组，分三行会读成三个独立小节
+  var sig = box('_signals', 'HORIZONTAL', { gap: SPACING.md, align: 'CENTER' });
+  sig.appendChild(doneTag('实名', 'small', 'color/text-secondary'));
+  sig.appendChild(doneTag('资质 1 项', 'small', 'color/text-secondary'));
+  var avg = box('_avg', 'HORIZONTAL', { gap: SPACING.xs, align: 'CENTER' });
+  avg.appendChild(text('完整度', 'small', 'color/text-secondary'));
+  avg.appendChild(completenessTag('green', 'small'));
+  sig.appendChild(avg);
+  tm.appendChild(sig);
+  // 条数取「3 在架」与 profile 的 listRow('我的发布', '3 在架') 对齐（2026-08-29
+  // 定的口径，PRD §4.4 稿图的「5 条」已同批回写为 3 条）。同一份演示数据在两页
+  // 互相矛盾，评审第一眼就会去追哪个是对的，而它其实没有对错、只是我没对齐
+  tm.appendChild(text('我在架的 3 条信息完整度分布', 'small', 'color/text-secondary'));
+  var dist = box('_dist', 'HORIZONTAL', { gap: SPACING.md, align: 'CENTER' });
+  var levels = ['green', 'yellow', 'red'];
+  for (var i = 0; i < levels.length; i++) {
+    var cell = box('_dist-' + levels[i], 'HORIZONTAL', { gap: SPACING.xs, align: 'CENTER' });
+    cell.appendChild(completenessTag(levels[i], 'small'));
+    cell.appendChild(text('1 条', 'small', 'color/text-secondary'));
+    dist.appendChild(cell);
+  }
+  tm.appendChild(dist);
+  // T4 红线在卡内点明而非只写在 annotation 里：annotation 会被
+  // detachAnnotations() 移出画框，单看渲染图时这句就不在页面上了。
+  // 措辞直接抄 §4.2 的定性句，不写「不含发布记录数/举报率」那种列举 ——
+  // 列举反而把不该出现的指标名字印在了页面上
+  tm.appendChild(text('只看信息真实性与完整性，不做人的信誉评级（T4 红线）', 'caption', 'color/text-secondary'));
+  body.appendChild(tm);
+
+  // 红线 annotation 保留但不再承担贴底职责（原修法失效详见函数头注释）。
+  // 补完内容后本页自然填满，不需要 spacer
   body.appendChild(annotation('认证 Scope 红线', [
     '只做二层认证，不做信誉评价体系、不做信誉详情页',
     '不售卖商业化角标（永久红线）'
   ], { severity: 'redline' }));
   s.appendChild(body);
+  body.layoutGrow = 1;
   return s;
 }
 
 /**
- * 构造 settings-screen：账号安全 + 隐私 + 关于（PRD §10.1）
+ * 构造 settings-screen：账号与安全 + 通用 + 隐私 + 关于（PRD §3.4.3）
+ *
+ * 2026-08-29 条目 [70] 后补：原实现 5 条无分组平列，实机内容仅到 384px、
+ * 空白 460px。两处对齐 §3.4.3：
+ *
+ * ① 条目补齐。§3.4.3 逐项列了四组共十余项（手机号 / 修改密码 / 注销账号 /
+ *    消息通知开关 / 范围默认值 / 清除缓存 / 位置权限说明 / 联系方式展示策略 /
+ *    版本号 / 用户协议 / 隐私政策），原先 5 条里「注销账号」「范围默认值」
+ *    「联系方式展示策略」这几项恰好是需要单独确认口径的敏感项，全都缺了。
+ * ② 补分组标题。十余项平列是一堵没有落点的列表墙，§3.4.3 本身就是分四组写的。
+ *
+ * 「退出登录」按 §3.4.3 尾注保留在个人中心而非本页 —— 原实现在这里也放了一个，
+ * 与那条尾注（「退出登录个人中心放，设置页不放重复」）直接冲突，本次一并去掉。
+ *
  * @returns {FrameNode} 设置页节点
  */
 function buildSettings() {
-  var s = screen('settings-screen', '设置', 'PRD §10.1');
+  var s = screen('settings-screen', '设置', 'PRD §3.4.3');
   s.appendChild(statusBar());
   s.appendChild(navBar('设置', { back: true }));
   var body = box('_body', 'VERTICAL', { w: CANVAS.w, gap: 0 });
-  body.appendChild(listRow('账号安全', ''));
-  body.appendChild(listRow('隐私设置', ''));
-  body.appendChild(listRow('通知偏好', ''));
-  body.appendChild(listRow('清除缓存', '12.4MB'));
-  body.appendChild(listRow('关于找鸭找', 'v2.1'));
+  // 分组与条目逐字对应 §3.4.3 的四组正文，右值只在「有当前值可展示」时给：
+  // 无右值的条目由 listRow 自行省略文本节点，不产出空壳
+  var groups = [
+    ['账号与安全', [['手机号', '138****8888'], ['修改密码', ''], ['注销账号', '']]],
+    ['通用', [['消息通知', '已开启'], ['默认范围', '5km'], ['清除缓存', '12.4MB']]],
+    ['隐私', [['位置权限说明', ''], ['联系方式展示策略', '仅点击后可见']]],
+    ['关于', [['版本号', 'v2.1'], ['用户协议', ''], ['隐私政策', '']]]
+  ];
+  for (var g = 0; g < groups.length; g++) {
+    body.appendChild(groupTitle(groups[g][0]));
+    var rows = groups[g][1];
+    for (var i = 0; i < rows.length; i++) {
+      body.appendChild(listRow(rows[i][0], rows[i][1]));
+    }
+  }
   s.appendChild(body);
-  var foot = box('_foot', 'VERTICAL', { w: CANVAS.w, pad: SPACING.xl, align: 'CENTER' });
-  foot.appendChild(button('退出登录', 'danger', CANVAS.w - SPACING.xl * 2));
-  s.appendChild(foot);
   return s;
 }
 
@@ -4380,12 +4900,18 @@ function buildAiConfirm() {
     body.appendChild(row);
   }
 
-  // 底部「再花 5 秒升 🟢」冲刺区（PRD §5.9）
+  // 底部「再花 5 秒升『完整』」冲刺区（PRD §5.9）
   var sprint = box('_green-sprint', 'VERTICAL', {
     w: CANVAS.w - SPACING.lg * 2, pad: SPACING.md, gap: SPACING.sm,
     fill: 'color/primary-light', radius: RADIUS.lg
   });
-  sprint.appendChild(text('再花 5 秒升 🟢', 'h3', 'color/primary-dark'));
+  // 标题原为「再花 5 秒升 🟢」，2026-08-29（条目 [70]）拆成「文字 + 矢量档位标识」。
+  // 拆开而非整句改成纯文字：这里的 🟢 指的就是完整度那一档，
+  // 与页内其他档位标识必须长得一样，否则同一语义出现两种表现
+  var sprintTitle = box('_sprint-title', 'HORIZONTAL', { gap: SPACING.xs, align: 'CENTER' });
+  sprintTitle.appendChild(text('再花 5 秒升', 'h3', 'color/primary-dark'));
+  sprintTitle.appendChild(completenessTag('green', 'h3', 'color/primary-dark'));
+  sprint.appendChild(sprintTitle);
   var sp1 = box('_sp-1', 'HORIZONTAL', { w: CANVAS.w - SPACING.lg * 2 - SPACING.md * 2, justify: 'SPACE_BETWEEN', align: 'CENTER' });
   sp1.appendChild(text('门牌号', 'small', 'color/primary-dark'));
   sp1.appendChild(button('取当前定位门牌', 'secondary', 0));
@@ -4402,7 +4928,7 @@ function buildAiConfirm() {
     '未猜出字段标「需你补充」，不猜不编造（PRD §5.9）',
     '仅本页点「确认发布」才计 1 次 AI 配额（PRD §5.9）',
     '7 秒口径不含本页耗时（PRD §5.9）',
-    '冲刺区只放 🟢 档差的两项：门牌号 + 三级类目'
+    '冲刺区只放「完整」档差的两项：门牌号 + 三级类目'
   ]));
   body.appendChild(button('确认发布', 'primary', CANVAS.w - SPACING.lg * 2));
   s.appendChild(body);
@@ -4422,22 +4948,34 @@ function buildPublishSuccess() {
   body.appendChild(text('发布成功', 'h2'));
   body.appendChild(text('附近的人将看到你的信息', 'small', 'color/text-secondary'));
 
-  // 完整度卡：当前档 🟡 + 还差哪几项 + 权益三条
+  // 完整度卡：当前档「半完整」+ 还差哪几项 + 权益三条
   var cc = box('card/completeness', 'VERTICAL', {
     w: CANVAS.w - SPACING.xl * 2, pad: SPACING.lg, gap: SPACING.md,
     fill: 'color/surface', radius: RADIUS.lg, stroke: 'color/warning'
   });
-  cc.appendChild(text('当前完整度 🟡 半完整', 'h3', 'color/warning-text'));
+  // 原为一行「当前完整度 🟡 半完整」（条目 [70] 改）。档名不再重复写死在文案里 ——
+  // completenessTag 自己就带「半完整」，写两遍会在改档位时漏改其中一处
+  var ccTitle = box('_cc-title', 'HORIZONTAL', { gap: SPACING.xs, align: 'CENTER' });
+  ccTitle.appendChild(text('当前完整度', 'h3', 'color/warning-text'));
+  ccTitle.appendChild(completenessTag('yellow', 'h3', 'color/warning-text'));
+  cc.appendChild(ccTitle);
   cc.appendChild(text('三条件满足 2 个（PRD §9.8）', 'caption', 'color/text-placeholder'));
 
   var gapBox = box('_gap', 'VERTICAL', { gap: SPACING.xs });
-  gapBox.appendChild(text('还差这些升 🟢', 'small', 'color/text-secondary'));
+  var gapTitle = box('_gap-title', 'HORIZONTAL', { gap: SPACING.xs, align: 'CENTER' });
+  gapTitle.appendChild(text('还差这些升', 'small', 'color/text-secondary'));
+  gapTitle.appendChild(completenessTag('green', 'small', 'color/text-secondary'));
+  gapBox.appendChild(gapTitle);
   gapBox.appendChild(text('· 位置补到门牌号', 'small'));
   cc.appendChild(gapBox);
 
   // 权益三条（PRD §9.8 推荐池权重表，唯一判定处）
   var benefit = box('_benefits', 'VERTICAL', { gap: SPACING.xs });
-  benefit.appendChild(text('升 🟢 能得到', 'small', 'color/text-secondary'));
+  var benefitTitle = box('_benefit-title', 'HORIZONTAL', { gap: SPACING.xs, align: 'CENTER' });
+  benefitTitle.appendChild(text('升', 'small', 'color/text-secondary'));
+  benefitTitle.appendChild(completenessTag('green', 'small', 'color/text-secondary'));
+  benefitTitle.appendChild(text('能得到', 'small', 'color/text-secondary'));
+  benefit.appendChild(benefitTitle);
   var items = [
     '推荐池权重 ×2 优先展示（当前 ×1）',
     '附近人 2 倍概率看到你',
@@ -4458,7 +4996,7 @@ function buildPublishSuccess() {
   body.appendChild(annotation('发布完成页口径', [
     '取代单纯成功 toast（PRD §6.13 T6-④）',
     '完整度三档判定唯一处为 §9.8（PRD §9.8）',
-    '权重口径：🟢×2 / 🟡×1 / 🔴×0.5',
+    '权重口径：完整 ×2 / 半完整 ×1 / 待补充 ×0.5',
     '默认跳「我的发布」，2s Toast + 成功动画（PRD §5.8）',
     '未实名场景改为引导实名主按钮（PRD §3.7）'
   ]));
@@ -4655,7 +5193,13 @@ function buildT6Board() {
     radius: RADIUS.full, fill: 'color/accent', gap: SPACING.sm, align: 'CENTER', justify: 'CENTER'
   });
   fab.effects = [{ type: 'DROP_SHADOW', color: { r: 0, g: 0, b: 0, a: 0.2 }, offset: { x: 0, y: 4 }, radius: 12, spread: 0, visible: true, blendMode: 'NORMAL' }];
-  fab.appendChild(text('✨ AI 帮我发', 'body', 'color/surface'));
+  // 文案里的 ✨ 去掉（2026-08-29 条目 [70]，P3 同批漏查后补）：本轮首版 emoji
+  // 清点用的区间没覆盖 U+2600–27BF，✨ 因此漏网，由新增的「画布零 emoji」
+  // 断言捞出。它的危害在这里尤其大 —— FAB 是 Accent 橙底白字的实心块面，
+  // 一个不受 paintOf 控制的彩色字符正落在块面中央。
+  // 不补矢量图标：AI 语义已由「AI 帮我发」四字 + Accent 专用色双通道承载
+  //（PRD §1.4.2「Accent 的唯一用途」），再加装饰星是第三次重复编码。
+  fab.appendChild(text('AI 帮我发', 'body', 'color/surface'));
   g1.appendChild(fab);
   g1.appendChild(text('悬浮于 home-screen 右下，唤起一句话发布', 'caption', 'color/text-secondary'));
   b.appendChild(g1);
@@ -4693,7 +5237,14 @@ function buildT6Board() {
   badgeRow.appendChild(pin('category/cat-work', 'resource', 'yellow', false, true));
   badgeRow.appendChild(pin('category/cat-work', 'resource', 'red', false, true));
   g3.appendChild(badgeRow);
-  g3.appendChild(text('🟢 完整 / 🟡 部分缺失 / 🔴 严重缺失', 'caption', 'color/text-secondary'));
+  // 图例原为一行 emoji 文案「🟢 完整 / 🟡 部分缺失 / 🔴 严重缺失」（条目 [70] 改）。
+  // 规格板的图例尤其不能留 emoji：它是「角标该长什么样」的判据本身，
+  // 判据自己用了一套不受 Token 控制的颜色，评审就无从核对角标色对不对
+  var legendRow = box('_badge-legend', 'HORIZONTAL', { gap: SPACING.md, align: 'CENTER' });
+  legendRow.appendChild(completenessTag('green', 'caption', 'color/text-secondary'));
+  legendRow.appendChild(completenessTag('yellow', 'caption', 'color/text-secondary'));
+  legendRow.appendChild(completenessTag('red', 'caption', 'color/text-secondary'));
+  g3.appendChild(legendRow);
   g3.appendChild(text('注意：地图 Marker 不常驻此角标。40×40 内原先叠了 4 条信息（底色=分类、图标=分类、右上 ?=供需、右下点=完整度），分类被重复编码两次、完整度在缩略态几乎无人细看，纯在抢辨识带宽。完整度改由点击 Marker 后的信息卡与列表卡承载（PRD §6.4.2）', 'caption', 'color/text-secondary'));
   b.appendChild(g3);
 
@@ -4703,7 +5254,13 @@ function buildT6Board() {
   var cc = box('card/completeness', 'VERTICAL', {
     w: 320, pad: SPACING.lg, gap: SPACING.sm, fill: 'color/primary-light', radius: RADIUS.lg
   });
-  cc.appendChild(text('发布成功 · 完整度 🟡 60%', 'h3', 'color/primary-dark'));
+  // 原为「发布成功 · 完整度 🟡 60%」（条目 [70] 改）。百分数留着 ——
+  // 它是这张演示卡要展示的东西（档位 + 具体分值），不与档名重复
+  var ccTitle = box('_cc-title', 'HORIZONTAL', { gap: SPACING.xs, align: 'CENTER' });
+  ccTitle.appendChild(text('发布成功 · 完整度', 'h3', 'color/primary-dark'));
+  ccTitle.appendChild(completenessTag('yellow', 'h3', 'color/primary-dark'));
+  ccTitle.appendChild(text('60%', 'h3', 'color/primary-dark'));
+  cc.appendChild(ccTitle);
   cc.appendChild(text('补齐「工时」和「照片」可提升曝光', 'small', 'color/primary-dark'));
   cc.appendChild(button('立即补齐', 'primary', 0));
   g4.appendChild(cc);
@@ -4812,8 +5369,10 @@ var FLOW_LINKS = [
   ['list-screen',            'card/招后厨帮工·包吃住',      'detail-screen',          'ON_CLICK'],
   ['detail-screen',          'btn/primary/联系 TA',        'contact-screen',         'ON_CLICK'],
   ['home-screen',            '_tab-发布',                  'publish-screen',         'ON_CLICK'],
-  ['publish-screen',         'row/选择分类',               'category-selector',      'ON_CLICK'],
-  ['publish-screen',         'row/地点',                   'map-selector',           'ON_CLICK'],
+  // 两条源节点名随 P5 由 row/* 改为 field/*（2026-08-29 条目 [70]）：
+  // 发布页这两个字段已从 listRow 换成 selectField，节点名前缀跟着变
+  ['publish-screen',         'field/选择分类',             'category-selector',      'ON_CLICK'],
+  ['publish-screen',         'field/地点',                 'map-selector',           'ON_CLICK'],
   ['publish-screen',         'btn/primary/发布',           'cert-modal',             'ON_CLICK'],
   ['cert-modal',             'btn/primary/去实名',          'trust-screen',           'ON_CLICK'],
   ['category-selector',      '_item/L3/' + CONTENT.job.l3, 'publish-screen',         'ON_CLICK'],
