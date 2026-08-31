@@ -4743,7 +4743,10 @@ function buildProfile() {
   group.appendChild(listRow('我的收藏', '8'));
   group.appendChild(listRow('通知中心', '2 未读'));
   group.appendChild(listRow('信任与认证', '去完善'));
-  group.appendChild(listRow('帮助与反馈', ''));
+  // 不放「帮助与反馈」（2026-08-31 裁决）：§3.4.2 稿图画了「❓ 帮助与反馈 ›」一行，
+  // 但同节 §3.3 的范围约束明写「不含结算记录、帮助中心等超范围项」，且附录 B 的
+  // 14 页清单与 §9.4 API 清单里都没有对应页与接口 —— 稿图这一行是在承诺一个
+  // 未立项的功能。范围约束优于稿图，故本页不落地，PRD §3.4.2 稿图同步删除。
   group.appendChild(listRow('设置', ''));
   s.appendChild(group);
   // 退出登录（2026-08-29 条目 [70]）：§3.4.2 稿图把它明列为个人中心底部的独立
