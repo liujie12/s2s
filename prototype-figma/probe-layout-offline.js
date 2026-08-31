@@ -608,7 +608,11 @@ const wrapped = new Function(
       'listEndRow',
       // 2026-08-31：四个模态从建成起从未出过渲染图，本轮补图时量出 T6 板两组
       // 子节点溢出画框（+834 / +280）。溢出只能真跑量宽，源码看不出
-      'buildCategorySelector', 'buildMapSelector', 'buildCertModal', 'buildT6Board']
+      'buildCategorySelector', 'buildMapSelector', 'buildCertModal', 'buildT6Board',
+      // 条目 [70-h]（2026-08-31）：过程态六档 / 半径四档 / 权限两态三张表必须由
+      // 断言拿真源去核。这三处的病根都是「表里写对了，画面没画出来」——
+      // 探针在自己这边手抄一份期望值，验的就是抄本自己，永远绿（原则㊾）
+      'EMPTY_FALLBACK_TIMELINE', 'S2_RADIUS_TIERS', 'COVERAGE_STATES']
       .map((k) => k + ': typeof ' + k + " !== 'undefined' ? " + k + ' : undefined')
       .join(', ') +
     ' };'
@@ -1918,6 +1922,189 @@ function allText(root) {
       badNames.length
         ? badNames.length + ' 个：' + badNames.slice(0, 5).join('; ')
         : '全部合规'
+    );
+  }
+
+  // ============================================================
+  // 八之二·补、条目 [70-h]：三张真源表必须画到画面上（2026-08-31）
+  //
+  // 为什么这三条非补不可：本轮 23 张变体图人眼过图查出的四处缺陷，
+  // 病根是同一个 —— **表里取值对齐 PRD，画面却没把它画出来**。
+  // EMPTY_FALLBACK_TIMELINE 的 ui 字段自 2026-08-24 就逐字对齐 PRD §6.4.4，
+  // 探针也一直在查这个取值，但画框只把那句话当一行说明文字贴在地图上，
+  // 六张过程态图与主态逐像素相同。取值断言全绿、画面全废。
+  //
+  // 故这三条一律「查画面上的真节点」而不是查表：
+  // ① 过程态六档的 PRD 逐字元素（骨架卡 3 条 / 进度条 / 两个按钮 / 终态无地图）；
+  // ② 半径四档的摘要胶囊文本须含本档档位值（原先四框全吃默认「5km」）；
+  // ③ 权限 B 态画框存在且主按钮为「去系统设置打开」（原先只有 A 态）。
+  //
+  // 放在批次循环之后：resetSection 只清本 Section，故批次 5 跑完时画布是
+  // 五个批次的累积全量，allFrames 此刻才是完整的（循环内查到的是半成品）。
+  // ============================================================
+  console.log('\n=== 条目 [70-h] 兜底过程态 / 半径档 / 权限两态 ===');
+
+  const variantFrames = allFrames.map((g) => g.frame);
+  const frameByTitle = (needle) =>
+    variantFrames.filter((f) => f.name.indexOf(needle) > -1);
+
+  // ① 过程态六档：PRD §6.4.4 兜底过程态表逐字写明的界面元素必须真在画面上。
+  //
+  // 判据逐条对应 PRD 原句，不是我挑的：
+  // · 「骨架卡 3 条」——条数逐字取 3，不取整成「≥1 条」。写「有骨架卡就算过」
+  //   等于放行画 1 条，而 1 条骨架卡看起来是一条加载失败的空卡，不是列表在加载；
+  // · 「进度条走满 10 秒」——必须是进度条节点，转圈图标不算：进度条承载的是
+  //   「还要等多久」这一确定性信息，转圈图标恰恰不给这个信息；
+  // · 两个按钮文案逐字锁（「先去别处看看」/「发一条需求，让别人来找你」），
+  //   它们是 PRD 给的「不强留」出口，换成「知道了」就把出口改成了确认按钮；
+  // · terminal 档不得含 _map-canvas ——PRD 明写「落到终态空页」，
+  //   仍出满屏地图与「空页」语义相反，这是本轮最重的一处。
+  {
+    const tl = M.EMPTY_FALLBACK_TIMELINE || [];
+    const procBad = [];
+    check('EMPTY_FALLBACK_TIMELINE 已导出且为六档（否则下面是空跑）',
+      tl.length === 6, tl.length + ' 档');
+    for (const step of tl) {
+      const hit = frameByTitle('过程态 ' + step.at);
+      if (hit.length !== 1) {
+        procBad.push('过程态 ' + step.at + '：命中 ' + hit.length + ' 个画框');
+        continue;
+      }
+      const f = hit[0];
+      // 标注卡会被 detachAnnotations 移出画框，故只扫画框内真元素
+      const texts = f.findAll((n) => n.type === 'TEXT').map((n) => n.characters);
+      if (!texts.some((t) => t.indexOf(step.lead) > -1)) {
+        procBad.push(step.at + '：画面缺主文案「' + step.lead + '」');
+      }
+      if (step.skeleton) {
+        const sk = f.findAll((n) => n.name === '_skeleton-card').length;
+        if (sk !== 3) procBad.push(step.at + '：骨架卡 ' + sk + ' 条 ≠ PRD 的 3 条');
+      }
+      if (step.progress && !f.findOne((n) => n.name === '_progress-track')) {
+        procBad.push(step.at + '：缺进度条 _progress-track（PRD「进度条走满 10 秒」）');
+      }
+      if (step.results && !f.findOne((n) => n.name.indexOf('card/') === 0)) {
+        procBad.push(step.at + '：缺结果卡（PRD「铺卡片」）');
+      }
+      for (const [label] of (step.buttons || [])) {
+        if (!f.findOne((n) => n.name.indexOf('/' + label) > -1
+          && n.name.indexOf('btn/') === 0)) {
+          procBad.push(step.at + '：缺按钮「' + label + '」');
+        }
+      }
+      // 缺省图只在首档与终态出：中间档再出鸭子会被读成「回退到第一档」。
+      // 必须只扫 _proc-panel 内部：底部 Tab 的「鸭圈」页签本身就是一个
+      // 24px duckSymbol（code.js:1662），扫全画框会把它当成缺省图，
+      // 六档全部误报（首跑实测四处假红）—— 判据的作用域错了就是判据错。
+      const panel = f.findOne((n) => n.name === '_proc-panel');
+      if (!panel) { procBad.push(step.at + '：缺 _proc-panel 容器'); continue; }
+      const hasDuck = !!panel.findOne((n) => n.name.indexOf('_duck-symbol') === 0);
+      const wantDuck = !!(step.skeleton || step.terminal);
+      if (hasDuck !== wantDuck) {
+        procBad.push(step.at + '：缺省图应' + (wantDuck ? '有' : '无') + '，实为'
+          + (hasDuck ? '有' : '无'));
+      }
+      const hasMap = !!f.findOne((n) => n.name === '_map-canvas');
+      if (step.terminal && hasMap) {
+        procBad.push(step.at + '：终态空页仍含 _map-canvas（PRD「落到终态空页」）');
+      }
+      if (!step.terminal && !hasMap) {
+        procBad.push(step.at + '：非终态档丢了地图（PRD 未撤地图）');
+      }
+    }
+    check(
+      '兜底过程态六档画出 PRD §6.4.4 逐字元素'
+      + '（骨架卡 3 条 / 进度条 / 出口按钮 / 终态空页不出地图）',
+      procBad.length === 0,
+      procBad.length ? procBad.join('; ') : '六档元素全部命中'
+    );
+  }
+
+  // ② 半径四档的摘要胶囊必须显示本档半径。
+  //
+  // 摘要胶囊是画面上唯一常驻显示当前半径的控件（filterSummaryChip，
+  // code.js:2932 注释写明它是「收起」与「可用」的唯一交点）。四框此前全吃
+  // mapCanvas 的默认摘要「5km · …」，于是「半径档 3km」这一框的胶囊上明晃晃
+  // 写着 5km —— 同一屏两个数字自相矛盾，且四框等于没表达出档位差异。
+  //
+  // 查胶囊内文本而不是查画框名：画框名是我写死的标题，它对不对与画面无关；
+  // 胶囊里的字才是用户真看到的那个数。
+  {
+    const tiers = M.S2_RADIUS_TIERS || [];
+    const radBad = [];
+    for (const t of tiers) {
+      const hit = frameByTitle('半径档 ' + t.tier);
+      if (hit.length !== 1) {
+        radBad.push('半径档 ' + t.tier + '：命中 ' + hit.length + ' 个画框');
+        continue;
+      }
+      const chip = hit[0].findOne((n) => n.name === '_filter-summary');
+      if (!chip) { radBad.push(t.tier + '：无摘要胶囊'); continue; }
+      const words = chip.findAll((n) => n.type === 'TEXT')
+        .map((n) => n.characters).join('｜');
+      if (words.indexOf(t.tier) < 0) {
+        radBad.push(t.tier + ' 档胶囊写的是「' + words + '」，不含本档半径');
+      }
+    }
+    check(
+      'S2 半径四档的摘要胶囊显示本档半径（四框此前全吃默认 5km，与画框标题自相矛盾）',
+      tiers.length === 4 && radBad.length === 0,
+      radBad.length ? radBad.join('; ') : tiers.length + ' 档胶囊全部随档位'
+    );
+  }
+
+  // ③ 定位权限 A/B 两态都要有画框，且四处差异真的不同。
+  //
+  // PRD §6.4.4 权限三分表（:1203-1207）早写明 A/B 两态，实机却只画了 A 态。
+  // B 态不是换皮：**系统拒绝是 sticky 的**，B 态若还显示「开启位置权限」，
+  // 点了没有任何反应，用户会认为 App 坏了（PRD :1209 原句）。
+  //
+  // 同时锁「两态共用同一套布局」：PRD :1213 明令不做成两个独立页面，
+  // 只有标题/说明/主按钮文字与动作四处不同。判据取「两框结构性子节点名序列
+  // 相同」——抄一份改四处正是这条要防的事，一抄就会漂移。
+  // C 态刻意不查：PRD 明写 C 态不出引导页，直接走 cell-fallback。
+  {
+    const cs = M.COVERAGE_STATES || {};
+    const permBad = [];
+    const permKeys = ['permission-guide', 'permission-reopen'];
+    const permFrames = [];
+    for (const k of permKeys) {
+      if (!cs[k]) { permBad.push('COVERAGE_STATES 缺 ' + k + ' 条目'); continue; }
+      const hit = frameByTitle(cs[k].title);
+      if (hit.length !== 1) {
+        permBad.push(k + '：按标题「' + cs[k].title + '」命中 ' + hit.length + ' 个画框');
+        continue;
+      }
+      permFrames.push(hit[0]);
+    }
+    // B 态主按钮必须是跳设置，且绝不能出现 A 态那句「开启位置权限」
+    if (permFrames.length === 2) {
+      const b = permFrames[1];
+      if (!b.findOne((n) => n.name === 'btn/primary/去系统设置打开')) {
+        permBad.push('B 态主按钮不是「去系统设置打开」');
+      }
+      if (b.findOne((n) => n.name.indexOf('开启位置权限') > -1)) {
+        permBad.push('B 态仍带「开启位置权限」按钮（sticky 拒绝下点了无反应）');
+      }
+      // 结构同形：只比容器/按钮的节点名序列，文本节点名即文案本身故排除
+      const shape = (f) => f.findAll((n) => n.type !== 'TEXT' && n.type !== 'VECTOR')
+        .map((n) => n.name.indexOf('btn/') === 0 ? n.name.split('/')[1] : n.name)
+        .join(',');
+      if (shape(permFrames[0]) !== shape(permFrames[1])) {
+        permBad.push('A/B 两态结构不同形（PRD :1213 明令共用同一套布局）'
+          + '\n  A=' + shape(permFrames[0]) + '\n  B=' + shape(permFrames[1]));
+      }
+      // 三态均须有「不用了」出口（PRD :1212），两态都查
+      for (let i = 0; i < 2; i++) {
+        if (!permFrames[i].findOne((n) => n.name.indexOf('手动选择城市') > -1)) {
+          permBad.push(permKeys[i] + '：缺「手动选择城市」出口（PRD :1212 不得做硬门禁）');
+        }
+      }
+    }
+    check(
+      '定位权限 A/B 两态画框齐备且同形（B 态主按钮跳系统设置，非无反应的「开启位置权限」）',
+      permBad.length === 0,
+      permBad.length ? permBad.join('; ') : 'A/B 两态齐备、四处差异到位、结构同形'
     );
   }
 

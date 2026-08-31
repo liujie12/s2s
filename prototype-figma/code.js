@@ -319,22 +319,75 @@ var S2_RADIUS_TIERS = [
  *
  * @property {string} at 时点标签，与 PRD §6.4.4 表首列逐字一致
  * @property {string} ui 界面表现，取 PRD 原句（含引号内用户可见文案），不作概括
+ * @property {string} lead 该档的用户可见主文案，从 ui 的引号内摘出。
+ *   为什么要单列：ui 是给评审读的规格原句（含「文案切」这类元规格词），
+ *   直接画到画面上就等于把规格文档贴进产品界面。lead 才是真上屏的那句话。
+ * @property {string} [tail] 该档的用户可见次级文案 / 分组标题，同上理。
+ * @property {boolean} [skeleton] 是否画 3 条骨架卡（PRD 只有 0–1 秒档写明）
+ * @property {boolean} [progress] 是否画进度条（PRD 只有 1–10 秒档写明）
+ * @property {Array<string>} [buttons] 该档明文要求的按钮，格式 [文案, variant]
+ * @property {boolean} [results] 是否铺真实结果卡（两个「返回」档写明「铺卡片」）
+ * @property {boolean} [terminal] 是否为终态空页（30 秒档写明「落到终态空页」）
+ *
+ * 2026-08-31 补齐记录（条目 [70-h]，23 张变体图首次出图后查出）：
+ * 上面 ui 字段自 2026-08-24 起就逐字对齐了 PRD，但**画框只把它当一行说明文字
+ * 贴在地图上**，PRD 写明的缺省图 / 骨架卡 / 进度条 / 按钮 / 终态空页一件都没画，
+ * 六张图与主态逐像素相同。ui 对齐 ≠ 画面对齐 —— 这正是「机读判据只查了文案
+ * 取值、人眼从未看过这六张图」的重叠盲区（原则 132）。故本表补出元素级字段，
+ * 由 buildEmptyFallbackFrames 逐档按字段画元素，不再只画文案。
  */
 var EMPTY_FALLBACK_TIMELINE = [
-  { at: '0–1 秒',   ui: '鸭子 IP 缺省图 + "附近有点安静，正在帮你往外找…" + 骨架卡 3 条' },
-  { at: '1 秒返回', ui: '有历史匹配则直接铺卡片 + "过去 7 天的同类信息"分组标题；无则保持上一态继续等' },
-  { at: '1–10 秒',  ui: '文案切"正在扩大到全城范围…"，进度条走满 10 秒；可点"我自己调范围"退出等待' },
-  { at: '10 秒返回', ui: '全城同分类结果铺卡片，顶部提示"5 公里内暂时没有，这些在全城范围内"' },
-  { at: '10–30 秒', ui: '文案切"已通知平台帮你找，稍后消息通知你"；不强留，显示「先去别处看看」按钮' },
-  { at: '30 秒仍无', ui: '终态空页：鸭子缺省图 + "已记下你的需求，有匹配会推送给你" + 「发一条需求，让别人来找你」主按钮' }
+  {
+    at: '0–1 秒',
+    ui: '鸭子 IP 缺省图 + "附近有点安静，正在帮你往外找…" + 骨架卡 3 条',
+    lead: '附近有点安静，正在帮你往外找…',
+    skeleton: true
+  },
+  {
+    at: '1 秒返回',
+    ui: '有历史匹配则直接铺卡片 + "过去 7 天的同类信息"分组标题；无则保持上一态继续等',
+    lead: '过去 7 天的同类信息',
+    results: true
+  },
+  {
+    at: '1–10 秒',
+    ui: '文案切"正在扩大到全城范围…"，进度条走满 10 秒；可点"我自己调范围"退出等待',
+    lead: '正在扩大到全城范围…',
+    progress: true,
+    buttons: [['我自己调范围', 'ghost']]
+  },
+  {
+    at: '10 秒返回',
+    ui: '全城同分类结果铺卡片，顶部提示"5 公里内暂时没有，这些在全城范围内"',
+    lead: '5 公里内暂时没有，这些在全城范围内',
+    results: true
+  },
+  {
+    at: '10–30 秒',
+    ui: '文案切"已通知平台帮你找，稍后消息通知你"；不强留，显示「先去别处看看」按钮',
+    lead: '已通知平台帮你找，稍后消息通知你',
+    buttons: [['先去别处看看', 'secondary']]
+  },
+  {
+    at: '30 秒仍无',
+    ui: '终态空页：鸭子缺省图 + "已记下你的需求，有匹配会推送给你" + 「发一条需求，让别人来找你」主按钮',
+    lead: '已记下你的需求，有匹配会推送给你',
+    terminal: true,
+    buttons: [['发一条需求，让别人来找你', 'primary']]
+  }
 ];
 
 /**
  * 需覆盖的状态画框清单（PRD §6.4.4 定位权限降级 / §7.8 详情页边界）
- * ——本表是这三个状态的标题与说明文案在本文件内的唯一取值来源
+ * ——本表是这四个状态的标题与说明文案在本文件内的唯一取值来源
  *
- * 三者共同点：PRD 已明文定义，但 2026-08-24 前生成器无对应画框，
- * 属纯缺失而非取值错误。
+ * 共同点：PRD 已明文定义，但生成器一度无对应画框，属纯缺失而非取值错误。
+ * 其中 'permission-reopen'（权限 B 态「曾授权后被关」）为 2026-08-31 补：
+ * PRD §6.4.4 权限三分表早已写明 A/B 两态，实机却只画了 A 态——
+ * 而 B 态若沿用 A 态的「开启位置权限」按钮，因系统拒绝是 sticky 的，
+ * 点了不会有任何反应，用户会认为 App 坏了，这是必须出图核对的一态。
+ * C 态刻意不建画框：PRD 明写 C 态「不出引导页，直接走 §6.8 降级终态」，
+ * 那个终态即紧随的 'cell-fallback'，已有稿，再建一框会是重复稿。
  *
  * @property {string} title 画框标题（不含 pageId 与 prdRef，由 screen() 拼装）
  * @property {string} prdRef PRD 章节回标
@@ -348,6 +401,16 @@ var COVERAGE_STATES = {
       '第一段降级：突出"就近"价值，先争取授权',
       '主按钮"开启位置权限"，次按钮"手动选择城市"',
       '未授权前进不到首页主态，故本页无地图与底部 Tab'
+    ]
+  },
+  'permission-reopen': {
+    title: '位置权限曾授权后被关·全屏引导页',
+    prdRef: 'PRD §6.4.4',
+    notes: [
+      '权限 B 态：状态为 denied/restricted 且本地留有"曾成功定位"标记',
+      '系统拒绝是 sticky 的，App 内无法再弹系统弹窗，主按钮改为跳系统设置',
+      '判定靠本地 location_granted_once 标记，不能只读当前权限值',
+      '与 A 态共用同一套布局，仅标题/说明/主按钮文字与动作四处不同'
     ]
   },
   'cell-fallback': {
@@ -3487,6 +3550,67 @@ function listHintRow(content) {
 }
 
 /**
+ * 构造一张骨架占位卡（PRD §6.4.4 兜底过程态 0–1 秒「骨架卡 3 条」）。
+ *
+ * 为什么必须画出来而不是写进标注（2026-08-31 条目 [70-h]，23 张变体图首次
+ * 出图后查出）：§6.4.4 那张表写的是**界面元素**（缺省图 / 骨架卡 3 条 /
+ * 进度条 / 按钮 / 终态空页），不是设计意图。此前六个过程态画框只在地图上
+ * 方多了一行说明文字，画面与主态逐像素相同 —— 等于这六档从未出稿。
+ *
+ * 形态取「灰条」而非灰底卡：骨架屏的语义是「结构已定、内容未到」，故复刻
+ * 列表卡的分类色条 + 标题行 + 摘要行三段骨架，让评审看得出它对应哪种卡；
+ * 若只画一个空灰矩形，看不出将要填什么。
+ *
+ * 灰阶一律走 color/border（Token 内已有的最浅可见灰），不新造 skeleton 专用
+ * Token —— 骨架屏是同一套灰阶的临时用法，不是新的语义色。
+ *
+ * @param {number} width 卡宽，由调用方按容器可用宽传入
+ * @returns {FrameNode} 骨架卡节点
+ */
+function skeletonCard(width) {
+  var c = box('_skeleton-card', 'HORIZONTAL', {
+    w: width, pad: SPACING.lg, gap: SPACING.md,
+    fill: 'color/surface', radius: RADIUS.lg, align: 'MIN'
+  });
+  // 左侧分类色条位：真实卡这里是分类色，骨架期还不知道类目，故用灰
+  c.appendChild(box('_sk-bar', 'VERTICAL', { w: 4, h: 44, radius: RADIUS.sm, fill: 'color/border' }));
+  var main = box('_sk-main', 'VERTICAL', { gap: SPACING.sm });
+  main.layoutGrow = 1;
+  // 两条灰条对应真实卡的「标题」与「摘要」两行；标题行更宽更高，
+  // 保持与 card() 的 h3 / small 两级字阶同样的视觉权重差
+  main.appendChild(box('_sk-title', 'HORIZONTAL', { w: 180, h: 16, radius: RADIUS.sm, fill: 'color/border' }));
+  main.appendChild(box('_sk-sub', 'HORIZONTAL', { w: 120, h: 12, radius: RADIUS.sm, fill: 'color/border' }));
+  c.appendChild(main);
+  return c;
+}
+
+/**
+ * 构造一条水平进度条（PRD §6.4.4 兜底过程态 1–10 秒「进度条走满 10 秒」）。
+ *
+ * 为什么不用 disabled 按钮或加载图标替代：PRD 写的是「进度条走满 10 秒」——
+ * 进度条承载的是「还要等多久」这一确定性信息，转圈图标恰恰不给这个信息。
+ * 这一档的产品意图正是把无限等待变成有限等待，替换成图标就抽掉了意图。
+ *
+ * 画到 60% 而不是 0% 或 100%：稿图要表达的是「正在走」这个中间态，
+ * 两端极值都会被读成静止。
+ *
+ * @param {number} width 轨道宽，由调用方按容器可用宽传入
+ * @param {number} ratio 已完成比例，0–1
+ * @returns {FrameNode} 进度条节点
+ */
+function progressBar(width, ratio) {
+  var track = box('_progress-track', 'HORIZONTAL', {
+    w: width, h: 6, radius: RADIUS.full, fill: 'color/border'
+  });
+  // 已完成段是 track 的子节点：轨道走 Auto Layout 横排，
+  // 子节点从左缘起排，天然实现「左侧填充」而无需绝对定位
+  track.appendChild(box('_progress-fill', 'HORIZONTAL', {
+    w: Math.round(width * ratio), h: 6, radius: RADIUS.full, fill: 'color/primary'
+  }));
+  return track;
+}
+
+/**
  * 构造分页列表底部的「没有更多了」收尾条（2026-08-30 条目 [70]）。
  *
  * 为什么需要它：PRD §6.7 交互表（:1291）写明「列表滑到底部 → 加载下一页，每次
@@ -3910,52 +4034,161 @@ async function batchMap() {
   // 注意：这是空状态兜底时间轴，不是性能降级规范，两者不可叉乘
   // 这条警示约束的是 EMPTY_FALLBACK_TIMELINE 这张表——2026-08-24 前本处前两框
   // 写的正是性能加载态（骨架屏 / 首屏 Pin 上屏），违反了这条注释自己，已归位
+  //
+  // 2026-08-31（条目 [70-h]）改为按元素画，不再只贴一行说明文字：
+  // 出图后发现六框与主态逐像素相同，PRD 写明的缺省图 / 骨架卡 / 进度条 /
+  // 按钮 / 终态空页全部缺失。现按 EMPTY_FALLBACK_TIMELINE 的元素级字段逐档画。
+  //
+  // 两种版式，依据 PRD 原句区分，不是我选的：
+  // · terminal 档（30 秒仍无）PRD 明写「落到终态空页」—— 空页就是空页，
+  //   不出地图。仍出满屏地图与「空页」语义相反（这正是出图查出的最重一处）；
+  //   其余档 PRD 未撤地图，故保留地图，把该档元素叠在地图之上贴底。
+  // · 叠加位置贴底而非居中：过程态元素是「地图之上的临时层」，
+  //   贴底才不遮挡用户正在看的地图中心区，与 markerInfoCard 同一位置口径。
+  var procW = CANVAS.w - SPACING.lg * 2;
   for (var i = 0; i < EMPTY_FALLBACK_TIMELINE.length; i++) {
     var step = EMPTY_FALLBACK_TIMELINE[i];
     var f = screen('home-screen', '过程态 ' + step.at, 'PRD §6.4.4', true);
     f.appendChild(statusBar());
-    f.appendChild(navBar('鸭圈', HOME_NAV));
-    f.appendChild(mapCanvas(step.ui, false, annotation('过程态 ' + step.at, [
-      step.ui,
-      '依据 §6.4.4 空状态兜底六行时间轴',
-      '本时间轴与性能降级态互不叉乘'
-    ])));
+
+    // 该档要叠在地图上（或铺在终态空页里）的元素组
+    var procPanel = box('_proc-panel', 'VERTICAL', {
+      w: procW, pad: SPACING.lg, gap: SPACING.md,
+      fill: 'color/surface', radius: RADIUS.lg, align: 'CENTER'
+    });
+    // 鸭子缺省图：PRD 只在 0–1 秒与 30 秒两档写明「鸭子 IP 缺省图 / 鸭子缺省图」，
+    // 其余档不画 —— 中间档是文案切换，再出一次缺省图会看成回退到第一档
+    if (step.skeleton || step.terminal) {
+      procPanel.appendChild(duckSymbol(step.terminal ? 96 : 64));
+    }
+    var leadText = text(step.lead, step.terminal ? 'h3' : 'body', 'color/text-primary');
+    leadText.textAutoResize = 'HEIGHT';
+    procPanel.appendChild(leadText);
+    leadText.layoutSizingHorizontal = 'FILL';
+    if (step.progress) procPanel.appendChild(progressBar(procW - SPACING.lg * 2, 0.6));
+    if (step.skeleton) {
+      // 「骨架卡 3 条」是 PRD 逐字给的条数，不取整不省略
+      for (var sk = 0; sk < 3; sk++) {
+        procPanel.appendChild(skeletonCard(procW - SPACING.lg * 2));
+      }
+    }
+    if (step.results) {
+      // 「铺卡片」用 CONTENT fixtures 里的真实条目，不造假数据：
+      // 这两档要验证的正是「结果卡与主线信息一致」，编一条会让评审对不上类目
+      procPanel.appendChild(card(CONTENT.job.title,
+        CONTENT.job.path + ' · ' + CONTENT.job.distance,
+        'category/' + CONTENT.job.catKey, CONTENT.job.freshness));
+    }
+    if (step.buttons) {
+      for (var bi = 0; bi < step.buttons.length; bi++) {
+        procPanel.appendChild(button(step.buttons[bi][0], step.buttons[bi][1],
+          procW - SPACING.lg * 2));
+      }
+    }
+
+    if (step.terminal) {
+      // 终态空页：无地图、无筛选控件，只有缺省图 + 文案 + 主按钮，
+      // 面板居中托在 _body 里（不贴底，空页的重心在中部）
+      var emptyBody = box('_body', 'VERTICAL', {
+        w: CANVAS.w, pad: SPACING.lg, gap: SPACING.lg,
+        fill: 'color/background', align: 'CENTER', justify: 'CENTER'
+      });
+      emptyBody.appendChild(procPanel);
+      emptyBody.appendChild(annotation('过程态 ' + step.at, [
+        step.ui,
+        '依据 §6.4.4 空状态兜底六行时间轴',
+        '本时间轴与性能降级态互不叉乘'
+      ]));
+      f.appendChild(navBar('鸭圈', HOME_NAV));
+      f.appendChild(emptyBody);
+      // 用 layoutGrow=1 而非 layoutSizingVertical='FILL'：两者在实机等价，
+      // 但 grow 是稿内其余贴底页（profile/trust 的 _body）一致的写法，
+      // 且「Tab 贴画框下沿」断言认的就是「前有 grow>0 兄弟」这条路——
+      // 写 FILL 则 Tab 会被判成悬在内容尽头（内容只到 407 < 844）。
+      emptyBody.layoutGrow = 1;
+    } else {
+      f.appendChild(navBar('鸭圈', HOME_NAV));
+      f.appendChild(mapCanvas(step.lead, false, annotation('过程态 ' + step.at, [
+        step.ui,
+        '依据 §6.4.4 空状态兜底六行时间轴',
+        '本时间轴与性能降级态互不叉乘'
+      ]), { infoCard: procPanel }));
+    }
     f.appendChild(bottomTab('鸭圈'));
     frames.push(f);
   }
 
-  // ---- 定位权限降级两段（PRD §6.4.4）----
-  // 第一段引导页刻意不出地图与底部 Tab：未授权前用户进不到首页主态，
+  // ---- 定位权限降级：A 态引导页 + B 态「曾授权后被关」（PRD §6.4.4 权限状态三分）----
+  // 引导页刻意不出地图与底部 Tab：未授权前用户进不到首页主态，
   // 若画上地图就等于暗示「不授权也能看」，与本页争取授权的目的相反
-  var pg = COVERAGE_STATES['permission-guide'];
-  var guide = screen('home-screen', pg.title, pg.prdRef, true);
-  guide.appendChild(statusBar());
-  var guideBody = box('_body', 'VERTICAL', {
-    w: CANVAS.w, pad: SPACING.xl, gap: SPACING.lg, fill: 'color/background'
-  });
-  guideBody.appendChild(text('先让我知道你在哪', 'h1', 'color/text-primary'));
-  // 这两行是本页最长的文案，必须显式声明「宽度跟随容器、高度自适应」。
-  // 不声明时 text() 的 textAutoResize 是 WIDTH_AND_HEIGHT（宽高双 hug），
-  // 在纵排 Auto Layout 里宽度不受容器约束：第一行实测 hug 到 421，
-  // 超出 _body 可用宽 342，横向直接撑破 390 画框
-  // （2026-08-27「单个文本超出 FIXED 宽祖先」断言首次捞出）。
   //
-  // layoutSizingHorizontal='FILL' 必须在 appendChild【之后】赋值：
-  // 该属性要求节点已经是某个 Auto Layout 父级的直接子节点，
-  // 提前赋值真机会抛「requires an auto-layout parent」（实机批次 2 报错处）。
-  var guideLead = text('找鸭找只推你走得到的地方——身边几公里内的活儿、房子、顺路车。', 'body', 'color/text-secondary');
-  guideLead.textAutoResize = 'HEIGHT';
-  guideBody.appendChild(guideLead);
-  guideLead.layoutSizingHorizontal = 'FILL';
-  var guideSub = text('不开定位就只能看全城，近处的机会会被淹掉。', 'small', 'color/text-secondary');
-  guideSub.textAutoResize = 'HEIGHT';
-  guideBody.appendChild(guideSub);
-  guideSub.layoutSizingHorizontal = 'FILL';
-  guideBody.appendChild(button('开启位置权限', 'primary', CANVAS.w - SPACING.xl * 2));
-  guideBody.appendChild(button('手动选择城市', 'secondary', CANVAS.w - SPACING.xl * 2));
-  guideBody.appendChild(annotation(pg.title, pg.notes));
-  guide.appendChild(guideBody);
-  frames.push(guide);
+  // 2026-08-31（条目 [70-h]）补出 B 态：§6.4.4「权限状态三分」表明写三态，
+  // 而此前只画了 A 态。B 态不是 A 态的换皮 —— PRD 写明「系统拒绝是 sticky 的」，
+  // B 态若还显示「开启位置权限」，点了**没有任何反应**，用户会认为 App 坏了。
+  // 这是行为差异而非文案差异，必须单独出稿让评审看到按钮语义换了。
+  // C 态不在此处补：PRD 明写 C 态「不出引导页，直接走 §6.8 降级终态」，
+  // 那个终态就是紧随其后的 cell-fallback 框，已有稿，不该再画第三张引导页。
+  //
+  // 两态共用同一段构造代码（PRD 末条明令「A/B 两态的引导页共用同一套布局与
+  // 插画，只有标题、说明、主按钮文字与主按钮动作四处不同，不做成两个独立
+  // 页面，避免两处各自漂移」）—— 抄一份改四处正是这条要防的事。
+  var permStates = [
+    {
+      key: 'permission-guide',
+      heading: '先让我知道你在哪',
+      lead: '找鸭找只推你走得到的地方——身边几公里内的活儿、房子、顺路车。',
+      sub: '不开定位就只能看全城，近处的机会会被淹掉。',
+      primaryLabel: '开启位置权限'
+    },
+    {
+      key: 'permission-reopen',
+      heading: '你之前允许过定位，现在被关掉了',
+      lead: '找鸭找只推你走得到的地方——身边几公里内的活儿、房子、顺路车。',
+      // 这一行是 B 态与 A 态的实质差异所在：必须说明「为什么这次要去系统设置」，
+      // 否则用户看到按钮文字变了却不知道原因，会反复点回不存在的系统弹窗
+      sub: '系统已记住上次的拒绝，App 内无法再次弹窗，需要到系统设置里打开。',
+      primaryLabel: '去系统设置打开'
+    }
+  ];
+  for (var pi = 0; pi < permStates.length; pi++) {
+    var ps = permStates[pi];
+    var pg = COVERAGE_STATES[ps.key];
+    var guide = screen('home-screen', pg.title, pg.prdRef, true);
+    guide.appendChild(statusBar());
+    var guideBody = box('_body', 'VERTICAL', {
+      w: CANVAS.w, pad: SPACING.xl, gap: SPACING.lg, fill: 'color/background'
+    });
+    // 标题同样要 FILL + HEIGHT：A 态「先让我知道你在哪」7 字在 h1 下宽 245 不越界，
+    // B 态「你之前允许过定位，现在被关掉了」13 字 hug 到 360，已超 _body 可用宽 342。
+    // 两态共用一段代码正是为了这种事——只按 A 态的短文案写死，B 态必被截断。
+    var guideHeading = text(ps.heading, 'h1', 'color/text-primary');
+    guideHeading.textAutoResize = 'HEIGHT';
+    guideBody.appendChild(guideHeading);
+    guideHeading.layoutSizingHorizontal = 'FILL';
+    // 这两行是本页最长的文案，必须显式声明「宽度跟随容器、高度自适应」。
+    // 不声明时 text() 的 textAutoResize 是 WIDTH_AND_HEIGHT（宽高双 hug），
+    // 在纵排 Auto Layout 里宽度不受容器约束：第一行实测 hug 到 421，
+    // 超出 _body 可用宽 342，横向直接撑破 390 画框
+    // （2026-08-27「单个文本超出 FIXED 宽祖先」断言首次捞出）。
+    //
+    // layoutSizingHorizontal='FILL' 必须在 appendChild【之后】赋值：
+    // 该属性要求节点已经是某个 Auto Layout 父级的直接子节点，
+    // 提前赋值真机会抛「requires an auto-layout parent」（实机批次 2 报错处）。
+    var guideLead = text(ps.lead, 'body', 'color/text-secondary');
+    guideLead.textAutoResize = 'HEIGHT';
+    guideBody.appendChild(guideLead);
+    guideLead.layoutSizingHorizontal = 'FILL';
+    var guideSub = text(ps.sub, 'small', 'color/text-secondary');
+    guideSub.textAutoResize = 'HEIGHT';
+    guideBody.appendChild(guideSub);
+    guideSub.layoutSizingHorizontal = 'FILL';
+    guideBody.appendChild(button(ps.primaryLabel, 'primary', CANVAS.w - SPACING.xl * 2));
+    // 次按钮两态相同：§6.4.4 明令「三态均须提供『不用了』出口」，不做硬门禁
+    guideBody.appendChild(button('手动选择城市', 'secondary', CANVAS.w - SPACING.xl * 2));
+    guideBody.appendChild(annotation(pg.title, pg.notes));
+    guide.appendChild(guideBody);
+    frames.push(guide);
+  }
 
   var cf = COVERAGE_STATES['cell-fallback'];
   var cell = screen('home-screen', cf.title, cf.prdRef, true);
@@ -3963,7 +4196,12 @@ async function batchMap() {
   cell.appendChild(navBar('鸭圈', HOME_NAV));
   cell.appendChild(mapCanvas('基站+商圈定位 · 精度约 1–3km，非城市中心假值', false,
     annotation(cf.title, cf.notes),
-    { summary: '朝阳门商圈附近 · 全部类 · 供需全开' }));
+    // 商圈名不写具体地名（2026-08-31 条目 [70-h] 出图查出）：
+    // 原写「朝阳门商圈附近」，而 _map-bg 内嵌的底图是合肥京商商贸城一带，
+    // 地名与画面所指互相矛盾。基站兜底要表达的是「精度只到商圈级」这件事，
+    // 具体是哪个商圈与本状态无关，故改为不含地名的表述 —— 同理也避免
+    // 往后换底图时又落下一处需要同步的地名。
+    { summary: '当前商圈附近 · 全部类 · 供需全开' }));
   cell.appendChild(bottomTab('鸭圈'));
   frames.push(cell);
 
@@ -3999,7 +4237,13 @@ async function batchMap() {
         tier.density,
         '本档属 S2 蜂窝自动响应（3/5/10/全城，系统按密度切）；用户手动拖的范围条是另一套五档（1/3/5/10/全城，PRD §6.7）',
         '缓存键 5 元组里的「半径档」指范围条那一套，不是本框（PRD §6.10）'
-      ])));
+      ]),
+      // 摘要胶囊必须随档位走（2026-08-31 条目 [70-h] 出图查出）：
+      // 此前四框都吃 mapCanvas 的默认摘要「5km · 资源+需求 · 全部分类」，
+      // 于是「半径档 3km」这一框的胶囊上明晃晃写着 5km —— 同一屏两个数字
+      // 自相矛盾，评审无从判断哪个才是当前档。摘要是画面上唯一显示当前半径
+      // 的常驻控件，它不跟着变，这四框就等于没表达出档位差异。
+      { summary: tier.tier + ' · 资源+需求 · 全部分类' }));
     rf.appendChild(bottomTab('鸭圈'));
     frames.push(rf);
   }
