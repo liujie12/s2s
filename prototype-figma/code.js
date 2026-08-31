@@ -4649,14 +4649,38 @@ function buildContact() {
   contactCard.appendChild(button('查看完整号码并外呼', 'primary', innerW - SPACING.lg * 2));
   body.appendChild(contactCard);
 
-  // 第三块：温馨提示 + 举报（§7.4.2 稿图第 3 段），贴底
+  // 第三块：温馨提示（§7.4.2 稿图第 3 段）。
+  // 2026-08-31 用户裁定「补安全提示内容」：稿图这块原本只有一行
+  //「建议白天联系，交易请走线下」，落地后本页温馨提示到贴底举报之间空约 400px。
+  // 用真内容填而不是拉大间距 —— 中转页是全站唯一「即将与陌生人线下接触」的
+  // 节点，安全提示写在这里成本最低。四条的来源逐条标注，其中后三条是由
+  // §7.7 举报五原因（不实信息/诈骗/违规类目/骚扰/其他）反推的对应防范动作，
+  // PRD 正文尚无逐字原句，故一并写进本页红线卡的待回写项。
+  // 内边距与行距取 lg / sm（与联系方式卡同档）：本块从一行变四行后，
+  // 仍用 md / xs 会让四行挤成一团，与上方卡片的呼吸感不一致。
   var tip = box('_safety-tip', 'VERTICAL', {
-    w: innerW, pad: SPACING.md, gap: SPACING.xs,
+    w: innerW, pad: SPACING.lg, gap: SPACING.sm,
     fill: 'color/surface', radius: RADIUS.md, stroke: 'color/warning'
   });
   tip.appendChild(text('温馨提示', 'small', 'color/warning-text'));
-  tip.appendChild(text('建议白天联系，交易请走线下', 'caption', 'color/warning-text'));
+  // 第 1 条：§7.4.2 稿图原句
+  tip.appendChild(text('· 建议白天联系，交易请走线下', 'caption', 'color/warning-text'));
+  // 第 2 条：对应 §7.7 举报原因「诈骗」最常见的形态
+  tip.appendChild(text('· 不要提前支付定金、押金或任何费用', 'caption', 'color/warning-text'));
+  // 第 3 条：对应本产品大量「上门 / 面谈」类目的人身安全
+  tip.appendChild(text('· 上门服务或面谈，建议约在公共场所', 'caption', 'color/warning-text'));
+  // 第 4 条：把举报入口与「什么情况该举报」连起来，否则页脚那个按钮
+  // 只是一个孤立动作，用户不知道自己遇到的事算不算可举报
+  tip.appendChild(text('· 遇到不实信息、诈骗、骚扰，可直接举报', 'caption', 'color/warning-text'));
   body.appendChild(tip);
+
+  // 举报说明：紧贴页脚按钮上方，不放在温馨提示里 —— 它说明的是「点下去会
+  // 发生什么」，属于那个按钮的附注。五个原因与处理时限均取 PRD 逐字口径
+  var reportNote = box('_report-note', 'VERTICAL', { w: innerW, gap: SPACING.xs });
+  reportNote.appendChild(text('举报原因：不实信息 / 诈骗 / 违规类目 / 骚扰 / 其他（PRD §7.7）',
+    'caption', 'color/text-secondary'));
+  reportNote.appendChild(text('提交后 24 小时内处理（PRD §7.8）',
+    'caption', 'color/text-placeholder'));
 
   pushToBottom(body, [
     annotation('联系页 Scope 红线', [
@@ -4665,8 +4689,11 @@ function buildContact() {
       '联系行为不产生交易记录、不产生信誉评价',
       '完整号码不写入前端初始状态，点击时走 API（PRD §7.7）',
       '⚠ 稿图两句待裁决：「记录在双方联系记录中」「对方回复后可互加」'
-        + '与 §7.2 红线「不做撮合结果追踪」相矛盾，本稿按 §7.4.2 稿图逐字落地'
+        + '与 §7.2 红线「不做撮合结果追踪」相矛盾，本稿按 §7.4.2 稿图逐字落地',
+      '⚠ 温馨提示后三条（预付费用 / 公共场所 / 可举报情形）由 §7.7 举报五原因'
+        + '反推，PRD 正文无逐字原句，待回写 §7.4.2'
     ], { severity: 'redline' }),
+    reportNote,
     // 举报走 secondary 而非 ghost/danger（2026-08-31 用户拍定）：
     // §7.4.2 稿图画的是 [ 举报本次发布 ] 带方框，而 ghost 无描边无底色，
     // 渲染出来是页脚一行居中文字，看不出是可点按钮 —— 举报是安全兜底入口，

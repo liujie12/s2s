@@ -3519,6 +3519,33 @@ function allText(root) {
         channelBtns.length === 1,
         pj(channelBtns.map((b) => b.name))
       );
+
+      // 温馨提示行数下限：稿图原本只写一行，落地后本页温馨提示到贴底举报之间
+      // 空约 400px（r69 图人眼查出）。空白的病因仍是缺内容，不是缺间距，故此条
+      // 锁「安全提示至少 4 条」—— 只锁下限不锁逐字文案，文案后续回写 PRD 时会改，
+      // 但「中转页必须给出足够的线下接触安全提示」这条不该随文案措辞而松动
+      const tip = body && body.children.find((c) => c.name === '_safety-tip');
+      const tipLines = tip
+        ? tip.children.filter((c) => c.type === 'TEXT'
+          && c.characters.indexOf('·') === 0).length
+        : 0;
+      check(
+        'contact 温馨提示 ≥4 条安全提示（改前仅 1 条，页面下半空 400px）',
+        tipLines >= 4,
+        '实测 ' + tipLines + ' 条'
+      );
+
+      // 举报附注必须在页脚按钮上方：孤立的「举报本次发布」按钮说不清
+      // 「什么情况该点」与「点了会怎样」，§7.7 五原因与 §7.8 24h 时限是现成口径
+      const noteBox = body && body.children.find((c) => c.name === '_report-note');
+      const noteTxt = noteBox
+        ? noteBox.children.map((c) => c.characters || '').join('｜')
+        : '';
+      check(
+        'contact 举报按钮上方有附注（§7.7 五种原因 + §7.8 24h 处理时限）',
+        !!noteBox && noteTxt.indexOf('诈骗') >= 0 && noteTxt.indexOf('24') >= 0,
+        noteTxt || '未找到 _report-note'
+      );
     }
 
     // ---------- detail-offline 与正常态 detail 同形（§7.8 只许三项差异） ----------
