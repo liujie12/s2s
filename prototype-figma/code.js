@@ -2677,6 +2677,20 @@ var CONTENT = {
     l1: '工作',
     l2: '全职招聘',
     l3: '餐饮服务',
+    /**
+     * 发布者昵称与脱敏号码（2026-08-31 条目 [70-f] 新增）。
+     *
+     * 为什么进 fixtures 而不是直写在 buildContact 里：联系中转页的导航栏标题
+     * （PRD §7.4.2 稿图「← 联系 王师傅」）与详情页信任卡（§7.4.1 稿图「王师傅」）
+     * 说的是同一个人，往后补信任卡姓名时必须取到同一个值，直写会立刻分叉。
+     *
+     * 号码格式取稿图的 `138 **** 8888`（带空格）而非 §7.7 实现逻辑里的
+     * `138****8888`：稿图是给设计与前端照着排版的，三段之间留空格才看得出
+     * 「前 3 位 + 中间 4 位掩码 + 后 4 位」的分段，而 §7.7 那处是写给后端的
+     * 字段口径。两处不是同一件事，不必强行统一成一种写法。
+     */
+    publisher: '王师傅',
+    phoneMasked: '138 **** 8888',
     /** 面包屑串，全画布统一走这里，禁止再手写 '›' 拼接 */
     path: '工作 › 全职招聘 › 餐饮服务',
     title: '招后厨帮工·包吃住',
@@ -4335,40 +4349,21 @@ function buildLogin() {
 }
 
 /**
- * 构造 detail-screen：模板字段 + 信任卡 + 联系主按钮（PRD §10.1）
- * @returns {FrameNode} 详情页节点
+ * 构造详情页描述区（PRD §7.4.1 稿图第 6 行「描述：…」）
+ *
+ * 2026-08-31（条目 [70-f]）从 buildDetail 内联代码抽成构造器：
+ * detail-offline 缺这一块导致中部空 400px，而 §7.8 只许两态有
+ * 红条 / disabled / Opacity 60% 三项差异。抽出来而不是在失效态复制一份 ——
+ * 复制的那份会与正常态各自演化，「两态同形」这条要求当天就失效。
+ *
+ * 位置按 PRD 稿图：模板字段区之后、信任卡之前。这个次序不是随意的 ——
+ * 模板字段是「结构化事实」（可比价、可筛选），描述是「发布者自己的话」，
+ * 信任卡是「这话可不可信」。三者是「是什么 → 怎么说 → 信不信」的递进，
+ * 把描述放到信任卡之后就变成了先判断可信度再给内容。
+ *
+ * @returns {FrameNode} 描述区节点
  */
-function buildDetail() {
-  var s = screen('detail-screen', '详情页', 'PRD §10.1');
-  s.appendChild(statusBar());
-  s.appendChild(navBar('详情', { back: true, right: '收藏' }));
-  var body = box('_body', 'VERTICAL', { w: CANVAS.w, pad: SPACING.lg, gap: SPACING.md });
-  body.appendChild(text(CONTENT.job.title, 'h2'));
-  var tagRow = box('_tags', 'HORIZONTAL', { gap: SPACING.sm, align: 'CENTER' });
-  // 详情页这里只是「分类身份标识」，完整度另有独立的信任卡承载，故不传角标
-  tagRow.appendChild(pin('category/' + CONTENT.job.catKey, 'resource', null, false));
-  tagRow.appendChild(text(CONTENT.job.path, 'small', 'color/text-secondary'));
-  body.appendChild(tagRow);
-  var tmpl = box('_template-fields', 'VERTICAL', {
-    w: CANVAS.w - SPACING.lg * 2, pad: SPACING.md, gap: SPACING.sm,
-    fill: 'color/surface', radius: RADIUS.lg, stroke: 'color/border'
-  });
-  tmpl.appendChild(text('模板字段', 'h3'));
-  var pairs = CONTENT.job.fields;
-  for (var i = 0; i < pairs.length; i++) {
-    var pr = box('_pair', 'HORIZONTAL', { w: CANVAS.w - SPACING.lg * 2 - SPACING.md * 2, justify: 'SPACE_BETWEEN' });
-    pr.appendChild(text(pairs[i][0], 'small', 'color/text-secondary'));
-    pr.appendChild(text(pairs[i][1], 'body'));
-    tmpl.appendChild(pr);
-  }
-  body.appendChild(tmpl);
-
-  // 描述区（PRD §7.4.1，2026-08-29 条目 [70] 补）。
-  //
-  // 位置按 PRD 稿图：模板字段区之后、信任卡之前。这个次序不是随意的 ——
-  // 模板字段是「结构化事实」（可比价、可筛选），描述是「发布者自己的话」，
-  // 信任卡是「这话可不可信」。三者是「是什么 → 怎么说 → 信不信」的递进，
-  // 把描述放到信任卡之后就变成了先判断可信度再给内容。
+function detailDescBox() {
   var descBox = box('_description', 'VERTICAL', {
     w: CANVAS.w - SPACING.lg * 2, pad: SPACING.md, gap: SPACING.sm,
     fill: 'color/surface', radius: RADIUS.lg, stroke: 'color/border'
@@ -4382,13 +4377,25 @@ function buildDetail() {
   descText.textAutoResize = 'HEIGHT';
   descBox.appendChild(descText);
   descText.layoutSizingHorizontal = 'FILL';
-  body.appendChild(descBox);
+  return descBox;
+}
 
+/**
+ * 构造详情页发布者信任卡（PRD §7.4.1 稿图「发布者信任卡」）
+ *
+ * 2026-08-31（条目 [70-f]）抽成构造器，理由同 detailDescBox。
+ *
+ * @returns {FrameNode} 信任卡节点
+ */
+function detailTrustCard() {
   var trust = box('_trust-card', 'VERTICAL', {
     w: CANVAS.w - SPACING.lg * 2, pad: SPACING.md, gap: SPACING.xs,
     fill: 'color/primary-light', radius: RADIUS.lg
   });
-  trust.appendChild(text('信任卡', 'h3', 'color/primary-dark'));
+  // 卡内首行带发布者名（§7.4.1 稿图「🐥 头像 │ 王师傅」）：改前只写「信任卡」，
+  // 而 contact 页导航已在说「联系 王师傅」—— 两页说的是同一个人，
+  // 详情页却不告诉你他是谁，从详情点进联系页时名字是凭空出现的
+  trust.appendChild(text('信任卡 · ' + CONTENT.job.publisher, 'h3', 'color/primary-dark'));
   // 三项资质横排：此前是一行 emoji 文本「已实名 ✅｜资质认证 ✅｜信息完整度 🟢」，
   // 2026-08-29（条目 [70]）改为矢量组件。竖分隔符「｜」一并去掉 ——
   // 它原本用来在一整行文本里切分三段，现在三段已是三个独立节点，
@@ -4399,7 +4406,51 @@ function buildDetail() {
   trustRow.appendChild(completenessTag('green', 'small', 'color/primary-dark'));
   trust.appendChild(trustRow);
   trust.appendChild(text('不含信誉评价、不含交易记录（Scope 红线）', 'caption', 'color/primary-dark'));
-  body.appendChild(trust);
+  return trust;
+}
+
+/**
+ * 构造详情页模板字段卡（PRD §7.4.1 稿图「模板字段区」）
+ *
+ * 2026-08-31（条目 [70-f]）抽成构造器：两态原先各写一份同样的四行循环，
+ * 且失效态注释里专门写了「必须与正常态逐字一致」—— 那正是该由同一份代码保证的事。
+ *
+ * @returns {FrameNode} 模板字段卡节点
+ */
+function detailTemplateFields() {
+  var tmpl = box('_template-fields', 'VERTICAL', {
+    w: CANVAS.w - SPACING.lg * 2, pad: SPACING.md, gap: SPACING.sm,
+    fill: 'color/surface', radius: RADIUS.lg, stroke: 'color/border'
+  });
+  tmpl.appendChild(text('模板字段', 'h3'));
+  var pairs = CONTENT.job.fields;
+  for (var i = 0; i < pairs.length; i++) {
+    var pr = box('_pair', 'HORIZONTAL', { w: CANVAS.w - SPACING.lg * 2 - SPACING.md * 2, justify: 'SPACE_BETWEEN' });
+    pr.appendChild(text(pairs[i][0], 'small', 'color/text-secondary'));
+    pr.appendChild(text(pairs[i][1], 'body'));
+    tmpl.appendChild(pr);
+  }
+  return tmpl;
+}
+
+/**
+ * 构造 detail-screen：模板字段 + 描述 + 信任卡 + 联系主按钮（PRD §10.1）
+ * @returns {FrameNode} 详情页节点
+ */
+function buildDetail() {
+  var s = screen('detail-screen', '详情页', 'PRD §10.1');
+  s.appendChild(statusBar());
+  s.appendChild(navBar('详情', { back: true, right: '收藏' }));
+  var body = box('_body', 'VERTICAL', { w: CANVAS.w, pad: SPACING.lg, gap: SPACING.md });
+  body.appendChild(text(CONTENT.job.title, 'h2'));
+  var tagRow = box('_tags', 'HORIZONTAL', { gap: SPACING.sm, align: 'CENTER' });
+  // 详情页这里只是「分类身份标识」，完整度另有独立的信任卡承载，故不传角标
+  tagRow.appendChild(pin('category/' + CONTENT.job.catKey, 'resource', null, false));
+  tagRow.appendChild(text(CONTENT.job.path, 'small', 'color/text-secondary'));
+  body.appendChild(tagRow);
+  body.appendChild(detailTemplateFields());
+  body.appendChild(detailDescBox());
+  body.appendChild(detailTrustCard());
   // 「联系 TA」贴底（2026-08-29 条目 [70]，P2 修复）：PRD §7.4.1 稿图末行明写
   // 「底部固定主按钮胶囊」，此前按钮只是跟在信任卡后面，下方空 315px ——
   // 既不吸底也不居中，看不出是「固定主按钮」。补了描述区后内容更长，
@@ -4455,27 +4506,34 @@ function buildDetailOffline() {
   tagRow.appendChild(pin('category/' + CONTENT.job.catKey, 'resource', null, false));
   tagRow.appendChild(text(CONTENT.job.path, 'small', 'color/text-secondary'));
   body.appendChild(tagRow);
-  var tmpl = box('_template-fields', 'VERTICAL', {
-    w: CANVAS.w - SPACING.lg * 2, pad: SPACING.md, gap: SPACING.sm,
-    fill: 'color/surface', radius: RADIUS.lg, stroke: 'color/border'
-  });
-  tmpl.appendChild(text('模板字段', 'h3'));
-  // 与 buildDetail 共用同一条演示主线：失效态要与正常态逐字一致才能作为对照，
-  // 差异必须只来自 §7.8 的红条 / disabled / Opacity 60% 三项
-  var pairs = CONTENT.job.fields;
-  for (var i = 0; i < pairs.length; i++) {
-    var pr = box('_pair', 'HORIZONTAL', { w: CANVAS.w - SPACING.lg * 2 - SPACING.md * 2, justify: 'SPACE_BETWEEN' });
-    pr.appendChild(text(pairs[i][0], 'small', 'color/text-secondary'));
-    pr.appendChild(text(pairs[i][1], 'body'));
-    tmpl.appendChild(pr);
-  }
-  body.appendChild(tmpl);
-  // 联系按钮禁用：PRD §7.8
-  body.appendChild(button('联系 TA', 'disabled', CANVAS.w - SPACING.lg * 2));
-  body.appendChild(annotation(st.title, st.notes));
+  // 三块内容与正常态共用同一批构造器（2026-08-31 条目 [70-f]）：
+  // 改前本页只有模板字段一块，缺描述区与信任卡，于是中部空约 400px ——
+  // §7.8 只许两态有红条 / disabled / Opacity 60% 三项差异，缺两块内容是第四、五项。
+  // 走构造器而不是把正常态的代码复制过来：复制的那份会各自演化，
+  // 「失效态要与正常态逐字一致才能作为对照」这条要求当天就失效
+  body.appendChild(detailTemplateFields());
+  body.appendChild(detailDescBox());
+  body.appendChild(detailTrustCard());
+  // 禁用按钮与标注一并贴底（2026-08-31 条目 [70-f]）：改前两者紧跟模板字段卡，
+  // 内容止于 555px、下方空 290px，禁用的「联系 TA」悬在页面中间。
+  //
+  // 为什么必须与正常态 detail 同形：本页存在的唯一理由是给评审做「正常 ↔ 失效」
+  // 对照，§7.8 允许的差异只有红条 / disabled / Opacity 60% 三项。按钮位置一旦
+  // 不同，对照时会先注意到「按钮怎么跑了」，而不是这三项差异。
+  //
+  // 注意顺序：annotation 排在按钮之前（同 buildDetail），规格说明不插在
+  // 主操作与页面底沿之间；_spacer 由 pushToBottom 插在信任卡与 annotation 之间，
+  // 它无填充，被 Opacity 60% 一起压到也不产生任何可见变化
+  pushToBottom(body, [
+    annotation(st.title, st.notes),
+    // 联系按钮禁用：PRD §7.8
+    button('联系 TA', 'disabled', CANVAS.w - SPACING.lg * 2)
+  ]);
   // 整页内容降至 60%：PRD §7.8「页面整体 Opacity 60%」
   body.opacity = 0.6;
   s.appendChild(body);
+  // 必须在 appendChild 之后：layoutGrow 要求已有 Auto Layout 父级
+  body.layoutGrow = 1;
   return s;
 }
 
@@ -4527,32 +4585,95 @@ function buildPublish() {
 }
 
 /**
- * 构造 contact-screen：电话/微信二选一单轨（PRD §10.1）
+ * 构造 contact-screen：单轨中转页，逐字落地 PRD §7.4.2 稿图（PRD §10.1）
+ *
+ * 2026-08-31（条目 [70-f]）整页重写。改前只有一句标题 + 两个按钮，
+ * 渲染图上中部约 600px 是纯空白 —— 不是留白过多，是 §7.4.2 稿图明列的
+ * 三块内容（隐私保护说明 / 联系方式卡 / 温馨提示与举报）在画布上一个都没有。
+ *
+ * 为什么去掉「复制微信号」：§7.4.2 注明「用户发布时只填一种联系方式，
+ * 中转页只显示该一种联系方式卡片，不做双卡片并列」。改前两个按钮并列，
+ * 与这条注、以及本页 annotation 自己写的「二选一单轨：不并列引导」直接相反 ——
+ * 稿子上并列引导，红线卡上写着不许并列，两者贴在同一页里。
+ * 演示态取「手机号」这一种，与稿图一致。
+ *
+ * 为什么删掉「选择一种联系方式」「本产品不做站内 IM」两句：
+ * 前者在只剩一种联系方式后已无「选择」可言；后者是 Scope 口径，
+ * 已由页内红线标注卡第一条承载，正文里再写一遍是同一句话两处维护。
+ *
+ * 稿图里的 🛡️ / 📞 / 👁️ / ⚠️ / ❌ 五个 emoji 一律不落地：emoji 走系统字体，
+ * 三端字形不一且色值不受 paintOf 控制。也不为它们新增五条矢量路径 ——
+ * 「隐私保护说明」「手机号」「查看完整号码并外呼」「温馨提示」「举报本次发布」
+ * 每一处的文字本身已说清是什么，图标是重复编码（同本页改前注释里
+ * 对「拨打电话」不补图标的同一判断）。
+ *
  * @returns {FrameNode} 联系中转页节点
  */
 function buildContact() {
   var s = screen('contact-screen', '联系中转页', 'PRD §10.1');
   s.appendChild(statusBar());
-  s.appendChild(navBar('联系对方', { back: true }));
-  var body = box('_body', 'VERTICAL', { w: CANVAS.w, pad: SPACING.xl, gap: SPACING.lg, align: 'CENTER' });
-  body.appendChild(text('选择一种联系方式', 'h2'));
-  body.appendChild(text('本产品不做站内 IM，联系走系统能力', 'small', 'color/text-secondary'));
-  // 两个按钮改为贴底（2026-08-29 条目 [70]，P1/P2 修复）：本页内容实测只占 321px，
-  // 底部空着 523px（62%），按钮悬在页面上三分之一处。中转页的全部操作就是这两个键，
-  // 放到拇指够得着的底部才是这类页的常态；空白由 _spacer 显式占位，不再是无主的空档。
-  //
-  // 文案里的 📞 / 💬 一并去掉（P3 同批）：emoji 走系统字体，三端字形不一，
-  // 且色值不受 paintOf 控制 —— 主按钮上一个不受控的彩色字符会破坏按钮的单色块面。
-  // 这里不补矢量图标：「拨打电话」「复制微信号」六个字本身已说清，
-  // 加图标是重复编码（与 doneTag 保留勾的情形不同，那里勾承担的是「已完成」状态）。
+  // 导航标题带发布者名（§7.4.2 稿图「← 联系 王师傅」）：中转页是从某一条具体
+  // 信息点进来的，标题写死「联系对方」会让人不确定自己联系的是哪一条的发布者
+  s.appendChild(navBar('联系 ' + CONTENT.job.publisher, { back: true }));
+  // pad 从 xl 改 lg、且去掉 align:'CENTER'：本页从「两个居中按钮」变成三块卡片，
+  // 卡片可用宽须与 detail / publish 等其余内容页一致（358），居中排列会让
+  // 说明块里的多行左对齐正文看起来像是被随机缩进
+  var body = box('_body', 'VERTICAL', { w: CANVAS.w, pad: SPACING.lg, gap: SPACING.md });
+  var innerW = CANVAS.w - SPACING.lg * 2;
+
+  // 第一块：隐私保护说明（§7.4.2 稿图第 1 段）。走 primary-light 底，
+  // 与详情页信任卡同一档 —— 两者都是「平台在为你担保什么」这类告知件
+  var privacy = box('_privacy-note', 'VERTICAL', {
+    w: innerW, pad: SPACING.md, gap: SPACING.xs,
+    fill: 'color/primary-light', radius: RADIUS.lg
+  });
+  privacy.appendChild(text('隐私保护说明', 'h3', 'color/primary-dark'));
+  privacy.appendChild(text('为保护双方隐私，平台提供联系方式中转：', 'small', 'color/primary-dark'));
+  privacy.appendChild(text('· 本次联系会记录在双方「联系记录」中', 'caption', 'color/primary-dark'));
+  privacy.appendChild(text('· 对方回复后可互加联系方式', 'caption', 'color/primary-dark'));
+  body.appendChild(privacy);
+
+  // 第二块：联系方式卡（§7.4.2 稿图第 2 段），只展示发布时填写的那一种
+  var contactCard = box('card/contact-channel', 'VERTICAL', {
+    w: innerW, pad: SPACING.lg, gap: SPACING.sm,
+    fill: 'color/surface', radius: RADIUS.lg, stroke: 'color/border'
+  });
+  var phoneRow = box('_phone-row', 'HORIZONTAL', { gap: SPACING.sm, align: 'CENTER' });
+  phoneRow.appendChild(text('手机号', 'small', 'color/text-secondary'));
+  // 脱敏号码给到 h2 字阶：它是本页唯一的信息主体，其余都是说明与操作
+  phoneRow.appendChild(text(CONTENT.job.phoneMasked, 'h2'));
+  contactCard.appendChild(phoneRow);
+  contactCard.appendChild(text('（点击号码，查看完整号码并拨打）', 'caption', 'color/text-placeholder'));
+  // 主操作留在卡内而非贴底：完整号码是这张卡的内容，「查看完整号码并外呼」
+  // 拉到页面底沿会与它所属的号码脱开，稿图里也画在卡的第三行
+  contactCard.appendChild(button('查看完整号码并外呼', 'primary', innerW - SPACING.lg * 2));
+  body.appendChild(contactCard);
+
+  // 第三块：温馨提示 + 举报（§7.4.2 稿图第 3 段），贴底
+  var tip = box('_safety-tip', 'VERTICAL', {
+    w: innerW, pad: SPACING.md, gap: SPACING.xs,
+    fill: 'color/surface', radius: RADIUS.md, stroke: 'color/warning'
+  });
+  tip.appendChild(text('温馨提示', 'small', 'color/warning-text'));
+  tip.appendChild(text('建议白天联系，交易请走线下', 'caption', 'color/warning-text'));
+  body.appendChild(tip);
+
   pushToBottom(body, [
-    button('拨打电话', 'primary', CANVAS.w - SPACING.xl * 2),
-    button('复制微信号', 'secondary', CANVAS.w - SPACING.xl * 2),
     annotation('联系页 Scope 红线', [
       '不做 IM 聊天、不做撮合结果追踪（永久红线）',
-      '二选一单轨：一次只走一条路径，不并列引导',
-      '联系行为不产生交易记录、不产生信誉评价'
-    ], { severity: 'redline' })
+      '二选一单轨：只显示发布时填的那一种，不做双卡片并列（PRD §7.4.2 注）',
+      '联系行为不产生交易记录、不产生信誉评价',
+      '完整号码不写入前端初始状态，点击时走 API（PRD §7.7）',
+      '⚠ 稿图两句待裁决：「记录在双方联系记录中」「对方回复后可互加」'
+        + '与 §7.2 红线「不做撮合结果追踪」相矛盾，本稿按 §7.4.2 稿图逐字落地'
+    ], { severity: 'redline' }),
+    // 举报走 secondary 而非 ghost/danger（2026-08-31 用户拍定）：
+    // §7.4.2 稿图画的是 [ 举报本次发布 ] 带方框，而 ghost 无描边无底色，
+    // 渲染出来是页脚一行居中文字，看不出是可点按钮 —— 举报是安全兜底入口，
+    // 「看不出能点」比「权重略高」代价大得多。
+    // 也不用 danger：那是红底白字的不可逆操作档（删除、下架），
+    // 举报只是提交一条待复核记录，红底会盖过本页主操作「查看完整号码并外呼」。
+    button('举报本次发布', 'secondary', innerW)
   ]);
   s.appendChild(body);
   // 必须在 appendChild 之后：layoutGrow 要求已有 Auto Layout 父级。
@@ -5024,15 +5145,23 @@ function buildAiConfirm() {
   sprint.appendChild(sp2);
   body.appendChild(sprint);
 
-  body.appendChild(annotation('确认页口径', [
-    '强制环节，四模式共用（PRD §5.9）',
-    '未猜出字段标「需你补充」，不猜不编造（PRD §5.9）',
-    '仅本页点「确认发布」才计 1 次 AI 配额（PRD §5.9）',
-    '7 秒口径不含本页耗时（PRD §5.9）',
-    '冲刺区只放「完整」档差的两项：门牌号 + 三级类目'
-  ]));
-  body.appendChild(button('确认发布', 'primary', CANVAS.w - SPACING.lg * 2));
+  // 「确认发布」与标注贴底（2026-08-31 条目 [70-f]）：改前两者紧跟冲刺区，
+  // 内容止于 795px、下方空 240px。本页是发布链路的最后一道闸，
+  // 「确认发布」是全站权重最高的提交动作之一，它与 publish 页的「发布」
+  // 属同一类通栏提交键，位置必须一致 —— 否则连点两页的人要重新找按钮
+  pushToBottom(body, [
+    annotation('确认页口径', [
+      '强制环节，四模式共用（PRD §5.9）',
+      '未猜出字段标「需你补充」，不猜不编造（PRD §5.9）',
+      '仅本页点「确认发布」才计 1 次 AI 配额（PRD §5.9）',
+      '7 秒口径不含本页耗时（PRD §5.9）',
+      '冲刺区只放「完整」档差的两项：门牌号 + 三级类目'
+    ]),
+    button('确认发布', 'primary', CANVAS.w - SPACING.lg * 2)
+  ]);
   s.appendChild(body);
+  // 必须在 appendChild 之后：layoutGrow 要求已有 Auto Layout 父级
+  body.layoutGrow = 1;
   return s;
 }
 

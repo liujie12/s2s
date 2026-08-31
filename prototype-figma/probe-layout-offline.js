@@ -600,6 +600,10 @@ const wrapped = new Function(
       'notifyRow', 'groupTitle', 'certRow',
       // 条目 [71]：card 供「改 layoutMode 后卡高是否装得下」的反向断言直接构造用
       'card',
+      // 条目 [70] 第八段（2026-08-31）：detail-offline / ai-confirm 两页改贴底，
+      // contact 页按 PRD §7.4.2 稿图补全三块内容。两页必须真跑才能量出
+      // 「_spacer 在不在、尾部节点排没排在它后面」，源码正则看不出贴底是否成立
+      'buildDetailOffline', 'buildAiConfirm',
       // 条目 [70] 第三段（2026-08-30）：分页收尾条，三个「我的」列表页 + list 页共用
       'listEndRow']
       .map((k) => k + ': typeof ' + k + " !== 'undefined' ? " + k + ' : undefined')
@@ -3411,10 +3415,23 @@ function allText(root) {
     // 2026-08-29 从五页减为四页：trust 页原先靠 pushToBottom 把红线 annotation
     // 压到页脚，实机证明该修法失效（详见下方「annotation 不得作为唯一尾部元素」
     // 一条），已改为补足 §4.4 内容让页面自然填满，不再用 spacer。
+    // 2026-08-31（条目 [70] 第八段）从四页增为六页：detail-offline 与 ai-confirm
+    // 两页改前根本没走 pushToBottom（内容止于 555 / 795px，主按钮悬在页中间），
+    // 而「四页全绿」这条断言只点了它没点的四页，所以两页漏掉时全程零告警 ——
+    // 凡新增一页带底部主操作，就必须同时进这张表，否则这条断言的覆盖面会静默缩水。
+    //
+    // contact 的尾部节点随本轮改版换名：原先是 btn/primary/拨打电话 +
+    // btn/secondary/复制微信号 两键并列（与 §7.4.2「不做双卡片并列」相反），
+    // 现改为单键 btn/secondary/举报本次发布 —— 主操作「查看完整号码并外呼」
+    // 刻意留在联系方式卡内不贴底（见 code.js buildContact 注释）。
+    // variant 用 secondary 而非 ghost：ghost 无描边无底色，贴底后渲染成一行
+    // 页脚文字链，举报是安全兜底入口，「看不出能点」的代价大于权重略高。
     const tailPages = [
-      ['buildContact', '_body', ['btn/primary/拨打电话', 'btn/secondary/复制微信号']],
+      ['buildContact', '_body', ['btn/secondary/举报本次发布']],
       ['buildPublish', '_body', ['btn/primary/发布']],
       ['buildDetail', '_body', ['btn/primary/联系 TA']],
+      ['buildDetailOffline', '_body', ['btn/disabled/联系 TA']],
+      ['buildAiConfirm', '_body', ['btn/primary/确认发布']],
       // profile 无统一 _body，三段直接挂画框，故 spacer 插在画框层
       ['buildProfile', null, ['bottom-tab']]
     ];
@@ -3445,10 +3462,119 @@ function allText(root) {
       }
     }
     check(
-      '四页尾部元素贴底：_spacer 存在 + grow=1 + 尾部节点排其后 + 容器自身 grow（改前空白 315–523px）',
+      tailPages.length + ' 页尾部元素贴底：_spacer 存在 + grow=1 + 尾部节点排其后 + 容器自身 grow（改前空白 240–523px）',
       tailBad.length === 0,
       tailBad.length ? tailBad.join('; ') : tailPages.length + ' 页全部命中'
     );
+
+    // ---------- contact 页：PRD §7.4.2 稿图三块内容 ----------
+    //
+    // 为什么必须点名：这页改前只有一句标题 + 两个按钮，机读层面「贴底」那条
+    // 断言是全绿的（_spacer 在、grow=1、按钮排其后），可渲染图上中部约 600px
+    // 是纯空白 —— 贴底成立不代表页面画完了，「空着」的病因是缺内容而不是布局。
+    // 同 trust 页那次：内容缺失在画布上的唯一征兆就是「下面空着」，
+    // 而空着永远无法自证是有意留白还是稿子没画完，只有逐块点名拦得住。
+    //
+    // 反向断言在此处不另造节点：本条查的是「§7.4.2 明列的块在不在」，
+    // 缺任一块即报，本身已是逐项判定，构造一份缺块的假页去验它会报错
+    // 只是把同一份 find 逻辑写两遍。
+    {
+      const frame = M.buildContact();
+      const nav = frame.findOne((n) => n.type === 'TEXT'
+        && n.characters.indexOf('联系 ') === 0);
+      check(
+        'contact 导航标题带发布者名（PRD §7.4.2 稿图「← 联系 王师傅」），不再是写死的「联系对方」',
+        !!nav && nav.characters === '联系 ' + M.CONTENT.job.publisher,
+        nav ? nav.characters : '未找到「联系 …」标题'
+      );
+
+      const body = frame.children.find((c) => c.name === '_body');
+      const names = body ? body.children.map((c) => c.name) : [];
+      const wantBlocks = ['_privacy-note', 'card/contact-channel', '_safety-tip'];
+      const missBlocks = wantBlocks.filter((w) => names.indexOf(w) < 0);
+      check(
+        'contact 页三块内容齐备（隐私保护说明 / 联系方式卡 / 温馨提示），改前中部 600px 纯空白',
+        missBlocks.length === 0,
+        missBlocks.length ? '缺 ' + pj(missBlocks) : pj(names)
+      );
+
+      // 脱敏号码必须取 fixtures 真源且中段为掩码：PRD §7.4.2「号码中间 4 位脱敏」，
+      // §7.7 又要求完整号码不写入前端初始状态 —— 稿子上出现真号码即违反后者
+      const masked = frame.findOne((n) => n.type === 'TEXT'
+        && n.characters === M.CONTENT.job.phoneMasked);
+      check(
+        '联系方式卡展示脱敏号码（PRD §7.4.2 中间 4 位脱敏 / §7.7 完整号码不入前端初始状态）',
+        !!masked && /\*{4}/.test(M.CONTENT.job.phoneMasked),
+        masked ? masked.characters : '未找到脱敏号码文本 ' + M.CONTENT.job.phoneMasked
+      );
+
+      // 单轨反向断言：§7.4.2 注「只显示该一种联系方式卡片，不做双卡片并列」。
+      // 改前「拨打电话 + 复制微信号」两键并列，与同页红线卡自己写的
+      // 「不并列引导」直接矛盾。此条锁的是「本页不得同时出现两条联系通道操作」
+      const channelBtns = frame.findAll((n) => n.name.indexOf('btn/') === 0
+        && (n.name.indexOf('号码') >= 0 || n.name.indexOf('电话') >= 0
+          || n.name.indexOf('微信') >= 0));
+      check(
+        'contact 单轨：联系通道操作有且仅有 1 个（PRD §7.4.2 注「不做双卡片并列」）',
+        channelBtns.length === 1,
+        pj(channelBtns.map((b) => b.name))
+      );
+    }
+
+    // ---------- detail-offline 与正常态 detail 同形（§7.8 只许三项差异） ----------
+    //
+    // 为什么单独锁而不靠上面那条贴底断言：贴底只管「_spacer 在不在」，
+    // 管不了「两态的内容是否同一套」。§7.8 允许的差异只有红条 / disabled /
+    // Opacity 60% 三项，内容或排列一旦分叉，评审对照时先看到的是「东西怎么少了」，
+    // 而不是这三项 —— 这页存在的唯一目的就此落空。
+    //
+    // 判据取「_body 全部子节点的类别序列」而非只取 _spacer 之后的尾部：
+    // 本轮首版只比尾部，结果全绿，而渲染图上失效态中部空 400px ——
+    // 它缺了描述区与信任卡两块，两块都在 _spacer 之前，尾部判据一个都看不见。
+    // 凡「两态必须同形」的页面，比的必须是整个内容序列，不是其中一段。
+    {
+      const norm = M.buildDetail();
+      const off = M.buildDetailOffline();
+      /** 取 _body 全部子节点的类别序列，按钮只留 'btn' 以容许 primary/disabled 差异 */
+      const bodyShape = (frame) => {
+        const b = frame.children.find((c) => c.name === '_body');
+        if (!b) return ['无 _body'];
+        return b.children.map((c) =>
+          c.name.indexOf('_annotation/') === 0 ? 'anno'
+            : (c.name.indexOf('btn/') === 0 ? 'btn'
+              : (c.type === 'TEXT' ? 'text' : c.name)));
+      };
+      const sn = bodyShape(norm);
+      const so = bodyShape(off);
+      check(
+        'detail-offline 的 _body 内容序列与正常态 detail 完全一致'
+        + '（PRD §7.8 只许红条/disabled/Opacity 三项差异；只比尾部时缺两块内容仍会全绿）',
+        sn.length > 1 && sn.join('>') === so.join('>'),
+        '正常态 ' + sn.join('>') + '；失效态 ' + so.join('>')
+      );
+      // 三块内容卡必须都在：序列一致这条在「两态同时缺」时也会绿，
+      // 故再点名一次 §7.4.1 稿图明列的三块
+      const offNames = (off.children.find((c) => c.name === '_body') || { children: [] })
+        .children.map((c) => c.name);
+      const wantCards = ['_template-fields', '_description', '_trust-card'];
+      const missCards = wantCards.filter((w) => offNames.indexOf(w) < 0);
+      check(
+        'detail-offline 含 §7.4.1 三块内容卡（模板字段/描述/信任卡），改前只有第一块',
+        missCards.length === 0,
+        missCards.length ? '缺 ' + pj(missCards) : pj(offNames)
+      );
+      // §7.8 的三项差异必须真的都在，缺任一项则本页与正常态无从区分
+      const offBody = off.children.find((c) => c.name === '_body');
+      const banner = off.children.find((c) => c.name === '_offline-banner');
+      const disabledBtn = off.findOne((n) => n.name.indexOf('btn/disabled/') === 0);
+      check(
+        'detail-offline 三项差异齐备：红条 + disabled 按钮 + _body Opacity 60%（PRD §7.8）',
+        !!banner && !!disabledBtn && !!offBody
+        && Math.abs(offBody.opacity - 0.6) < 0.001,
+        '红条 ' + !!banner + ' / disabled ' + (disabledBtn ? disabledBtn.name : '缺')
+        + ' / opacity ' + (offBody ? offBody.opacity : 'n/a')
+      );
+    }
 
     // ---------- annotation 不得作为 pushToBottom 的唯一尾部元素 ----------
     //
