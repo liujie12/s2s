@@ -5342,7 +5342,7 @@ function buildCategorySelector() {
       // 名字带层级与文案：三列同名 _item 会让批次 5 无法唯一定位「帮厨」
       var cell = box('_item/L' + (c + 1) + '/' + colData[c][i], 'HORIZONTAL', {
         w: CANVAS.w / 3, padTop: SPACING.md, padBottom: SPACING.md,
-        padLeft: SPACING.md, padRight: SPACING.md, align: 'CENTER'
+        padLeft: SPACING.md, padRight: SPACING.md, align: 'CENTER', gap: SPACING.xs
       });
       // 选中项取色必须跟着该列底色走（2026-08-26 实机对比度核查后修）。
       //
@@ -5357,11 +5357,26 @@ function buildCategorySelector() {
         ? 'color/primary-dark'
         : 'color/primary';
       cell.appendChild(text(colData[c][i], 'body', i === 0 ? selRole : 'color/text-primary'));
+      // 选中态补 ✓ 矢量勾（2026-08-31，四模态首次出图后查出）：
+      // §5.4.2 第 3 条明文「选中态：Primary 色 + ✓」，此前只做了 Primary 色。
+      // 缺 ✓ 不只是漏一个装饰 —— 三列各有一个选中项，去色后（T6 板去色校验口径）
+      // 仅靠色相无从分辨哪一项被选，形状才是承载语义的那一层。
+      // 用 svgIcon 而非 '✓' 字符：emoji/符号由系统字体渲染，三端字形不一致。
+      if (i === 0) cell.appendChild(svgIcon('_tick', ICON_PATHS.tick, selRole, 14));
       col.appendChild(cell);
     }
     cols.appendChild(col);
   }
   s.appendChild(cols);
+  // 底部「确认选择」主按钮（2026-08-31 补）：§5.4.2 第 5 条「底部确认按钮『确认选择』」。
+  // 实机量出画框 844 高、内容底沿只到 612，空着的 232px 正是这颗按钮该在的位置 ——
+  // 按原则 129，见大片留白先问「这里本该有什么」，答案就写在 PRD 同一节里。
+  // 三级已选中（l3 首项）时按钮才可用，故取 primary 实心态而非 disabled 态。
+  var confirmBar = box('_confirm-bar', 'VERTICAL', {
+    w: CANVAS.w, pad: SPACING.lg, fill: 'color/surface'
+  });
+  confirmBar.appendChild(button('确认选择', 'primary', CANVAS.w - SPACING.lg * 2));
+  s.appendChild(confirmBar);
   var note = box('_note', 'VERTICAL', { w: CANVAS.w, pad: SPACING.lg });
   note.appendChild(annotation('级联选择器口径', [
     '三级分类：大类 › 中类 › 小类',
@@ -5382,7 +5397,11 @@ function buildMapSelector() {
   s.appendChild(navBar('选择位置', { back: true, right: '确定' }));
   // 改用 stack（无 Auto Layout）：底板矩形须铺满整块并被文案/Pin 叠压，
   // 而 Auto Layout 会把底板当成一个参与排流的兄弟节点、把它挤成一行
-  var MH = 560;
+  // 地图高从 560 降到 544（2026-08-31）：补门牌两条通路后 _addr 由 75 长到 208 高，
+  // 实机量出内容底沿 860 > 画框 844，门牌输入框下缘被裁 16px。
+  // 减地图而不减门牌区：门牌是 §7.9 的功能要件、少一像素都影响可点性，
+  // 地图只是背景画布，544 与 560 在观感上无差别。
+  var MH = 544;
   var m = stack('_map', CANVAS.w, MH);
   mapBasePlate(m, CANVAS.w, MH);
 
@@ -5405,9 +5424,20 @@ function buildMapSelector() {
   hint.y = sel.y - hint.height - SPACING.lg;
 
   s.appendChild(m);
-  var addr = box('_addr', 'VERTICAL', { w: CANVAS.w, pad: SPACING.lg, gap: SPACING.xs, fill: 'color/surface' });
+  var addr = box('_addr', 'VERTICAL', { w: CANVAS.w, pad: SPACING.lg, gap: SPACING.sm, fill: 'color/surface' });
   addr.appendChild(text('当前位置', 'small', 'color/text-secondary'));
   addr.appendChild(text('XX 市 XX 区 XX 路 88 号', 'body'));
+  // 门牌两条通路（2026-08-31 补）：§7.9「三条件的可自主达成保障」表逐字写明
+  // 「地图选点页提供『取当前定位门牌』+ 手动输入门牌框（两者任一填写即达成）」。
+  //
+  // 这不是可选装饰：位置到门牌号是完整度 🟢 档三条件之一（§7.9 判定表），
+  // 而 🟢 档决定曝光权重 ×2。选点页不给这两条通路，用户就落进 PRD 明文
+  // 要避免的「想升 🟢 却做不到」。此前实机底沿只到 727、空 117px，正是它的位置。
+  //
+  // 「取当前定位门牌」用 secondary 而非 primary：本页主操作是顶栏「确定」，
+  // 门牌是辅助补全，两颗实心主按钮会争夺同一层视觉权重。
+  addr.appendChild(button('取当前定位门牌', 'secondary', CANVAS.w - SPACING.lg * 2));
+  addr.appendChild(field('门牌号', '如 3 号楼 2 单元 501', CANVAS.w - SPACING.lg * 2));
   s.appendChild(addr);
   return s;
 }
@@ -5450,6 +5480,39 @@ function buildT6Board() {
   var b = box('board/T6 四组件 [PRD §6.13]', 'VERTICAL', {
     w: 480, pad: SPACING.xl, gap: SPACING.xl, fill: 'color/surface', radius: RADIUS.lg
   });
+  // 板内可用宽 = 480 - xl 左右内边距。长注释文本必须按这个宽度折行，
+  // 见下方 wrapNote 的说明
+  var boardInnerW = 480 - SPACING.xl * 2;
+
+  /**
+   * 往指定容器追加一条会自动折行的长注释文本
+   *
+   * 2026-08-31 补：本板三条长注释（完整度角标注意事项 148 字、图标验收判据、
+   * 去色校验）原先直接走 text()，而 text() 不设 textAutoResize，Figma 默认
+   * WIDTH_AND_HEIGHT —— 文本会横向铺成一整行不折行，把父容器一路撑宽。
+   * 实机量出 _t6-3 宽 1290（溢出 480 的画框 834px）、_t6-5 宽 736（溢出 280px），
+   * 板子右侧内容整片跑到画框外，出图时被裁掉。
+   *
+   * 为什么之前没被发现：这块是四个模态之一，14 页普通页每轮都出图人眼过，
+   * 而模态从建成起从未出过一张渲染图，探针 250 项也只查节点存在与序列，
+   * 没有一条查「子节点是否溢出父画框」。
+   *
+   * 顺序不可换：textAutoResize 要在 appendChild 之前设（否则先按无限宽算一次），
+   * layoutSizingHorizontal = 'FILL' 必须在 appendChild 之后设 ——
+   * 没有自动布局父节点时赋值会抛 requires an auto-layout parent。
+   *
+   * @param {FrameNode} parent 目标容器（须为自动布局且宽度确定）
+   * @param {string} content 注释文案
+   * @returns {TextNode} 已挂载的文本节点
+   */
+  function wrapNote(parent, content) {
+    var t = text(content, 'caption', 'color/text-secondary');
+    t.textAutoResize = 'HEIGHT';
+    parent.appendChild(t);
+    t.layoutSizingHorizontal = 'FILL';
+    return t;
+  }
+
   b.appendChild(text('T6 四组件（不在 §10.1 页面清单内）', 'h2'));
 
   // ① AI 帮我发 FAB
@@ -5495,7 +5558,8 @@ function buildT6Board() {
   b.appendChild(g2);
 
   // ③ Pin 完整度角标
-  var g3 = box('_t6-3', 'VERTICAL', { gap: SPACING.sm });
+  // 定宽（原为 AUTO）：本组含一条 148 字长注释，容器不定宽则 FILL 无依据可算
+  var g3 = box('_t6-3', 'VERTICAL', { w: boardInnerW, gap: SPACING.sm });
   g3.appendChild(text('③ 完整度三档角标（规范演示，非地图实态）', 'h3', 'color/primary'));
   var badgeRow = box('_badges', 'HORIZONTAL', { gap: SPACING.lg, align: 'CENTER' });
   // 显式 showCompleteness=true：本组唯一目的就是展示角标形态。
@@ -5512,7 +5576,7 @@ function buildT6Board() {
   legendRow.appendChild(completenessTag('yellow', 'caption', 'color/text-secondary'));
   legendRow.appendChild(completenessTag('red', 'caption', 'color/text-secondary'));
   g3.appendChild(legendRow);
-  g3.appendChild(text('注意：地图 Marker 不常驻此角标。40×40 内原先叠了 4 条信息（底色=分类、图标=分类、右上 ?=供需、右下点=完整度），分类被重复编码两次、完整度在缩略态几乎无人细看，纯在抢辨识带宽。完整度改由点击 Marker 后的信息卡与列表卡承载（PRD §6.4.2）', 'caption', 'color/text-secondary'));
+  wrapNote(g3, '注意：地图 Marker 不常驻此角标。40×40 内原先叠了 4 条信息（底色=分类、图标=分类、右上 ?=供需、右下点=完整度），分类被重复编码两次、完整度在缩略态几乎无人细看，纯在抢辨识带宽。完整度改由点击 Marker 后的信息卡与列表卡承载（PRD §6.4.2）');
   b.appendChild(g3);
 
   // ④ 发布完成页完整度卡
@@ -5540,7 +5604,8 @@ function buildT6Board() {
   // Marker 40×40 内图标只占 20×20，放大好看不等于手机上认得出。
   // 本组把 10 个 Marker（五类 × 资源/需求）按 1:1 摆一排，
   // 验收判据：把屏幕缩放到 100%、以手机臂展距离（约 40cm）看，能逐个说出是哪一类。
-  var g5 = box('_t6-5', 'VERTICAL', { gap: SPACING.sm });
+  // 定宽（原为 AUTO）：本组含两条长注释，同 _t6-3
+  var g5 = box('_t6-5', 'VERTICAL', { w: boardInnerW, gap: SPACING.sm });
   g5.appendChild(text('⑤ 20px 真实尺寸对照条（图标验收用）', 'h3', 'color/primary'));
 
   /**
@@ -5564,8 +5629,8 @@ function buildT6Board() {
   g5.appendChild(scaleRow('resource'));
   g5.appendChild(text('需求态（空心 + ?）', 'small', 'color/text-secondary'));
   g5.appendChild(scaleRow('demand'));
-  g5.appendChild(text('验收判据：屏幕缩放 100%，以手机臂展距离（约 40cm）看，须能逐个说出是哪一类；说不出即判不通过，回到 ICON_PATHS 换图形而非放大检视', 'caption', 'color/text-secondary'));
-  g5.appendChild(text('去色校验：在 Figma 里选中上面两行 → 加 Saturation -100 效果，或直接黑白打印；若去色后仍能区分，说明形状本身承载了语义，没有全靠颜色硬撑', 'caption', 'color/text-secondary'));
+  wrapNote(g5, '验收判据：屏幕缩放 100%，以手机臂展距离（约 40cm）看，须能逐个说出是哪一类；说不出即判不通过，回到 ICON_PATHS 换图形而非放大检视');
+  wrapNote(g5, '去色校验：在 Figma 里选中上面两行 → 加 Saturation -100 效果，或直接黑白打印；若去色后仍能区分，说明形状本身承载了语义，没有全靠颜色硬撑');
   b.appendChild(g5);
 
   return b;

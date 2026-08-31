@@ -605,7 +605,10 @@ const wrapped = new Function(
       // 「_spacer 在不在、尾部节点排没排在它后面」，源码正则看不出贴底是否成立
       'buildDetailOffline', 'buildAiConfirm',
       // 条目 [70] 第三段（2026-08-30）：分页收尾条，三个「我的」列表页 + list 页共用
-      'listEndRow']
+      'listEndRow',
+      // 2026-08-31：四个模态从建成起从未出过渲染图，本轮补图时量出 T6 板两组
+      // 子节点溢出画框（+834 / +280）。溢出只能真跑量宽，源码看不出
+      'buildCategorySelector', 'buildMapSelector', 'buildCertModal', 'buildT6Board']
       .map((k) => k + ': typeof ' + k + " !== 'undefined' ? " + k + ' : undefined')
       .join(', ') +
     ' };'
@@ -3618,6 +3621,111 @@ function allText(root) {
         + '（稿图与 §3.3 范围约束冲突时以约束为准，见 PRD §3.4.2 注）',
         hits.length === 0,
         hits.length ? pj(hits) : '已扫 ' + outOfScope.length + ' 个越界词，无命中'
+      );
+    }
+
+    // ---------- 画框级溢出守门：AUTO 宽容器被长文本撑破画框 ----------
+    //
+    // 2026-08-31 补。与上面第⑧条（文字不超最近 FIXED 宽祖先）的区别，
+    // 正是本轮漏检的根因：第⑧条从文本往上找「最近的 FIXED 宽祖先」，而
+    // T6 板里 _t6-3 / _t6-5 原本是 AUTO 宽 —— 长文本先把这两个容器撑宽，
+    // 于是第⑧条找到的「最近 FIXED 祖先」就是被撑大后的自己，量出来当然不超。
+    // 病灶在「容器自己也跟着长大了」，判据必须从**画框**这个真正钉死的边界回看。
+    //
+    // 病因：text() 不设 textAutoResize，Figma 默认 WIDTH_AND_HEIGHT ——
+    // 长文案横向铺成一整行不折行。T6 板三条长注释（148 字角标注意事项 +
+    // 图标验收判据 + 去色校验）把 _t6-3 撑到 1290、_t6-5 撑到 736，板宽只有 480，
+    // 右侧内容整片跑到画框外，出图即被裁掉。
+    //
+    // 为什么 250 项全绿却漏了它：机读这一维度有盲区（如上），而这块又是四个
+    // 模态之一，模态从建成起从未出过一张渲染图，人眼那条路也没覆盖 ——
+    // 机读的盲区与人眼的盲区重叠处，就是缺陷长期藏身的地方。
+    //
+    // 只比容器自身宽 vs 画框宽，不做坐标累加：mock 不实现 FILL/grow 的拉伸算法
+    //（见文件头），累加坐标会把一堆已声明 FILL 的节点误报成溢出。
+    {
+      const pageFns = ['buildSplash', 'buildLogin', 'buildDetail', 'buildDetailOffline',
+        'buildPublish', 'buildContact', 'buildProfile', 'buildMyPublish',
+        'buildMyFavorite', 'buildNotification', 'buildTrust', 'buildSettings',
+        'buildAiConfirm', 'buildPublishSuccess',
+        'buildCategorySelector', 'buildMapSelector', 'buildCertModal', 'buildT6Board'];
+      const over = [];
+      pageFns.forEach((fn) => {
+        if (typeof M[fn] !== 'function') return;
+        const root = M[fn]();
+        const limit = root.width;
+        root.findAll((n) => n.type === 'FRAME').forEach((c) => {
+          // 跳过声明了 FILL/grow 的容器：真机上宽由父给定，mock 量到的是 hug 宽
+          if (c.layoutSizingHorizontal === 'FILL' || c.layoutGrow > 0) return;
+          if (c.width > limit + 1) {
+            over.push(fn + ' 的 ' + c.name + ' 宽 ' + Math.round(c.width)
+              + ' > 画框 ' + Math.round(limit));
+          }
+        });
+      });
+      check(
+        '全站 ' + pageFns.length + ' 页/板无容器宽度撑破画框'
+        + '（长文案须设 textAutoResize=HEIGHT，否则单行无限横铺把 AUTO 宽容器撑破）',
+        over.length === 0,
+        over.length ? pj(over) : '已扫 ' + pageFns.length + ' 个构造器，无溢出'
+      );
+    }
+
+    // ---------- 两个模态的 PRD 逐字要件（2026-08-31 首次出图后补） ----------
+    //
+    // 这三处不是排版问题，是**内容缺失**：PRD 明文列了要件，稿图漏画，
+    // 而缺内容在机读维度上表现为「底部一片留白」—— 留白本身不违任何断言，
+    // 所以 250 项全绿也照样漏。补图后人眼看到 category 空 232px、map 空 117px
+    // 才顺着原则 129 回查 PRD，答案就写在同一节里。
+    //
+    // 锁法取「节点名含关键要件」而非量留白高度：留白高度会随内容增删漂移，
+    // 一改间距断言就假红；要件在不在是二值事实，改版也不该消失。
+    {
+      const missing = [];
+      const cat = M.buildCategorySelector();
+      // §5.4.2 第 5 条：底部确认按钮「确认选择」
+      if (!cat.findOne((n) => n.name.indexOf('确认选择') >= 0)) {
+        missing.push('category-selector 缺「确认选择」按钮（§5.4.2 第 5 条）');
+      }
+      // §5.4.2 第 3 条：选中态 = Primary 色 + ✓。三列各一个选中项，故须 3 个勾
+      const ticks = cat.findAll((n) => n.name === '_tick').length;
+      if (ticks < 3) {
+        missing.push('category-selector 选中态 ✓ 只有 ' + ticks
+          + ' 个，三列各须 1 个（§5.4.2 第 3 条；去色后仅靠色相无法分辨选中项）');
+      }
+      const map = M.buildMapSelector();
+      // §7.9 可自主达成保障表：地图选点页须提供「取当前定位门牌」+ 手动门牌框
+      if (!map.findOne((n) => n.name.indexOf('取当前定位门牌') >= 0)) {
+        missing.push('map-selector 缺「取当前定位门牌」按钮（§7.9 完整度 🟢 档三条件之一）');
+      }
+      if (!map.findOne((n) => n.name === 'field/门牌号')) {
+        missing.push('map-selector 缺手动门牌输入框（§7.9「两者任一填写即达成」）');
+      }
+      // 竖向溢出：补门牌后 _addr 由 75 长到 208，地图仍占死值 560，
+      // 实机内容底沿 860 > 画框 844，门牌输入框下缘被裁 16px。
+      //
+      // 判据取「直接子节点高度之和 vs 画框高」，不用 y 坐标累加：
+      // mock 不实现 Auto Layout 的排流，所有孩子的 y 恒为 0（本轮亲测：
+      // 用 y+height 取 max 只等于 max(child.height)，MH 退回 560 也报不出来，
+      // 这种测不到病灶的断言比没有更坏 —— 它给的是虚假的安全感，故换成求和）。
+      //
+      // 只对三个模态做：它们是「固定高子块 + 少量文案」的构成，mock 与实机高度吻合；
+      // 14 页普通页文案多、mock 文本高度模型偏差累积（login 实机 746 / mock 1030），
+      // 扫了只会天天假红，反过来逼人删断言。普通页同类风险靠贴底断言 + 人眼过图。
+      [['category-selector', cat], ['map-selector', map], ['cert-modal', M.buildCertModal()]]
+        .forEach((pair) => {
+          const kids = pair[1].children.filter((c) => c.name.indexOf('_annotation') !== 0);
+          const sum = kids.reduce((a, c) => a + c.height, 0);
+          if (sum > pair[1].height + 1) {
+            missing.push(pair[0] + ' 内容总高 ' + Math.round(sum)
+              + ' > 画框 ' + Math.round(pair[1].height) + '，底部内容会被裁');
+          }
+        });
+      check(
+        'category-selector 与 map-selector 具备 PRD 逐字要件'
+        + '（确认选择按钮 / 三列 ✓ / 门牌两条通路），且三模态内容不超画框高',
+        missing.length === 0,
+        missing.length ? pj(missing) : '四项要件齐全，三模态内容高度均在画框内'
       );
     }
 
