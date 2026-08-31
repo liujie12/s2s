@@ -56,23 +56,25 @@ ListingDetail _deriveDetail(Listing listing) {
         : seed.isEven
         ? '138****${8000 + seed % 1000}'
         : 'wx_h***${seed % 100}',
-    categoryPath: _samplePath(listing.category),
+    leafCategoryId: _sampleLeafCategoryId(listing.category),
     templateFields: _sampleTemplateFields(listing.category),
     address: _sampleAddress(seed),
     negotiable: seed % 3 == 0,
   );
 }
 
-/// 样例三级分类路径（PRD §2.4 三级树的一条真实分支）。
+/// 样例叶子类目 ID（§2.4 三级树中的真实叶子，§13.2 `post.leaf_category_id`）。
 ///
-/// 真实路径应由 `category` 表按 `parent_id` 回溯得到（§13.2），
-/// 分类树尚未建模前用固定分支占位 —— 目的是验证面包屑排版与截断。
-List<String> _samplePath(ListingCategory category) => switch (category) {
-  ListingCategory.work => ['工作', '兼职', '周末兼职'],
-  ListingCategory.house => ['房屋', '整租', '一室一厅'],
-  ListingCategory.vehicle => ['车辆', '拼车', '上下班拼车'],
-  ListingCategory.life => ['生活', '闲置', '母婴用品'],
-  ListingCategory.service => ['家政', '保洁', '日常保洁'],
+/// 真实值由发布时的级联选择器写入。此处按大类各挑一个真实叶子，
+/// 面包屑随后由 `categoryPathOf` 从树回溯得出 —— **不再手写路径字符串**：
+/// 手写的那版曾出现「房屋 > 整租 > 一室一厅」（§2.4 的叶子实为「整租出租」）
+/// 与一级写成「家政」（实为「服务」）两处错，而这两处错没有任何一处会报错。
+int _sampleLeafCategoryId(ListingCategory category) => switch (category) {
+  ListingCategory.work => 10202, // 工作 > 兼职/临时工 > 周末兼职
+  ListingCategory.house => 20103, // 房屋 > 整租/合租 > 整租出租
+  ListingCategory.vehicle => 30101, // 车辆 > 顺风车/拼车 > 上下班拼车
+  ListingCategory.life => 40102, // 生活 > 二手闲置转让 > 母婴儿童
+  ListingCategory.service => 50101, // 服务 > 家政/保洁 > 日常保洁
 };
 
 /// 样例模板字段（PRD §7.4.1 模板字段区）。

@@ -39,6 +39,7 @@ ListingDetail _detail({
     expireAt: _now.add(const Duration(days: 7)),
     contactChannel: channel,
     contactMasked: masked,
+    leafCategoryId: 50101, // 服务 > 家政/保洁 > 日常保洁
   );
 }
 

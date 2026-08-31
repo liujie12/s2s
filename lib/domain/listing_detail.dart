@@ -9,6 +9,7 @@
 /// 都要查一次映射表，而映射表是最容易过期的文档。
 library;
 
+import 'category_tree.dart';
 import 'listing.dart';
 import 'listing_category.dart';
 
@@ -80,8 +81,8 @@ class ListingDetail {
     required this.completeness,
     required this.expireAt,
     required this.contactChannel,
+    required this.leafCategoryId,
     this.contactMasked,
-    this.categoryPath = const [],
     this.templateFields = const [],
     this.address,
     this.negotiable = false,
@@ -118,11 +119,23 @@ class ListingDetail {
   /// 是否留了联系方式（§7.8 边界：未填时主按钮禁用）。
   bool get hasContact => contactMasked != null;
 
-  /// 三级分类路径，如 `['家政', '保洁', '日常保洁']`（§7.4.1 面包屑）。
+  /// 三级分类路径，如 `['服务', '家政/保洁', '日常保洁']`（§7.4.1 面包屑）。
+  ///
+  /// 由 [leafCategoryId] 经 `categoryPathOf` 回溯得出，**不另存字符串** ——
+  /// 原先此处存的是一组字面量，与 §2.4 真源有多处不一致（如「房屋 > 整租 >
+  /// 一室一厅」，而 §2.4 的叶子实为「整租出租」），且这种不一致没有任何
+  /// 一处会报错。改为从树回溯后，PRD 改了树、面包屑自动跟上。
+  ///
+  /// 叶子 ID 非法时返回空列表，页面据此不显示面包屑（见 `categoryPathOf`）。
+  List<String> get categoryPath =>
+      categoryPathOf(leafCategoryId).map((n) => n.name).toList();
+
+  /// 叶子类目 ID（§13.2 `post.leaf_category_id`）。
   ///
   /// 与 [Listing.category] 的五大类并存：大类决定配色与聚合阈值（§6.4.2 /
-  /// §6.15），三级路径决定模板与面包屑（§2.4）。二者用途不同，不是冗余。
-  final List<String> categoryPath;
+  /// §6.15），叶子 ID 决定模板与面包屑（§5.7 / §2.4）。二者用途不同，不是冗余；
+  /// 且大类可由叶子 ID 推出（`CategoryNode.topCategory`），故叶子 ID 才是真源。
+  final int leafCategoryId;
 
   final List<TemplateField> templateFields;
 

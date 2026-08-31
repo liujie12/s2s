@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../features/auth/login_screen.dart';
 import '../features/contact/contact_screen.dart';
 import '../features/detail/detail_screen.dart';
 import '../features/discovery/list_screen.dart';
@@ -111,11 +112,7 @@ final List<RouteBase> _routes = [
   GoRoute(path: AppRoutes.home, builder: (context, state) => const MapScreen()),
   GoRoute(
     path: AppRoutes.login,
-    builder: (context, state) => const PlaceholderScreen(
-      pageId: 'login-screen',
-      pageName: '登录/注册（合并）',
-      note: '手机号验证码一步进入',
-    ),
+    builder: (context, state) => const LoginScreen(),
   ),
   GoRoute(
     path: AppRoutes.list,

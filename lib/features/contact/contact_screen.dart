@@ -23,10 +23,13 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../design_tokens.dart';
 import '../../domain/listing_detail.dart';
+import '../../router/app_router.dart';
+import '../auth/auth_repository.dart';
 import '../detail/listing_detail_repository.dart';
 import 'contact_repository.dart';
 
@@ -89,6 +92,9 @@ class _ContactScreenState extends ConsumerState<ContactScreen> {
             failure: _failure,
             onReveal: () => _reveal(detail),
             onUse: () => _useContact(detail),
+            // 登录成功后自动重试拉取：让用户回到中转页还要再点一次按钮，
+            // 等于把「他刚才已经表达过的意图」丢掉了。
+            onLogin: () => _goLoginThenReveal(detail),
           ),
           const _SafetyTip(),
           _ReportEntry(onTap: () => _openReportSheet(detail)),
@@ -102,6 +108,18 @@ class _ContactScreenState extends ConsumerState<ContactScreen> {
   /// 失败不抛给上层：这一页的失败都是可预期的业务状态（超限、未登录、
   /// 对方未填），全部转成页面内提示。让它冒泡成崩溃是把业务规则当成故障。
   Future<void> _reveal(ListingDetail detail) async {
+    // §7.7「仅登录用户可拉取完整号码」的前置判定。
+    // 放在页面而非仓库：仓库扮演的是服务端，服务端只会返回 401，
+    // 而「弹登录页」是客户端的职责。真实实现中两侧都要判 ——
+    // 客户端判是为了少一次注定失败的请求，服务端判才是那道真正的门。
+    if (!ref.read(isLoggedInProvider)) {
+      setState(() {
+        _failure = ContactFailure.notLoggedIn;
+        _loading = false;
+      });
+      return;
+    }
+
     setState(() {
       _loading = true;
       _failure = null;
@@ -123,6 +141,17 @@ class _ContactScreenState extends ConsumerState<ContactScreen> {
         _loading = false;
       });
     }
+  }
+
+  /// 跳登录页，登录成功后自动重试拉取。
+  ///
+  /// 参数 [detail] 用于登录回来后继续拉这一条的联系方式。
+  /// 登录页返回 true 表示登录成功（见 `login_screen.dart` 的 `pop(true)`）；
+  /// 用户直接关掉登录页时返回 null，此时不重试 —— 他刚刚放弃了这个动作。
+  Future<void> _goLoginThenReveal(ListingDetail detail) async {
+    final ok = await GoRouter.of(context).push<bool>(AppRoutes.login);
+    if (!mounted || ok != true) return;
+    await _reveal(detail);
   }
 
   /// 使用已拉取到的联系方式：手机号外呼，微信号复制。
@@ -280,6 +309,7 @@ class _ContactCard extends StatelessWidget {
     required this.failure,
     required this.onReveal,
     required this.onUse,
+    required this.onLogin,
   });
 
   final ListingDetail detail;
@@ -288,6 +318,7 @@ class _ContactCard extends StatelessWidget {
   final ContactFailure? failure;
   final VoidCallback onReveal;
   final VoidCallback onUse;
+  final VoidCallback onLogin;
 
   @override
   Widget build(BuildContext context) {
@@ -350,7 +381,7 @@ class _ContactCard extends StatelessWidget {
           ],
           if (failure != null) ...[
             const SizedBox(height: AppSpacing.md),
-            _FailureBanner(failure: failure!),
+            _FailureBanner(failure: failure!, onLogin: onLogin),
           ],
           const SizedBox(height: AppSpacing.lg),
           _ActionButton(
@@ -438,9 +469,12 @@ class _ActionButton extends StatelessWidget {
 
 /// 失败提示条（§7.8 / §12.3 错误码文案）。
 class _FailureBanner extends StatelessWidget {
-  const _FailureBanner({required this.failure});
+  const _FailureBanner({required this.failure, required this.onLogin});
 
   final ContactFailure failure;
+
+  /// 跳登录页。仅未登录态用得到。
+  final VoidCallback onLogin;
 
   @override
   Widget build(BuildContext context) {
@@ -450,25 +484,50 @@ class _FailureBanner extends StatelessWidget {
         color: Color(AppColors.error).withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(AppRadius.md),
       ),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            Icons.error_outline,
-            size: 16,
-            color: Color(AppColors.errorText),
-          ),
-          const SizedBox(width: AppSpacing.sm),
-          Expanded(
-            child: Text(
-              failure.message,
-              style: TextStyle(
-                fontSize: AppTypeScale.small.size,
-                height: 1.45,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                Icons.error_outline,
+                size: 16,
                 color: Color(AppColors.errorText),
               ),
-            ),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Text(
+                  failure.message,
+                  style: TextStyle(
+                    fontSize: AppTypeScale.small.size,
+                    height: 1.45,
+                    color: Color(AppColors.errorText),
+                  ),
+                ),
+              ),
+            ],
           ),
+          // 未登录是唯一「用户当场就能解决」的失败态，必须给出去处。
+          // 超限与熔断给按钮反而有害 —— 点了也没用，只会让人反复点。
+          if (failure == ContactFailure.notLoggedIn)
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: onLogin,
+                style: TextButton.styleFrom(
+                  foregroundColor: Color(AppColors.primary),
+                  minimumSize: const Size(0, 36),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.sm,
+                  ),
+                ),
+                child: Text(
+                  '去登录',
+                  style: TextStyle(fontSize: AppTypeScale.small.size),
+                ),
+              ),
+            ),
         ],
       ),
     );
