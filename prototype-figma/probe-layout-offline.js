@@ -3547,6 +3547,24 @@ function allText(root) {
         !!noteBox && noteTxt.indexOf('诈骗') >= 0 && noteTxt.indexOf('24') >= 0,
         noteTxt || '未找到 _report-note'
       );
+
+      // 隐私说明的口径守门：这两句是「稿子承诺了产品没有的东西」这一类问题，
+      // 人眼看不出问题（读起来非常顺），只有对着 §8.3.3 与 §7.2 才查得出。
+      // 2026-08-31 裁决：① 全站联系痕迹只有互动通知「被联系 × 次」（仅发布者
+      // 可见），「联系记录」页在附录 B 14 页清单里不存在；② 不做 IM 故无「回复」。
+      // 故这里锁反向词：一旦有人把「联系记录」「双方」「回复后」写回去即报红。
+      const privacy = body && body.children.find((c) => c.name === '_privacy-note');
+      const privacyTxt = privacy
+        ? privacy.children.map((c) => c.characters || '').join('｜')
+        : '';
+      const banned = ['联系记录', '双方「联系', '回复后'].filter(
+        (w) => privacyTxt.indexOf(w) >= 0);
+      check(
+        'contact 隐私说明不承诺产品没有的机制'
+        + '（无「联系记录」页、不做 IM 故无「回复」，见 PRD §7.4.2 纠偏表）',
+        !!privacy && banned.length === 0,
+        banned.length ? '出现禁用表述 ' + pj(banned) + '：' + privacyTxt : privacyTxt
+      );
     }
 
     // ---------- detail-offline 与正常态 detail 同形（§7.8 只许三项差异） ----------
