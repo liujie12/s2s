@@ -650,7 +650,7 @@ function render(s) {
     + Object.keys(s.SPACING).length
     + Object.keys(s.RADIUS).length;
 
-  return `# 找呀找 · 设计系统与组件规范
+  return `# 找鸭找 · 设计系统与组件规范
 
 <!--
   由 prototype-figma/export-spec-doc.js 自动生成，请勿手改。

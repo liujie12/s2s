@@ -232,6 +232,26 @@ var SPACING = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 };
  */
 var TIGHT_GAP = 2;
 
+/**
+ * 「正文 → 主操作」之间的一档更大间距（2026-09-01 条目 [77] ⑫）。
+ *
+ * 为什么要单立一档：受限态（buildPrivacyDeclined）实机看图查出正文底边 454、
+ * 按钮顶边 466 —— 只隔 12px，按钮读起来像正文的最后一行。根因是纵排容器只有
+ * 一个统一 `gap`，于是「标题→正文」（同一段说明内部）与「正文→按钮」
+ *（说明与出口之间，跨语义层级）拿到同一个值。间距本该编码层级差。
+ *
+ * **刻意不改统一 gap 本身**：那会牵动全部空态与所有走 box() 的纵排容器，
+ * 而问题只出在「正文之后紧跟主操作」这一种形态上。
+ *
+ * 取 xxl=32 而非 xl=24：容器 gap 通常是 md=12，插隔块的实现会额外吃两段
+ * gap（见 appendActionWithGap），24 会算出 0 高隔块 —— 而零尺寸节点会被体检
+ * 报成异常节点（同 flexSpacer 那条）。32 在 md 档下得 8px 隔块，仍落在阶梯上。
+ *
+ * 值取自 SPACING 而非再写一个字面 32：它**是**阶梯上的一档，只是被指派了
+ * 专门用途。写字面量就多了一份会与阶梯静默脱钩的副本（原则㊾）。
+ */
+var ACTION_GAP = SPACING.xxl;
+
 /** 圆角阶（PRD §1.4.5） */
 var RADIUS = { sm: 4, md: 8, lg: 12, xl: 16, full: 999 };
 
@@ -1283,6 +1303,38 @@ function pushToBottom(container, tailNodes) {
 }
 
 /**
+ * 把主操作追加到纵排容器末尾，与上文之间留出 ACTION_GAP 而非容器统一 gap
+ *（2026-09-01 条目 [77] ⑫）。
+ *
+ * 为什么用「插一个定高隔块」而不是别的做法：
+ * · 改容器 gap —— 会同时拉开容器内**所有**相邻元素，标题与正文也被拉开；
+ * · 给按钮加 marginTop —— Figma Auto Layout 无此属性，只有 itemSpacing；
+ * · 给按钮包一层带 paddingTop 的壳 —— 多一层图层，且按钮的 FILL/宽度约束
+ *   要透过壳再传一次，反而更易出错。
+ * 隔块是唯一既不动容器、也不动按钮自身的做法，与 flexSpacer 同一手法。
+ *
+ * 隔块高 = ACTION_GAP − 容器 gap × 2：容器会在「上文↔隔块」与「隔块↔按钮」
+ * 各排一段 gap，故隔块自身只补差额，实际视觉间距才等于 ACTION_GAP。
+ *
+ * @param {FrameNode} container 纵排 Auto Layout 容器
+ * @param {SceneNode} action 主操作节点（按钮或按钮组），由调用方造好
+ * @returns {FrameNode} 插入的隔块节点，供断言查证
+ */
+function appendActionWithGap(container, action) {
+  var h = ACTION_GAP - container.itemSpacing * 2;
+  // 隔块须有正高度：非正说明容器 gap 已 ≥ ACTION_GAP/2，此时「加一档更大间距」
+  // 这件事本身不成立，当场炸掉而不是静默塞个 0 高节点（0 尺寸会被体检报异常）
+  if (h <= 0) {
+    throw new Error('appendActionWithGap(): 容器 gap=' + container.itemSpacing
+      + ' 已不小于 ACTION_GAP/2=' + (ACTION_GAP / 2) + '，无需也无法再加一档间距');
+  }
+  var sp = box('_action-gap', 'HORIZONTAL', { w: 1, h: h });
+  container.appendChild(sp);
+  container.appendChild(action);
+  return sp;
+}
+
+/**
  * 创建一个非 Auto Layout 的叠层容器，供悬浮图层使用。
  *
  * 为什么必须有它：box() 一律走 Auto Layout，子节点会被自动排流，
@@ -2004,7 +2056,10 @@ function emptyState(tierKey, lead, opt) {
   g.appendChild(duckSymbol(S.duck));
   g.appendChild(text(lead, S.leadScale, S.leadColor));
   if (opt.sub) g.appendChild(text(opt.sub, 'caption', 'color/text-secondary'));
-  if (opt.action) g.appendChild(opt.action);
+  // 主操作与上方文案之间加一档 ACTION_GAP：空态的鸭子、主文案、副文案是同一段
+  // 陈述，按钮是它之后的出口，同为 S.gap 会让按钮读成副文案的续行
+  //（受限态实机看图查出的同一个毛病，见 ACTION_GAP 说明）
+  if (opt.action) appendActionWithGap(g, opt.action);
   return g;
 }
 
@@ -5644,7 +5699,9 @@ function buildPrivacyDeclined() {
   lead.textAutoResize = 'HEIGHT';
   body.appendChild(lead);
   lead.layoutSizingHorizontal = 'FILL';
-  body.appendChild(button('重新阅读协议', 'primary', CANVAS.w - SPACING.xl * 2));
+  // 正文与出口按钮之间走 ACTION_GAP 而非容器统一 gap：改前两者只隔 12px，
+  // 实机看图（2026-09-01）读起来按钮像正文的最后一行。见 ACTION_GAP 说明。
+  appendActionWithGap(body, button('重新阅读协议', 'primary', CANVAS.w - SPACING.xl * 2));
   body.appendChild(annotation(st.title, st.notes));
   s.appendChild(body);
   return s;

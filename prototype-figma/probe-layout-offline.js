@@ -668,6 +668,11 @@ const wrapped = new Function(
       // listHintRow 去量左缘，不能只做源码正则 —— 写了容器却忘挂子节点时，
       // 正则全绿而画面照旧参差
       'markerInfoCard', 'listHintRow', 'TIGHT_GAP', 'CHECKBOX_SIZE',
+      // 2026-09-01 条目 [77] ⑫：「正文→主操作」那一档更大间距。
+      // ACTION_GAP 要能被断言直接取来现算期望隔块高（不在探针里手抄 32，
+      // 原则㊾）；appendActionWithGap 必须能真跑 —— 「容器 gap 太大时当场抛错」
+      // 与「实际视觉间距是否真等于 ACTION_GAP」都只有跑一遍量出来才验得到
+      'ACTION_GAP', 'appendActionWithGap',
       // 条目 [70]（2026-08-29，P1–P5 修复）：新增的六个构造器必须能被断言直接
       // 真跑。尤其 completenessTag/doneTag —— 它们替掉的是 emoji，而 emoji 的
       // 危害（三端字形不一、色值不受 paintOf 控制）在离线与实机都看不出来，
@@ -3977,7 +3982,27 @@ function allText(root) {
       '两句齐备'
     );
 
-    // ⑥ CARD_STATES 里稿内零实现的两档，必须在产物里如实标「未出稿」。
+    // ⑥ 产物标题里的产品名必须与 PRD 第 1 行一致。
+    //
+    // 为什么值得单独一条：这是 2026-09-01 实机看图时才发现的 —— e5 生成器里把
+    // 「找鸭找」误写成「找呀找」（同音异形），而**坐标断言一条都不会红**：
+    // 字数一样、布局一样、对比度一样，产物与真源也「同步」（因为错的就是真源）。
+    // 唯一的判据只能是与 PRD 对表。品牌名写错是对外交付里最刺眼的一类错，
+    // 却恰好是机械断言最容易漏掉的一类 —— 它不违反任何结构规则。
+    const prdFirstLine = fs.readFileSync(
+      path.join(path.dirname(BASE), 'docs', 'PRD.md'), 'utf8'
+    ).split('\n')[0];
+    const brand = (prdFirstLine.match(/#\s*(\S+?)\s*APP/) || [])[1] || '';
+    const docTitle = docText.split('\n')[0];
+    check(
+      '产物标题的产品名与 PRD 第 1 行一致（品牌名不许同音写错）',
+      brand.length > 0 && docTitle.indexOf(brand) >= 0,
+      brand.length === 0 ? '未能从 PRD 第 1 行解析出产品名'
+        : docTitle.indexOf(brand) >= 0 ? '产品名「' + brand + '」一致'
+          : 'PRD 写「' + brand + '」，产物标题却是「' + docTitle.replace(/^#\s*/, '') + '」'
+    );
+
+    // ⑦ CARD_STATES 里稿内零实现的两档，必须在产物里如实标「未出稿」。
     // 这条守的是**诚实性**而非正确性：规格写得再好，若不声明「稿里没有」，
     // 读文档的人会以为有可对照的画面，做出来的东西没有任何参照可核。
     const undeclared = [];
@@ -3995,7 +4020,7 @@ function allText(root) {
       undeclared.length ? undeclared.join('; ') : '两档均标明「稿内实现＝无」+「本轮未出稿」'
     );
 
-    // ⑦ [反向] hexOfRole 查不到时必须返回 undefined，不得回退成黑色。
+    // ⑧ [反向] hexOfRole 查不到时必须返回 undefined，不得回退成黑色。
     // 这是 e5 提取该函数时的关键取舍：回退策略交给调用方 —— 画布构造要
     // 「查不到用黑色继续画」，规范生成器要「查不到当场抛」。若函数自己回退黑色，
     // 生成器就永远抛不出来，写错一个 role 名只表现为文档里多一行 21.00:1 的假达标。
@@ -4007,7 +4032,7 @@ function allText(root) {
       '未知 role 返回 undefined，已知 role 正常换算'
     );
 
-    // ⑧ [反向] 判定列被改宽松时必须报红。用篡改过的清单跑**同一个**判据函数：
+    // ⑨ [反向] 判定列被改宽松时必须报红。用篡改过的清单跑**同一个**判据函数：
     // 把全部 ban 档改成 pass（最可能发生的一次放宽 —— 有人觉得分类色更好看
     // 就想直接压白字），自洽性检查必须一档不漏地抓出来。
     //
@@ -4024,7 +4049,7 @@ function allText(root) {
       '篡改 ' + banCount + ' 档全部被抓出'
     );
 
-    // ⑨ [反向] 产物被手改一个字符时，同步断言必须报红。
+    // ⑩ [反向] 产物被手改一个字符时，同步断言必须报红。
     // 直接验「逐字比对」这个判据本身有没有实际鉴别力 —— 若它退化成
     // 「长度相同就算过」之类的宽松写法，这条会立刻暴露。
     check(
@@ -5520,6 +5545,62 @@ function allText(root) {
         'flexSpacer 尺寸 1×1 且无填充（0 尺寸会被体检报成异常节点，1px 则可辨识为有意占位）',
         Math.round(sp.width) === 1 && Math.round(sp.height) === 1 && sp.fills.length === 0,
         Math.round(sp.width) + '×' + Math.round(sp.height) + '，fills=' + sp.fills.length
+      );
+    }
+
+    // ACTION_GAP：「正文 → 主操作」那一档更大间距（2026-09-01 条目 [77] ⑫）
+    //
+    // 为什么必须真跑量而不是核源码有没有调 appendActionWithGap：这条要守的是
+    // **视觉间距的实际值**。隔块高是 `ACTION_GAP - 容器 gap × 2` 算出来的 ——
+    // 哪天容器 gap 从 md 改成 lg，源码一字未动而实际间距就变了；反过来若有人
+    // 把隔块高改成定值，容器 gap 一变间距也随之漂。故判据必须是「把 lead 底边
+    // 到按钮顶边之间的每一段高与每一段 gap 累加起来，是否恰等于 ACTION_GAP」。
+    //
+    // 这处缺陷本身是 2026-09-01 实机看图才发现的（正文底 454 / 按钮顶 466，
+    // 只隔 12px），改前**没有任何断言会红** —— 12px 不溢出、不重叠、在阶梯上、
+    // 触控区也够。间距的「层级表达」属观感，得靠人看出来；但一旦定了值，
+    // 就该由断言钉死，不能再靠下一次看图。
+    {
+      const declBody = M.buildPrivacyDeclined().children.find((c) => c.name === '_body');
+      const kids = declBody.children.filter((c) => c.layoutPositioning !== 'ABSOLUTE');
+      const leadIdx = kids.findIndex(
+        (c) => c.type === 'TEXT' && c.characters.indexOf('你尚未同意隐私政策') >= 0
+      );
+      const btnIdx = kids.findIndex((c) => c.name.indexOf('btn/') >= 0);
+      let realGap = null;
+      if (leadIdx >= 0 && btnIdx > leadIdx) {
+        realGap = declBody.itemSpacing * (btnIdx - leadIdx);
+        for (let i = leadIdx + 1; i < btnIdx; i++) realGap += kids[i].height;
+      }
+      check(
+        '受限态「正文→出口按钮」实测间距 = ACTION_GAP（改前只有 ' + M.SPACING.md
+          + 'px，按钮读成正文续行；判据累加中间每段高与每段 gap，容器 gap 一改就报红）',
+        realGap !== null && Math.round(realGap) === M.ACTION_GAP,
+        leadIdx < 0 ? '未找到受限态正文节点'
+          : btnIdx <= leadIdx ? '未找到排在正文之后的 btn/ 节点'
+            : '实测 ' + Math.round(realGap) + '，期望 ' + M.ACTION_GAP
+      );
+      // 隔块自身：名字固定、高为正、宽 1（0 尺寸会被体检报成异常节点，同 flexSpacer）
+      const agap = kids.find((c) => c.name === '_action-gap');
+      check(
+        '_action-gap 隔块高 = ACTION_GAP − 容器 gap × 2 且为正（不得退化成 0 高节点）',
+        !!agap && Math.round(agap.height) === M.ACTION_GAP - declBody.itemSpacing * 2
+          && agap.height > 0 && Math.round(agap.width) === 1,
+        agap ? Math.round(agap.width) + '×' + Math.round(agap.height)
+          + '（期望高 ' + (M.ACTION_GAP - declBody.itemSpacing * 2) + '）'
+          : '受限态 _body 内无 _action-gap 隔块'
+      );
+      // [反向] 容器 gap 已 ≥ ACTION_GAP/2 时必须当场抛错，不许静默塞 0 高隔块 ——
+      // 那种节点视觉上等于「没加间距」，而源码看着是加了，属零征兆退化
+      const wide = M.box('_probe-wide-gap', 'VERTICAL', { gap: M.ACTION_GAP });
+      let agapThrew = false;
+      try {
+        M.appendActionWithGap(wide, M.box('_probe-action', 'HORIZONTAL', { w: 10, h: 10 }));
+      } catch (e) { agapThrew = true; }
+      check(
+        '[反向] appendActionWithGap 拒绝 gap 已过大的容器（否则会静默产出 0 高隔块 = 白加）',
+        agapThrew,
+        agapThrew ? '已抛错' : '未抛错 —— 会塞进非正高隔块，判据无防护力'
       );
     }
 
