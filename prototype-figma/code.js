@@ -5496,7 +5496,11 @@ function buildPublishSuccess() {
     benefit.appendChild(text('· ' + items[i], 'small', 'color/text-primary'));
   }
   cc.appendChild(benefit);
-  cc.appendChild(button('立即补齐（约 30 秒）', 'primary', CANVAS.w - SPACING.xl * 2 - SPACING.lg * 2));
+  // 文案是「回去补齐」而非「立即补齐」（2026-09-01 条目 [75] 改，对齐 Flutter 实现）：
+  // 这个按钮跳回发布页，而发布页不保留已填内容 —— §5.11 说的那个能带着原内容
+  // 进编辑态的补全页属「我的发布」范围，本期未做。**「立即」在承诺一件它做不到的事**，
+  // 用户点进去看到空表单，比按钮文案平淡得多的代价要大
+  cc.appendChild(button('回去补齐（约 30 秒）', 'primary', CANVAS.w - SPACING.xl * 2 - SPACING.lg * 2));
   body.appendChild(cc);
 
   var actRow = box('_actions', 'HORIZONTAL', { gap: SPACING.sm });

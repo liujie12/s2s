@@ -604,6 +604,9 @@ const wrapped = new Function(
       // contact 页按 PRD §7.4.2 稿图补全三块内容。两页必须真跑才能量出
       // 「_spacer 在不在、尾部节点排没排在它后面」，源码正则看不出贴底是否成立
       'buildDetailOffline', 'buildAiConfirm',
+      // 2026-09-01 条目 [75]：Figma ↔ Flutter 按钮对数需真跑完成页取 btn/ 节点名 ——
+      // 源码正则取不到 Instance 的实际命名（button() 拼的是 btn/variant/label）
+      'buildPublishSuccess',
       // 条目 [70] 第三段（2026-08-30）：分页收尾条，三个「我的」列表页 + list 页共用
       'listEndRow',
       // 2026-08-31：四个模态从建成起从未出过渲染图，本轮补图时量出 T6 板两组
@@ -2784,6 +2787,82 @@ function allText(root) {
       'MAIN_SCREENS 无 PRD §10.1 之外的页',
       extraInFigma.length === 0,
       extraInFigma.length ? '稿中多出：' + extraInFigma.join(', ') : '无多余页'
+    );
+
+    // ------------------------------------------------------------
+    // Figma ↔ Flutter 关键按钮对数（2026-09-01 新增）
+    //
+    // **这条断言的来历**：上面 4 条是 2026-08-31 为「PRD ↔ Figma」加的，
+    // 而 M4-3b 收口后再核闭环，查出**同一处失明换了一条边再犯**：完成页的
+    // 补齐按钮在 Flutter 侧被有意改成「回去补齐」（跳回发布页不保留现场，
+    // 「立即」是空头承诺），但稿里仍是「立即补齐」—— 上面 4 条一条不报，
+    // 因为它们只覆盖三份真源里的两份。**Figma ↔ Flutter 这条边此前无判据。**
+    //
+    // **为什么只守「关键按钮文案」而不做全量元素对数**：全量对数需要一套
+    // 稿↔码的元素映射表，而那张表本身会成为第三份要维护的副本 —— 判据一旦
+    // 比被判对象更难维护，它就会在某次赶工里被放宽（原则 133）。按钮文案是
+    // 稿码分歧里**用户唯一直接读到**的那部分，且两侧都能机械取值：
+    // 稿侧取 `btn/variant/label` 节点名（button() 就是这么命名的，见 code.js:1987），
+    // 码侧取 Dart 源里的 Text('…') 字面量。判据两侧各取自己的真源，不抄副本。
+    const dartSrc = (relPath) => fs.readFileSync(
+      path.join(__dirname, '..', 'lib', relPath), 'utf8'
+    );
+    const figmaBtnLabels = (fn) => M[fn]()
+      .findAll((n) => n.name.indexOf('btn/') === 0)
+      .map((n) => n.name.split('/').slice(2).join('/'));
+
+    // 稿侧节点名 → 码侧文件。只列**已实现**的页：未实现页的码侧没有真源可取，
+    // 硬列进来只能靠豁免，那等于自造一批永绿项。
+    const wiredPages = [
+      ['buildPublishSuccess', 'features/publish/publish_success_screen.dart',
+       'publish-success-screen'],
+      ['buildAiConfirm', 'features/publish/ai_confirm_screen.dart',
+       'ai-confirm-screen']
+    ];
+
+    // **临时降级备案**：码侧因「目标页 M4 未排」而有意偏离稿子的按钮。
+    // 与 KNOWN_STAGE_GAPS 同一取向 —— 承认它，并让备案外的任何新偏差立刻报红。
+    // value 必须写明「稿侧原文案 + 偏离理由 + 何时改回」。
+    const KNOWN_BTN_DOWNGRADES = {
+      '我的发布': 'publish-success-screen 第二出口：PRD §5.8 明文「默认跳我的发布」，' +
+        '但 my-publish-screen 属 §8.3.1、M4 未排且路由表无此项，' +
+        '码侧暂落 profile 并显示「去「我的」」；该页做出来后改回'
+    };
+    const btnMismatch = [];
+    for (const [fn, rel, pageId] of wiredPages) {
+      const src = dartSrc(rel);
+      for (const label of figmaBtnLabels(fn)) {
+        if (KNOWN_BTN_DOWNGRADES[label]) continue;
+        // 码侧不要求文案出现在同一个 Text() 里（有的按钮文案由变量拼），
+        // 只要求这串字面量在该页源码中出现过 —— 判「稿上写的话码里有没有」，
+        // 不判它长在哪个 widget 上（后者属实现细节，管到那一层会逼人改判据）
+        if (src.indexOf(label) < 0) {
+          btnMismatch.push(pageId + ' 稿有码无：「' + label + '」');
+        }
+      }
+    }
+    check(
+      'Figma 稿关键按钮文案在对应 Flutter 页中存在（已备案临时降级除外）',
+      btnMismatch.length === 0,
+      btnMismatch.length
+        ? btnMismatch.join('; ')
+        : wiredPages.length + ' 页按钮文案全部对上（备案降级 ' +
+          Object.keys(KNOWN_BTN_DOWNGRADES).length + ' 项）'
+    );
+
+    // 反向守门：备案项必须**恰好**等于实际降级。若稿侧已不再有这个按钮
+    //（比如稿子回改了），备案就成了一条永绿豁免，会替将来真正的同名偏差挡枪 ——
+    // 与「已备案缺口清单无过期项」同一机关（原则 133）。
+    const allFigmaLabels = [];
+    for (const [fn] of wiredPages) allFigmaLabels.push(...figmaBtnLabels(fn));
+    const staleBtn = Object.keys(KNOWN_BTN_DOWNGRADES)
+      .filter((label) => allFigmaLabels.indexOf(label) < 0);
+    check(
+      '按钮降级备案无过期项（稿侧已改回后须从 KNOWN_BTN_DOWNGRADES 删除）',
+      staleBtn.length === 0,
+      staleBtn.length
+        ? '稿侧已无此按钮但仍挂在备案里：' + staleBtn.join(', ')
+        : Object.keys(KNOWN_BTN_DOWNGRADES).length + ' 项备案全部仍为真实降级'
     );
   }
 

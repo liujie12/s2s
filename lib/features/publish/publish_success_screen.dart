@@ -99,9 +99,14 @@ class PublishSuccessScreen extends StatelessWidget {
                 const SizedBox(width: AppSpacing.sm),
                 Expanded(
                   child: TextButton(
-                    // 不指向「我的发布」列表页：该页属 §5.11 补全（编辑态）范围，
-                    // M4 未排，路由表里也没有它。指向一个不存在的路由会白屏，
-                    // 比少一个出口更糟；故先落到已有的「我的」页。
+                    // ⚠️ 临时降级（2026-09-01 用户裁定）：PRD §5.8 明文「发布成功
+                    // 默认跳『我的发布』」，Figma 稿亦忠于该口径。此处偏离**不是**
+                    // 设计决定，只因 my-publish-screen 属 §8.3.1、M4 未排、
+                    // 路由表里没有它 —— 指向一个不存在的路由会白屏，比少一个出口更糟。
+                    //
+                    // **移除条件**：my-publish-screen 落地后，此处改回
+                    // 「我的发布」+ 指向该页，并从 probe-layout-offline.js 的
+                    // KNOWN_BTN_DOWNGRADES 删掉备案（不删则「备案无过期项」那条报红）。
                     onPressed: () => GoRouter.of(context).go(AppRoutes.profile),
                     style: TextButton.styleFrom(
                       minimumSize: const Size.fromHeight(44),
