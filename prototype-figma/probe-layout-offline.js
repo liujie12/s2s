@@ -736,7 +736,15 @@ const wrapped = new Function(
       // 「缓存里有 20 项」会得到一条永远红、或（改成 0 判据后）永远绿的假断言。
       // 故缓存状态一律只通过 hydrateComponents 的返回值与 instanceOf 的行为验。
       'COMPONENT_SETS', 'variantNameOf', 'flatNameOf', 'setNameOf', 'parseVariantName',
-      'hydrateComponents', 'instanceOf', 'COMP_HOST_NAME']
+      'hydrateComponents', 'instanceOf', 'COMP_HOST_NAME',
+      // 2026-09-01 条目 [77]（M4-3e 第三层 ⑨⑩）：规范文档单向出口。
+      // CONTRAST_PAIRS 只登记组合与判定、**不含任何比值**（比值由生成器现算），
+      // 故断言必须自己算一遍去核 —— 这是「改了色忘了回算」唯一的机械守门。
+      // hexOfRole 要导出：它是 paintOf 与生成器共用的 role → hex 换算，
+      // 断言若自己再写一份分支，`-deep` 后缀那个坑就有了第三份实现（原则㊾）。
+      // CARD_STATES 是卡片三态登记表，其中两态稿内零实现，断言要钉住
+      // 「未出稿」这件事在产物里被如实声明，不能静默变成「文档里有就是稿里有」
+      'CONTRAST_PAIRS', 'CARD_STATES', 'hexOfRole']
       .map((k) => k + ': typeof ' + k + " !== 'undefined' ? " + k + ' : undefined')
       .join(', ') +
     ' };'
@@ -3806,6 +3814,224 @@ function allText(root) {
       '[反向] combineAsVariants 对非 COMPONENT 节点与空数组抛错（与真机一致）',
       throwBad.length === 0,
       throwBad.length ? throwBad.join('; ') : '两种非法调用均抛错'
+    );
+  }
+
+  // ============================================================
+
+  // ============================================================
+  // 十一之四、《设计系统与组件规范》单向出口（条目 [77] 第三层 ⑨⑩）
+  //
+  // 为什么这一节必须存在：docs/设计系统与组件规范.md 是给「不看 code.js 的人」
+  // 读的取值依据。它一旦与真源脱钩，症状是**零征兆** —— 文档照样打开、
+  // 照样有表、数字照样像真的，只有拿它去实现的人做出与稿子不一致的东西时
+  // 才会现形，而那时已经没人记得该回头改文档。
+  //
+  // 守四件事，每件都对应一种「错了也看不出」的失效：
+  // ① 生成器取真源的清单还全 —— 改名/删表后生成器会抛，但抛在「有人想起重跑」时；
+  //    探针每轮都跑，故要先于生成器把清单断掉这件事报出来。
+  // ② 判定与实测不许打架 —— CONTRAST_PAIRS 刻意不存比值，若把某档由 ban 改成
+  //    pass（或调浅了一个色让 pass 档跌破阈值），表面上文档里数字自己会变，
+  //    但「判定」那一列是人写的**不会**跟着变，两列就此对不上。
+  // ③ 探针自算的比值要与产物里那些数字逐行相同 —— 这是本项目里唯一一处
+  //    「同一个量由两套独立实现各算一遍」的交叉验证（探针用 lumOf，
+  //    生成器用自己的 relativeLuminance）。任一侧算错，这条立刻红。
+  // ④ 产物与真源逐字同步 —— 手改产物、或改了真源忘了重跑，都在这里报红。
+  //    这是「单向出口」的字面含义：磁盘上那份必须等于现算的那份。
+  //
+  // ⚠️ 断言刻意**不在这里手抄任何期望文本**：期望值全部由 export-spec-doc.js
+  // 的 render() 现算（原则㊾）。抄一份产物片段进探针，验的就是抄本自己。
+  // ============================================================
+  console.log('\n--- 十一之四、《设计系统与组件规范》单向出口 ---');
+  {
+    const specMod = require('./export-spec-doc.js');
+
+    // ① 生成器要的真源清单还全不全。loadSources 逐项核并在缺失时抛，
+    // 故这里只需接住它的异常 —— 判据仍在生成器那一侧，不在探针这边复述。
+    let sources = null;
+    let srcErr = '';
+    try {
+      sources = specMod.loadSources();
+    } catch (e) {
+      srcErr = e.message;
+    }
+    check(
+      '规范生成器能从 code.js 取到全部 ' + specMod.SOURCE_NAMES.length + ' 项真源',
+      sources !== null,
+      sources !== null ? '清单齐备' : srcErr
+    );
+
+    // ② CONTRAST_PAIRS 里每个 role 都能被 hexOfRole 换算出色值。
+    // 查不到时 hexOfRole 返回 undefined（**刻意不回退黑色**，见 code.js 里
+    // 该函数的注释），生成器会抛；但改色/改名的当场就该报红，故在此先拦一道。
+    const badRole = [];
+    for (const p of M.CONTRAST_PAIRS) {
+      if (!M.hexOfRole(p.fg)) badRole.push(p.label + ' 的 fg=' + p.fg);
+      if (!M.hexOfRole(p.bg)) badRole.push(p.label + ' 的 bg=' + p.bg);
+    }
+    check(
+      'CONTRAST_PAIRS 的 ' + M.CONTRAST_PAIRS.length * 2 + ' 个 role 全部可被 hexOfRole 换算',
+      badRole.length === 0,
+      badRole.length ? badRole.join('; ') : M.CONTRAST_PAIRS.length + ' 组全部查到色值'
+    );
+
+    /**
+     * 用探针自己的 lumOf 现算一组组合的对比度比值。
+     *
+     * 刻意与 export-spec-doc.js 的 relativeLuminance 分别实现：两套算法算出
+     * 同一批数字，才说明这批数字不是某一侧的笔误（见本节 ③）。
+     *
+     * @param {string} fg 前景 role 名
+     * @param {string} bg 背景 role 名
+     * @returns {number} 比值，1（同色）到 21（黑白）
+     */
+    const ratioOf = (fg, bg) => {
+      const a = lumOf(M.hexOfRole(fg));
+      const b = lumOf(M.hexOfRole(bg));
+      return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+    };
+
+    /**
+     * 核一张对比度清单的「判定列」与实测是否自洽。
+     *
+     * 提成函数是为了让反向断言能拿一份**篡改过的**清单跑同一套判据 ——
+     * 反向验证若另写一套判断逻辑，验的就不是正向那条断言了。
+     *
+     * @param {Array<Object>} pairs 形如 CONTRAST_PAIRS 的清单
+     * @returns {Array<string>} 不自洽项的说明，空数组表示全部自洽
+     */
+    const verdictConflicts = (pairs) => {
+      const bad = [];
+      for (const p of pairs) {
+        if (p.threshold === null) {
+          if (p.verdict !== 'exempt') bad.push(p.label + '：无阈值却判 ' + p.verdict);
+          continue;
+        }
+        if (p.verdict === 'exempt') {
+          bad.push(p.label + '：判 exempt 却写了阈值 ' + p.threshold);
+          continue;
+        }
+        const r = Math.round(ratioOf(p.fg, p.bg) * 100) / 100;
+        if (p.verdict === 'pass' && r < p.threshold) {
+          bad.push(p.label + '：判 pass 但实测 ' + r + ' < ' + p.threshold);
+        }
+        if ((p.verdict === 'ban' || p.verdict === 'compensated') && r >= p.threshold) {
+          bad.push(p.label + '：判 ' + p.verdict + ' 但实测 ' + r + ' 已达 ' + p.threshold + '，应改判 pass');
+        }
+      }
+      return bad;
+    };
+
+    const conflicts = verdictConflicts(M.CONTRAST_PAIRS);
+    check(
+      '对比度判定与实测不打架（pass 真达标 / ban 与 compensated 真不达标 / exempt 真无阈值）',
+      conflicts.length === 0,
+      conflicts.length ? conflicts.join('; ') : M.CONTRAST_PAIRS.length + ' 组判定全部自洽'
+    );
+
+    // ③ 探针自算的比值与产物文档里那一列数字逐行相同。
+    const docText = fs.existsSync(specMod.OUT)
+      ? fs.readFileSync(specMod.OUT, 'utf8') : '';
+    check(
+      '规范文档产物存在（docs/设计系统与组件规范.md）',
+      docText.length > 0,
+      docText.length ? docText.length + ' 字符' : '文件不存在或为空'
+    );
+
+    const rowMiss = [];
+    for (const p of M.CONTRAST_PAIRS) {
+      const want = '| ' + p.label + ' | ' + ratioOf(p.fg, p.bg).toFixed(2) + ':1 |';
+      if (docText.indexOf(want) < 0) rowMiss.push(p.label);
+    }
+    check(
+      '产物里 ' + M.CONTRAST_PAIRS.length + ' 行比值与探针独立算值逐行一致（两套亮度实现交叉验证）',
+      rowMiss.length === 0,
+      rowMiss.length ? '对不上：' + rowMiss.join('; ') : '逐行一致'
+    );
+
+    // ④ 产物与真源逐字同步。判据是「现算一份与磁盘上那份比」——
+    // 手改产物、改了真源忘重跑，两种情况都在这里报红。
+    let expected = '';
+    let renderErr = '';
+    if (sources) {
+      try {
+        expected = specMod.render(sources);
+      } catch (e) {
+        renderErr = e.message;
+      }
+    }
+    check(
+      '产物与真源逐字同步（重跑 export-spec-doc.js 应报 unchanged）',
+      expected.length > 0 && expected === docText,
+      renderErr ? '渲染抛错：' + renderErr
+        : expected === docText ? '完全一致（' + expected.length + ' 字符）'
+          : '产物与现算结果不一致：请重跑 node prototype-figma/export-spec-doc.js'
+    );
+
+    // ⑤ 产物头部必须标明「勿手改」与重跑命令。缺了这两句，下一个人第一反应
+    // 就是直接改这份 .md —— 而手改在下一次重跑时被无声覆盖，改动凭空消失。
+    check(
+      '产物头部标明「请勿手改」并给出重跑命令',
+      docText.indexOf('请勿手改') >= 0
+      && docText.indexOf('node prototype-figma/export-spec-doc.js') >= 0,
+      '两句齐备'
+    );
+
+    // ⑥ CARD_STATES 里稿内零实现的两档，必须在产物里如实标「未出稿」。
+    // 这条守的是**诚实性**而非正确性：规格写得再好，若不声明「稿里没有」，
+    // 读文档的人会以为有可对照的画面，做出来的东西没有任何参照可核。
+    const undeclared = [];
+    for (const st of M.CARD_STATES) {
+      if (st.inStock) continue;
+      const line = docText.split('\n').find((l) => l.indexOf('| ' + st.label + ' |') === 0);
+      if (!line) undeclared.push(st.label + '：产物里找不到该行');
+      else if (line.indexOf('**无**') < 0) undeclared.push(st.label + '：未标「稿内实现＝无」');
+      else if (line.indexOf('未出稿') < 0) undeclared.push(st.label + '：未声明「本轮未出稿」');
+    }
+    check(
+      'CARD_STATES 里 ' + M.CARD_STATES.filter((s) => !s.inStock).length
+        + ' 档未出稿的态在产物里被如实声明',
+      undeclared.length === 0,
+      undeclared.length ? undeclared.join('; ') : '两档均标明「稿内实现＝无」+「本轮未出稿」'
+    );
+
+    // ⑦ [反向] hexOfRole 查不到时必须返回 undefined，不得回退成黑色。
+    // 这是 e5 提取该函数时的关键取舍：回退策略交给调用方 —— 画布构造要
+    // 「查不到用黑色继续画」，规范生成器要「查不到当场抛」。若函数自己回退黑色，
+    // 生成器就永远抛不出来，写错一个 role 名只表现为文档里多一行 21.00:1 的假达标。
+    check(
+      '[反向] hexOfRole 查不到 role 时返回 undefined（不静默回退黑色）',
+      M.hexOfRole('color/no-such-role') === undefined
+      && M.hexOfRole('category/cat-nope-deep') === undefined
+      && M.hexOfRole('color/primary') === M.SEMANTIC_COLORS['primary'],
+      '未知 role 返回 undefined，已知 role 正常换算'
+    );
+
+    // ⑧ [反向] 判定列被改宽松时必须报红。用篡改过的清单跑**同一个**判据函数：
+    // 把全部 ban 档改成 pass（最可能发生的一次放宽 —— 有人觉得分类色更好看
+    // 就想直接压白字），自洽性检查必须一档不漏地抓出来。
+    //
+    // 判据取**增量**而非总数：若写成「冲突数等于 ban 档数」，真源本身出现
+    // 别的不自洽时（如某个色被调浅让 pass 档跌破阈值）这条会连带变红，
+    // 把「反向断言有没有鉴别力」与「真源当前是否自洽」两件事混成一条。
+    const tampered = M.CONTRAST_PAIRS.map((p) => (
+      p.verdict === 'ban' ? Object.assign({}, p, { verdict: 'pass' }) : p
+    ));
+    const banCount = M.CONTRAST_PAIRS.filter((p) => p.verdict === 'ban').length;
+    check(
+      '[反向] 把 ban 档放宽成 pass 时，判定自洽性检查必报红',
+      verdictConflicts(tampered).length - conflicts.length === banCount,
+      '篡改 ' + banCount + ' 档全部被抓出'
+    );
+
+    // ⑨ [反向] 产物被手改一个字符时，同步断言必须报红。
+    // 直接验「逐字比对」这个判据本身有没有实际鉴别力 —— 若它退化成
+    // 「长度相同就算过」之类的宽松写法，这条会立刻暴露。
+    check(
+      '[反向] 产物被手改一字即被同步断言判为不一致',
+      expected.length > 0 && (expected.replace('4.5:1', '4.4:1') !== expected)
+      && (expected.replace('4.5:1', '4.4:1') !== docText),
+      '单字符改动即判不一致'
     );
   }
 

@@ -98,6 +98,106 @@ var CATEGORY_DEEP = {
   'cat-service': '#C63C81'
 };
 
+/**
+ * 对比度校验组合清单（PRD §1.4.2 全色板实测表的真源，2026-09-01 条目 [77] 第三层）
+ *
+ * 为什么必须存在（e5 读真源时查出的一处真空）：PRD §1.4.2 那张 26 行实测表
+ * 是**手写的**，而 `code.js` 里既没有组合清单、也没有对比度算法（唯二的
+ * 亮度实现在 probe-layout-offline.js 与 color-preview.html，两处都只算自己
+ * 关心的那几组）。后果是「改一个色值」与「回算它涉及的所有组合」之间没有
+ * 任何机械联系 —— Accent 由 #FF8A3D 压深至 #B4531A 那次就是先漏算、
+ * 实机核查才发现白字压其上只有 2.345:1（见 SEMANTIC_COLORS 的注释）。
+ *
+ * ⚠️ **本表刻意不写任何比值**。比值一律由 export-spec-doc.js 按 fg/bg 现算
+ * （WCAG 2.x 相对亮度公式），探针再断言算值与 PRD 表逐行一致。若把 4.62 这类
+ * 数字抄进表里，改色后数字不会变，这张表就成了第二份会静默脱钩的副本（原则㊾）。
+ *
+ * 字段：
+ * - `fg` / `bg`：参与计算的两个 role 名，须能被 hexOfRole 查到（探针有断言）
+ * - `label`：人读的组合名，对应 PRD 表第一列
+ * - `threshold`：判定阈值。4.5 = WCAG AA 正文；3.0 = 非文本图形；null = 纯装饰豁免
+ * - `verdict`：'pass' 达标 / 'ban' 禁用此组合 / 'exempt' 豁免 / 'compensated' 靠补偿达标
+ * - `note`：判定理由或约束，规范文档里逐条照登
+ */
+var CONTRAST_PAIRS = [
+  { fg: 'color/text-primary', bg: 'color/surface', label: 'text-primary 在 surface 上', threshold: 4.5, verdict: 'pass', note: '正文主色，最常见组合' },
+  { fg: 'color/text-primary', bg: 'color/background', label: 'text-primary 在 background 上', threshold: 4.5, verdict: 'pass', note: '页面底色上的正文' },
+  { fg: 'color/text-primary', bg: 'color/primary-light', label: 'text-primary 在 primary-light 上', threshold: 4.5, verdict: 'pass', note: '浅青底信息块内的正文' },
+  { fg: 'color/text-secondary', bg: 'color/surface', label: 'text-secondary 在 surface 上', threshold: 4.5, verdict: 'pass', note: '卡片内次要文字' },
+  { fg: 'color/text-secondary', bg: 'color/background', label: 'text-secondary 在 background 上', threshold: 4.5, verdict: 'pass', note: '⚠️ 余量仅 0.12。禁止再调浅，也不得用于比 background 更浅之外的任何底色' },
+  { fg: 'color/primary', bg: 'color/surface', label: 'primary 作文字在 surface 上', threshold: 4.5, verdict: 'pass', note: '链接与强调文字；也是「主色底 + 白字」那一组的等价判据' },
+  { fg: 'color/primary', bg: 'color/primary-light', label: 'primary 作文字在 primary-light 上', threshold: 4.5, verdict: 'ban', note: '禁用此组合。primary-light 底上的文字一律改用 primary-dark 或 text-primary' },
+  { fg: 'color/primary-dark', bg: 'color/primary-light', label: 'primary-dark 作文字在 primary-light 上', threshold: 4.5, verdict: 'pass', note: '信任卡、批注框、冲刺区标题的正确取法' },
+  { fg: 'color/primary-dark', bg: 'color/surface', label: 'primary-dark 作文字在 surface 上', threshold: 4.5, verdict: 'pass', note: '白底上的深青文字' },
+  { fg: 'color/text-secondary', bg: 'color/primary-light', label: 'text-secondary 在 primary-light 上', threshold: 4.5, verdict: 'ban', note: '禁用此组合（差 0.15）。浅青底上的次要文字改用 primary-dark' },
+  { fg: 'color/surface', bg: 'color/error-text', label: '白字压 error-text 底', threshold: 4.5, verdict: 'pass', note: 'danger 按钮、离线横幅' },
+  { fg: 'color/success-text', bg: 'color/surface', label: 'success-text 作文字', threshold: 4.5, verdict: 'pass', note: '一切绿色文字用途' },
+  { fg: 'color/warning-text', bg: 'color/surface', label: 'warning-text 作文字', threshold: 4.5, verdict: 'pass', note: '一切橙黄色文字用途' },
+  { fg: 'color/error-text', bg: 'color/surface', label: 'error-text 作文字', threshold: 4.5, verdict: 'pass', note: '一切红色文字用途' },
+  { fg: 'color/success', bg: 'color/surface', label: 'success 作圆点图形', threshold: 3.0, verdict: 'compensated', note: '低于非文本 3.0 阈值，靠「圆点辨识补偿」：完整度信息同时有文字版' },
+  { fg: 'color/warning', bg: 'color/surface', label: 'warning 作圆点图形', threshold: 3.0, verdict: 'compensated', note: '同上，且三档圆点尺寸一致、位置固定，形成序列可辨' },
+  { fg: 'color/error', bg: 'color/surface', label: 'error 作圆点图形', threshold: 3.0, verdict: 'pass', note: '三档中唯一自身达标者' },
+  { fg: 'color/border', bg: 'color/surface', label: 'border 相邻 surface', threshold: null, verdict: 'exempt', note: '纯装饰分隔线，不承载信息，豁免' },
+  { fg: 'color/border', bg: 'color/background', label: 'border 相邻 background', threshold: null, verdict: 'exempt', note: '同上' },
+  { fg: 'color/primary-light', bg: 'color/surface', label: 'primary-light 相邻 surface', threshold: null, verdict: 'exempt', note: '纯装饰底色区块，豁免' },
+  { fg: 'color/text-placeholder', bg: 'color/primary-light', label: 'text-placeholder 在 primary-light 上', threshold: 4.5, verdict: 'ban', note: '禁用此组合（承载真实信息时）。浅青底上不得用 placeholder 级灰' },
+  { fg: 'color/text-placeholder', bg: 'color/surface', label: 'text-placeholder 在 surface 上', threshold: null, verdict: 'exempt', note: '占位符豁免：WCAG 对「输入前的提示文字」不作正文要求，但它不得承载唯一信息' },
+  { fg: 'color/text-placeholder', bg: 'color/border', label: 'disabled 按钮（placeholder 压 border 底）', threshold: null, verdict: 'exempt', note: '禁用态豁免：低对比正是「不可用」的视觉表达。故此档禁止用于任何可点元素' },
+  { fg: 'color/surface', bg: 'color/accent', label: '白字压 accent 底', threshold: 4.5, verdict: 'pass', note: '2026-08-26 由 #FF8A3D（2.35:1）压深至 #B4531A。任何 Accent 调整都必须重算此值' },
+  { fg: 'color/surface', bg: 'category/cat-work', label: '白字压 category/cat-work 底', threshold: 4.5, verdict: 'ban', note: '禁止承载白字，改用 category/cat-work-deep' },
+  { fg: 'color/surface', bg: 'category/cat-house', label: '白字压 category/cat-house 底', threshold: 4.5, verdict: 'ban', note: '禁止承载白字，改用 category/cat-house-deep' },
+  { fg: 'color/surface', bg: 'category/cat-vehicle', label: '白字压 category/cat-vehicle 底', threshold: 4.5, verdict: 'ban', note: '禁止承载白字，改用 category/cat-vehicle-deep' },
+  { fg: 'color/surface', bg: 'category/cat-life', label: '白字压 category/cat-life 底', threshold: 4.5, verdict: 'ban', note: '禁止承载白字，改用 category/cat-life-deep' },
+  { fg: 'color/surface', bg: 'category/cat-service', label: '白字压 category/cat-service 底', threshold: 4.5, verdict: 'ban', note: '禁止承载白字，改用 category/cat-service-deep' },
+  { fg: 'color/surface', bg: 'category/cat-work-deep', label: '白字压 category/cat-work-deep 底', threshold: 4.5, verdict: 'pass', note: '一级类目顶栏标签选中态的正确取法' },
+  { fg: 'color/surface', bg: 'category/cat-house-deep', label: '白字压 category/cat-house-deep 底', threshold: 4.5, verdict: 'pass', note: '同上' },
+  { fg: 'color/surface', bg: 'category/cat-vehicle-deep', label: '白字压 category/cat-vehicle-deep 底', threshold: 4.5, verdict: 'pass', note: '同上' },
+  { fg: 'color/surface', bg: 'category/cat-life-deep', label: '白字压 category/cat-life-deep 底', threshold: 4.5, verdict: 'pass', note: '同上' },
+  { fg: 'color/surface', bg: 'category/cat-service-deep', label: '白字压 category/cat-service-deep 底', threshold: 4.5, verdict: 'pass', note: '同上' }
+];
+
+/**
+ * 卡片三态登记表（PRD §1.4.7，2026-09-01 条目 [77] 第三层）
+ *
+ * 为什么是「登记表」而不是 card() 的实现（e5 读真源时查出的第二处缺口）：
+ * PRD §1.4.7 写明卡片有正常 / 选中 / 下架三态，而 card() 只画了正常态 ——
+ * 另两态**全稿零实现**。补画它们属于改画面（要重跑批次、重出渲染图），
+ * 已明确不在本轮范围内；但若规范文档就此绕过不提，「稿里没有」这件事
+ * 就成了静默缺口，实现侧照文档做会以为卡片只有一态。
+ *
+ * 故照 Pin 那两态的既有体例处理：**如实登记规格 + 标明未出稿 + 指明由谁负责构造**。
+ * 规格值一律取自既有 Token role，不新造色（选中边框用 primary-light 是 PRD 原文）。
+ *
+ * 字段：
+ * - `key` / `label`：态名
+ * - `inStock`：本轮画布内是否有实现。false 的两档在规范里带醒目声明
+ * - `spec`：与正常态的差异描述，规范正文照登
+ * - `note`：判据与实现约束
+ */
+var CARD_STATES = [
+  {
+    key: 'normal', label: '正常态', inStock: true,
+    spec: '白底 color/surface + 圆角 lg + 阴影 0 2 8 rgba(0,0,0,0.04)，内边距 lg，内元素间距 md',
+    note: 'card() 的唯一实现形态，14 页内全部列表卡走此档。判据 PRD §1.4.7'
+  },
+  {
+    key: 'selected', label: '选中态', inStock: false,
+    spec: '在正常态基础上加 1px color/primary-light 边框，其余一切不变（不改底色、不改阴影）',
+    note: '⚠️ 本轮画布未出稿：列表卡在原型内不存在「选中」交互（点击即跳详情页，无多选场景），'
+      + '故无处可画。实现侧若引入多选（如批量下架），按本档构造。'
+      + '注意 primary-light 与 surface 的对比度仅 1.11:1（见 CONTRAST_PAIRS，纯装饰豁免），'
+      + '故边框不得作为选中与否的唯一线索，须同时有勾选框或其他形状标记。判据 PRD §1.4.7'
+  },
+  {
+    key: 'archived', label: '下架态', inStock: false,
+    spec: '整卡 opacity 50% + 右侧元数据槽位 lifecycle 填「已下架」',
+    note: '⚠️ 本轮画布未出稿：「我的发布」页三张卡的 lifecycle 槽位已能填「已下架」文字'
+      + '（见 CARD_META_SLOTS），但 opacity 折扣未施加 —— 稿上「已下架」只体现为文字，不体现为灰度。'
+      + 'opacity 50% 会把卡内所有文字的实际对比度砍半（text-primary 14.68:1 降至约 4.9:1），'
+      + '仍在 AA 线上，但**不得再叠加任何其他降透明度处理**。判据 PRD §1.4.7'
+  }
+];
+
 /** 字阶（PRD §1.4.4）：size 单位 px，lineHeight 为倍数 */
 var TYPE_SCALE = {
   h1:      { size: 24, weight: 'Bold',     lineHeight: 1.3 },
@@ -852,6 +952,31 @@ function bindRadius(node, value) {
 }
 
 /**
+ * 把 Token role 名换算为字面 HEX 值。
+ *
+ * 为什么提取成独立函数（2026-09-01 条目 [77] 第三层）：这段分支原本内联在
+ * paintOf 里当「变量缺失时的回退色」用。第三层的 export-spec-doc.js 要按
+ * CONTRAST_PAIRS 里的 role 名现算对比度，同样需要 role → hex 这一步。
+ * 若生成器自己再写一遍分支，`-deep` 后缀这类特例就有了第二份实现 ——
+ * 而这恰是 paintOf 注释里记过一次的坑（查 CATEGORY_COLORS['cat-house-deep']
+ * 拿到 undefined 后静默回退成纯黑）。故提取共用，paintOf 改为调用它。
+ *
+ * @param {string} role 变量 role 名，如 "color/primary" / "category/cat-work-deep"
+ * @returns {string|undefined} 该 role 的 HEX 字面值；role 不存在时返回 undefined
+ *          （**刻意不回退成黑色**：回退由调用方按自己的语义决定，
+ *          规范生成器需要的是「查不到就报错」，画布构造需要的是「查不到用黑色继续」）
+ */
+function hexOfRole(role) {
+  if (role.indexOf('category/') === 0) {
+    var ck = role.replace('category/', '');
+    return ck.indexOf('-deep') > 0
+      ? CATEGORY_DEEP[ck.replace('-deep', '')]
+      : CATEGORY_COLORS[ck];
+  }
+  return SEMANTIC_COLORS[role.replace('color/', '')];
+}
+
+/**
  * 生成一个绑定到指定 Variable 的 SOLID 填充对象
  * 若变量缺失则回退为字面色，保证生成不中断（同时在日志中不静默）
  * @param {string} role 变量 role 名，如 "color/primary" 或 "category/cat-work"
@@ -861,17 +986,9 @@ function paintOf(role) {
   var v = VAR_CACHE[role];
   // fallback 表要认 -deep 后缀（2026-08-26 新增深色变体后补）：
   // 否则 category/cat-house-deep 会去 CATEGORY_COLORS 里查不存在的
-  // 「cat-house-deep」，拿到 undefined 后静默回退成纯黑
-  var fallbackHex;
-  if (role.indexOf('category/') === 0) {
-    var ck = role.replace('category/', '');
-    fallbackHex = ck.indexOf('-deep') > 0
-      ? CATEGORY_DEEP[ck.replace('-deep', '')]
-      : CATEGORY_COLORS[ck];
-  } else {
-    fallbackHex = SEMANTIC_COLORS[role.replace('color/', '')];
-  }
-  var base = { type: 'SOLID', color: hexToRgb(fallbackHex || '#000000') };
+  // 「cat-house-deep」，拿到 undefined 后静默回退成纯黑。
+  // 换算已收进 hexOfRole（2026-09-01），此处只负责「查不到用黑色继续」这条策略
+  var base = { type: 'SOLID', color: hexToRgb(hexOfRole(role) || '#000000') };
   if (!v) return base;
   return figma.variables.setBoundVariableForPaint(base, 'color', v);
 }
