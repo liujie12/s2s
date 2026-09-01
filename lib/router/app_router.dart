@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../domain/category_tree.dart';
 import '../features/auth/login_screen.dart';
 import '../features/contact/contact_screen.dart';
 import '../features/detail/detail_screen.dart';
@@ -21,6 +22,9 @@ import '../features/map/map_screen.dart';
 import '../features/placeholder/placeholder_screen.dart';
 import '../features/privacy/privacy_consent.dart';
 import '../features/privacy/privacy_gate_screen.dart';
+import '../features/publish/category_selector_screen.dart';
+import '../features/publish/cert_modal_screen.dart';
+import '../features/publish/publish_screen.dart';
 
 /// 路由路径常量。
 ///
@@ -125,11 +129,7 @@ final List<RouteBase> _routes = [
   ),
   GoRoute(
     path: AppRoutes.publish,
-    builder: (context, state) => const PlaceholderScreen(
-      pageId: 'publish-screen',
-      pageName: '发布页（模板+记忆）',
-      note: '三级分类模板 + 发布记忆 + T2 四模式',
-    ),
+    builder: (context, state) => const PublishScreen(),
   ),
   GoRoute(
     path: AppRoutes.aiConfirm,
@@ -171,13 +171,12 @@ final List<RouteBase> _routes = [
   // ── 模态：用 fullscreenDialog 语义，返回栈行为与页面不同 ──
   GoRoute(
     path: AppRoutes.categorySelector,
-    pageBuilder: (context, state) => const MaterialPage(
+    // extra 传入已选叶子 ID（可空），用于打开时展开到该分支。
+    // 用 extra 而非 query 参数：它是一个 int? 而非字符串，
+    // 走 query 要在两侧各做一次解析，而解析失败的表现是静默不回填。
+    pageBuilder: (context, state) => MaterialPage(
       fullscreenDialog: true,
-      child: PlaceholderScreen(
-        pageId: 'category-selector',
-        pageName: '分类级联选择器（模态）',
-        note: '三级分类级联',
-      ),
+      child: CategorySelectorScreen(initialLeafId: state.extra as int?),
     ),
   ),
   GoRoute(
@@ -193,12 +192,18 @@ final List<RouteBase> _routes = [
   ),
   GoRoute(
     path: AppRoutes.certModal,
-    pageBuilder: (context, state) => const MaterialPage(
-      fullscreenDialog: true,
-      child: PlaceholderScreen(
-        pageId: 'cert-modal',
-        pageName: '认证拦截浮层（模态）',
-        note: '未实名发布拦截',
+    // 用 CustomTransitionPage 而非 MaterialPage：抽屉是半透明的，
+    // 需要透出下层的发布页，而 MaterialPage 没有 opaque 开关。
+    pageBuilder: (context, state) => CustomTransitionPage<bool>(
+      opaque: false,
+      barrierDismissible: false,
+      transitionsBuilder: (context, animation, secondary, child) =>
+          FadeTransition(opacity: animation, child: child),
+      child: CertModalScreen(
+        // 直达此路由（深链、误跳）时没有 extra，退到「个人资质」——
+        // 断言崩掉比显示一个略泛化的资质名更糟。
+        cert:
+            state.extra as RequiredCert? ?? RequiredCert.personalQualification,
       ),
     ),
   ),
