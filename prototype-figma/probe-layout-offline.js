@@ -2691,6 +2691,100 @@ function allText(root) {
       unregisteredThrew && registeredOk && variantOk,
       '未登记抛错=' + unregisteredThrew + '，已登记放行=' + registeredOk + '，变体放行=' + variantOk
     );
+
+    // ------------------------------------------------------------
+    // MAIN_SCREENS 与 PRD §10.1 页面清单对数（2026-08-31 新增）
+    //
+    // **这条断言的来历**：M4-3 收口时核 UI 闭环，发现 PRD §10.1 列 19 页而稿里
+    // 只有 18 页 —— 差的 privacy-gate 恰是「上架驳回红线」那一页。42 框全部出图、
+    // 探针 256 项全绿、用户已正式验收，每一环都没错，**但验收的是一份过期清单**：
+    // §6.5.1 是 2026-08-27 才补进 PRD 的，而 M3 的「18 主态」在那之前就定了。
+    //
+    // **为什么此前 256 项一条都没报**：既有的 MAIN_SCREENS 校验（上一条）判的是
+    // 「FLOW_LINKS 两端都已登记」—— 判的是**稿子内部自洽**。稿里没有的页，
+    // 既不会出现在 FLOW_LINKS 里，也不会出现在登记表里，于是自洽得完美无缺。
+    // 这正是原则 134 说的那种失明：判据右侧取自被测对象自己，它就只守自洽、
+    // 不守契约。契约在 PRD 那一侧，判据必须**跨到 PRD 去取**。
+    //
+    // **判据取「PRD 表格首列」而非全文搜页面 ID**：全文搜会把 §6.5.1 正文里
+    // 提到的 privacy-gate 也算进来，那样即使 §10.1 表格漏了一行也照样对得上 ——
+    // 而 §10.1 表格才是页面清单的真源。
+    const prdSpec = fs.readFileSync(
+      path.join(__dirname, '..', 'docs', 'PRD.md'), 'utf8'
+    );
+    const sectionStart = prdSpec.indexOf('### 10.1 页面清单');
+    const sectionEnd = prdSpec.indexOf('### 10.2', sectionStart);
+    const prdPageIds = [];
+    if (sectionStart >= 0 && sectionEnd > sectionStart) {
+      const rows = prdSpec.slice(sectionStart, sectionEnd).split('\n');
+      for (const row of rows) {
+        // 表格行形如：| 准入 | privacy-gate | 隐私协议门（首启） | P0 | … |
+        // 取第 2 列，且只认「小写字母与连字符」的页面 ID 形态，
+        // 从而自动跳过表头（`页面 ID`）与分隔行（`---`）。
+        const cols = row.split('|');
+        if (cols.length < 4) continue;
+        const id = cols[2].trim();
+        if (/^[a-z][a-z0-9-]+$/.test(id)) prdPageIds.push(id);
+      }
+    }
+    // **为什么这里钉字面量 19 而不是 `> 0`**：反向验证 C（把上面的 §10.1 标题
+    // 故意指偏）暴露出一个真实缺陷 —— 解析结果为空时，下面那条最关键的
+    // 「PRD 每一页都在稿内」**反而永绿**：空清单里当然找不出缺口。判据源一失效，
+    // 依赖它的断言就集体失明，这是原则 134 的同族（断言随病灶一起变形）。
+    // 处方就是原则 134 的处方：契约类数值至少有一处用字面量钉死。
+    // 19 = 16 页 + 3 模态（§10.1 实表行数，2026-08-31 补 splash-screen 后）。
+    // 将来 §10.1 增删页时这条会报红，**这正是要的效果** —— 页面清单变动必须有人
+    // 来这里改一次数字并留下痕迹，而不是让探针默默跟着新清单走。
+    check(
+      'PRD §10.1 页面清单表解析出 19 行（契约页数，字面量钉死）',
+      prdPageIds.length === 19,
+      '解析出 ' + prdPageIds.length + ' 个页面 ID（期望 19 = 16 页 + 3 模态）'
+    );
+
+    // **已备案缺口清单**：写在这里而不是把断言放宽，是两件不同的事 ——
+    // 放宽等于让缺口从此隐形；备案是「承认它、并让**清单外**的任何新缺口立刻报红」。
+    // 每一项都必须写明去处，不许只写 ID。补齐后此处会由下一条断言提醒清理。
+    const KNOWN_STAGE_GAPS = {
+      'privacy-gate': 'M4-4 补稿（用户 2026-08-31 裁定方案 B：与隐私政策同批做）'
+    };
+    const gapKeys = Object.keys(KNOWN_STAGE_GAPS);
+
+    const missingInFigma = prdPageIds.filter(
+      (id) => M.MAIN_SCREENS.indexOf(id) < 0
+    );
+    const unbudgeted = missingInFigma.filter((id) => !KNOWN_STAGE_GAPS[id]);
+    check(
+      'PRD §10.1 每一页都在 MAIN_SCREENS 内（已备案缺口除外）',
+      unbudgeted.length === 0,
+      unbudgeted.length
+        ? '未备案缺口：' + unbudgeted.join(', ')
+        : 'PRD ' + prdPageIds.length + ' 页 / 稿 ' + M.MAIN_SCREENS.length +
+          ' 页，差额 ' + missingInFigma.length + ' 项均已备案（' +
+          gapKeys.join(', ') + '）'
+    );
+
+    // 备案清单必须**恰好**等于实际缺口：多一项说明补稿完成后忘了清理，
+    // 那一项会继续替将来真正出现的同名缺口挡枪 —— 一条永远绿的豁免比没有更坏
+    //（原则 133 的同族：测不到病灶的断言给的是虚假安全感）。
+    const staleGaps = gapKeys.filter((id) => M.MAIN_SCREENS.indexOf(id) >= 0);
+    check(
+      '已备案缺口清单无过期项（补稿后须从 KNOWN_STAGE_GAPS 删除）',
+      staleGaps.length === 0,
+      staleGaps.length
+        ? '已补稿但仍挂在豁免清单里：' + staleGaps.join(', ')
+        : gapKeys.length + ' 项备案全部仍为真实缺口'
+    );
+
+    // 反方向：稿里有而 PRD §10.1 没有的页 —— 这类是「画了没人要的页」，
+    // 同样是偏差，且更容易发生（加个页比改 PRD 容易）。
+    const extraInFigma = M.MAIN_SCREENS.filter(
+      (id) => prdPageIds.indexOf(id) < 0
+    );
+    check(
+      'MAIN_SCREENS 无 PRD §10.1 之外的页',
+      extraInFigma.length === 0,
+      extraInFigma.length ? '稿中多出：' + extraInFigma.join(', ') : '无多余页'
+    );
   }
 
   // ============================================================
