@@ -274,6 +274,21 @@ var FONT_FALLBACK = 'Inter';
 /** Variable 集合名与运行时 id 缓存：role 名 -> Variable 对象 */
 var VAR_CACHE = {};
 
+/**
+ * Text Style 名前缀（2026-09-01，条目 [77] 第二层 ⑥）。
+ *
+ * 为什么加前缀而不直接叫 "h1"：Figma 的样式面板按 "/" 自动分组，
+ * 加前缀后 6 档会收成一个「字阶」文件夹，与后续可能出现的其他样式族并列；
+ * 不加则 6 档散在根层，与团队库里同名的 h1 撞名难辨。
+ * Paint Style 不用前缀 —— 它的名字直接沿用 role 名（color/* 与 category/*），
+ * 本身已带斜杠分组，且与变量面板同名可肉眼对照（见 ensurePaintStyles）。
+ */
+var TEXT_STYLE_PREFIX = '字阶/';
+
+/** 样式运行时缓存：档位键 -> TextStyle；role 名 -> PaintStyle */
+var TEXT_STYLE_CACHE = {};
+var PAINT_STYLE_CACHE = {};
+
 // ============================================================
 // 一之二、规格真源表（PRD 派生，本文件内唯一取值来源）
 // ============================================================
@@ -520,8 +535,9 @@ var MAIN_SCREENS = [
  * FLOW_LINKS / CORE_PAGES 声明在本函数之后，但函数体只在调用时求值，
  * 那时整个文件已执行完毕，故不存在时序问题。
  *
- * @returns {{tokens:Object,masters:Object,corePages:number,mainScreens:number,flowLinks:number}}
- *          tokens 为 Variables 分项与合计；masters 为 Component 分项与合计；
+ * @returns {{tokens:Object,styles:Object,masters:Object,corePages:number,mainScreens:number,flowLinks:number}}
+ *          tokens 为 Variables 分项与合计；styles 为本地样式分项与合计；
+ *          masters 为 Component 分项与合计；
  *          其余三项分别为核心流程页数、主态画框数、原型跳转条数
  */
 function planStats() {
@@ -559,6 +575,15 @@ function planStats() {
       radius: radius,
       float: sizeScale + spacing + radius,
       total: semantic + category + deep + sizeScale + spacing + radius
+    },
+    // 本地样式分项（2026-09-01，条目 [77] 第二层 ⑥）：
+    // Text Style 恰为字阶档数、Paint Style 恰为 COLOR 变量数 —— 两者都由同一批
+    // 真源表现算，与 tokens 分项共用 sizeScale / semantic 等中间量。写死数字会
+    // 重演 I4 那次「Variables 标 38 而真值 43」的失效
+    styles: {
+      text: sizeScale,
+      paint: semantic + category + deep,
+      total: sizeScale + semantic + category + deep
     },
     masters: {
       statusBar: statusBar,
@@ -604,6 +629,25 @@ async function loadFonts() {
 function styleOf(weight) {
   if (FONT_FAMILY === FONT_FALLBACK && weight === 'SemiBold') return 'Semi Bold';
   return weight;
+}
+
+/**
+ * 由字阶档位现算 Figma 行高对象（像素制）。
+ *
+ * 为什么提成函数（2026-09-01，条目 [77] 第二层）：`text()` 与
+ * `ensureTextStyles()` 都要这个值，若各写一遍 `Math.round(size × 倍数)`，
+ * 一旦 PRD 改了取整口径（比如改成向上取整）就会漏改一处 —— 而后果是
+ * 「样式面板里的 h1 行高 31，画布上的 h1 行高 32」这种只差 1px 的静默不一致，
+ * 截图看不出、探针若不专门比也查不出。
+ *
+ * 为什么行高不入 Variables：它是「字号 × 倍数」的派生值，
+ * 单独存一份就是第二份副本（见 ensureNumberVariables 注释）。
+ *
+ * @param {{size:number,lineHeight:number}} scale TYPE_SCALE 的一档
+ * @returns {{value:number,unit:string}} Figma LineHeight 对象，单位 PIXELS
+ */
+function lineHeightOf(scale) {
+  return { value: Math.round(scale.size * scale.lineHeight), unit: 'PIXELS' };
 }
 
 // ============================================================
@@ -823,6 +867,197 @@ function paintOf(role) {
   var base = { type: 'SOLID', color: hexToRgb(fallbackHex || '#000000') };
   if (!v) return base;
   return figma.variables.setBoundVariableForPaint(base, 'color', v);
+}
+
+// ============================================================
+// 三之二、Styles 基础设施（2026-09-01，条目 [77] 第二层 ⑥）
+//
+// 为什么必须有这一节：在此之前 Figma 的「样式」面板是**完全空的**。
+// 画布上每个文本节点都由 text() 逐项设 fontName/fontSize/lineHeight，
+// 颜色由 paintOf() 绑到 Variable —— 值都对，但设计师在 Figma 里
+// 点不到「h1」这个样式，只点得到 size/h1 这个裸数字变量。
+// 对外交付设计稿时这是最先被发现的缺口：拿到文件的人无法「应用 h1」，
+// 只能照着数字手抄，抄错无人可查。
+//
+// **本节只负责注册（让面板里有东西可点），不给画布节点挂 styleId。**
+// 这条边界是刻意的，理由见 ensureTextStyles() 的长注释。
+// ============================================================
+
+/**
+ * 创建或复用 6 档 Text Style，与 TYPE_SCALE 逐项对齐。
+ *
+ * 为什么只注册、不给画布节点挂 styleId（2026-09-01 用户拍定）：
+ * manifest.json 是 `documentAccess: "dynamic-page"`，该模式下官方明确
+ * 同步赋值 `TextNode.textStyleId = ...` **会抛异常**，唯一合法路径是
+ * `await node.setTextStyleIdAsync(id)`。而 text() 是同步函数、全文有 186
+ * 处调用点，其上游还套着 card()/field()/emptyState() 等数十个同步构造器 ——
+ * 要挂 styleId 就得把这整条链改成 async 并逐层上推 await，改动面等于把
+ * code.js 主干重写一遍，远超本条待办「注册 6 档样式」的范围。
+ * 故本轮取「只注册」，并如实登记遗留：在 Figma 里选中画布文字，右侧显示的
+ * 仍是具体数值而非「h1」。这不影响交付物可用性（面板里点得到样式、
+ * 新建文本可直接应用），只影响既有节点的样式归属显示。
+ *
+ * 为什么 fontSize 绑到 size/* 变量而不是只存数字：绑上之后「样式」与
+ * 「Token」是同一份真源的两个视图 —— 日后在 Figma 里把 size/h1 从 24 调成 26，
+ * h1 样式自动跟着变；不绑就是第二份副本，改一处漏一处。
+ * 官方 VariableBindableTextField 明确含 fontSize（另有两份第三方文档声称
+ * fontSize 不可绑且「静默失败」，与官方类型定义矛盾，此处以官方为准 ——
+ * code.js 里 text() 对节点绑 fontSize 已实机验证有效，可佐证）。
+ *
+ * 为什么行高不绑变量：同 text() 的判据，行高是派生值（见 lineHeightOf）。
+ *
+ * 幂等语义沿用 ensureVariables() 的「值对齐」而非「存在即跳过」：
+ * 同名样式已存在则逐字段比对，不一致时改写并计入 updated。若做成「跳过」，
+ * PRD 调了字阶后重跑批次 1，Variables 会更新而样式面板停在旧值，
+ * 于是同一个 h1 在两处显示两个字号 —— 这正是本项要消除的那类不一致。
+ *
+ * @returns {Promise<{created:number,reused:number,updated:number}>} 新建/沿用/改值的样式计数
+ */
+async function ensureTextStyles() {
+  var existing = await figma.getLocalTextStylesAsync();
+  var byName = {};
+  for (var i = 0; i < existing.length; i++) byName[existing[i].name] = existing[i];
+
+  var created = 0, reused = 0, updated = 0;
+  for (var key in TYPE_SCALE) {
+    var s = TYPE_SCALE[key];
+    var name = TEXT_STYLE_PREFIX + key;
+    var wantFont = { family: FONT_FAMILY, style: styleOf(s.weight) };
+    var wantLH = lineHeightOf(s);
+    var st = byName[name];
+    if (st) {
+      // 逐字段比对：只要有一项不同就整档改写（改写是幂等的，重复设同值无副作用）
+      var same = st.fontSize === s.size
+        && st.fontName && st.fontName.family === wantFont.family
+        && st.fontName.style === wantFont.style
+        && st.lineHeight && st.lineHeight.unit === wantLH.unit
+        && st.lineHeight.value === wantLH.value;
+      if (same) {
+        reused++;
+      } else {
+        st.fontName = wantFont;
+        st.fontSize = s.size;
+        st.lineHeight = wantLH;
+        updated++;
+      }
+    } else {
+      st = figma.createTextStyle();
+      st.name = name;
+      st.fontName = wantFont;
+      st.fontSize = s.size;
+      st.lineHeight = wantLH;
+      created++;
+    }
+    // 变量绑定每轮都重设：样式沿用（reused）时也要绑，否则首次建样式在变量
+    // 就位之前的那种执行顺序下，绑定会永久缺失而画面与数值全对
+    bindStyleNum(st, 'fontSize', 'size', s.size);
+    TEXT_STYLE_CACHE[key] = st;
+  }
+  return { created: created, reused: reused, updated: updated };
+}
+
+/**
+ * 把样式对象的数值字段绑定到对应 FLOAT 变量。
+ *
+ * 与 bindNum() 分开写而不复用：bindNum 的入参是 SceneNode，用的是
+ * node.setBoundVariable(field, variable)；BaseStyle 虽同名方法同签名，
+ * 但它不是 SceneNode，混用会让 JSDoc 类型与实际不符，也让「绑节点」与
+ * 「绑样式」两类失败混在一处难以区分。取不到变量时静默返回，判据同 bindNum。
+ *
+ * @param {BaseStyle} style 目标样式对象
+ * @param {string} field 可绑字段名，如 "fontSize"
+ * @param {string} group 反查分组："size" / "spacing" / "radius"
+ * @param {number} value 字面数值
+ * @returns {boolean} 是否成功绑定
+ */
+function bindStyleNum(style, field, group, value) {
+  var name = NUM_TOKEN_NAMES[group][value];
+  if (!name) return false;
+  var v = VAR_CACHE[name];
+  if (!v) return false;
+  style.setBoundVariable(field, v);
+  return true;
+}
+
+/**
+ * 创建或复用 Paint Style，每个语义色 / 分类色 / 分类深色变体各一档。
+ *
+ * 为什么要有 Paint Style 而不是只有 Color Variable：两者在 Figma 里是
+ * **两个不同的面板**。Variable 供「绑定」（改一处全画布跟着变），
+ * Style 供「取用」（设计师选中形状后一键上色）。当前只有前者，
+ * 于是设计师新画一个矩形时无从取色，只能吸管去吸 —— 吸出来的是字面色，
+ * 脱离 Token 体系而画面看不出差别，是最难发现的一类漂移。
+ *
+ * 每档 paint 直接复用 paintOf()：这样「样式的填充」与「画布节点的填充」
+ * 是同一段代码产出的同一个对象结构（含 boundVariables），
+ * 不会出现「样式里是字面色、节点里绑了变量」的两套口径。
+ * 也因此本函数必须在 ensureVariables() 之后调用，否则 VAR_CACHE 为空，
+ * paintOf() 会静默回退字面色，样式建出来是不绑变量的死色。
+ *
+ * 幂等语义同 ensureTextStyles()：比对当前 paint 的色值与绑定变量 id，
+ * 不一致则整档改写。色板定稿后重跑批次 1，样式必须跟着改。
+ *
+ * @returns {Promise<{created:number,reused:number,updated:number}>} 新建/沿用/改值的样式计数
+ */
+async function ensurePaintStyles() {
+  var existing = await figma.getLocalPaintStylesAsync();
+  var byName = {};
+  for (var i = 0; i < existing.length; i++) byName[existing[i].name] = existing[i];
+
+  // 与 ensureVariables() 同一套 role 名：样式名即 role 名，不另起一套命名，
+  // 使「样式面板里的 color/primary」与「变量面板里的 color/primary」肉眼可对上
+  var roles = [];
+  var key;
+  for (key in SEMANTIC_COLORS) roles.push('color/' + key);
+  for (key in CATEGORY_COLORS) roles.push('category/' + key);
+  for (key in CATEGORY_DEEP) roles.push('category/' + key + '-deep');
+
+  var created = 0, reused = 0, updated = 0;
+  for (var i2 = 0; i2 < roles.length; i2++) {
+    var role = roles[i2];
+    var want = paintOf(role);
+    var st = byName[role];
+    if (st) {
+      if (samePaint(st.paints && st.paints[0], want)) {
+        reused++;
+      } else {
+        st.paints = [want];
+        updated++;
+      }
+    } else {
+      st = figma.createPaintStyle();
+      st.name = role;
+      st.paints = [want];
+      created++;
+    }
+    PAINT_STYLE_CACHE[role] = st;
+  }
+  return { created: created, reused: reused, updated: updated };
+}
+
+/**
+ * 判断两个 SOLID 填充是否等价（色值 + 绑定变量都相同）。
+ *
+ * 为什么要比绑定变量而不只比色值：变量缺失时 paintOf() 会回退字面色，
+ * 回退出的 paint 与绑定成功的 paint **色值完全相同**。若只比色值，
+ * 一档「上次因变量未就位而建成死色」的样式会被判为一致而永久沿用，
+ * 从此不再绑变量 —— 画面永远正确，Token 联动永远失效。
+ *
+ * @param {Paint} a 现有填充
+ * @param {Paint} b 期望填充
+ * @returns {boolean} 是否等价
+ */
+function samePaint(a, b) {
+  if (!a || !b || a.type !== 'SOLID' || b.type !== 'SOLID') return false;
+  var near = Math.abs(a.color.r - b.color.r) < 0.002
+    && Math.abs(a.color.g - b.color.g) < 0.002
+    && Math.abs(a.color.b - b.color.b) < 0.002;
+  if (!near) return false;
+  var av = a.boundVariables && a.boundVariables.color;
+  var bv = b.boundVariables && b.boundVariables.color;
+  if (!av && !bv) return true;
+  if (!av || !bv) return false;
+  return av.id === bv.id;
 }
 
 // ============================================================
@@ -1372,7 +1607,7 @@ function text(content, scale, colorRole) {
   t.fontSize = s.size;
   t.characters = content;
   // 显式设置 lineHeight：缺失会导致部分导出场景高度计算为 0
-  t.lineHeight = { value: Math.round(s.size * s.lineHeight), unit: 'PIXELS' };
+  t.lineHeight = lineHeightOf(s);
   t.fills = [paintOf(colorRole || 'color/text-primary')];
   // 字号绑到 size/* 变量（2026-08-26，M3）。行高刻意不绑：它是「字号 × 倍数」
   // 的派生值，绑成独立变量后改字号不会带动行高，反而制造出一处静默不一致。
@@ -2815,6 +3050,11 @@ function layout(host, nodes, perRow, startY) {
 async function batchSetup() {
   var family = await loadFonts();
   var stat = await ensureVariables();
+  // Styles 必须在 ensureVariables() 之后：ensurePaintStyles 用 paintOf() 取填充，
+  // 而 paintOf 查的是 VAR_CACHE —— 变量未就位时它静默回退字面色，
+  // 于是样式建成不绑变量的死色，画面全对而 Token 联动失效（见 samePaint 注释）
+  var textStat = await ensureTextStyles();
+  var paintStat = await ensurePaintStyles();
   // 幂等：清空旧 Token 画板与旧 Component master，避免重跑叠加多套同名组件
   var reset = await resetPage(PAGE_NAMES.setup);
   var page = reset.page;
@@ -2973,6 +3213,17 @@ async function batchSetup() {
       + '。请同步 planStats() 的 masters 分项与 registerComponents()。');
   }
 
+  // 样式数同样当场对数（2026-09-01，条目 [77] 第二层 ⑥）：沿用上面这道校验的判据 ——
+  // 首屏与摘要串报的数若是假的，比不报更坏。三计数之和才是「面板里实际有几档」：
+  // 重跑时多数档走 reused，只看 created 会误判为「一个都没建」
+  var textTotal = textStat.created + textStat.reused + textStat.updated;
+  var paintTotal = paintStat.created + paintStat.reused + paintStat.updated;
+  if (textTotal !== st.styles.text || paintTotal !== st.styles.paint) {
+    throw new Error('本地样式数不符：Text 实际 ' + textTotal + '（应 ' + st.styles.text
+      + '）、Paint 实际 ' + paintTotal + '（应 ' + st.styles.paint
+      + '）。请同步 planStats() 的 styles 分项与 ensureTextStyles()/ensurePaintStyles()。');
+  }
+
   // 写组件契约（2026-08-27，条目 [51] 第 5 步）。必须在数量校验之后：
   // 那时才确定 COMP_CACHE 是全的，否则漏写的 master 会被下面这道校验放过。
   var describedCount = describeComponents(COMP_CACHE);
@@ -2989,6 +3240,11 @@ async function batchSetup() {
     + '（应为 ' + st.tokens.total + ' 项：COLOR ' + st.tokens.color + ' + FLOAT ' + st.tokens.float + '）'
     + (stat.updated > 0 ? '\n（Token 已变更，全画布绑定处自动同步）' : '')
     + '\n主色：A 深湖青 #0B7C8C（白字 4.91:1 过 WCAG AA）'
+    + '\n本地样式：Text ' + textTotal + ' 档（' + TEXT_STYLE_PREFIX + 'h1…caption）'
+    + ' + Paint ' + paintTotal + ' 档（新建 ' + (textStat.created + paintStat.created)
+    + ' / 沿用 ' + (textStat.reused + paintStat.reused)
+    + ' / 改值 ' + (textStat.updated + paintStat.updated) + '）'
+    + '\n（样式面板可直接取用；画布既有文本仍按数值设定，未挂 styleId —— 见 ensureTextStyles 注释）'
     + '\nComponent master：' + compCount + ' 个（状态栏' + st.masters.statusBar
     + ' + 底部Tab' + st.masters.tabs + ' + 按钮' + st.masters.buttons + ' + Pin' + st.masters.pins + '）'
     + '\n组件契约：' + describedCount + ' 个 description 已写入（右侧 Inspect 面板可见，无需 Dev Mode）'

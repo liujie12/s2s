@@ -445,6 +445,11 @@ function nodeFromSvg(svg) {
 }
 
 const createdVariables = [];
+// 本地样式登记（2026-09-01 条目 [77] 第二层 ⑥）：createTextStyle/createPaintStyle
+// 建出的样式要留在这里，getLocal*StylesAsync 才读得到 —— 否则 ensureTextStyles
+// 每轮都读到空表，永远走 created 分支，「值对齐」那条幂等分支从未被验到
+const createdTextStyles = [];
+const createdPaintStyles = [];
 
 const figma = {
   root: { children: mockPages, name: 'mock' },
@@ -507,6 +512,46 @@ const figma = {
   getNodeById: () => null,
   loadFontAsync: async () => {},
   loadAllPagesAsync: async () => {},
+  // ---- 本地样式（2026-09-01 条目 [77] 第二层 ⑥）----
+  // 为什么必须 mock 而不能跳过：ensureTextStyles/ensurePaintStyles 在
+  // batchSetup 开头就被调，没有这几个方法则整个批次 1 断言全部炸掉。
+  // 为什么读用 *Async 版：manifest.json 是 documentAccess: "dynamic-page"，
+  // 该模式下同步版 getLocalTextStyles() 在真机会抛异常，mock 只提供 async 版
+  // 才能保证探针跑通而实机跑不通这种假绿不发生。
+  getLocalTextStylesAsync: async () => createdTextStyles,
+  getLocalPaintStylesAsync: async () => createdPaintStyles,
+  createTextStyle: () => {
+    // 幂等第二轮必须一次做对（教训见下方 createVariable 的注释）：
+    // ensureTextStyles 的沿用分支会读 st.fontSize / st.fontName.family /
+    // st.lineHeight.value 去逐字段比对。这些字段若不真存值，
+    // 第一次调用走 created 分支能过，第二次就崩在 reading 'family'。
+    const st = {
+      id: 'TS' + (createdTextStyles.length + 1),
+      type: 'TEXT',
+      name: '',
+      fontName: { family: '', style: '' },
+      fontSize: 0,
+      lineHeight: { value: 0, unit: 'AUTO' },
+      boundVariables: {},
+      // 存整个变量对象而非真 API 的 VariableAlias（{type,id}）：与本文件既有的
+      // setBoundVariableForPaint mock 同一套约定，使断言能直接比 .name 判断
+      // 「绑对了哪一个变量」。只比 id 则断言必须自己维护一张 id→name 表，
+      // 那张表就是真源的副本（原则㊾）
+      setBoundVariable(field, v) { this.boundVariables[field] = v; },
+    };
+    createdTextStyles.push(st);
+    return st;
+  },
+  createPaintStyle: () => {
+    const st = {
+      id: 'PS' + (createdPaintStyles.length + 1),
+      type: 'PAINT',
+      name: '',
+      paints: [],
+    };
+    createdPaintStyles.push(st);
+    return st;
+  },
   setCurrentPageAsync: async (p) => { figma.currentPage = p; },
   showUI: () => {},
   ui: { onmessage: null, postMessage: () => {} },
@@ -633,7 +678,14 @@ const wrapped = new Function(
       // 条目 [70-h]（2026-08-31）：过程态六档 / 半径四档 / 权限两态三张表必须由
       // 断言拿真源去核。这三处的病根都是「表里写对了，画面没画出来」——
       // 探针在自己这边手抄一份期望值，验的就是抄本自己，永远绿（原则㊾）
-      'EMPTY_FALLBACK_TIMELINE', 'S2_RADIUS_TIERS', 'COVERAGE_STATES']
+      'EMPTY_FALLBACK_TIMELINE', 'S2_RADIUS_TIERS', 'COVERAGE_STATES',
+      // 2026-09-01 条目 [77]（M4-3e 第二层 ⑥）：本地样式注册。两个 ensure 函数
+      // 必须能被断言直接真跑第二轮 —— 「值对齐」幂等（改了字阶后重跑要改写旧样式）
+      // 与「Paint 绑没绑上变量」都只有真跑两遍才验得到，源码正则一概看不出。
+      // lineHeightOf 单独导出：它是 text() 与 ensureTextStyles() 的共用派生口径，
+      // 断言要拿它现算期望值而非在探针里手抄一份 Math.round（原则㊾）
+      'ensureTextStyles', 'ensurePaintStyles', 'lineHeightOf',
+      'TEXT_STYLE_PREFIX', 'TEXT_STYLE_CACHE', 'PAINT_STYLE_CACHE', 'text']
       .map((k) => k + ': typeof ' + k + " !== 'undefined' ? " + k + ' : undefined')
       .join(', ') +
     ' };'
@@ -746,6 +798,121 @@ function allText(root) {
     '实建 COLOR ' + gotColor + ' / FLOAT ' + gotFloat +
       '（真源表期望 COLOR ' + wantColor + ' / FLOAT ' + wantFloat + '）'
   );
+
+  // ---------- 条目 [77] 第二层 ⑥：本地样式注册 ----------
+  // 放在此处而非批次 1 段里：ensurePaintStyles 依赖 VAR_CACHE 已就位（上面
+  // hydrateVariables 刚做完），此时才验得到「Paint 是否真绑上了变量」。
+  {
+    const ts1 = await M.ensureTextStyles();
+    const ps1 = await M.ensurePaintStyles();
+
+    // ① 六档 Text Style 逐项对齐 TYPE_SCALE。期望值一律从真源表现算：
+    //    行高走 M.lineHeightOf（与 text() 同一个函数），字重走样式名后缀反查，
+    //    不在探针里手抄 Math.round(size × 倍数)（原则㊾）
+    const tsBad = [];
+    for (const key of Object.keys(M.TYPE_SCALE)) {
+      const s = M.TYPE_SCALE[key];
+      const st = M.TEXT_STYLE_CACHE[key];
+      if (!st) { tsBad.push(key + ' 未注册'); continue; }
+      if (st.name !== M.TEXT_STYLE_PREFIX + key) tsBad.push(key + ' 名不符:' + st.name);
+      if (st.fontSize !== s.size) tsBad.push(key + ' 字号 ' + st.fontSize + '≠' + s.size);
+      const wantLH = M.lineHeightOf(s);
+      if (st.lineHeight.value !== wantLH.value || st.lineHeight.unit !== wantLH.unit) {
+        tsBad.push(key + ' 行高 ' + st.lineHeight.value + '≠' + wantLH.value);
+      }
+      // 字重不能只看「有值」：SemiBold 在降级字体族下须映射成 "Semi Bold"，
+      // 漏了映射的后果是实机上那两档静默退回 Regular，画面只是「看起来不够粗」
+      if (!st.fontName.style || st.fontName.style.replace(' ', '') !== s.weight) {
+        tsBad.push(key + ' 字重 ' + st.fontName.style + '≠' + s.weight);
+      }
+      // fontSize 必须绑到 size/* 变量：不绑就是第二份副本，日后在 Figma 里
+      // 调 size/h1 而样式停在旧值，同一个 h1 在两处显示两个字号
+      const bv = st.boundVariables && st.boundVariables.fontSize;
+      if (!bv || bv.name !== 'size/' + key) {
+        tsBad.push(key + ' fontSize 未绑 size/' + key);
+      }
+    }
+    check(
+      '6 档 Text Style 已注册且字号/行高/字重/变量绑定逐项取自 TYPE_SCALE（此前样式面板为空，设计师点不到「h1」）',
+      tsBad.length === 0 && ts1.created === Object.keys(M.TYPE_SCALE).length,
+      tsBad.length ? tsBad.join('; ')
+        : '新建 ' + ts1.created + ' 档，前缀 ' + M.TEXT_STYLE_PREFIX + '，fontSize 全绑 size/*'
+    );
+
+    // ② Paint Style 一档一 role，且填充必须真绑变量。
+    //    只比色值是不够的：变量缺失时 paintOf() 回退的字面色与绑定成功的色值
+    //    完全相同，画面永远正确而 Token 联动永远失效（见 samePaint 注释）
+    const psBad = [];
+    const wantRoles = []
+      .concat(Object.keys(M.SEMANTIC_COLORS).map((k) => 'color/' + k))
+      .concat(Object.keys(M.CATEGORY_COLORS).map((k) => 'category/' + k))
+      .concat(Object.keys(M.CATEGORY_DEEP).map((k) => 'category/' + k + '-deep'));
+    for (const role of wantRoles) {
+      const st = M.PAINT_STYLE_CACHE[role];
+      if (!st) { psBad.push(role + ' 未注册'); continue; }
+      if (st.name !== role) psBad.push(role + ' 名不符:' + st.name);
+      const p = st.paints[0];
+      if (!p || p.type !== 'SOLID') { psBad.push(role + ' 无 SOLID 填充'); continue; }
+      const bound = p.boundVariables && p.boundVariables.color;
+      if (!bound || bound.name !== role) psBad.push(role + ' 填充未绑同名变量');
+    }
+    check(
+      'Paint Style ' + wantRoles.length + ' 档已注册且每档填充绑同名 COLOR 变量（Variable 供绑定、Style 供取用，是两个面板，缺后者设计师只能吸管吸出脱管的字面色）',
+      psBad.length === 0 && ps1.created === wantRoles.length,
+      psBad.length ? psBad.join('; ') : '新建 ' + ps1.created + ' 档，role 名与变量面板一致'
+    );
+
+    // ③ 幂等第二轮：值未变时必须全部走 reused，一个都不许重建。
+    //    若做成「每次新建」，重跑批次 1 会在面板里堆出两套同名样式，
+    //    设计师点到的是哪一套完全不确定 —— 而画布看不出任何异常
+    const ts2 = await M.ensureTextStyles();
+    const ps2 = await M.ensurePaintStyles();
+    check(
+      '样式注册幂等：第二轮全部 reused、零新建（否则重跑批次 1 会在面板堆出两套同名样式）',
+      ts2.created === 0 && ts2.updated === 0 && ts2.reused === ts1.created
+        && ps2.created === 0 && ps2.updated === 0 && ps2.reused === ps1.created,
+      'Text 新建' + ts2.created + '/沿用' + ts2.reused + '/改值' + ts2.updated
+        + '；Paint 新建' + ps2.created + '/沿用' + ps2.reused + '/改值' + ps2.updated
+    );
+
+    // ④ 「值对齐」而非「存在即跳过」：手动把一档样式改成旧值，重跑须被改写。
+    //    这是本项的核心语义 —— PRD 调了字阶后重跑，Variables 会更新而样式若
+    //    停在旧值，同一个 h1 就在两个面板里显示两个字号
+    M.TEXT_STYLE_CACHE.h1.fontSize = 99;
+    M.PAINT_STYLE_CACHE['color/primary'].paints = [{ type: 'SOLID', color: { r: 1, g: 0, b: 0 } }];
+    const ts3 = await M.ensureTextStyles();
+    const ps3 = await M.ensurePaintStyles();
+    check(
+      '样式幂等语义是「值对齐」：被改脏的一档在重跑时被改写回真源值（不是存在即跳过 —— 那样改字阶后样式面板会停在旧值）',
+      ts3.updated === 1 && ts3.created === 0
+        && M.TEXT_STYLE_CACHE.h1.fontSize === M.TYPE_SCALE.h1.size
+        && ps3.updated === 1 && ps3.created === 0,
+      'Text 改值' + ts3.updated + '（h1 回到 ' + M.TEXT_STYLE_CACHE.h1.fontSize
+        + '）；Paint 改值' + ps3.updated
+    );
+
+    // ⑤ planStats().styles 必须与实际注册数一致：batchSetup 用它做硬校验，
+    //    分项算错会让 UI 首屏与摘要串报出假数（I4 的病根）
+    const stStat = M.planStats().styles;
+    check(
+      'planStats().styles 分项与实际注册数一致（首屏与摘要串报的样式数不能是假的）',
+      stStat.text === Object.keys(M.TYPE_SCALE).length
+        && stStat.paint === wantRoles.length
+        && stStat.total === stStat.text + stStat.paint,
+      'Text ' + stStat.text + ' + Paint ' + stStat.paint + ' = ' + stStat.total
+    );
+
+    // ⑥ [反向] 本轮刻意不给画布节点挂 styleId（用户 2026-09-01 拍定「只注册」）。
+    //    这条断言把该边界钉住：text() 若哪天开始设 textStyleId，就意味着
+    //    有人在 dynamic-page 模式下走了同步赋值 —— 实机会直接抛异常，
+    //    而离线 mock 不抛，属最危险的一类假绿。故此处主动拦一道
+    const probeText = M.text('样式边界探测', 'h1');
+    check(
+      '[反向] text() 不给节点设 textStyleId（dynamic-page 下同步赋值实机抛错，须改 setTextStyleIdAsync；本轮边界是只注册样式）',
+      !probeText.textStyleId,
+      probeText.textStyleId ? '已设 styleId=' + probeText.textStyleId : '未设，符合本轮边界'
+    );
+  }
 
   console.log('\n=== splash-screen 实跑 ===');
   const splash = M.buildSplash();
