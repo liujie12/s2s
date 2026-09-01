@@ -1440,6 +1440,259 @@ var BUTTON_SPECS = {
 };
 
 /**
+ * 全部「小圆角块状标记」的规格真源（2026-09-01 条目 [77]，M4-3e 第一层 ①）。
+ *
+ * 为什么需要这张表：PRD §1.7 把「标签/徽章」列为六个必做组件之一，但稿内
+ * 此前只有 11 处各自手搓的容器、没有任何共享规格。写规范文档时若逐处照抄，
+ * 产出的会是一张 11 行互相矛盾的表；若强行取一套值套到 11 处，则会把语义
+ * 不同的东西压成同一个组件。
+ *
+ * 为什么分四族而不是一套（2026-09-01 逐字读完 11 处后的修正结论）：
+ * 这 11 处并非同类，混在一起数才显得「毫无规律」。按语义拆开后，
+ * 只有 A 族内部是真的不一致 —— 另三族要么样本量为 1、要么本来就已自洽、
+ * 要么根本不是标签。故本表按族分栏：A 族给出归一后的取值并回改调用点，
+ * B/C 族只登记现状，D 族声明「不属本表管辖」并指回 BUTTON_SPECS。
+ *
+ * usage 写「什么时候该用哪一族」，nodes 写该族当前的实处名 ——
+ * 后者是给规范文档与日后回归用的：新写一处胶囊若不在此列，说明漏登记了。
+ */
+var TAG_SPECS = {
+  // A 族：可点选择胶囊 —— 一排里选一个，点了会换选中项
+  chip: {
+    padV: SPACING.xs, padH: SPACING.sm, radius: RADIUS.full, scale: 'caption',
+    // 非选中态归一为「background 底 + text-secondary 字」：回改前三种画法并存
+    // （无填充无描边 / 无填充+border 描边 / background 填充），三者在同一屏里
+    // 会被读成三种不同的可点性强弱，而它们其实是同一件事
+    offFill: 'color/background', offText: 'color/text-secondary',
+    // 选中态两种合法底色：通用主色，或该胶囊代表某个分类时用该分类的 deep 档
+    onFill: 'color/primary', onFillByCategory: 'deep', onText: 'color/surface',
+    nodes: ['_radius-<档>', '_sd-<供需>', '_lv1-<分类>', '_mode-<模式>'],
+    usage: '一排中选一个的可点筛选项；点击后仅换选中态，不触发页面跳转'
+  },
+  // B 族：静态标记 —— 不可点，只是给旁边的内容盖一个戳
+  mark: {
+    padV: TIGHT_GAP, padH: SPACING.xs, radius: RADIUS.sm, scale: 'caption',
+    fill: 'color/accent', textColor: 'color/surface',
+    nodes: ['_ai-tag'],
+    // 如实声明样本量：这一族目前只有一处实物，本规格是「立规」而非「归纳」，
+    // 第二处用例出现时须回头核对它是否真适用，而不是默认照抄
+    usage: '盖在内容旁的不可点标记，如「AI 推测」。当前全稿仅 1 处实物，规格系新立'
+  },
+  // C 族：浮层提示条 —— 悬在地图上的一句话说明，不可点
+  hintBar: {
+    padV: SPACING.xs, padH: SPACING.sm, radius: RADIUS.sm,
+    fill: 'color/surface', textColor: 'color/primary-dark',
+    // 字阶按节点分列而非取单值：两处容器取值逐项相同，但文字一个 caption(11)
+    // 一个 small(12)。1px 之差不值得改动已验收画面（且 _hint 是一句需读完的
+    // 操作指引、_map-caption 是一句状态说明，前者略大有其道理），
+    // 故如实登记两值，不假装它们已经统一
+    scale: 'caption',
+    scaleByNode: { '_map-caption': 'caption', '_hint': 'small' },
+    nodes: ['_map-caption', '_hint'],
+    usage: '悬浮在地图之上的一句话提示，白底以从底图中浮出；容器取值两处一致，字阶两处不同'
+  },
+  // D 族：圆角虽为 full 但语义是按钮/容器，不属标签
+  notTag: {
+    nodes: ['_sheet-reset', '_sheet-confirm', '_filter-summary', '_overlay-cats'],
+    // 登记它们是为了防止下一个人像我一样把它们数进标签里。其中前两个是
+    // 手搓按钮、绕过了 BUTTON_SPECS，那是另一个问题（真源表被旁路）
+    usage: '圆角 full 但语义为按钮或容器，规格不由本表定义；按钮档位一律查 BUTTON_SPECS'
+  }
+};
+
+/**
+ * 全部纯色小圆点的边长档位登记（2026-09-01 条目 [77]，M4-3e 第一层 ②）。
+ *
+ * 这是「登记」而非「统一」：8px 的未读红点与 12px 的 Pin 角标本就不该同尺寸 ——
+ * 前者是余光可见即可的存在性提示，后者要在花花绿绿的底图上仍能辨色。
+ * 强行统一成一档会牺牲其中一头。本表的作用是让「共有几档、每档为什么」
+ * 变成可查的事实，而不是散落在 12 处 box() 调用的字面数字里。
+ *
+ * 唯一一处真正的归并：completenessTag 原先按字阶派生 round(size*0.75)，
+ * small(12) 档算出 9px，与同页 _mi-comp-dot 的 10px 只差 1px —— 同一个
+ * 「完整度」语义在一屏内出现 9 和 10 两个值，读起来像两套东西而非一套。
+ * 故派生公式改为查本表的 status 档，固定 10px。
+ */
+var DOT_SIZES = {
+  unread:  { size: 8,  nodes: ['_bell-badge', '_unread', '_summary-dot'], usage: '存在性提示：只需被余光扫到，不承载可辨识的内容' },
+  status:  { size: 10, nodes: ['_sd-dot', '_mi-comp-dot', '_completeness-<档>'], usage: '状态色点：需在正文旁清晰辨色（完整度三档、供需实心/空心）' },
+  onMap:   { size: 12, nodes: ['_legend-dot', '_layer-<分类> 内的 _dot'], usage: '地图与图例上的分类色点：底图有色，须更大才辨得出色相' },
+  pinBadge:{ size: 12, nodes: ['_completeness-<档>（Pin 角标）'], usage: 'Pin 右上角完整度角标：叠在分类色圆底上，须压住底色' }
+};
+
+/**
+ * 输入框两套规格的真源（2026-09-01 条目 [77]，M4-3e 第一层 ④）。
+ *
+ * 为什么是两栏并列而不是归一成一套：读完三个实处后确认，
+ * field/selectField（44 高 / R-md / surface 底 / body 字 / 描边恒为 border）与
+ * navSearchBox（32 高 / R-full / background 底 / small 字 / 描边随激活切色）
+ * 在 5 个维度上都不同，而这个不同是**有依据的**：PRD :1069 明写导航栏搜索框
+ * 取 32 高（「导航栏 48 上下各留 8 呼吸；输入框横向命中区宽 250px，实际可点
+ * 面积远超 44×44 等效值，不适用图标按钮的 44px 下限」）。把两者强行压成一套，
+ * 要么让表单框缩到 32 破 PRD §1.8 的触控下限，要么让导航栏被 44 高的框撑破。
+ * 故本表分栏承载，并把「为什么允许两套」写进 usage —— 规范文档里若只出现
+ * 一行「输入框 44 高」，读到导航栏那个 32 高的框时只会当成画错了。
+ *
+ * ⚠️ 样本量如实标注（同 TAG_SPECS.mark 的处理）：formField 的
+ * default / filled 两态与 navSearch 的两态**在稿内有实处**，是归纳；
+ * focus / error / disabled **全稿零实处**，是本轮新立的规格。规范文档须照此
+ * 区分，不能让接棒人以为三态是从既有画面里量出来的。
+ *
+ * 三态的取值依据（都不靠颜色单通道，PRD :420 WCAG AA）：
+ * - focus：描边由 border 换 primary 且加粗到 1.5 —— 换色 + 加粗双通道。
+ *   稿内已有同型先例：navSearchBox 激活态换 primary 描边（本文件 :1709）、
+ *   三级树 checkbox 未选态用 1.5 粗描边（:3576）；
+ * - error：描边取 error-text（作文字实测 6.47:1，PRD :220）而非 error
+ *   （作图形仅 3.76:1，PRD :221 已标须补偿），并**强制配一行错误文案**
+ *   —— 颜色之外必须有文字通道，色盲用户才读得到「哪里错了」；
+ * - disabled：底色由 surface 降为 background、内文用 text-placeholder。
+ *   不套按钮那档 40% 不透明度（BUTTON_SPECS.disabled）—— 按钮整块不可读
+ *   无妨，输入框的**标签仍须读得清**，故标签色保持 text-secondary 不降级。
+ *   placeholder 压 background 属占位符豁免（PRD :225-226 同类）。
+ */
+var FIELD_SPECS = {
+  formField: {
+    h: 44, radius: RADIUS.md, padH: SPACING.md, gap: SPACING.xs,
+    labelScale: 'small', labelColor: 'color/text-secondary', textScale: 'body',
+    nodes: ['field/<字段名> 内的 _input（可键入）', 'field/<字段名> 内的 _select（开选择器，框内右端多一个 ›）'],
+    usage: '表单字段，6 处实处（登录页 3 + 发布页 2 + 地址补全 1）。44 高即 PRD §1.8 触控下限，'
+      + '宽度默认 CANVAS.w - lg*2 = 358（页面用 lg 内边距时的可用宽），xl 内边距的登录页须显式传宽',
+    states: {
+      'default':  { sample: '有实处', fill: 'color/surface',    stroke: 'color/border',     strokeWeight: 1,   textColor: 'color/text-placeholder', usage: '空值且未聚焦：框内是 placeholder 灰字' },
+      filled:     { sample: '有实处', fill: 'color/surface',    stroke: 'color/border',     strokeWeight: 1,   textColor: 'color/text-primary',     usage: '已有值：同一位置靠色阶从灰转实，与 selectField 已选态同口径' },
+      focus:      { sample: '本轮新立', fill: 'color/surface',  stroke: 'color/primary',    strokeWeight: 1.5, textColor: 'color/text-primary',     usage: '光标在框内：换主色描边 + 加粗，不靠颜色单通道' },
+      error:      { sample: '本轮新立', fill: 'color/surface',  stroke: 'color/error-text', strokeWeight: 1.5, textColor: 'color/text-primary',     hintColor: 'color/error-text', usage: '校验失败：描边换色 + 框下必配一行 caption 错误文案（_field-error）' },
+      disabled:   { sample: '本轮新立', fill: 'color/background', stroke: 'color/border',   strokeWeight: 1,   textColor: 'color/text-placeholder', usage: '不可编辑：底色降为 background；标签不降级，仍须读得清' }
+    }
+  },
+  navSearch: {
+    h: 32, radius: RADIUS.full, padH: SPACING.md, gap: SPACING.xs,
+    labelScale: null, labelColor: null, textScale: 'small',
+    nodes: ['_nav-search（内含 _search-icon 14 / _search-text / 激活时 _search-clear 12）'],
+    usage: '导航栏内嵌搜索框，1 处实处（home 系列顶栏）。32 高有 PRD :1069 明文依据，'
+      + '不适用 44px 下限；无独立标签（占位文案即引导），宽度由调用方 layoutGrow=1 拉满',
+    states: {
+      'default': { sample: '有实处', fill: 'color/background', stroke: 'color/border',  strokeWeight: 1, textColor: 'color/text-placeholder', iconColor: 'color/text-placeholder', usage: '无关键词：图标与文案同为 placeholder 灰' },
+      active:    { sample: '有实处', fill: 'color/background', stroke: 'color/primary', strokeWeight: 1, textColor: 'color/text-primary',     iconColor: 'color/primary',          usage: '已输入关键词：主色描边 + 实色文字 + 右端补清空叉，让「正在过滤」在顶栏就有回执' }
+    }
+  }
+};
+
+/**
+ * 空态与加载态里鸭子符号的三档体量登记（2026-09-01 条目 [77]，M4-3e 第一层 ⑤）。
+ *
+ * 为什么必须显式登记：稿内三处各写一个字面数字（40 / 64 / 96），而
+ * duckSymbol() 的档位是**由尺寸单向推导**的（≥96 full / 64–95 compact / <64 mini，
+ * 见 :1262 与 PRD §1.4.1.2「不得各档位另画新形」）。也就是说这三个数字不只是
+ * 「多大」，它们同时决定了鸭子用哪一套形——40 会拿到 mini（圆盘 + 实体鸭头），
+ * 96 拿到 full（双环负形）。谁若把 40 顺手改成 64，形会整体换掉而看不出是为什么。
+ * 本表把「这一档为什么是这个数」变成可查的事实。
+ *
+ * ⚠️ loading 档不是空态：它是「还在加载」，与另两档语义相反（一个说「等一下」、
+ * 一个说「没有了」）。之所以放同一张表，是因为三档共用同一个 duckSymbol 与
+ * 同一套尺寸推导规则，分表登记会让「64 属于哪一档」再次无处可查。
+ *
+ * ⚠️ terminal 档在稿内的实处是过程态终态空页（:4380 一段），它**没有**走
+ * 下面的 emptyState() —— 那处外层是 surface 卡片容器、正文要 FILL、后面还跟
+ * 按钮组，且六档过程态共用同一段构造代码，套进来要动到另五档。故那处只把
+ * 鸭子尺寸改读本表（值不变），画面零变化。PRD :1686 明写的「我的发布」空页
+ *（鸭子插图 + 「还没发布，立即发一条 →」）**稿内尚无实现**，是 emptyState()
+ * 的 terminal 档目前唯一的目标消费方，列为遗留项，本轮不补（补它是新增画面，
+ * 超出 M4-3e 第一层「只收口既有规格」的边界）。
+ */
+var EMPTY_STATE_SIZES = {
+  inline:   { duck: 40, tier: 'mini',     leadScale: 'caption', leadColor: 'color/text-secondary', padV: SPACING.xl, gap: SPACING.sm, sample: '有实处（4 处）', usage: '列表内嵌收尾态「没有更多了」（PRD §6.7 :1291）。40 落 mini 档：它是页脚配角，用 96 的完整版会抢主列表的视觉重心' },
+  loading:  { duck: 64, tier: 'compact',  leadScale: 'body',    leadColor: 'color/text-primary',   padV: null,       gap: null,       sample: '有实处（1 处）', usage: '注意，非空态：兜底过程态 0–1 秒骨架档的缺省图（PRD §6.4.4）。64 落 compact 档，既区别于终态的 96，又不至于小到看成页脚' },
+  terminal: { duck: 96, tier: 'full',     leadScale: 'h3',      leadColor: 'color/text-primary',   padV: SPACING.xl, gap: SPACING.md, sample: '规格系新立（稿内唯一实处未走构造器，见上）', usage: '整页空态：一条都没有，页面重心就是它。96 是 full 档下限，PRD :129 明写完整版用于「空态/缺省图（§6.4.4）」' }
+};
+
+/**
+ * 构造一组空态（鸭子 + 主文案 + 可选副文案 + 可选主操作）（2026-09-01 条目 [77]）。
+ *
+ * 为什么要收成构造器：改前空态的规格只以三个字面数字的形式散在三处，
+ * 「空态该长什么样」这句话在稿内没有任何一处可指。收成唯一出口后，
+ * 下一处要画空态的人不必再自行决定鸭子多大、文案用几号字。
+ *
+ * 刻意不含外层卡片容器：三处实处的外壳各不相同（收尾条是无底裸组、终态空页
+ * 外面套 surface 卡片）。把外壳也并进来就得开一堆开关，而外壳恰恰是各页
+ * 版式自己的事，不属「空态」这个组件的规格。
+ *
+ * @param {string} tierKey EMPTY_STATE_SIZES 的档位键：inline / terminal
+ *   （loading 档不走本构造器 —— 它是加载中而非空态，且实处外层是卡片容器）
+ * @param {string} lead 主文案，如「没有更多了」「还没发布」
+ * @param {Object} [opt] 可选项
+ * @param {number} [opt.w] 组宽；省略时按内容 hug。挂进带 lg 内边距的 _body 时
+ *   须传 CANVAS.w - SPACING.lg * 2，否则满宽会把容器顶到溢出
+ * @param {string} [opt.sub] 副文案，caption 次级灰，补充「为什么空」
+ * @param {FrameNode} [opt.action] 主操作按钮节点，由调用方用 button() 造好传入
+ *   （不在此处造：按钮宽度取决于所在容器可用宽，本函数不该替它算）
+ * @param {string} [opt.name] 覆写节点名。仅供 listEndRow 沿用其历史名 `_list-end`
+ *   使用 —— 那个名字已被 4 处探针断言与渲染核对引用，为「让节点名更整齐」去改它
+ *   会动到已验收的判据，收益远不及风险
+ * @returns {FrameNode} 纵排居中的空态组
+ */
+function emptyState(tierKey, lead, opt) {
+  opt = opt || {};
+  var S = EMPTY_STATE_SIZES[tierKey];
+  // 档位对不上就当场炸掉，不静默兜底：兜底会让一个体量错误的鸭子悄悄上屏，
+  // 而尺寸同时决定用哪一套形（见 EMPTY_STATE_SIZES 注释）
+  if (!S || !S.padV) {
+    throw new Error('emptyState() 档位「' + tierKey + '」不可用，见 EMPTY_STATE_SIZES（loading 档不走本构造器）');
+  }
+  var g = box(opt.name || ('_empty-state/' + tierKey), 'VERTICAL', {
+    w: opt.w, padTop: S.padV, padBottom: S.padV, gap: S.gap, align: 'CENTER'
+  });
+  g.appendChild(duckSymbol(S.duck));
+  g.appendChild(text(lead, S.leadScale, S.leadColor));
+  if (opt.sub) g.appendChild(text(opt.sub, 'caption', 'color/text-secondary'));
+  if (opt.action) g.appendChild(opt.action);
+  return g;
+}
+
+/**
+ * 构造一枚 A 族可点选择胶囊（2026-09-01 条目 [77]，TAG_SPECS.chip 的唯一构造器）。
+ *
+ * 为什么要有这个函数而不是让 4 处调用点各自读 TAG_SPECS：只要还是各自 box()，
+ * 下一处新写的胶囊仍然可以不查表就手搓，表就退化成一份「建议」。收成构造器后
+ * 它是这一族在本文件内的唯一出口，探针也能按 `_chip-tag/` 前缀点名核对。
+ *
+ * 名称前缀刻意统一为 `_chip-tag/`：回改前四处叫 `_radius-*` / `_sd-*` /
+ * `_lv1-*` / `_mode-*`，互相看不出是同一族。加统一前缀后，Figma 图层树里
+ * 一眼可见它们同属一族，而 `/` 后的原名仍保留各自语义（探针与渲染核对靠它）。
+ *
+ * @param {string} slug 该胶囊的语义名，拼进节点名，如 'radius-5km'、'sd-resource'
+ * @param {boolean} selected 是否为选中态
+ * @param {string} [onFill] 覆写选中态底色 role；省略时取 TAG_SPECS.chip.onFill
+ *   （主色）。代表某个分类的胶囊须传 'category/<key>-deep'，以承载分类色语义
+ * @returns {FrameNode} 横排的胶囊容器（文字与图标由调用方 appendChild）
+ */
+function chipTag(slug, selected, onFill) {
+  var S = TAG_SPECS.chip;
+  return box('_chip-tag/' + slug, 'HORIZONTAL', {
+    padTop: S.padV, padBottom: S.padV, padLeft: S.padH, padRight: S.padH,
+    gap: SPACING.xs, radius: S.radius,
+    // 非选中态一律给 background 实底：回改前有一处是「无填充」，在白底卡片上
+    // 等于完全看不出这里可点，而它与相邻的选中项本该是一组同类可点项
+    fill: selected ? (onFill || S.onFill) : S.offFill,
+    align: 'CENTER', justify: 'CENTER'
+  });
+}
+
+/**
+ * 取 A 族胶囊内文字应使用的颜色 role（2026-09-01 条目 [77]）。
+ *
+ * 单独抽一个函数是因为 4 处调用点回改前的文字色各不相同（surface / primary /
+ * text-secondary / primary-dark 混用），若只收容器不收文字，规范里的「选中 =
+ * 白字、未选 = 次级灰字」仍会与画布分叉。
+ *
+ * @param {boolean} selected 是否为选中态
+ * @returns {string} 颜色 role
+ */
+function chipTagInk(selected) {
+  return selected ? TAG_SPECS.chip.onText : TAG_SPECS.chip.offText;
+}
+
+/**
  * 创建一个通用按钮（PRD §1.4.6 六类按钮规范）
  * @param {string} label 按钮文案
  * @param {string} variant primary/secondary/ghost/danger/capsule/disabled
@@ -1575,21 +1828,24 @@ function navBar(title, opt) {
  */
 function navSearchBox(placeholder, value) {
   var active = !!value;
+  // 2026-09-01 条目 [77]：改读 FIELD_SPECS.navSearch，取值与改前逐项相同
+  //（32 / R-full / background 底 / md 内边距 / xs 间距 / small 字 /
+  // 描边与文字色随激活切换）。分栏登记而非与 formField 归一，理由见 FIELD_SPECS
+  var S = FIELD_SPECS.navSearch;
+  var st = S.states[active ? 'active' : 'default'];
   // w 与 h 必须都传：box() 里 opt.h 只设 primaryAxisSizingMode，
   // 而横向 Auto Layout 的 primary 轴是宽度，counter 轴才是高度。
   // 只传 h 会让 counterAxisSizingMode 停在 AUTO，高度按内容 hug 塌到 18px。
   // 传 w 是为了让宽度先成为 FIXED，随后由调用方的 layoutGrow=1 拉满剩余空间
   var b = box('_nav-search', 'HORIZONTAL', {
-    w: 180, h: 32, radius: RADIUS.full, fill: 'color/background',
+    w: 180, h: S.h, radius: S.radius, fill: st.fill,
     // 激活态加主色描边，让「正在按关键词过滤」这件事在导航栏就有视觉回执
-    stroke: active ? 'color/primary' : 'color/border',
-    padLeft: SPACING.md, padRight: SPACING.md, gap: SPACING.xs,
+    stroke: st.stroke, strokeWeight: st.strokeWeight,
+    padLeft: S.padH, padRight: S.padH, gap: S.gap,
     align: 'CENTER'
   });
-  b.appendChild(svgIcon('_search-icon', ICON_PATHS.search,
-    active ? 'color/primary' : 'color/text-placeholder', 14));
-  var label = text(value || placeholder, 'small',
-    active ? 'color/text-primary' : 'color/text-placeholder');
+  b.appendChild(svgIcon('_search-icon', ICON_PATHS.search, st.iconColor, 14));
+  var label = text(value || placeholder, S.textScale, st.textColor);
   label.name = '_search-text';
   // 先解掉宽度 hug 再给 layoutGrow：text() 出来的节点 textAutoResize 默认是
   // WIDTH_AND_HEIGHT（宽高双 hug），宽度既然由内容决定，layoutGrow 就拉不动它。
@@ -1631,7 +1887,8 @@ function navBell(unread) {
   icon.y = 2 + inset;
   if (unread > 0) {
     var dot = box('_bell-badge', 'HORIZONTAL', {
-      w: 8, h: 8, radius: RADIUS.full, fill: 'color/error',
+      // 2026-09-01 条目 [77]：字面 8 改为读 DOT_SIZES.unread（值不变）
+      w: DOT_SIZES.unread.size, h: DOT_SIZES.unread.size, radius: RADIUS.full, fill: 'color/error',
       stroke: 'color/surface', strokeWeight: 1.5
     });
     b.appendChild(dot);
@@ -1763,15 +2020,53 @@ function pinRaw(catRole, supplyDemand, completeness, selected, showCompleteness)
   if (completeness && showCompleteness) {
     var dotRole = { green: 'color/success', yellow: 'color/warning', red: 'color/error' }[completeness];
     var badge = box('_completeness-' + completeness, 'HORIZONTAL', {
-      w: 12, h: 12, radius: RADIUS.full, fill: dotRole,
+      // 2026-09-01 条目 [77]：字面 12 改为读 DOT_SIZES.pinBadge（值不变）
+      w: DOT_SIZES.pinBadge.size, h: DOT_SIZES.pinBadge.size, radius: RADIUS.full, fill: dotRole,
       stroke: 'color/surface', strokeWeight: 2
     });
     p.appendChild(badge);
-    badge.x = size - 12;
-    badge.y = size - 12;
+    // 角标贴 Pin 右下角：偏移量与角标边长同源，改档位时不会漏改这两行
+    badge.x = size - DOT_SIZES.pinBadge.size;
+    badge.y = size - DOT_SIZES.pinBadge.size;
   }
   return p;
 }
+
+/**
+ * 列表卡右侧「元数据」三槽位登记（2026-09-01 条目 [77]，M4-3e 第一层 ③）。
+ *
+ * 为什么必须拆开：改造前 card() 的第四参叫 tag，是一个裸字符串，而它在三处
+ * 调用点承载的是三种性质不同的信息 —— 列表页传供需属性（`资源`）、我的发布
+ * 传生命周期状态（`在架` / `已下架` / `草稿`）、空状态兜底过程态传时间新鲜度
+ *（`今天更新`）。稿上三者长得一模一样，评审无从判断「这个位置到底该放什么」，
+ * 交给开发时更会被读成同一个字段。
+ *
+ * 为什么仍是纯文字、不套标签容器（用户 2026-09-01 裁定）：这三处是「这条信息
+ * 的元数据」而非可点标签。套上 TAG_SPECS.mark 那种带底色的静态标记容器，会把
+ * 它的视觉权重提到与卡片标题同级；而列表卡是 M3 已验收内容里出现面积最大的
+ * 组件，不该为了「看起来更像组件」去改它。故本次**只拆参数，画面零变化**：
+ * 三槽位的字阶与颜色与改造前逐项相同，唯一新增的是各自的节点名。
+ *
+ * 节点名是本次拆分的实际产出：Figma 图层树与规范文档从此可以指着
+ * `_meta-lifecycle` 说「这一格放状态、不放别的」，而改造前它只叫 Text。
+ *
+ * 顺序即渲染顺序：供需 → 生命周期 → 新鲜度。当前每处调用只填一格，
+ * 故顺序在画面上不体现；登记它是为了三格同填时不必再临时决定谁在前。
+ */
+var CARD_META_SLOTS = [
+  {
+    key: 'supplyDemand', node: '_meta-supply-demand', scale: 'caption', color: 'color/primary',
+    usage: '供需属性：资源 / 需求。列表页与收藏页用，与页签当前筛选值必须一致'
+  },
+  {
+    key: 'lifecycle', node: '_meta-lifecycle', scale: 'caption', color: 'color/primary',
+    usage: '生命周期状态：在架 / 已下架 / 草稿（PRD §8.6 状态机）。仅「我的发布」用'
+  },
+  {
+    key: 'freshness', node: '_meta-freshness', scale: 'caption', color: 'color/primary',
+    usage: '时间新鲜度：今天更新 / 昨天更新 / 3 天前。空状态兜底过程态的结果卡用'
+  }
+];
 
 /**
  * 创建一个列表卡片（用于 list-screen / 我的发布 / 我的收藏）
@@ -1786,14 +2081,22 @@ function pinRaw(catRole, supplyDemand, completeness, selected, showCompleteness)
  * @param {string} title 标题
  * @param {string} sub 副标题（模板字段摘要）
  * @param {string} catRole 分类色 role，用于左侧色条
- * @param {string} tag 右上角标签文案，如 "资源" / "需求"
+ * @param {Object} meta 右侧元数据，按 CARD_META_SLOTS 的三个具名槽位填（2026-09-01
+ *        条目 [77] 由裸字符串 tag 改造而来）。三格皆为可选，各自渲染成一个
+ *        独立命名的纯文本节点；一格都不填时右侧不生成任何节点。
+ *        为什么改成对象而不是三个位置参数：位置参数第 4、5、6 个都是同型字符串，
+ *        调用点写 card(t, s, c, null, '在架') 这种跳格调用完全合法却读不出含义，
+ *        而这恰是本次要消除的病症本身
+ * @param {string} [meta.supplyDemand] 供需属性，如 "资源" / "需求"
+ * @param {string} [meta.lifecycle] 生命周期状态，如 "在架" / "已下架" / "草稿"
+ * @param {string} [meta.freshness] 时间新鲜度，如 "今天更新"
  * @param {string} [completeness] 完整度档位 'green'|'yellow'|'red'。传入时副标题
  *        前置一个矢量完整度标识（条目 [70]）。之所以做成参数而非让调用方把
  *        「完整度 🟢｜」拼进 sub 字符串：拼进字符串就等于把状态语义降级成文案，
  *        既换不掉 emoji，也无法参与 §1.4.2 的对比度体系
  * @returns {FrameNode} 卡片节点
  */
-function card(title, sub, catRole, tag, completeness) {
+function card(title, sub, catRole, meta, completeness) {
   var c = box('card/' + title, 'HORIZONTAL', {
     w: CANVAS.w - SPACING.lg * 2, pad: SPACING.lg, gap: SPACING.md,
     fill: 'color/surface', radius: RADIUS.lg, align: 'MIN'
@@ -1818,7 +2121,17 @@ function card(title, sub, catRole, tag, completeness) {
     main.appendChild(text(sub, 'small', 'color/text-secondary'));
   }
   c.appendChild(main);
-  c.appendChild(text(tag, 'caption', 'color/primary'));
+  // 右侧元数据：按 CARD_META_SLOTS 逐槽位渲染，字阶与颜色全部取自表，
+  // 调用点无从自定 —— 三处若各自传色，「元数据一律 caption/primary」这条
+  // 规格就又只存在于注释里了。节点名取自表，是本次拆分唯一的画面外产出
+  var m = meta || {};
+  for (var mi = 0; mi < CARD_META_SLOTS.length; mi++) {
+    var slot = CARD_META_SLOTS[mi];
+    if (!m[slot.key]) continue;
+    var mt = text(m[slot.key], slot.scale, slot.color);
+    mt.name = slot.node;
+    c.appendChild(mt);
+  }
   return c;
 }
 
@@ -2947,6 +3260,9 @@ function fabButton(name, child, fillRole) {
  * @returns {FrameNode} 摘要胶囊节点
  */
 function filterSummaryChip(summary) {
+  // 2026-09-01 条目 [77]：本节点是 TAG_SPECS.notTag（D 族）的实处 —— 名字带
+  // Chip、圆角为 full，但它是「点开重新展开筛选」的入口，语义是按钮 + 容器，
+  // 不是一排里选一个的胶囊，故取值不由 TAG_SPECS 定义（内边距 sm/md 也与 A 族不同）。
   var chip = box('_filter-summary', 'HORIZONTAL', {
     padTop: SPACING.sm, padBottom: SPACING.sm,
     padLeft: SPACING.md, padRight: SPACING.md,
@@ -2957,7 +3273,8 @@ function filterSummaryChip(summary) {
     offset: { x: 0, y: 2 }, radius: 8, spread: 0, visible: true, blendMode: 'NORMAL'
   }];
   chip.appendChild(box('_summary-dot', 'HORIZONTAL', {
-    w: 8, h: 8, radius: RADIUS.full, fill: 'color/primary'
+    // 2026-09-01 条目 [77]：字面 8 改为读 DOT_SIZES.unread（值不变）
+    w: DOT_SIZES.unread.size, h: DOT_SIZES.unread.size, radius: RADIUS.full, fill: 'color/primary'
   }));
   chip.appendChild(text(summary, 'caption', 'color/primary-dark'));
   // 下箭头用两条斜矩形拼不出，用字符即可（此处仅为方向提示，非语义图标）
@@ -2995,12 +3312,13 @@ function mapOverlayTop() {
   var steps = ['1km', '3km', '5km', '10km', '全城'];
   for (var r = 0; r < steps.length; r++) {
     var active = r === 2;
-    var seg = box('_radius-' + steps[r], 'HORIZONTAL', {
-      padTop: TIGHT_GAP, padBottom: TIGHT_GAP, padLeft: SPACING.sm, padRight: SPACING.sm,
-      radius: RADIUS.full, fill: active ? 'color/primary' : null,
-      align: 'CENTER', justify: 'CENTER'
-    });
-    seg.appendChild(text(steps[r], 'caption', active ? 'color/surface' : 'color/text-secondary'));
+    // 2026-09-01 条目 [77]：手搓 box 改走 chipTag（TAG_SPECS.chip 唯一出口）。
+    // 改前值 → 改后值：上下内边距 TIGHT_GAP(2) → xs(4)；非选中态 fill null →
+    // background 实底；节点名 _radius-<档> → _chip-tag/radius-<档>。
+    // 依据：M4-3e 第一层 ① A 族归一 —— 原「无填充」在白底浮层上看不出可点，
+    // 而它与相邻的选中项本是同一组可点筛选项。
+    var seg = chipTag('radius-' + steps[r], active);
+    seg.appendChild(text(steps[r], TAG_SPECS.chip.scale, chipTagInk(active)));
     radiusRow.appendChild(seg);
   }
   wrap.appendChild(radiusRow);
@@ -3009,18 +3327,23 @@ function mapOverlayTop() {
   var sdRow = box('_supply-demand', 'HORIZONTAL', { gap: SPACING.sm, align: 'CENTER' });
   var sdItems = [['资源', 'resource'], ['需求', 'demand']];
   for (var s = 0; s < sdItems.length; s++) {
-    var cap = box('_sd-' + sdItems[s][1], 'HORIZONTAL', {
-      padTop: SPACING.xs, padBottom: SPACING.xs, padLeft: SPACING.md, padRight: SPACING.md,
-      radius: RADIUS.full, fill: 'color/primary-light', stroke: 'color/primary',
-      gap: SPACING.xs, align: 'CENTER', justify: 'CENTER'
-    });
-    // 用实心/空心小圆呼应 Pin 的供需视觉语言，保持全局一致
+    // 2026-09-01 条目 [77]：手搓 box 改走 chipTag。
+    // 改前值 → 改后值：左右内边距 md(12) → sm(8)；底色 primary-light + primary
+    // 描边 → primary 实底无描边；文字 primary-dark → surface；
+    // 节点名 _sd-<供需> → _chip-tag/sd-<供需>。
+    // 依据：M4-3e 第一层 ① A 族归一。此处两枚按 PRD §6.4.1「可都选」均为已选态，
+    // 故都取选中态取值 —— 改前的「浅底 + 描边」是第三种选中画法，与另三处不一。
+    var cap = chipTag('sd-' + sdItems[s][1], true);
+    // 用实心/空心小圆呼应 Pin 的供需视觉语言，保持全局一致。
+    // 圆点配色随底色一并翻转：底改成 primary 实底后，原先的 primary 实心点会
+    // 与底色重合而整枚消失，故实心改白、空心改「透明 + 白描边」，
+    // 「实心 = 资源 / 空心 = 需求」这层语言本身不变。
     cap.appendChild(box('_sd-dot', 'HORIZONTAL', {
-      w: 10, h: 10, radius: RADIUS.full,
-      fill: sdItems[s][1] === 'resource' ? 'color/primary' : 'color/surface',
-      stroke: 'color/primary', strokeWeight: 2
+      w: DOT_SIZES.status.size, h: DOT_SIZES.status.size, radius: RADIUS.full,
+      fill: sdItems[s][1] === 'resource' ? 'color/surface' : null,
+      stroke: 'color/surface', strokeWeight: 2
     }));
-    cap.appendChild(text(sdItems[s][0], 'caption', 'color/primary-dark'));
+    cap.appendChild(text(sdItems[s][0], TAG_SPECS.chip.scale, chipTagInk(true)));
     sdRow.appendChild(cap);
   }
   wrap.appendChild(sdRow);
@@ -3036,6 +3359,10 @@ function mapOverlayTop() {
  * @returns {FrameNode} 底部悬浮分类栏（宽 358，需由调用方绝对定位）
  */
 function mapOverlayCats() {
+  // 2026-09-01 条目 [77]：本节点是 TAG_SPECS.notTag（D 族）的实处 —— 圆角 full
+  // 是为了让整条浮层从地图上浮出，它是**承载五个圆标的容器**而非标签本身，
+  // 故取值不由 TAG_SPECS 定义。内部五个 _chip-disc-* 是竖排「圆标 + 名」，
+  // 也不是 A 族胶囊（无胶囊容器、圆底另有 28px 规格）。
   var w = CANVAS.w - SPACING.lg * 2;
   var wrap = box('_overlay-cats', 'HORIZONTAL', {
     w: w, padTop: SPACING.sm, padBottom: SPACING.sm,
@@ -3098,7 +3425,8 @@ function mapLegend() {
   function row(isDemand, label) {
     var r = box('_legend-row', 'HORIZONTAL', { gap: SPACING.sm, align: 'CENTER' });
     r.appendChild(box('_legend-dot', 'HORIZONTAL', {
-      w: 12, h: 12, radius: RADIUS.full,
+      // 2026-09-01 条目 [77]：字面 12 改为读 DOT_SIZES.onMap（值不变）
+      w: DOT_SIZES.onMap.size, h: DOT_SIZES.onMap.size, radius: RADIUS.full,
       fill: isDemand ? 'color/surface' : 'color/text-secondary',
       stroke: 'color/text-secondary', strokeWeight: 2
     }));
@@ -3184,7 +3512,8 @@ function markerInfoCard(catKey, catName, title, sub, supplyDemand, completeness)
   var compLabel = { green: '信息完整', yellow: '部分字段缺失', red: '关键字段缺失' };
   var compRole = { green: 'color/success', yellow: 'color/warning', red: 'color/error' };
   comp.appendChild(box('_mi-comp-dot', 'HORIZONTAL', {
-    w: 10, h: 10, radius: RADIUS.full, fill: compRole[completeness]
+    // 2026-09-01 条目 [77]：字面 10 改为读 DOT_SIZES.status（值不变）
+    w: DOT_SIZES.status.size, h: DOT_SIZES.status.size, radius: RADIUS.full, fill: compRole[completeness]
   }));
   comp.appendChild(text('完整度：' + compLabel[completeness], 'caption', 'color/text-secondary'));
   body.appendChild(comp);
@@ -3280,14 +3609,13 @@ function catTreeSheet(catKey, depth, openIdx) {
     //
     // 只有这里换色：Pin、图例圆点、卡片圆标用的仍是原色，那些是**图形**用途
     // （门槛 3:1，五色全部达标），且 §1.4.3 明确分类色已冻结。
-    var tab = box('_lv1-' + CAT_LIST[i][0], 'HORIZONTAL', {
-      padTop: SPACING.xs, padBottom: SPACING.xs,
-      padLeft: SPACING.sm, padRight: SPACING.sm, gap: SPACING.xs,
-      radius: RADIUS.full, align: 'CENTER',
-      fill: on ? 'category/' + CAT_LIST[i][0] + '-deep' : 'color/background'
-    });
-    tab.appendChild(catIcon(CAT_LIST[i][0], on ? 'color/surface' : 'color/text-secondary', 14));
-    tab.appendChild(text(CAT_LIST[i][1], 'caption', on ? 'color/surface' : 'color/text-secondary'));
+    // 2026-09-01 条目 [77]：手搓 box 改走 chipTag。本处改前取值已与 A 族归一后
+    // 的取值完全一致（xs/sm + background 非选中底 + cat-deep 选中底），
+    // 故改后画面零变化，仅节点名 _lv1-<分类> → _chip-tag/lv1-<分类>。
+    // 依据：M4-3e 第一层 ① —— 收进唯一出口，否则表退化成一份「建议」。
+    var tab = chipTag('lv1-' + CAT_LIST[i][0], on, 'category/' + CAT_LIST[i][0] + '-deep');
+    tab.appendChild(catIcon(CAT_LIST[i][0], chipTagInk(on), 14));
+    tab.appendChild(text(CAT_LIST[i][1], TAG_SPECS.chip.scale, chipTagInk(on)));
     lv1.appendChild(tab);
   }
   sheet.appendChild(lv1);
@@ -3323,6 +3651,12 @@ function catTreeSheet(catKey, depth, openIdx) {
   var actionRow = box('_sheet-action', 'HORIZONTAL', {
     w: innerW, gap: SPACING.md, align: 'CENTER'
   });
+  // 2026-09-01 条目 [77]：本行以下两个 box 是 TAG_SPECS.notTag（D 族）的实处 ——
+  // 圆角虽为 full，语义是按钮而非标签，故**取值不由 TAG_SPECS 定义**。
+  // 已知遗留：它们是手搓按钮、绕过了 BUTTON_SPECS 真源表。改走真源表须先给
+  // BUTTON_SPECS 补一档「满宽 grow + full 圆角」（现有 capsule 档宽度写死 312），
+  // 会使 master 数由 20 变 22 而与 M4-3e 第二层的 Component Set 改动叠在一起，
+  // 故本轮只登记、不改，遗留项记在说明文档 M4-3e。
   var reset = box('_sheet-reset', 'HORIZONTAL', {
     padTop: SPACING.sm, padBottom: SPACING.sm, padLeft: SPACING.xl, padRight: SPACING.xl,
     radius: RADIUS.full, stroke: 'color/border', align: 'CENTER', justify: 'CENTER'
@@ -3406,9 +3740,13 @@ function completenessTag(level, scale, textRole) {
   var r = box('_completeness-' + level, 'HORIZONTAL', {
     gap: SPACING.xs, align: 'CENTER'
   });
-  // 圆点边长跟随字阶而非写死：写死 10px 配 h3(16px) 会偏小、配 caption(11px)
-  // 会盖过档名，反而把刚补上的文字通道压回次要位置
-  var s = Math.round((TYPE_SCALE[scale] || TYPE_SCALE.small).size * 0.75);
+  // 2026-09-01 条目 [77]：圆点边长由「按字阶派生」改为固定取 DOT_SIZES.status。
+  // 改前值 → 改后值：round(TYPE_SCALE[scale].size * 0.75)，small 档算出 9px
+  // → 固定 10px。依据：M4-3e 第一层 ② —— 同一个「完整度」语义在一屏内出现
+  // 9px（本处）与 10px（_mi-comp-dot）两个值，只差 1px 却读成两套东西。
+  // 原派生公式的初衷（配 h3 时不显小）由 DOT_SIZES 的分档承担：真需要更大的
+  // 场合走 onMap/pinBadge 档，而非让每个调用点各算一个尺寸。
+  var s = DOT_SIZES.status.size;
   r.appendChild(svgIcon('_dot', ICON_PATHS['dot-solid'], dotRole, s));
   r.appendChild(text(label, scale || 'small', textRole || inkRole));
   return r;
@@ -3486,7 +3824,8 @@ function notifyRow(iconKey, title, summary, time, unread) {
   right.appendChild(text(time, 'caption', 'color/text-secondary'));
   // 未读红点是本页唯一状态，但它不能是唯一通道：已读标题走 text-secondary、
   // 未读走 text-primary，色阶差与红点互为冗余（同 completenessTag 的理由）
-  if (unread) right.appendChild(svgIcon('_unread', ICON_PATHS['dot-solid'], 'color/error', 8));
+  // 2026-09-01 条目 [77]：字面 8 改为读 DOT_SIZES.unread（值不变）
+  if (unread) right.appendChild(svgIcon('_unread', ICON_PATHS['dot-solid'], 'color/error', DOT_SIZES.unread.size));
   r.appendChild(right);
   return r;
 }
@@ -3641,18 +3980,20 @@ function progressBar(width, ratio) {
  * 鸭子取 40px：落 duckSymbol 的 mini 档（§1.4.1.2 三档位，<64 用圆盘+实体鸭头）。
  * 收尾条是页脚配角，用 96px 完整版会抢主列表的视觉重心。
  *
+ * 2026-09-01 条目 [77]：本函数改为 emptyState('inline', ...) 的一层薄封装。
+ * 取值与改前逐项相同（鸭 40 / caption 次级灰 / 上下 xl / 间距 sm），节点名
+ * 仍显式保留 `_list-end`（4 处探针断言与渲染核对认这个名）。留着这层封装而不是
+ * 让 4 个调用点直接调 emptyState：「收尾条」有它自己的固定文案与语义，
+ * 让 4 处各自传一遍「没有更多了」，改文案时就会漏。
+ *
  * @param {number} [width] 条宽，默认满屏 390。挂进带 lg 内边距的 _body 时须传
  *   CANVAS.w - SPACING.lg * 2，否则满宽条会把容器顶到溢出
  * @returns {FrameNode} 收尾条节点
  */
 function listEndRow(width) {
-  var r = box('_list-end', 'VERTICAL', {
-    w: width || CANVAS.w, padTop: SPACING.xl, padBottom: SPACING.xl,
-    gap: SPACING.sm, align: 'CENTER'
+  return emptyState('inline', '没有更多了', {
+    w: width || CANVAS.w, name: '_list-end'
   });
-  r.appendChild(duckSymbol(40));
-  r.appendChild(text('没有更多了', 'caption', 'color/text-secondary'));
-  return r;
 }
 
 /**
@@ -3700,13 +4041,16 @@ function mapCanvas(label, bare, note, opt) {
   // 限宽 = 画布宽 − 左右各留 SPACING.lg，并把文本改为宽度 FILL + 高度自适应，
   // 长文案换行而非撑破。
   var capW = CANVAS.w - SPACING.lg * 2;
+  // 2026-09-01 条目 [77]：字面取值改为读 TAG_SPECS.hintBar（C 族第 1 处）。
+  // 改前值 → 改后值：取值逐项不变，仅改为查表。依据：M4-3e 第一层 ① ——
+  // C 族两处（本处与 _hint）改前即已逐项一致，本轮只登记该事实、不动画面。
   var cap = box('_map-caption', 'HORIZONTAL', {
     w: capW,
-    padTop: SPACING.xs, padBottom: SPACING.xs,
-    padLeft: SPACING.sm, padRight: SPACING.sm,
-    fill: 'color/surface', radius: RADIUS.sm, align: 'CENTER'
+    padTop: TAG_SPECS.hintBar.padV, padBottom: TAG_SPECS.hintBar.padV,
+    padLeft: TAG_SPECS.hintBar.padH, padRight: TAG_SPECS.hintBar.padH,
+    fill: TAG_SPECS.hintBar.fill, radius: TAG_SPECS.hintBar.radius, align: 'CENTER'
   });
-  var capText = text(label, 'caption', 'color/primary-dark');
+  var capText = text(label, TAG_SPECS.hintBar.scale, TAG_SPECS.hintBar.textColor);
   // 先解宽度 hug 再给 layoutGrow，顺序与 navSearch 的 _search-text 一致：
   // textAutoResize 默认 WIDTH_AND_HEIGHT，不改成 HEIGHT 则 layoutGrow 拉不动
   capText.textAutoResize = 'HEIGHT';
@@ -4075,10 +4419,18 @@ async function batchMap() {
     });
     // 鸭子缺省图：PRD 只在 0–1 秒与 30 秒两档写明「鸭子 IP 缺省图 / 鸭子缺省图」，
     // 其余档不画 —— 中间档是文案切换，再出一次缺省图会看成回退到第一档
+    //
+    // 2026-09-01 条目 [77]：两处字面 96 / 64 改读 EMPTY_STATE_SIZES（值不变）。
+    // 本处不套 emptyState() 构造器：外层是 surface 卡片、正文要 FILL、后面还跟
+    // 进度条与按钮组，而六档过程态共用这一段代码，套进来要动到另五档（见该表注释）
     if (step.skeleton || step.terminal) {
-      procPanel.appendChild(duckSymbol(step.terminal ? 96 : 64));
+      procPanel.appendChild(duckSymbol(step.terminal
+        ? EMPTY_STATE_SIZES.terminal.duck
+        : EMPTY_STATE_SIZES.loading.duck));
     }
-    var leadText = text(step.lead, step.terminal ? 'h3' : 'body', 'color/text-primary');
+    var leadText = text(step.lead,
+      step.terminal ? EMPTY_STATE_SIZES.terminal.leadScale : 'body',
+      'color/text-primary');
     leadText.textAutoResize = 'HEIGHT';
     procPanel.appendChild(leadText);
     leadText.layoutSizingHorizontal = 'FILL';
@@ -4092,9 +4444,12 @@ async function batchMap() {
     if (step.results) {
       // 「铺卡片」用 CONTENT fixtures 里的真实条目，不造假数据：
       // 这两档要验证的正是「结果卡与主线信息一致」，编一条会让评审对不上类目
+      // 2026-09-01 条目 [77]：第四参由裸字符串 freshness 改为具名槽位
+      //（改前 card(..., CONTENT.job.freshness) 与列表页传「资源」写法相同，
+      // 看不出这里放的是时间而不是供需）。文案与画面均不变
       procPanel.appendChild(card(CONTENT.job.title,
         CONTENT.job.path + ' · ' + CONTENT.job.distance,
-        'category/' + CONTENT.job.catKey, CONTENT.job.freshness));
+        'category/' + CONTENT.job.catKey, { freshness: CONTENT.job.freshness }));
     }
     if (step.buttons) {
       for (var bi = 0; bi < step.buttons.length; bi++) {
@@ -4280,9 +4635,11 @@ async function batchMap() {
   var listCards = [CONTENT.job].concat(CONTENT.listExtra);
   for (var lc = 0; lc < listCards.length; lc++) {
     var cd = listCards[lc];
+    // 2026-09-01 条目 [77]：第四参改具名槽位 supplyDemand。cd.kind 的取值
+    // 就是「资源」/「需求」，与新鲜度、生命周期同放一格是改造前的病症
     listBody.appendChild(card(cd.title,
       cd.path + '｜' + cd.distance + '｜' + cd.freshness,
-      'category/' + cd.catKey, cd.kind || '资源'));
+      'category/' + cd.catKey, { supplyDemand: cd.kind || '资源' }));
   }
   listBody.appendChild(annotation('列表页口径', [
     '不占底部 Tab，由首页右上视图切换进入（PRD §10.1）',
@@ -4336,18 +4693,45 @@ async function batchMap() {
  * @param {string} label 字段名
  * @param {string} placeholder 占位提示文案
  * @param {number} [width] 覆写宽度，省略时取 lg 内边距下的可用宽 358
+ * @param {Object} [opt] 状态选项（2026-09-01 条目 [77]）
+ * @param {string} [opt.state] FIELD_SPECS.formField.states 的键，省略即 default。
+ *   传 filled / focus 时须一并给 value；传 error 时须一并给 errorText
+ * @param {string} [opt.value] 已输入的值，filled / focus / error 态用
+ * @param {string} [opt.errorText] error 态框下那行错误文案；error 态必填
  * @returns {FrameNode} 表单行节点
  */
-function field(label, placeholder, width) {
+function field(label, placeholder, width, opt) {
+  opt = opt || {};
+  var S = FIELD_SPECS.formField;
+  // 状态名对不上表就当场炸掉，不静默退回 default：默认态与 focus 态在画面上
+  // 只差描边颜色，静默退回会让「三态画上去了」这件事看起来是真的（原则 56）
+  var st = S.states[opt.state || 'default'];
+  if (!st) throw new Error('field() 未知状态：' + opt.state + '。见 FIELD_SPECS.formField.states');
+  if (opt.state === 'error' && !opt.errorText) {
+    // error 态不许只换描边颜色：颜色是单通道，色盲用户读不到「哪里错了」。
+    // FIELD_SPECS 的 error 条已写明「框下必配一行 caption 错误文案」，
+    // 这道校验保证那句话不是注释里的空话
+    throw new Error('field() 的 error 态必须给 errorText —— 颜色不得作为唯一通道');
+  }
   var w = width || (CANVAS.w - SPACING.lg * 2);
-  var f = box('field/' + label, 'VERTICAL', { w: w, gap: SPACING.xs });
-  f.appendChild(text(label, 'small', 'color/text-secondary'));
+  var f = box('field/' + label, 'VERTICAL', { w: w, gap: S.gap });
+  // 标签色不随 disabled 降级（见 FIELD_SPECS 注释）：框可以不可编辑，
+  // 但「这一格是什么字段」必须始终读得清
+  f.appendChild(text(label, S.labelScale, S.labelColor));
   var input = box('_input', 'HORIZONTAL', {
-    w: w, h: 44, padLeft: SPACING.md, padRight: SPACING.md,
-    fill: 'color/surface', radius: RADIUS.md, stroke: 'color/border', align: 'CENTER'
+    w: w, h: S.h, padLeft: S.padH, padRight: S.padH,
+    fill: st.fill, radius: S.radius, stroke: st.stroke, strokeWeight: st.strokeWeight,
+    align: 'CENTER'
   });
-  input.appendChild(text(placeholder, 'body', 'color/text-placeholder'));
+  // 有值就显值、无值显 placeholder：颜色一律取状态表，不在此处判断 ——
+  // 「已有值转实色」这条口径若在两个构造器里各写一遍，改一处漏一处
+  input.appendChild(text(opt.value || placeholder, S.textScale, st.textColor));
   f.appendChild(input);
+  if (opt.state === 'error') {
+    var err = text(opt.errorText, 'caption', st.hintColor);
+    err.name = '_field-error';
+    f.appendChild(err);
+  }
   return f;
 }
 
@@ -4372,20 +4756,28 @@ function field(label, placeholder, width) {
  * @returns {FrameNode} 表单行节点
  */
 function selectField(label, value, placeholder, width) {
+  // 2026-09-01 条目 [77]：改读 FIELD_SPECS.formField，取值与改前逐项相同
+  //（44 / R-md / surface / border / md 内边距 / small 标签 / body 内文）。
+  // 不给 selectField 开 focus / error / disabled 三态：它不接受键盘输入，
+  // focus 无从发生；错误与禁用由它唤起的选择器承载。表里那三态属 _input 一支
+  var S = FIELD_SPECS.formField;
+  var stDefault = S.states['default'];
+  var stFilled = S.states.filled;
   var w = width || (CANVAS.w - SPACING.lg * 2);
-  var f = box('field/' + label, 'VERTICAL', { w: w, gap: SPACING.xs });
-  f.appendChild(text(label, 'small', 'color/text-secondary'));
+  var f = box('field/' + label, 'VERTICAL', { w: w, gap: S.gap });
+  f.appendChild(text(label, S.labelScale, S.labelColor));
   var ctrl = box('_select', 'HORIZONTAL', {
-    w: w, h: 44, padLeft: SPACING.md, padRight: SPACING.md,
-    fill: 'color/surface', radius: RADIUS.md, stroke: 'color/border',
+    w: w, h: S.h, padLeft: S.padH, padRight: S.padH,
+    fill: stDefault.fill, radius: S.radius, stroke: stDefault.stroke,
+    strokeWeight: stDefault.strokeWeight,
     align: 'CENTER', justify: 'SPACE_BETWEEN'
   });
-  // 已选值走 text-primary，未选走 placeholder 灰：同一个位置的两种状态靠色阶区分，
-  // 与 field 的输入框内文本口径一致
+  // 已选值走 filled 态色，未选走 default 态色：同一个位置的两种状态靠色阶区分，
+  // 与 field 的输入框内文本共用同一张状态表，不再各写一份
   ctrl.appendChild(value
-    ? text(value, 'body', 'color/text-primary')
-    : text(placeholder || '请选择', 'body', 'color/text-placeholder'));
-  ctrl.appendChild(text('›', 'body', 'color/text-placeholder'));
+    ? text(value, S.textScale, stFilled.textColor)
+    : text(placeholder || '请选择', S.textScale, stDefault.textColor));
+  ctrl.appendChild(text('›', S.textScale, stDefault.textColor));
   f.appendChild(ctrl);
   return f;
 }
@@ -4938,12 +5330,12 @@ function buildPublish() {
   var modeRow = box('_t2-modes', 'HORIZONTAL', { gap: SPACING.sm, align: 'CENTER' });
   var modes = ['一句话发', '模板填', '拍照发', '照上次发'];
   for (var i = 0; i < modes.length; i++) {
-    var chip = box('_mode-' + modes[i], 'HORIZONTAL', {
-      padTop: SPACING.xs, padBottom: SPACING.xs, padLeft: SPACING.sm, padRight: SPACING.sm,
-      radius: RADIUS.full, fill: i === 0 ? 'color/primary' : null,
-      stroke: i === 0 ? null : 'color/border', align: 'CENTER', justify: 'CENTER'
-    });
-    chip.appendChild(text(modes[i], 'caption', i === 0 ? 'color/surface' : 'color/text-secondary'));
+    // 2026-09-01 条目 [77]：手搓 box 改走 chipTag。
+    // 改前值 → 改后值：非选中态「无填充 + border 描边」→ background 实底无描边；
+    // 节点名 _mode-<模式> → _chip-tag/mode-<模式>。内边距与字色改前即已一致。
+    // 依据：M4-3e 第一层 ① A 族归一 —— 描边式与实底式在同屏是第二种非选中画法。
+    var chip = chipTag('mode-' + modes[i], i === 0);
+    chip.appendChild(text(modes[i], TAG_SPECS.chip.scale, chipTagInk(i === 0)));
     modeRow.appendChild(chip);
   }
   body.appendChild(text('T2 发布四模式', 'h3'));
@@ -5195,11 +5587,14 @@ function buildMyPublish() {
    * card() 是纯原生 Frame（未走 COMP_CACHE，见 :1717），可安全增删子节点；
    * 若它是 Instance 则 appendChild 会直接报错，那样就只能改 master。
    *
-   * @param {Array} it [标题, 副标题, catKey, 状态标, 完整度档或空, 操作文案数组]
+   * @param {Array} it [标题, 副标题, catKey, 生命周期状态, 完整度档或空, 操作文案数组]
    * @returns {FrameNode} 卡片节点（操作组已在其内）
    */
   var pubItem = function (it) {
-    var c = card(it[0], it[1], 'category/' + it[2], it[3], it[4] || undefined);
+    // 2026-09-01 条目 [77]：第四参改具名槽位 lifecycle。本页这一格放的是
+    // §8.6 状态机的状态值（在架/已下架/草稿），与列表页那格的供需属性
+    // 是两回事，改造前两处都只是个字符串，稿上无从区分
+    var c = card(it[0], it[1], 'category/' + it[2], { lifecycle: it[3] }, it[4] || undefined);
     // card 原为 HORIZONTAL（色条 · 主体 · 状态标 三列）。要在其下再放一行操作组，
     // 需把这三列先收进一个横排子容器，卡片本身改纵排
     var top = box('_pub-top', 'HORIZONTAL', {
@@ -5291,7 +5686,11 @@ function buildMyFavorite() {
     [CONTENT.marker.title, CONTENT.marker.subtitle, CONTENT.marker.catKey]
   ];
   for (var i = 0; i < favs.length; i++) {
-    body.appendChild(card(favs[i][0], favs[i][1], 'category/' + favs[i][2], '资源'));
+    body.appendChild(card(favs[i][0], favs[i][1], 'category/' + favs[i][2],
+      // 2026-09-01 条目 [77]：五张卡一律「资源」的理由见本函数注释 ——
+      // 本页页签停在「资源」，供需属性必须与页签一致。改具名槽位后，
+      // 「这一格放的是供需」这件事在调用点就读得出，不必回查 card() 实现
+      { supplyDemand: '资源' }));
   }
   // 分页收尾（2026-08-30 条目 [70]）：§7 接口表 /favorites 标「分页」，
   // 五张即首页全量，故落「没有更多了」终态（§6.7 :1291）
@@ -5536,11 +5935,17 @@ function buildAiConfirm() {
       guesses[i][2] ? 'color/text-primary' : 'color/error-text'));
     row.appendChild(lft);
     if (guesses[i][2]) {
+      // 2026-09-01 条目 [77]：字面取值改为读 TAG_SPECS.mark（B 族唯一实处）。
+      // 改前值 → 改后值：取值逐项不变（TIGHT_GAP/xs + RADIUS.sm + accent 底 +
+      // 白字），仅由字面量改为查表。依据：M4-3e 第一层 ① —— B 族样本量为 1，
+      // 规格系新立而非归纳，故不改画面、只把取值来源钉到表上。
       var tagBox = box('_ai-tag', 'HORIZONTAL', {
-        padTop: TIGHT_GAP, padBottom: TIGHT_GAP, padLeft: SPACING.xs, padRight: SPACING.xs,
-        radius: RADIUS.sm, fill: 'color/accent', align: 'CENTER', justify: 'CENTER'
+        padTop: TAG_SPECS.mark.padV, padBottom: TAG_SPECS.mark.padV,
+        padLeft: TAG_SPECS.mark.padH, padRight: TAG_SPECS.mark.padH,
+        radius: TAG_SPECS.mark.radius, fill: TAG_SPECS.mark.fill,
+        align: 'CENTER', justify: 'CENTER'
       });
-      tagBox.appendChild(text('AI 猜', 'caption', 'color/surface'));
+      tagBox.appendChild(text('AI 猜', TAG_SPECS.mark.scale, TAG_SPECS.mark.textColor));
       row.appendChild(tagBox);
     } else {
       row.appendChild(text('去填 ›', 'small', 'color/primary'));
@@ -5802,12 +6207,16 @@ function buildMapSelector() {
   var m = stack('_map', CANVAS.w, MH);
   mapBasePlate(m, CANVAS.w, MH);
 
+  // 2026-09-01 条目 [77]：字面取值改为读 TAG_SPECS.hintBar（C 族第 2 处）。
+  // 改前值 → 改后值：取值逐项不变（含字阶仍取 small，见表内 scaleByNode 说明）。
+  // 依据：M4-3e 第一层 ① —— 本轮只登记、不统一 1px 字阶差。
   var hint = box('_hint', 'HORIZONTAL', {
-    padTop: SPACING.xs, padBottom: SPACING.xs,
-    padLeft: SPACING.sm, padRight: SPACING.sm,
-    fill: 'color/surface', radius: RADIUS.sm, align: 'CENTER'
+    padTop: TAG_SPECS.hintBar.padV, padBottom: TAG_SPECS.hintBar.padV,
+    padLeft: TAG_SPECS.hintBar.padH, padRight: TAG_SPECS.hintBar.padH,
+    fill: TAG_SPECS.hintBar.fill, radius: TAG_SPECS.hintBar.radius, align: 'CENTER'
   });
-  hint.appendChild(text('拖动地图，中心即选点', 'small', 'color/primary-dark'));
+  hint.appendChild(text('拖动地图，中心即选点',
+    TAG_SPECS.hintBar.scaleByNode['_hint'], TAG_SPECS.hintBar.textColor));
   m.appendChild(hint);
   hint.opacity = 0.92;
 
@@ -5943,7 +6352,8 @@ function buildT6Board() {
   for (var i = 0; i < layers.length; i++) {
     var lr = box('_layer-' + layers[i][0], 'HORIZONTAL', { w: 196, gap: SPACING.sm, align: 'CENTER', justify: 'SPACE_BETWEEN' });
     var lft = box('_l', 'HORIZONTAL', { gap: SPACING.sm, align: 'CENTER' });
-    lft.appendChild(box('_dot', 'HORIZONTAL', { w: 12, h: 12, radius: RADIUS.full, fill: 'category/' + layers[i][0] }));
+    // 2026-09-01 条目 [77]：字面 12 改为读 DOT_SIZES.onMap（值不变）
+    lft.appendChild(box('_dot', 'HORIZONTAL', { w: DOT_SIZES.onMap.size, h: DOT_SIZES.onMap.size, radius: RADIUS.full, fill: 'category/' + layers[i][0] }));
     lft.appendChild(text(layers[i][1], 'small'));
     lr.appendChild(lft);
     var sw = box('_switch', 'HORIZONTAL', { w: 32, h: 18, radius: RADIUS.full, fill: i < 3 ? 'color/primary' : 'color/border' });

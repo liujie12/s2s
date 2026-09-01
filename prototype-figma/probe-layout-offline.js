@@ -611,6 +611,20 @@ const wrapped = new Function(
       // 稿码按钮对数取的是节点名，且本页四段长正文是「文本溢出画框」那条
       // 断言的高危处（body 可用宽 342，不显式 FILL 会 hug 到四五百）
       'buildPrivacyGate', 'buildPrivacyDeclined',
+      // 2026-09-01 条目 [77]（M4-3e 第一层）：标签四族与圆点四档的规格真源表 +
+      // A 族唯一构造器。必须能被断言直接取到而非在探针里手抄一份期望值 ——
+      // 抄本与真源脱节时，验的是抄本自己（原则㊾）。chipTag 还要能真跑，
+      // 因为「非选中态给不给实底」只有跑出来量 fills 才看得出
+      'TAG_SPECS', 'DOT_SIZES', 'chipTag', 'chipTagInk',
+      // 2026-09-01 条目 [77]（M4-3e 第一层 ③）：列表卡右侧元数据三槽位登记表。
+      // 断言要能指着 CARD_META_SLOTS 核「三个槽位的字阶与颜色是否真的都是
+      // caption/primary」——这条规格若只写在注释里，改一处漏一处不会有人发现
+      'CARD_META_SLOTS',
+      // 2026-09-01 条目 [77]（M4-3e 第一层 ④⑤）：输入框两套规格 + 空态三档体量。
+      // field / emptyState 都要能真跑：FIELD_SPECS 的 error 态「必须配文案」
+      // 与 emptyState 的「档位对不上就抛错」都是**运行时**才成立的约束，
+      // 源码正则看不出抛没抛，只有真调一次错用法才验得到
+      'FIELD_SPECS', 'EMPTY_STATE_SIZES', 'field', 'selectField', 'navSearchBox', 'emptyState',
       // 条目 [70] 第三段（2026-08-30）：分页收尾条，三个「我的」列表页 + list 页共用
       'listEndRow',
       // 2026-08-31：四个模态从建成起从未出过渲染图，本轮补图时量出 T6 板两组
@@ -1017,7 +1031,11 @@ function allText(root) {
   );
   check(
     '_lv1-cat-* 选中态底色取 -deep（内含白色文字与白色图标）',
-    /fill: on \? 'category\/' \+ CAT_LIST\[i\]\[0\] \+ '-deep' : 'color\/background'/.test(raw),
+    // 2026-09-01 条目 [77]：该处已由手搓 box 改走 chipTag，取色表达式从
+    // box 的 fill 参数搬到 chipTag 的第三个参数（onFill 覆写）。断言随之改锚点，
+    // 钉的仍是同一件事 —— 选中态必须取 -deep 而非分类原色（白字压原色只有
+    // 2.54–4.23:1，见上一条实测）。
+    /chipTag\('lv1-' \+ CAT_LIST\[i\]\[0\], on, 'category\/' \+ CAT_LIST\[i\]\[0\] \+ '-deep'\)/.test(raw),
     '已改为深色变体'
   );
 
@@ -1115,21 +1133,28 @@ function allText(root) {
     bareSpacing.length === 0,
     bareSpacing.length ? '发现 ' + bareSpacing.length + ' 处：' + bareSpacing.join(', ') : '零裸值'
   );
-  // 用量锁定 9 处：豁免的前提是「只用于单元内两行贴合」这一窄用途。
+  // 用量锁定 8 处：豁免的前提是「只用于单元内两行贴合」这一窄用途。
   // 若哪天涨到十几处，说明它已被当成通用间距在用，豁免理由就不成立了 ——
   // 那时该重新评审，而不是让数字默默变大。
   //
-  // ⚠️ 口径必须是「调用处数」而非「字符出现次数」：_radius-<档>（code.js:2826）
-  // 与 _ai-tag（:4372）两处各在 padTop + padBottom 里各用一次，字符数为 11 而
-  // 调用处只有 9。首跑用字符数得 11、误判为超量。改成按行去重计数 ——
-  // 一处 box() 调用写在一行内，行数即调用处数。
+  // ⚠️ 口径必须是「行数」而非「字符出现次数」：一处 box() 调用往往在同一行里
+  // 的 padTop + padBottom 各用一次，按字符数会翻倍统计。改成按行去重计数。
+  //
+  // 期望值 9 → 8 的变更（2026-09-01 条目 [77]，M4-3e 第一层）：
+  // · `_radius-<档>` 原用 TIGHT_GAP 作上下内边距，回改走 chipTag 后取 SPACING.xs
+  //   （A 族归一，胶囊上下统一 4px），故减 1 处；
+  // · `_ai-tag` 原直接写 TIGHT_GAP，回改为读 TAG_SPECS.mark.padV，出现位置从
+  //   实处搬到表定义处 —— 行数不变（一进一出），但性质变好了：这一族的
+  //   豁免取值现在只在真源表里出现一次，实处不再各写一份。
+  // 刻意不在此处写 code.js 的行号：行号会随改动漂移，上一版注释里的
+  // 「:2826 / :4372」两个行号在本轮已双双失效，反而误导人。要定位就搜节点名。
   const tightLines = code
     .split('\n')
     .map((ln, idx) => ({ ln, no: idx + 1 }))
     .filter((x) => x.ln.indexOf('TIGHT_GAP') >= 0 && !/var TIGHT_GAP\s*=/.test(x.ln));
   check(
-    'TIGHT_GAP 用量锁定 9 处（涨了说明它被当通用间距用，豁免理由需重新评审）',
-    tightLines.length === 9,
+    'TIGHT_GAP 用量锁定 8 处（涨了说明它被当通用间距用，豁免理由需重新评审）',
+    tightLines.length === 8,
     '实测 ' + tightLines.length + ' 处调用（行号 ' + tightLines.map((x) => x.no).join('/') + '）'
   );
 
@@ -2339,9 +2364,11 @@ function allText(root) {
   //
   // 这条与上面两条不同：它不必真跑布局，只要证明「把 fill 改回原色」会被
   // 断言检出即可 —— 因为那条断言查的是取色表达式本身，不是量出来的尺寸。
+  //
+  // 2026-09-01 条目 [77]：锚点随实处改走 chipTag 而同步（原锚 box 的 fill 参数）。
   const rawNoDeep = raw.replace(
-    /fill: on \? 'category\/' \+ CAT_LIST\[i\]\[0\] \+ '-deep' : 'color\/background'/,
-    "fill: on ? 'category/' + CAT_LIST[i][0] : 'color/background'"
+    /chipTag\('lv1-' \+ CAT_LIST\[i\]\[0\], on, 'category\/' \+ CAT_LIST\[i\]\[0\] \+ '-deep'\)/,
+    "chipTag('lv1-' + CAT_LIST[i][0], on, 'category/' + CAT_LIST[i][0])"
   );
   check(
     '[反向] _lv1 取色还原成原色成功（证明下一条测的是旧写法）',
@@ -2350,7 +2377,7 @@ function allText(root) {
   );
   if (rawNoDeep !== raw) {
     const stillDeep =
-      /fill: on \? 'category\/' \+ CAT_LIST\[i\]\[0\] \+ '-deep' : 'color\/background'/
+      /chipTag\('lv1-' \+ CAT_LIST\[i\]\[0\], on, 'category\/' \+ CAT_LIST\[i\]\[0\] \+ '-deep'\)/
         .test(rawNoDeep);
     check(
       '[反向] 选中态取原色时「须取 -deep」断言确实触发（实机实测房屋 4.23:1）',
@@ -3650,16 +3677,24 @@ function allText(root) {
       ctBad.length ? ctBad.join('; ') : '三档色点 role + 文字「完整/半完整/待补充」全部对齐'
     );
 
-    // 色点边长必须跟随字阶派生，不许写死：写死 10px 配 h3 偏小、配 caption 会
-    // 盖过档名，把刚补上的文字通道又压回次要位置
+    // 色点边长必须固定取 DOT_SIZES.status（= 10），不许再按字阶派生。
+    //
+    // ⚠️ 这条断言的方向在 2026-09-01（条目 [77]，M4-3e 第一层 ②）**被反转**：
+    // 原断言要求「随字阶派生」，理由是写死 10px 配 h3 偏小、配 caption 会盖过档名。
+    // 反转依据：派生公式 round(size * 0.75) 在 small 档算出 9px，而同一屏的
+    // _mi-comp-dot 是 10px —— 同一个「完整度」语义出现 9 与 10 两个值，只差 1px
+    // 却会被读成两套东西。两害相权，「同语义同尺寸」比「配 h3 时大一点」更重要；
+    // 且真需要更大色点的场合已由 DOT_SIZES 的 onMap / pinBadge 两档承担，
+    // 不必让每个调用点各算一个尺寸。
+    // 保留本条（而非删掉）是为了钉住反转后的新口径：谁再改回派生，这里会红。
     const dotSizes = ['caption', 'small', 'h3'].map((sc) => {
       const t = M.completenessTag('green', sc);
       return Math.round(t.children[0].width);
     });
     check(
-      'completenessTag 色点边长随字阶派生（写死尺寸会让文字通道被色点压回次要位置）',
-      new Set(dotSizes).size === 3 && dotSizes[0] < dotSizes[2],
-      'caption/small/h3 三档色点边长 = ' + pj(dotSizes)
+      'completenessTag 色点边长固定取 DOT_SIZES.status（同语义同尺寸，不再按字阶派生出 9px）',
+      new Set(dotSizes).size === 1 && dotSizes[0] === M.DOT_SIZES.status.size,
+      'caption/small/h3 三档色点边长 = ' + pj(dotSizes) + '，DOT_SIZES.status = ' + M.DOT_SIZES.status.size
     );
 
     // dot-solid 图标定义必须真存在且是实心圆：completenessTag 的三处调用全靠它，
@@ -3681,6 +3716,163 @@ function allText(root) {
         !!tick && pj(iconFills(tick)) === pj([M.paintOf('color/success')]) &&
         !!lab && lab.characters === '已实名',
         lab ? '勾色 ' + pj(iconFills(tick)) + '，文字「' + lab.characters + '」' : '结构不符'
+      );
+    }
+
+    // ---------- 2026-09-01 条目 [77]：输入框两套规格 + 卡片元数据三槽位 + 空态三档 ----------
+    //
+    // 这四组断言守的都是同一类病：规格被收进真源表之后，若无人核对「画布是否
+    // 真的按表画」，表就退化成一份注释。全部拿 M.XXX 现取真源比对，不在探针
+    // 里手抄期望值（原则㊾）。
+    {
+      // ① 卡片右侧元数据三槽位：字阶与颜色必须逐槽位取自 CARD_META_SLOTS。
+      // 拆参数的全部意义在于「三处语义不同但形态统一」，若哪处自定了颜色，
+      // 稿上就又回到「看不出这一格该放什么」——而画面上三者本来就长得一样，
+      // 人眼永远发现不了是哪一处漂了
+      const slots = M.CARD_META_SLOTS || [];
+      const metaBad = [];
+      slots.forEach((s) => {
+        const meta = {};
+        meta[s.key] = '样本';
+        const c = M.card('元数据卡', '副标题', 'category/cat-work', meta);
+        const node = c.findOne((n) => n.name === s.node);
+        if (!node) { metaBad.push(s.key + ':无 ' + s.node + ' 节点'); return; }
+        if (node.characters !== '样本') metaBad.push(s.key + ':文案未透传');
+        if (Math.round(node.fontSize) !== M.TYPE_SCALE[s.scale].size) {
+          metaBad.push(s.key + ':字阶 ' + node.fontSize + ' ≠ ' + s.scale);
+        }
+        if (pj(node.fills) !== pj([M.paintOf(s.color)])) metaBad.push(s.key + ':色 role 不符');
+      });
+      check(
+        'card() 三槽位元数据各出具名节点，字阶与颜色逐项取自 CARD_META_SLOTS（'
+        + slots.map((s) => s.node).join(' / ') + '）',
+        slots.length === 3 && metaBad.length === 0,
+        metaBad.length ? metaBad.join('; ') : '三槽位节点名/文案/字阶/色 role 全部对齐'
+      );
+
+      // [反向] 退回改前写法：第四参传裸字符串。新签名下 meta['supplyDemand'] 等
+      // 三键全为 undefined，右侧一个元数据节点都不生成 —— 这正是「一位三用」
+      // 被拆掉后旧调用点必须同步的证据。若此处仍能画出节点，说明 card() 里
+      // 留了兼容裸串的分支，那条分支会让旧写法继续悄悄通行
+      const rawMetaCard = M.card('反向卡', '副标题', 'category/cat-work', '在架');
+      check(
+        '[反向] card() 第四参传裸字符串时不生成任何元数据节点（不留兼容分支，旧写法必须显形）',
+        slots.every((s) => !rawMetaCard.findOne((n) => n.name === s.node)),
+        '裸串调用下三个 _meta-* 节点均不存在'
+      );
+    }
+
+    {
+      // ② formField 五态：每态的底色/描边/描边粗/内文色必须逐项等于 FIELD_SPECS。
+      // focus / error / disabled 三态是本轮**新立**的规格（全稿零实处），
+      // 恰恰因为没有实处，它们最容易在后续改动里被悄悄改掉而无人察觉
+      const FS = M.FIELD_SPECS.formField;
+      const fBad = [];
+      Object.keys(FS.states).forEach((key) => {
+        const want = FS.states[key];
+        const opt = { state: key, value: key === 'default' ? undefined : '样本值' };
+        if (key === 'error') opt.errorText = '手机号格式不正确';
+        const f = M.field('手机号', '请输入 11 位手机号', undefined, opt);
+        const input = f.findOne((n) => n.name === '_input');
+        if (!input) { fBad.push(key + ':无 _input'); return; }
+        if (Math.round(input.height) !== FS.h) fBad.push(key + ':高 ' + input.height + ' ≠ ' + FS.h);
+        if (pj(input.fills) !== pj([M.paintOf(want.fill)])) fBad.push(key + ':底色不符');
+        if (pj(input.strokes) !== pj([M.paintOf(want.stroke)])) fBad.push(key + ':描边色不符');
+        if (input.strokeWeight !== want.strokeWeight) {
+          fBad.push(key + ':描边粗 ' + input.strokeWeight + ' ≠ ' + want.strokeWeight);
+        }
+        const inner = input.children[0];
+        if (pj(inner.fills) !== pj([M.paintOf(want.textColor)])) fBad.push(key + ':内文色不符');
+        // 标签色任何状态都不降级：框可以禁用，但「这一格是什么字段」必须读得清
+        if (pj(f.children[0].fills) !== pj([M.paintOf(FS.labelColor)])) {
+          fBad.push(key + ':标签色被降级');
+        }
+      });
+      check(
+        'field() 五态（default/filled/focus/error/disabled）底色·描边色·描边粗·内文色逐项取自 FIELD_SPECS，且标签色任何态都不降级',
+        Object.keys(FS.states).length === 5 && fBad.length === 0,
+        fBad.length ? fBad.join('; ') : '五态 × 五项全部对齐，标签色恒为 ' + FS.labelColor
+      );
+
+      // error 态必须多出一行错误文案节点：颜色是单通道，色盲用户读不到「哪里错了」
+      const errField = M.field('手机号', '请输入 11 位手机号', undefined,
+        { state: 'error', errorText: '手机号格式不正确' });
+      const errLine = errField.findOne((n) => n.name === '_field-error');
+      check(
+        'field() 的 error 态在框下多出 _field-error 文案行（颜色不得作为唯一通道，PRD :420 AA）',
+        !!errLine && errLine.characters === '手机号格式不正确'
+        && pj(errLine.fills) === pj([M.paintOf(FS.states.error.hintColor)]),
+        errLine ? '文案「' + errLine.characters + '」，色 ' + FS.states.error.hintColor : '无 _field-error 节点'
+      );
+
+      // [反向] error 态不给文案时必须抛错。这条约束只在运行时成立 ——
+      // 若改成静默省略那行文案，画面上只是「少了一行小字」，没有任何征兆
+      let threw = false;
+      try {
+        M.field('手机号', '请输入', undefined, { state: 'error' });
+      } catch (e) { threw = true; }
+      check(
+        '[反向] field() 的 error 态缺 errorText 时当场抛错（不静默省略，否则错误态退化为纯颜色通道）',
+        threw,
+        threw ? '已抛错' : '未抛错 —— 错误态可以只靠颜色成立了'
+      );
+
+      // ③ navSearch 两态与 formField 是两套并列规格，不是同一套。
+      // 这条断言正面钉住「允许两套」：PRD :1069 给了 32 高的明文依据，
+      // 若哪天有人「顺手统一」成 44，导航栏 48 高会被撑破而这里会先红
+      const NS = M.FIELD_SPECS.navSearch;
+      const nsOff = M.navSearchBox('搜附近的活儿');
+      const nsOn = M.navSearchBox('搜附近的活儿', '租房');
+      check(
+        'navSearchBox 两态取自 FIELD_SPECS.navSearch，且与 formField 显式不同套（高 '
+        + NS.h + ' vs ' + FS.h + '，PRD :1069 给了 32 高的明文依据）',
+        Math.round(nsOff.height) === NS.h && NS.h !== FS.h
+        && nsOff.cornerRadius === NS.radius && NS.radius !== FS.radius
+        && pj(nsOff.fills) === pj([M.paintOf(NS.states['default'].fill)])
+        && pj(nsOff.strokes) === pj([M.paintOf(NS.states['default'].stroke)])
+        && pj(nsOn.strokes) === pj([M.paintOf(NS.states.active.stroke)]),
+        '高 ' + Math.round(nsOff.height) + ' / 圆角 ' + nsOff.cornerRadius
+        + ' / 未激活描边 ' + NS.states['default'].stroke + ' → 激活 ' + NS.states.active.stroke
+      );
+    }
+
+    {
+      // ④ 空态三档体量：尺寸决定 duckSymbol 用哪一套形（≥96 full / 64–95 compact
+      // / <64 mini，PRD §1.4.1.2 明令不得各档另画新形）。故本条同时核「数对不对」
+      // 与「这个数落到的档位是不是表里写的那一档」—— 只核数字的话，把 40 改成 64
+      // 仍会绿，而鸭子的形已经整体换掉了
+      const ES = M.EMPTY_STATE_SIZES;
+      const tierOf = (n) => (n >= 96 ? 'full' : (n >= 64 ? 'compact' : 'mini'));
+      const esBad = [];
+      Object.keys(ES).forEach((k) => {
+        if (tierOf(ES[k].duck) !== ES[k].tier) {
+          esBad.push(k + ':' + ES[k].duck + 'px 落 ' + tierOf(ES[k].duck) + ' 档，表里写 ' + ES[k].tier);
+        }
+      });
+      // 收尾条必须真由 inline 档画出：它是这张表唯一有多个实处的一档
+      const endRow = M.listEndRow(CANVAS_W_AVAIL);
+      const endDuck = endRow.children[0];
+      const endText = endRow.children[1];
+      check(
+        '空态三档体量与 duckSymbol 档位推导自洽（inline 40/mini · loading 64/compact · terminal 96/full），且 listEndRow 真按 inline 档画',
+        esBad.length === 0
+        && Math.round(endDuck.width) === ES.inline.duck
+        && endText.characters === '没有更多了'
+        && Math.round(endText.fontSize) === M.TYPE_SCALE[ES.inline.leadScale].size
+        && Math.round(endRow.paddingTop) === ES.inline.padV,
+        esBad.length ? esBad.join('; ')
+          : '三档档位自洽；收尾条鸭 ' + Math.round(endDuck.width) + 'px / 字阶 '
+            + ES.inline.leadScale + ' / 上下留白 ' + endRow.paddingTop
+      );
+
+      // [反向] loading 档不得走 emptyState()：它语义是「还在加载」而非「没有了」，
+      // 且实处外层是卡片容器。表里已把它的 padV 留空，构造器据此拒绝
+      let esThrew = false;
+      try { M.emptyState('loading', '正在找附近的信息'); } catch (e) { esThrew = true; }
+      check(
+        '[反向] emptyState() 拒绝 loading 档（加载中与空态语义相反，混用会让「还在加载」被读成「一条都没有」）',
+        esThrew,
+        esThrew ? '已抛错' : '未抛错 —— 加载态可以被当成空态画了'
       );
     }
 
@@ -4457,8 +4649,11 @@ function allText(root) {
       );
 
       // [反向] 退回改前写法（只翻 layoutMode、不纠正两轴 sizing），上条必须报失败，
-      // 以证明它测的是真实几何而不是恒真式
-      const badCard = M.card('反向卡', '副标题', 'category/cat-work', '在架');
+      // 以证明它测的是真实几何而不是恒真式。
+      // 2026-09-01 条目 [77]：第四参由裸字符串 '在架' 改为具名槽位 { lifecycle: '在架' }。
+      // 新签名下若仍传裸串，meta['lifecycle'] 为 undefined、右侧元数据节点不生成，
+      // 卡片子节点少一个，这条反向断言赖以成立的几何前提就被悄悄改掉了
+      const badCard = M.card('反向卡', '副标题', 'category/cat-work', { lifecycle: '在架' });
       badCard.layoutMode = 'VERTICAL';
       const badNeed = badCard.children.reduce((a, k) => a + k.height, 0)
         + badCard.paddingTop + badCard.paddingBottom;
