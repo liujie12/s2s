@@ -22,9 +22,12 @@ import '../features/map/map_screen.dart';
 import '../features/placeholder/placeholder_screen.dart';
 import '../features/privacy/privacy_consent.dart';
 import '../features/privacy/privacy_gate_screen.dart';
+import '../features/publish/ai_confirm_screen.dart';
 import '../features/publish/category_selector_screen.dart';
 import '../features/publish/cert_modal_screen.dart';
+import '../features/publish/publish_form_state.dart';
 import '../features/publish/publish_screen.dart';
+import '../features/publish/publish_success_screen.dart';
 
 /// 路由路径常量。
 ///
@@ -133,19 +136,17 @@ final List<RouteBase> _routes = [
   ),
   GoRoute(
     path: AppRoutes.aiConfirm,
-    builder: (context, state) => const PlaceholderScreen(
-      pageId: 'ai-confirm-screen',
-      pageName: 'AI 结果确认页',
-      note: '逐字段 AI 猜测值 + 「AI 猜」角标 + 升 🟢 冲刺区',
+    // extra 传发布页的表单快照 —— 它就是 §5.10 Step 2 的 scope。
+    // 允许为空是为了让路由可被直接访问时不崩，空则退化为空白表单。
+    builder: (context, state) => AiConfirmScreen(
+      form: state.extra as PublishFormState? ?? const PublishFormState(),
     ),
   ),
   GoRoute(
     path: AppRoutes.publishSuccess,
-    builder: (context, state) => const PlaceholderScreen(
-      pageId: 'publish-success-screen',
-      pageName: '发布完成页',
-      note: '完整度卡：当前档 + 还差哪几项 + 权益三条',
-    ),
+    // extra 为提交时的表单快照，用于算 §9.8 档位；为空时按 🔴 档展示。
+    builder: (context, state) =>
+        PublishSuccessScreen(form: state.extra as PublishFormState?),
   ),
   GoRoute(
     path: AppRoutes.contact,

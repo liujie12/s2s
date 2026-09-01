@@ -141,8 +141,25 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
     }
 
     // 真正的提交需 §12.3 `POST /posts`。无服务端时直接进完成页，
-    // 完成页的完整度卡属 M4-3b。
-    router.push(AppRoutes.publishSuccess);
+    // 带上表单快照供完成页算 §9.8 档位。
+    router.push(AppRoutes.publishSuccess, extra: _form);
+  }
+
+  /// 临时入口：走 AI 确认页（§5.9）。
+  ///
+  /// **为什么这个入口在发布页而不在首页**：§5.9 的确认页正路入口是 §6.13 T6-①
+  /// 首页 FAB「AI 帮我发」→ 弹四模式，而该 FAB 属 §6.13，M4 未排。
+  /// 用户 2026-09-01 裁定先在此加临时入口，**FAB 做出来后须移除本方法与按钮**。
+  ///
+  /// 与 [_submit] 的区别：本入口不要求必填齐全 —— §5.9 的确认页本就是
+  /// 用来补齐 AI 没猜出的字段的，要求填完再去反而本末倒置。
+  Future<void> _openAiConfirm() async {
+    final router = GoRouter.of(context);
+    if (!ref.read(isLoggedInProvider)) {
+      final ok = await router.push<bool>(AppRoutes.login);
+      if (!mounted || ok != true) return;
+    }
+    router.push(AppRoutes.aiConfirm, extra: _form);
   }
 
   @override
@@ -200,6 +217,7 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
             kind: _form.kind,
             onChanged: (k) => setState(() => _form = _form.copyWith(kind: k)),
           ),
+          _TempAiEntry(onTap: _openAiConfirm),
           _SectionCard(
             index: 1,
             title: '选择分类',
@@ -400,6 +418,64 @@ class _KindSwitch extends StatelessWidget {
                 ),
               ),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 临时 AI 入口（§5.9 确认页的代入口）。
+///
+/// **它不属于 §5.4.1 八段**，故不用 [_SectionCard]（无段序号、无「已填」勾），
+/// 并在副文案里写明「临时入口」—— 否则下一个人打开发布页会以为
+/// §5.4.1 漏写了这一段，进而把它当既成事实继续加码。
+///
+/// **移除条件**：§6.13 T6-① 首页 FAB「AI 帮我发」上线后删除本类与
+/// [_PublishScreenState._openAiConfirm]。
+class _TempAiEntry extends StatelessWidget {
+  const _TempAiEntry({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(top: AppSpacing.sm),
+      color: const Color(AppColors.surface),
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          InkWell(
+            onTap: onTap,
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.auto_awesome_outlined,
+                  size: 18,
+                  color: Color(AppColors.accent),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: Text(
+                    'AI 帮我补齐',
+                    style: TextStyle(
+                      fontSize: AppTypeScale.body.size,
+                      fontWeight: FontWeight.w600,
+                      color: const Color(AppColors.textPrimary),
+                    ),
+                  ),
+                ),
+                const Icon(
+                  Icons.chevron_right,
+                  size: 20,
+                  color: Color(AppColors.textPlaceholder),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          const _HintText('临时入口：正式入口是首页「AI 帮我发」（待做）。可随时改，改完再发'),
         ],
       ),
     );

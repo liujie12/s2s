@@ -460,6 +460,19 @@ List<CategoryNode> categoryPathOf(int leafId) {
   return [top, mid, leaf];
 }
 
+/// 面包屑文案（如「工作 > 全职招聘 > 餐饮服务」）。
+///
+/// 参数 [leafId] 叶子 ID。返回拼好的路径；ID 不存在时返回 null。
+///
+/// **为什么要有这个函数而不是各处自己 join**：AI 猜测生成的分类值与
+/// §5.10 Step 4 的逆向比对必须用**同一拼法** —— 分隔符或取名方式散在两处时，
+/// 改一处就会让校验把自己刚生成的合法值判成非法（本函数落地前，
+/// 两处写的是 `categoryPathOf(id).join(' > ')`，拼出的是对象的 toString）。
+String? categoryPathLabel(int leafId) {
+  final path = categoryPathOf(leafId);
+  return path.isEmpty ? null : path.map((n) => n.name).join(' > ');
+}
+
 /// 全量叶子类目（模板绑定与「不超过 60 个」上限校验的依据，§2.3）。
 List<CategoryNode> get leafCategories => [
   for (final top in categoryTree)

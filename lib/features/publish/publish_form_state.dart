@@ -12,6 +12,7 @@ library;
 
 import '../../domain/category_tree.dart';
 import '../../domain/listing_category.dart';
+import '../../domain/publish_completeness.dart';
 import '../../domain/publish_template.dart';
 
 /// 发布类型（§5.4.1 胶囊切换「发布资源 / 发布需求」，对应 §13.2 `post.type`）。
@@ -92,6 +93,7 @@ class PublishFormState {
     this.kind = PublishKind.supply,
     this.leafCategoryId,
     this.hasLocation = false,
+    this.doorNumber = '',
     this.title = '',
     this.priceText = '',
     this.priceUnit,
@@ -110,6 +112,15 @@ class PublishFormState {
 
   /// 是否已选位置。真实坐标待地图选点（见文件头）。
   final bool hasLocation;
+
+  /// 门牌号（§9.8 条件二「位置到门牌号」）。
+  ///
+  /// **为什么要有一个手填框而不是只靠地图选点**：§9.8 的兜底列写明
+  /// 「地址库无该门牌时，允许手填自由文本并视为达成，不卡用户」。
+  /// 而本期没有高德 Key，「取当前定位门牌」拿不到真值 —— 若只留那个按钮，
+  /// 🟢 档在本期将无人可达，完整度三档就退化成「只有 🟡 和 🔴」，
+  /// 那么 §5.9 冲刺区与 §9.8 权益卡都没法验收。
+  final String doorNumber;
 
   final String title;
 
@@ -193,10 +204,39 @@ class PublishFormState {
   String get descriptionHint =>
       '已填 ${description.trim().length} 字，建议 $kDescriptionSuggestMin-$kDescriptionSuggestMax 字';
 
+  /// 完整度判定（§9.8 三条件 → 三档，判定逻辑本身在 `CompletenessAssessment`）。
+  ///
+  /// 本 getter 只负责「把表单翻译成三个布尔」，档位映射与权益文案不在这里 ——
+  /// §9.8 末条要求判定口径唯一，若这里也写一遍 `metCount >= 2 ? 黄 : 红`，
+  /// 就成了第二处判定。
+  CompletenessAssessment get completeness => CompletenessAssessment(
+    // 必填项 100%：直接复用 blocker —— 它本就是「必填是否齐」的唯一判据。
+    // 另写一套「必填计数」会出现「按钮能点但完整度说必填没齐」这种矛盾。
+    requiredFieldsComplete: canSubmit,
+    hasDoorNumber: doorNumber.trim().isNotEmpty,
+    leafCategoryPrecise: _leafCategoryPrecise,
+  );
+
+  /// 三级类目是否精准命中（§9.8 条件三）。
+  ///
+  /// **不是简单判断「有没有选分类」**：§9.8 兜底列写明「若该二级类目下运营
+  /// 尚未配置三级类目，则选到二级即视为精准命中（判定按该类目实际最深层级，
+  /// 不因运营未配置而惩罚用户）」。本期 §2.4 的 48 个叶子全部是三级，
+  /// 但这个判断必须按「实际最深层级」写 —— 否则将来运营加一个只有两级的
+  /// 类目，那个类目下的用户会永远升不到 🟢，且没人能看出原因。
+  bool get _leafCategoryPrecise {
+    final id = leafCategoryId;
+    if (id == null) return false;
+    // 能在树里查到，说明选中的就是该分支的最深一层（`leafCategories`
+    // 收集的就是各分支末端节点）。查不到 = 脏 ID，不算命中。
+    return leafCategoryById(id) != null;
+  }
+
   PublishFormState copyWith({
     PublishKind? kind,
     int? leafCategoryId,
     bool? hasLocation,
+    String? doorNumber,
     String? title,
     String? priceText,
     String? priceUnit,
@@ -211,6 +251,7 @@ class PublishFormState {
       kind: kind ?? this.kind,
       leafCategoryId: leafCategoryId ?? this.leafCategoryId,
       hasLocation: hasLocation ?? this.hasLocation,
+      doorNumber: doorNumber ?? this.doorNumber,
       title: title ?? this.title,
       priceText: priceText ?? this.priceText,
       priceUnit: priceUnit ?? this.priceUnit,
@@ -235,6 +276,8 @@ class PublishFormState {
       kind: kind,
       leafCategoryId: leafId,
       hasLocation: hasLocation,
+      // 门牌号跟着位置走，与分类无关，故换分类时保留
+      doorNumber: doorNumber,
       title: title,
       priceText: priceText,
       // 新模板的第一个单位作默认值，避免出现「没有单位的价格」这种半截状态
