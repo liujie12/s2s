@@ -712,9 +712,17 @@ check(
 )
 
 # 字段溢出 bug：xl 内边距下可用宽 342，field 默认 358
+#
+# ⚠️ 判据于 2026-09-01（条目 [77] e6）由「全签名字符串相等」改为「前三个形参前缀」。
+# 原写法是 `"function field(label, placeholder, width)" in code`，它钉死了**整条签名**，
+# 于是 M4-3e 第一层给 field() 补第四参 opt（focus/error/disabled 三态）时当场断掉 ——
+# 而那一版只跑了离线探针，这条红一直挂到 e6 才被看见（三轮）。
+#
+# 判据要守的其实只有一件事：width 仍是 field() 的形参，login 那 16px 溢出的修法没被
+# 回退。故改为核前三个形参的顺序与名字，往后加参数不再误报，删掉或改名 width 照旧报红。
 check(
     "field() 开放了 width 参数（修 login 溢出 16px）",
-    "function field(label, placeholder, width)" in code,
+    re.search(r"function field\(label, placeholder, width\b", code) is not None,
 )
 check(
     "field() 默认宽未被改动（十几处 lg 内边距调用点依赖它）",
