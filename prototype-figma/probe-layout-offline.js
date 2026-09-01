@@ -607,6 +607,10 @@ const wrapped = new Function(
       // 2026-09-01 条目 [75]：Figma ↔ Flutter 按钮对数需真跑完成页取 btn/ 节点名 ——
       // 源码正则取不到 Instance 的实际命名（button() 拼的是 btn/variant/label）
       'buildPublishSuccess',
+      // 2026-09-01 条目 [76]：privacy-gate 主态与受限态。两框都要真跑 ——
+      // 稿码按钮对数取的是节点名，且本页四段长正文是「文本溢出画框」那条
+      // 断言的高危处（body 可用宽 342，不显式 FILL 会 hug 到四五百）
+      'buildPrivacyGate', 'buildPrivacyDeclined',
       // 条目 [70] 第三段（2026-08-30）：分页收尾条，三个「我的」列表页 + list 页共用
       'listEndRow',
       // 2026-08-31：四个模态从建成起从未出过渲染图，本轮补图时量出 T6 板两组
@@ -2747,9 +2751,12 @@ function allText(root) {
     // **已备案缺口清单**：写在这里而不是把断言放宽，是两件不同的事 ——
     // 放宽等于让缺口从此隐形；备案是「承认它、并让**清单外**的任何新缺口立刻报红」。
     // 每一项都必须写明去处，不许只写 ID。补齐后此处会由下一条断言提醒清理。
-    const KNOWN_STAGE_GAPS = {
-      'privacy-gate': 'M4-4 补稿（用户 2026-08-31 裁定方案 B：与隐私政策同批做）'
-    };
+    //
+    // 2026-09-01 条目 [76]：唯一的一项 'privacy-gate' 已补稿，按下一条断言的
+    // 要求从本表删除，本表因此暂时为空。**空表不等于这段代码没用了** ——
+    // 它是「新缺口必须显式备案」这条规矩的落点，下一次 PRD 加页而稿没跟上时，
+    // 上一条断言会因未备案而报红。故保留空表与注释，不删这段。
+    const KNOWN_STAGE_GAPS = {};
     const gapKeys = Object.keys(KNOWN_STAGE_GAPS);
 
     const missingInFigma = prdPageIds.filter(
@@ -2762,8 +2769,8 @@ function allText(root) {
       unbudgeted.length
         ? '未备案缺口：' + unbudgeted.join(', ')
         : 'PRD ' + prdPageIds.length + ' 页 / 稿 ' + M.MAIN_SCREENS.length +
-          ' 页，差额 ' + missingInFigma.length + ' 项均已备案（' +
-          gapKeys.join(', ') + '）'
+          ' 页，缺口 ' + missingInFigma.length + ' 项' +
+          (gapKeys.length ? '，均已备案（' + gapKeys.join(', ') + '）' : '（零缺口）')
     );
 
     // 备案清单必须**恰好**等于实际缺口：多一项说明补稿完成后忘了清理，
@@ -2817,7 +2824,15 @@ function allText(root) {
       ['buildPublishSuccess', 'features/publish/publish_success_screen.dart',
        'publish-success-screen'],
       ['buildAiConfirm', 'features/publish/ai_confirm_screen.dart',
-       'ai-confirm-screen']
+       'ai-confirm-screen'],
+      // 2026-09-01 条目 [76]：privacy-gate 补稿的同时纳入本表。
+      // 主态与受限态两框各查一次 —— 两框的按钮分属码侧 _AgreementView 与
+      // _DeclinedView，同一个 Dart 文件里都能取到，但漏查一框就等于那一框
+      // 的文案没人守（受限态的「重新阅读协议」正是 §6.5.1 点名要求的那一项）。
+      ['buildPrivacyGate', 'features/privacy/privacy_gate_screen.dart',
+       'privacy-gate'],
+      ['buildPrivacyDeclined', 'features/privacy/privacy_gate_screen.dart',
+       'privacy-gate⟨受限态⟩']
     ];
 
     // **临时降级备案**：码侧因「目标页 M4 未排」而有意偏离稿子的按钮。
@@ -3795,6 +3810,10 @@ function allText(root) {
       ['buildDetail', '_body', ['btn/primary/联系 TA']],
       ['buildDetailOffline', '_body', ['btn/disabled/联系 TA']],
       ['buildAiConfirm', '_body', ['btn/primary/确认发布']],
+      // 2026-09-01 条目 [76]：privacy-gate 主态两键贴底。
+      // 受限态变体刻意不进本表 —— 它是居中布局（只一句说明 + 一个出口，
+      // 重心在中部，同空状态终态页），本表管的是「带底部主操作的页」。
+      ['buildPrivacyGate', '_body', ['btn/primary/同意并继续', 'btn/ghost/不同意']],
       // profile 无统一 _body，三段直接挂画框，故 spacer 插在画框层
       ['buildProfile', null, ['bottom-tab']]
     ];

@@ -378,8 +378,8 @@ var EMPTY_FALLBACK_TIMELINE = [
 ];
 
 /**
- * 需覆盖的状态画框清单（PRD §6.4.4 定位权限降级 / §7.8 详情页边界）
- * ——本表是这四个状态的标题与说明文案在本文件内的唯一取值来源
+ * 需覆盖的状态画框清单（PRD §6.4.4 定位权限降级 / §7.8 详情页边界 / §6.5.1 协议门）
+ * ——本表是这五个状态的标题与说明文案在本文件内的唯一取值来源
  *
  * 共同点：PRD 已明文定义，但生成器一度无对应画框，属纯缺失而非取值错误。
  * 其中 'permission-reopen'（权限 B 态「曾授权后被关」）为 2026-08-31 补：
@@ -388,6 +388,7 @@ var EMPTY_FALLBACK_TIMELINE = [
  * 点了不会有任何反应，用户会认为 App 坏了，这是必须出图核对的一态。
  * C 态刻意不建画框：PRD 明写 C 态「不出引导页，直接走 §6.8 降级终态」，
  * 那个终态即紧随的 'cell-fallback'，已有稿，再建一框会是重复稿。
+ * 'privacy-declined' 为 2026-09-01 补，同属「PRD 写了而稿里没有」。
  *
  * @property {string} title 画框标题（不含 pageId 与 prdRef，由 screen() 拼装）
  * @property {string} prdRef PRD 章节回标
@@ -430,6 +431,19 @@ var COVERAGE_STATES = {
       '页面整体 Opacity 60%，顶部红条须保持可读',
       '联系按钮禁用，收藏状态保留',
       '与正常态详情页并列对照，正常态不受影响'
+    ]
+  },
+  // 2026-09-01 条目 [76]：只有受限态一档，没有「同意态」一档 ——
+  // 同意态就是 privacy-gate 主态本身（码侧 _AgreementView 是默认视图，
+  // _DeclinedView 才是分支），再登记一档等于把主态抄一遍。
+  'privacy-declined': {
+    title: '隐私协议门·不同意后的受限态',
+    prdRef: 'PRD §6.5.1',
+    notes: [
+      '不同意不退出应用：工信部禁止「不同意就不给用」，杀进程是华为/vivo 驳回项',
+      '刻意不是空白页：空白会让用户以为应用坏了（§6.5.1 明文）',
+      '内容 = 产品价值说明 + 「重新阅读协议」主按钮，随时可改主意',
+      '本态下全程不初始化地图 SDK、不申请任何权限'
     ]
   }
 };
@@ -476,7 +490,7 @@ var SHELL_TABS = ['鸭圈', '发布', '我的'];
 var BUTTON_VARIANTS = ['primary', 'secondary', 'ghost', 'danger', 'capsule', 'disabled'];
 
 /**
- * 主态画框登记表：18 个参与跳转索引的 pageId。
+ * 主态画框登记表：19 个参与跳转索引的 pageId。
  *
  * 为什么要显式登记而不是数 screen() 调用点：主态数是对外契约（交棒第一屏要报的数、
  * FLOW_LINKS 的合法目标集、indexMainFrames 的期望产出），而调用点散落在四个批次的
@@ -487,7 +501,10 @@ var BUTTON_VARIANTS = ['primary', 'secondary', 'ghost', 'danger', 'capsule', 'di
  */
 var MAIN_SCREENS = [
   'home-screen', 'list-screen',
-  'splash-screen', 'login-screen', 'detail-screen', 'publish-screen', 'ai-confirm-screen',
+  // privacy-gate 排在 splash 之后、login 之前，与 §6.5.1 冷启动顺序一致
+  //（2026-09-01 条目 [76] 补齐，此前是 §10.1 十九页里唯一缺稿的一页）
+  'splash-screen', 'privacy-gate', 'login-screen', 'detail-screen', 'publish-screen',
+  'ai-confirm-screen',
   'publish-success-screen', 'contact-screen', 'profile-screen', 'my-publish-screen',
   'my-favorite-screen', 'notification-screen', 'trust-screen', 'settings-screen',
   'category-selector', 'map-selector', 'cert-modal'
@@ -4483,6 +4500,134 @@ function buildSplash() {
 }
 
 /**
+ * 构造 privacy-gate 主态：隐私协议门（PRD §6.5.1 / §10.1）
+ *
+ * 2026-09-01（条目 [76]）补出。这一页是 §10.1 十九页里唯一没有稿的一页，
+ * 也是 §14.6 列的 🔴 上架驳回阻塞项 —— 它被漏掉的经过见 §6.5.1 开头：
+ * §6.7 与 §14.3 都要求「未同意不初始化地图」，但 §10.1 页面清单一直没有
+ * 承载这条要求的页面，直到「§10.1 ↔ MAIN_SCREENS 对数」那条探针抓出。
+ *
+ * **正文内容逐字取自已实现的 Flutter 页**（privacy_gate_screen.dart 的
+ * _AgreementView），不另拟一套：该页码侧已落地，稿再自拟文案就等于凭空
+ * 造出第三份口径，而稿码分歧里用户唯一直接读到的就是这些字（本轮同时把
+ * 本页纳入「Figma ↔ Flutter 关键按钮对数」那条守门）。
+ *
+ * **协议正文刻意不上稿**：§6.5.1 明写「协议文本走在线 URL，不内嵌写死」
+ * （上架手册 P6 要求隐私政策必须是独立可访问的 HTML 页）。把全文画到稿上
+ * 等于把「文本可远端更新」这条设计判断画反。同理也不画《用户协议》
+ * 《隐私政策》的可点入口：码侧要到 M4-4 政策上线后才有真实 URL 可跳，
+ * 现在画一个可点链接是稿超前于码，属于本轮刚立起来的稿码对数要防的事，
+ * 留到 M4-4 与真实 URL 一并补。
+ *
+ * @returns {FrameNode} 隐私协议门主态节点
+ */
+function buildPrivacyGate() {
+  var s = screen('privacy-gate', '隐私协议门', 'PRD §6.5.1');
+  s.appendChild(statusBar());
+  var body = box('_body', 'VERTICAL', {
+    w: CANVAS.w, pad: SPACING.xl, gap: SPACING.md, fill: 'color/background'
+  });
+
+  // 标题与下方四段正文全部要 FILL + HEIGHT：本页是全稿最长的连续文本，
+  // text() 默认 WIDTH_AND_HEIGHT（宽高双 hug），在纵排 Auto Layout 里宽度
+  // 不受容器约束，会横向撑破 390 画框（同 buildPermission 两态那处）。
+  // layoutSizingHorizontal='FILL' 必须在 appendChild【之后】赋值 ——
+  // 该属性要求节点已是某个 Auto Layout 父级的直接子节点。
+  var heading = text('欢迎使用找鸭找', 'h1', 'color/text-primary');
+  heading.textAutoResize = 'HEIGHT';
+  body.appendChild(heading);
+  heading.layoutSizingHorizontal = 'FILL';
+
+  // 四段正文与 _AgreementView 里那一整串 Text 逐段对应：
+  // 引导句 / 三条收集清单 / 高德 SDK 明示 / 不同意的后果。
+  // 拆成四个文本节点而非一整串：稿上要能逐段指出「哪一段满足哪条要求」，
+  // 一整串 200 余字的段落在评审时无法逐条对照。
+  var paras = [
+    '在使用前，请阅读并同意《用户协议》与《隐私政策》。',
+    // 三条收集清单：PIPL 要求逐项告知收集范围与用途，不许只写「必要信息」
+    '我们将收集以下信息以提供服务：\n'
+      + '· 位置信息 —— 用于展示你附近的资源与需求；\n'
+      + '· 手机号 —— 用于登录与联系中转；\n'
+      + '· 发布内容 —— 用于在地图与列表中展示。',
+    // 第三方 SDK 明示：上架手册要求列明服务商全称与其收集的信息类型，
+    // 只写「集成地图服务」会被驳回
+    '本应用集成高德地图 SDK（服务商：高德软件有限公司），用于地图展示与定位，'
+      + '会收集位置信息与设备标识。',
+    '你可以选择不同意，届时仍可浏览应用，但地图与定位功能不可用。'
+  ];
+  for (var i = 0; i < paras.length; i++) {
+    var p = text(paras[i], 'body', 'color/text-secondary');
+    p.textAutoResize = 'HEIGHT';
+    body.appendChild(p);
+    p.layoutSizingHorizontal = 'FILL';
+  }
+
+  // 两键贴底：码侧是 Expanded 滚动区 + 底部按钮，稿侧对应做法是 _spacer 撑开。
+  // 同意在上、不同意在下，与 _AgreementView 的排列一致 —— 次序本身是表态
+  //（把「不同意」放上面会让它显得是推荐动作）。
+  // 「不同意」用 ghost 而非 secondary：§6.5.1 要求提供这个出口但不鼓励它，
+  // 而 secondary 带主色描边，视觉权重与主按钮接近。
+  pushToBottom(body, [
+    annotation('隐私协议门红线（PRD §6.5.1）', [
+      '首启首个可交互页，排在 login 之前：发验证码已构成个人信息处理',
+      '协议门与定位权限分两步，不合并：合并即捆绑授权，是额外驳回点',
+      '不可绕过：无右上角叉、不响应返回键（码侧 PopScope canPop:false）',
+      '不同意 → 受限态，不退出应用：工信部禁止「不同意就不给用」',
+      '同意须连 agreedVersion 一起落盘，政策改版后重新弹门（PIPL）',
+      '未同意期间不得调 updatePrivacyAgree / 实例化 AMap / 申请定位 / 读设备标识',
+      '上条验收方法是抓包实测（§14.6），非代码走查',
+      '协议正文不上稿：文本走在线 URL（§9 GET /legal/{doc}），M4-4 接真实 URL'
+    ], { severity: 'redline' }),
+    button('同意并继续', 'primary', CANVAS.w - SPACING.xl * 2),
+    button('不同意', 'ghost', CANVAS.w - SPACING.xl * 2)
+  ]);
+  s.appendChild(body);
+  // 必须在 appendChild 之后：layoutGrow 要求已有 Auto Layout 父级
+  body.layoutGrow = 1;
+  return s;
+}
+
+/**
+ * 构造 privacy-gate 受限态变体：不同意后的可浏览态（PRD §6.5.1）
+ *
+ * 与主态并列出图供评审对照 —— 「不同意会发生什么」是本页最容易被做错的地方，
+ * 而做错的两种形态（退出应用 / 停在空白页）在稿上都表现为「没有这张图」。
+ *
+ * 为什么只补这一档变体、不再画「同意态」：**同意态就是主态本身**
+ * （_AgreementView 是默认视图，_DeclinedView 才是分支）。再单画一张
+ * 「同意态」等于把主态抄一遍，与条目 [70] 记的「重复稿」同一个错。
+ *
+ * 为什么本态不进 FLOW_LINKS：连线两端必须是 MAIN_SCREENS 登记的主态
+ *（探针有此断言），变体画框不在其中。受限态靠并列出图供对照，不靠连线。
+ *
+ * @returns {FrameNode} 受限态变体节点
+ */
+function buildPrivacyDeclined() {
+  var st = COVERAGE_STATES['privacy-declined'];
+  var s = screen('privacy-gate', st.title, st.prdRef, true);
+  s.appendChild(statusBar());
+  // 居中而非贴底：本态只有一句说明与一个出口，重心在中部（同空状态终态页的
+  // 做法）。故本页不进探针的 tailPages 表 —— 那张表管的是「带底部主操作的页」。
+  var body = box('_body', 'VERTICAL', {
+    w: CANVAS.w, h: CANVAS.h - 44, pad: SPACING.xl, gap: SPACING.md,
+    fill: 'color/background', align: 'CENTER', justify: 'CENTER'
+  });
+  var heading = text('地图功能需要你的同意', 'h2', 'color/text-primary');
+  heading.textAutoResize = 'HEIGHT';
+  body.appendChild(heading);
+  heading.layoutSizingHorizontal = 'FILL';
+  var lead = text('你尚未同意隐私政策，地图与定位功能暂不可用。\n'
+    + '你可以随时重新阅读并同意。', 'body', 'color/text-secondary');
+  lead.textAutoResize = 'HEIGHT';
+  body.appendChild(lead);
+  lead.layoutSizingHorizontal = 'FILL';
+  body.appendChild(button('重新阅读协议', 'primary', CANVAS.w - SPACING.xl * 2));
+  body.appendChild(annotation(st.title, st.notes));
+  s.appendChild(body);
+  return s;
+}
+
+/**
  * 构造 login-screen：手机号验证码一步进入（PRD §3.4.1 / §10.1）
  *
  * 2026-08-26 精修：按 PRD §3.4.1 逐条对齐，此前缺失五项（图形验证码、
@@ -5526,7 +5671,11 @@ function buildPublishSuccess() {
  * 页名清单是两份手写副本（改了数组忘改文案就会对不上），改为单表派生。
  */
 var CORE_PAGES = [
-  [buildSplash, 'splash'], [buildLogin, 'login'], [buildDetail, 'detail'],
+  // splash → privacy-gate → 受限态 → login 的排列即 §6.5.1 冷启动顺序：
+  // 批次 3 按本表顺序落框，画布上左右相邻即流程相邻，评审不必跳着看
+  [buildSplash, 'splash'], [buildPrivacyGate, 'privacy-gate'],
+  [buildPrivacyDeclined, 'privacy-declined'], [buildLogin, 'login'],
+  [buildDetail, 'detail'],
   [buildDetailOffline, 'detail-offline'], [buildPublish, 'publish'], [buildAiConfirm, 'ai-confirm'],
   [buildPublishSuccess, 'publish-success'], [buildContact, 'contact'], [buildProfile, 'profile'],
   [buildMyPublish, 'my-publish'], [buildMyFavorite, 'my-favorite'],
@@ -5927,12 +6076,23 @@ async function batchModal() {
  * 依据 PRD §10 信息架构与 §6.4 主流程
  */
 var FLOW_LINKS = [
-  // 启动页 → 登录（2026-08-25 随 splash-screen 一并新增）。
+  // 启动页 → 隐私协议门（2026-09-01 条目 [76] 改目标；原为 → login-screen）。
   // 触发点用 _splash-tap 而非 _body：本表内 _body 在十余个画框里重名，
   // 虽 findClickable 按源画框范围内查重不会冲突，但给触发点起专名
   // 能让「这个节点存在的唯一理由是承载跳转」这件事在代码里自解释。
   // 真机上此跳转是 1.5s 自动转场，Figma 原型无定时触发能力，故降级为点击。
-  ['splash-screen',           '_splash-tap',                'login-screen',           'ON_CLICK'],
+  //
+  // **为什么是「改」而不是「再加一条 splash → privacy-gate」**：本表第二列是
+  // 节点精确名，而 _splash-tap 在启动页里只有一个 —— findClickable 命中唯一
+  // 节点、link() 用 setReactionsAsync 覆盖写，一个触发点连不了两个目标，
+  // 加第二条只会让后写的那条把前一条覆盖掉（且不报错）。
+  // 目标改为 privacy-gate 而不是保留 login：§6.5.1 明写协议门早于登录
+  //（登录发短信已构成个人信息处理），冷启动顺序本身就是合规要求。
+  ['splash-screen',           '_splash-tap',                'privacy-gate',           'ON_CLICK'],
+  // 协议门同意 → 登录。「不同意 → 受限态」刻意不进本表：本表两端必须是
+  // MAIN_SCREENS 登记的主态（下方 batchFlow 有此断言），而受限态是变体画框。
+  // 受限态靠与主态并列出图供评审对照，不靠原型连线。
+  ['privacy-gate',            'btn/primary/同意并继续',      'login-screen',           'ON_CLICK'],
   // 节点名必须与 login-screen 里实际用的 variant 对齐：该按钮走的是
   // button('登录 / 注册', 'capsule', ...)（见 :3253），Instance 名由
   // button() 拼成 'btn/' + variant + '/' + label。此处曾误写 primary，
