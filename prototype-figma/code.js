@@ -563,6 +563,12 @@ function planStats() {
   var tabs = SHELL_TABS.length;
   var buttons = BUTTON_VARIANTS.length;
   var pins = category * 2; // 每个大类各一枚资源态 + 需求态
+  // Component Set 数（2026-09-01，条目 [77] 第二层 ⑦）：登记表键数即 set 数。
+  // 单独成项而非写死 3：新增一类变体组件时忘了同步，batchSetup 会当场炸掉，
+  // 而「合成静默漏一组」在画布上只表现为「那几个 master 还是散着的」——
+  // 没人会注意到 host 里少了一个折叠容器
+  var sets = 0;
+  for (var sk in COMPONENT_SETS) sets++;
 
   return {
     tokens: {
@@ -590,6 +596,7 @@ function planStats() {
       tabs: tabs,
       buttons: buttons,
       pins: pins,
+      sets: sets,
       total: statusBar + tabs + buttons + pins
     },
     corePages: CORE_PAGES.length,
@@ -2466,6 +2473,111 @@ var COMP_CACHE = {};
 var COMP_HOST_NAME = '_components · master（勿删）';
 
 /**
+ * Component Set 登记表（2026-09-01，条目 [77] 第二层 ⑦）：set 名 -> 变体属性轴。
+ *
+ * 为什么要有这一层映射（本项目最容易被后人改错的一处）：
+ * Figma 的变体属性**只能**从 master 的图层名里读，格式硬性为 `Property=Value`，
+ * 多属性用 `, ` 分隔（如 `category=cat-work, supply=resource`）。而本文件里
+ * 组件的身份标识是斜杠扁平名（`ui/button/primary`），它同时是：
+ *   ① COMP_CACHE 的键；② describeComponents 的 descs 表键；③ 离线探针多处
+ *   断言的索引键。三者全按扁平名索引，改成变体语法要动 5 处以上断言。
+ *
+ * 故本轮刻意让**三套口径解耦**，各自只服务一件事：
+ *   · 扁平键 `ui/button/primary`   —— 代码内部的组件身份（缓存/契约/断言）
+ *   · 变体名 `variant=primary`      —— Figma 面板里的属性轴（只存在于 master.name）
+ *   · 画布名 `btn/primary/发布`     —— Instance 的图层名（自带文案，供排查定位）
+ * 三者由 variantNameOf / flatNameOf 双向换算，绝不各写一份字面量。
+ *
+ * ⚠️ 解耦的代价必须记在这里：master 的 `.name` 从此**不再等于** COMP_CACHE 的键。
+ * 于是 hydrateComponents 不能再拿 `.name` 当键（那会让批次 2/3/4 独立运行时
+ * 拿到 `variant=primary` 这种键、全部 miss 后静默回退原生构造 —— 画面完全正常
+ * 而组件化收益归零）。探针为此加了「往返换算」与「hydrate 后 Instance 真出得来」
+ * 两条断言，就是钉住这条静默失效路径。
+ *
+ * 为什么 shell/status-bar 不在表内：它只有 1 个 master、没有变体轴。包成
+ * 单变体 set 只会在面板里多一个空下拉，无任何取用价值，还多一层结构要维护。
+ *
+ * 为什么 Pin 用双属性而非单属性 10 值：分类与供需态是两个正交维度，这正是
+ * PRD §6.4.2「Marker 只承载分类 + 供需两类信息」那条红线的结构化表达；
+ * 压成一个 10 项长下拉会把这个信息丢掉。
+ *
+ * 结构：set 名 -> 属性名数组（顺序即扁平名去掉 set 前缀后的斜杠段顺序）
+ */
+var COMPONENT_SETS = {
+  'shell/bottom-tab': ['variant'],
+  'ui/button': ['variant'],
+  'ui/pin': ['category', 'supply']
+};
+
+/**
+ * 求一个扁平组件名所属的 Component Set 名
+ * @param {string} compName 扁平组件名，如 ui/pin/cat-work/resource
+ * @returns {string|null} set 名；不属于任何 set 时返回 null（如 shell/status-bar）
+ */
+function setNameOf(compName) {
+  var best = null;
+  for (var s in COMPONENT_SETS) {
+    // 必须带斜杠比对：否则 'ui/pinx/…' 会被误判进 'ui/pin'
+    if (compName.indexOf(s + '/') !== 0) continue;
+    if (!best || s.length > best.length) best = s;
+  }
+  return best;
+}
+
+/**
+ * 扁平组件名 -> Figma 变体名（master 的图层名）
+ * @param {string} compName 扁平组件名，如 ui/pin/cat-work/resource
+ * @returns {string|null} 变体名，如 category=cat-work, supply=resource；不属任何 set 返回 null
+ */
+function variantNameOf(compName) {
+  var set = setNameOf(compName);
+  if (!set) return null;
+  var props = COMPONENT_SETS[set];
+  var vals = compName.slice(set.length + 1).split('/');
+  // 段数与属性轴数不符说明登记表与注册代码分叉，宁可返回 null 让上游校验炸掉
+  if (vals.length !== props.length) return null;
+  var parts = [];
+  for (var i = 0; i < props.length; i++) parts.push(props[i] + '=' + vals[i]);
+  return parts.join(', ');
+}
+
+/**
+ * Figma 变体名 -> 扁平组件名（variantNameOf 的逆运算）
+ * @param {string} setName Component Set 名，如 ui/pin
+ * @param {string} variantName 变体名，如 category=cat-work, supply=resource
+ * @returns {string|null} 扁平组件名；格式不合法或属性名不匹配时返回 null
+ */
+function flatNameOf(setName, variantName) {
+  var props = COMPONENT_SETS[setName];
+  if (!props) return null;
+  var segs = String(variantName).split(', ');
+  if (segs.length !== props.length) return null;
+  var vals = [];
+  for (var i = 0; i < props.length; i++) {
+    var eq = segs[i].indexOf('=');
+    // 属性名也要核：只按位置取值的话，属性轴顺序改动会静默错位
+    if (eq <= 0 || segs[i].slice(0, eq) !== props[i]) return null;
+    vals.push(segs[i].slice(eq + 1));
+  }
+  return setName + '/' + vals.join('/');
+}
+
+/**
+ * 解析变体名为 属性 -> 取值 的映射
+ * @param {string} variantName 变体名，如 category=cat-work, supply=resource
+ * @returns {Object} 属性名到取值的映射
+ */
+function parseVariantName(variantName) {
+  var out = {};
+  var segs = String(variantName).split(', ');
+  for (var i = 0; i < segs.length; i++) {
+    var eq = segs[i].indexOf('=');
+    if (eq > 0) out[segs[i].slice(0, eq)] = segs[i].slice(eq + 1);
+  }
+  return out;
+}
+
+/**
  * 把一个已构造好的 Frame 转成 Component master 并登记到缓存
  * @param {string} compName 组件名，同时作为 Figma 图层名
  * @param {FrameNode} node 待转换的 Frame 节点
@@ -2473,7 +2585,9 @@ var COMP_HOST_NAME = '_components · master（勿删）';
  */
 function toComponent(compName, node) {
   var comp = figma.createComponentFromNode(node);
-  comp.name = compName;
+  // 图层名取变体语法（属于某个 set 时），因为 Figma 的变体属性只从图层名读；
+  // 缓存键仍用扁平名 —— 两套口径的分工见 COMPONENT_SETS 注释
+  comp.name = variantNameOf(compName) || compName;
   COMP_CACHE[compName] = comp;
   return comp;
 }
@@ -2481,6 +2595,17 @@ function toComponent(compName, node) {
 /**
  * 从当前文档中把已存在的 Component master 复原到内存缓存
  * 批次 2/3/4 独立运行时需先调用，否则拿不到 master 只能回退原生成
+ *
+ * ⚠️ 必须穿透 Component Set 一层（2026-09-01，条目 [77] 第二层 ⑦）：
+ * 合成 set 后 master 不再是 host 的直接子节点，而是 COMPONENT_SET 的子节点。
+ * 若沿用「只遍历 host 直接子节点且只认 COMPONENT」的旧逻辑，批次 2/3/4 独立
+ * 运行时会一个 master 都收不到 → instanceOf 全部回退原生构造 → 画面完全正常、
+ * 尺寸配色分毫不差，只有「改 master 全画布同步」这唯一收益悄悄归零。
+ * 这是本轮改动里唯一一处**零征兆**的失效路径，故探针专门加了断言钉住。
+ *
+ * ⚠️ 键必须用 flatNameOf 换算而非直接取 `.name`：set 内 master 的图层名是
+ * `variant=primary` 这种变体语法，直接当键会让 COMP_CACHE 里全是查不到的键。
+ *
  * @returns {Promise<number>} 复原的组件数量
  */
 async function hydrateComponents() {
@@ -2493,10 +2618,25 @@ async function hydrateComponents() {
     var kids = pages[i].children;
     for (var k = 0; k < kids.length; k++) {
       if (kids[k].name !== COMP_HOST_NAME) continue;
-      var comps = kids[k].children;
-      for (var c = 0; c < comps.length; c++) {
-        if (comps[c].type === 'COMPONENT') {
-          COMP_CACHE[comps[c].name] = comps[c];
+      var slots = kids[k].children;
+      for (var c = 0; c < slots.length; c++) {
+        var slot = slots[c];
+        // 未合成 set 的独立 master（如 shell/status-bar）：图层名就是扁平名
+        if (slot.type === 'COMPONENT') {
+          COMP_CACHE[slot.name] = slot;
+          n++;
+          continue;
+        }
+        if (slot.type !== 'COMPONENT_SET') continue;
+        var variants = slot.children;
+        for (var v = 0; v < variants.length; v++) {
+          if (variants[v].type !== 'COMPONENT') continue;
+          var flat = flatNameOf(slot.name, variants[v].name);
+          // 换不回扁平名说明画布上的变体名被手改过（或登记表已分叉）。
+          // 此时宁可不收：收进去会得到一个永远命中不了的键，
+          // 而下游 instanceOf 静默回退，比一开始就 miss 更难查
+          if (!flat) continue;
+          COMP_CACHE[flat] = variants[v];
           n++;
         }
       }
@@ -2508,13 +2648,24 @@ async function hydrateComponents() {
 /**
  * 取一个组件的 Instance；master 不存在时回退为直接构造原生节点
  * 这样批次 2/3/4 即使脱离批次 1 单独运行也不会失败
- * @param {string} compName 组件名
+ *
+ * ⚠️ 必须显式把 Instance 名设回扁平名（2026-09-01，条目 [77] 第二层 ⑦）：
+ * Instance 默认继承 master 的图层名，而合成 set 后 master 名已改成变体语法
+ * （`variant=我的`）。不设回去的话，画布上的图层名会从 `shell/bottom-tab/我的`
+ * 静默变成 `variant=我的` —— 批次 5 的原型连线与探针都按节点名定位，
+ * 一改就是成片失败，且失败原因（图层名换了）在报错信息里完全看不出来。
+ *
+ * @param {string} compName 扁平组件名
  * @param {Function} fallback 无 master 时用于直接构造节点的函数
  * @returns {SceneNode} Instance 或原生节点
  */
 function instanceOf(compName, fallback) {
   var master = COMP_CACHE[compName];
-  if (master && master.type === 'COMPONENT') return master.createInstance();
+  if (master && master.type === 'COMPONENT') {
+    var inst = master.createInstance();
+    inst.name = compName;
+    return inst;
+  }
   return fallback();
 }
 
@@ -2591,12 +2742,85 @@ function pin(catRole, supplyDemand, completeness, selected, showCompleteness) {
   if (!master || master.type !== 'COMPONENT') {
     return pinRaw(catRole, supplyDemand, completeness, selected, showCompleteness);
   }
-  return master.createInstance();
+  var inst = master.createInstance();
+  // 与 instanceOf 同一判据：合成 set 后 master 名是变体语法，
+  // 不设回扁平名则画布图层名会静默变成 `category=cat-work, supply=resource`
+  inst.name = key;
+  return inst;
+}
+
+/**
+ * 把一组已注册的 master 合成一个 Component Set 并摆好位（条目 [77] 第二层 ⑦）。
+ *
+ * 为什么要手动摆位与 resize：figma.combineAsVariants 合成后**所有变体的 x/y
+ * 全部堆在 (0,0)**，且 set 自身尺寸不会自动抱住内容 —— 不摆位则整个 set 在画布上
+ * 显示为一个塌陷成单个元素的方块，肉眼看不出里面有几个变体（渲染图也看不出）。
+ *
+ * 为什么按属性轴数决定排布方向：单属性（按钮/Tab）排成一行，读起来就是「一档接
+ * 一档」；双属性（Pin）排成 grid，行=第一属性、列=第二属性，正交关系一眼可见。
+ * 这与 COMPONENT_SETS 里「Pin 刻意用双属性」的判据是同一件事的两个面。
+ *
+ * @param {FrameNode} host master 容器
+ * @param {string} setName Component Set 名，须是 COMPONENT_SETS 的键
+ * @param {Array<string>} flatNames 该 set 下全部扁平组件名，顺序即摆位顺序
+ * @returns {ComponentSetNode} 合成后的 Component Set
+ */
+function combineSet(host, setName, flatNames) {
+  var props = COMPONENT_SETS[setName];
+  var comps = [];
+  for (var i = 0; i < flatNames.length; i++) comps.push(COMP_CACHE[flatNames[i]]);
+  // combineAsVariants 要求 parent 在创建时指定（不能事后 append），
+  // 且数组必须非空且全为 ComponentNode
+  var set = figma.combineAsVariants(comps, host);
+  set.name = setName;
+
+  // 变体摆位：单属性一行排开，双属性排 grid（列 = 第二属性的取值序）
+  var GAP = SPACING.lg;
+  var cols = 1;
+  if (props.length > 1) {
+    var seen = {};
+    for (var c = 0; c < comps.length; c++) {
+      var val = parseVariantName(comps[c].name)[props[1]];
+      if (val !== undefined) seen[val] = 1;
+    }
+    cols = 0;
+    for (var k in seen) cols++;
+  } else {
+    cols = comps.length;
+  }
+  if (cols < 1) cols = 1;
+
+  var maxX = 0;
+  var maxY = 0;
+  var rowY = 0;
+  var rowH = 0;
+  for (var j = 0; j < comps.length; j++) {
+    var col = j % cols;
+    if (col === 0 && j > 0) {
+      rowY += rowH + GAP;
+      rowH = 0;
+    }
+    // 列宽按同列最宽算代价过高，直接用「本行内累加」：变体宽度在同一 set 内一致
+    var px = col * (comps[j].width + GAP);
+    comps[j].x = px;
+    comps[j].y = rowY;
+    if (comps[j].height > rowH) rowH = comps[j].height;
+    if (px + comps[j].width > maxX) maxX = px + comps[j].width;
+    if (rowY + comps[j].height > maxY) maxY = rowY + comps[j].height;
+  }
+  // set 自身不抱内容，须显式撑到装得下（留一圈边距，否则变体贴边被切）
+  set.resizeWithoutConstraints(maxX + GAP * 2, maxY + GAP * 2);
+  return set;
 }
 
 /**
  * 在批次 1 中注册全部 Component master
  * master 统一收进一个容器 Frame，避免散落污染画布
+ *
+ * 2026-09-01（条目 [77] 第二层 ⑦）：注册完毕后把有变体轴的三组合成
+ * Component Set（按钮 6 / Tab 3 / Pin 10）。状态栏刻意保持独立 master ——
+ * 只有 1 个、没有变体轴，包成单变体 set 只多一个空下拉（见 COMPONENT_SETS 注释）。
+ *
  * @param {PageNode} page 批次 1 所在页面
  * @returns {FrameNode} 存放 master 的容器 Frame
  */
@@ -2608,20 +2832,37 @@ function registerComponents(page) {
 
   // 外壳组件：状态栏 + 三个底部 Tab 态
   host.appendChild(toComponent('shell/status-bar', statusBarRaw()));
+  var tabNames = [];
   for (var t = 0; t < SHELL_TABS.length; t++) {
-    host.appendChild(toComponent('shell/bottom-tab/' + SHELL_TABS[t], bottomTabRaw(SHELL_TABS[t])));
+    var tabFlat = 'shell/bottom-tab/' + SHELL_TABS[t];
+    host.appendChild(toComponent(tabFlat, bottomTabRaw(SHELL_TABS[t])));
+    tabNames.push(tabFlat);
   }
 
   // 按钮六类
+  var btnNames = [];
   for (var v = 0; v < BUTTON_VARIANTS.length; v++) {
-    host.appendChild(toComponent('ui/button/' + BUTTON_VARIANTS[v], buttonRaw('按钮', BUTTON_VARIANTS[v], 0)));
+    var btnFlat = 'ui/button/' + BUTTON_VARIANTS[v];
+    host.appendChild(toComponent(btnFlat, buttonRaw('按钮', BUTTON_VARIANTS[v], 0)));
+    btnNames.push(btnFlat);
   }
 
   // Pin 十个基础态（5 分类 × 资源/需求，不含完整度角标与选中态）
+  var pinNames = [];
   for (var ck in CATEGORY_COLORS) {
-    host.appendChild(toComponent('ui/pin/' + ck + '/resource', pinRaw('category/' + ck, 'resource', null, false)));
-    host.appendChild(toComponent('ui/pin/' + ck + '/demand', pinRaw('category/' + ck, 'demand', null, false)));
+    var sds = ['resource', 'demand'];
+    for (var s = 0; s < sds.length; s++) {
+      var pinFlat = 'ui/pin/' + ck + '/' + sds[s];
+      host.appendChild(toComponent(pinFlat, pinRaw('category/' + ck, sds[s], null, false)));
+      pinNames.push(pinFlat);
+    }
   }
+
+  // 合成三个 Component Set。必须在全部 master 注册完之后做：combineAsVariants
+  // 会把 master 从 host 搬进 set，边注册边合成会让后续 appendChild 的顺序错乱
+  combineSet(host, 'shell/bottom-tab', tabNames);
+  combineSet(host, 'ui/button', btnNames);
+  combineSet(host, 'ui/pin', pinNames);
 
   return host;
 }
@@ -3213,6 +3454,18 @@ async function batchSetup() {
       + '。请同步 planStats() 的 masters 分项与 registerComponents()。');
   }
 
+  // Component Set 数当场对数（2026-09-01，条目 [77] 第二层 ⑦）：
+  // 「合成漏一组」是本步唯一零征兆的失败 —— master 数照样对、画面分毫不差，
+  // 只有 host 里少一个折叠容器、设计师面板里少一个变体下拉。故一组不成就炸掉
+  var setCount = 0;
+  for (var hi = 0; hi < host.children.length; hi++) {
+    if (host.children[hi].type === 'COMPONENT_SET') setCount++;
+  }
+  if (setCount !== st.masters.sets) {
+    throw new Error('Component Set 数不符：实际 ' + setCount + '，登记表推算 ' + st.masters.sets
+      + '。请同步 COMPONENT_SETS 与 registerComponents() 里的 combineSet 调用。');
+  }
+
   // 样式数同样当场对数（2026-09-01，条目 [77] 第二层 ⑥）：沿用上面这道校验的判据 ——
   // 首屏与摘要串报的数若是假的，比不报更坏。三计数之和才是「面板里实际有几档」：
   // 重跑时多数档走 reused，只看 created 会误判为「一个都没建」
@@ -3235,6 +3488,9 @@ async function batchSetup() {
       + describedCount + ' 个描述。请在 describeComponents() 的 descs 表内补齐。');
   }
 
+  var setNames = [];
+  for (var sn in COMPONENT_SETS) setNames.push(sn);
+
   return '批次 1 完成\n字体族：' + family + (family === FONT_FALLBACK ? '（未检测到 Noto Sans SC，已降级）' : '')
     + '\nVariables：新建 ' + stat.created + ' / 沿用 ' + stat.reused + ' / 改值 ' + stat.updated
     + '（应为 ' + st.tokens.total + ' 项：COLOR ' + st.tokens.color + ' + FLOAT ' + st.tokens.float + '）'
@@ -3247,6 +3503,8 @@ async function batchSetup() {
     + '\n（样式面板可直接取用；画布既有文本仍按数值设定，未挂 styleId —— 见 ensureTextStyles 注释）'
     + '\nComponent master：' + compCount + ' 个（状态栏' + st.masters.statusBar
     + ' + 底部Tab' + st.masters.tabs + ' + 按钮' + st.masters.buttons + ' + Pin' + st.masters.pins + '）'
+    + '\nComponent Set：' + setCount + ' 组（' + setNames.join(' / ')
+    + '）；状态栏无变体轴，保持独立 master'
     + '\n组件契约：' + describedCount + ' 个 description 已写入（右侧 Inspect 面板可见，无需 Dev Mode）'
     + '\n画板：语义色板 / 分类色Pin矩阵 / 字阶与按钮';
 }

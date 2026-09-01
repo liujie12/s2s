@@ -494,6 +494,42 @@ const figma = {
     return c;
   },
   createImage: () => ({ hash: 'mockhash' }),
+  // ---- Component Set（2026-09-01 条目 [77] 第二层 ⑦）----
+  //
+  // 为什么必须 mock：registerComponents 在批次 1 里就调 combineAsVariants，
+  // 缺这个方法则整个批次 1 的断言全部炸掉（说明文档 ⑧ 明写「离线探针现在是
+  // 这一项的盲区」）。
+  //
+  // 为什么要把真 API 的两条前置约束也实现出来（照 setReactionsAsync 那次教训）：
+  //   ① nodes 非空且全为 ComponentNode —— 真机传 Frame 会抛；
+  //   ② parent 须在调用时给定 —— 真机不允许事后 append。
+  // mock 若宽容放过，「传错类型」这种真机必炸的写法在探针里会全绿。
+  //
+  // 为什么不模拟「变体属性解析」：真机会从 children 的 name 反推
+  // componentPropertyDefinitions。这里只如实存 children 与 name，让断言自己
+  // 拿 flatNameOf 去核 —— 由 mock 代算属性表，等于在探针里放一份 Figma 行为的
+  // 猜测副本，断言验的就是那份猜测（原则㊾）。
+  combineAsVariants: (nodes, parent) => {
+    if (!Array.isArray(nodes) || nodes.length === 0) {
+      throw new Error('in combineAsVariants: Expected a non-empty array of nodes');
+    }
+    for (const nd of nodes) {
+      if (!nd || nd.type !== 'COMPONENT') {
+        throw new Error('in combineAsVariants: Expected all nodes to be of type COMPONENT, got '
+          + (nd ? nd.type : String(nd)));
+      }
+    }
+    if (!parent) throw new Error('in combineAsVariants: Expected a parent node');
+    const set = makeNode('COMPONENT_SET');
+    // ComponentSet 不做 Auto Layout 抱内容：真机里变体靠绝对坐标摆，
+    // 尺寸须调用方显式 resize —— 这正是 combineSet 要手动摆位的原因，
+    // 若这里让它自动 hug，「忘了摆位」这个失败在探针里就看不出来了
+    set._reflow = function () {};
+    set.description = '';
+    parent.appendChild(set);
+    for (const nd of nodes.slice()) set.appendChild(nd);
+    return set;
+  },
   // 真 API 返回 Uint8Array（Plugin API Update 42 起）。这里只需返回一个
   // 能被 createImage 接住的对象即可，内容不参与布局计算。
   base64Decode: () => new Uint8Array(8),
@@ -685,7 +721,22 @@ const wrapped = new Function(
       // lineHeightOf 单独导出：它是 text() 与 ensureTextStyles() 的共用派生口径，
       // 断言要拿它现算期望值而非在探针里手抄一份 Math.round（原则㊾）
       'ensureTextStyles', 'ensurePaintStyles', 'lineHeightOf',
-      'TEXT_STYLE_PREFIX', 'TEXT_STYLE_CACHE', 'PAINT_STYLE_CACHE', 'text']
+      'TEXT_STYLE_PREFIX', 'TEXT_STYLE_CACHE', 'PAINT_STYLE_CACHE', 'text',
+      // 2026-09-01 条目 [77]（M4-3e 第二层 ⑦）：Component Set 合成。
+      // COMPONENT_SETS 是变体属性轴的真源，断言要拿它派生期望的变体名而非手抄；
+      // variantNameOf / flatNameOf 必须成对导出 —— 它俩的往返一致性是
+      // hydrateComponents 能不能把 master 收回 COMP_CACHE 的唯一前提，
+      // 而那条链路一断的表现是「画面全对、组件化收益归零」（零征兆）。
+      // hydrateComponents / instanceOf 要能真跑：「合成后还收不收得到 master」
+      // 只有真调一遍才验得到，源码正则看不出。
+      //
+      // ⚠️ 刻意**不导出 COMP_CACHE**：它在 batchSetup 与 resetAll 里被
+      // `COMP_CACHE = {}` **整体重新赋值**，而这里的导出是在模块求值那一刻
+      // 取的对象引用 —— 批次跑完后探针手里那个对象仍是空的旧壳。拿它写
+      // 「缓存里有 20 项」会得到一条永远红、或（改成 0 判据后）永远绿的假断言。
+      // 故缓存状态一律只通过 hydrateComponents 的返回值与 instanceOf 的行为验。
+      'COMPONENT_SETS', 'variantNameOf', 'flatNameOf', 'setNameOf', 'parseVariantName',
+      'hydrateComponents', 'instanceOf', 'COMP_HOST_NAME']
       .map((k) => k + ': typeof ' + k + " !== 'undefined' ? " + k + ' : undefined')
       .join(', ') +
     ' };'
@@ -1080,6 +1131,8 @@ function allText(root) {
   } else {
     check('login 有 _third-party 行', false, '未找到');
   }
+
+  // ============================================================
 
   // ============================================================
   // 八之二、实机验收（2026-08-26）暴露的三类缺陷，各配一条静态断言。
@@ -2827,17 +2880,39 @@ function allText(root) {
       + ' = ' + st.tokens.float + '，合计 ' + st.tokens.total
     );
 
-    // master 数以 registerComponents 真跑一遍的实际产出为准，不信 planStats 自述
+    // master 数以 registerComponents 真跑一遍的实际产出为准，不信 planStats 自述。
+    //
+    // 2026-09-01 条目 [77] 第二层 ⑦：合成 Component Set 后 host 的直接子节点里
+    // 只剩 1 个独立 master（状态栏），另外 19 个降到 set 内一层。原写法
+    // 「filter(type === 'COMPONENT')」此时只数得到 1，而这条断言会以
+    // 「自报 20 vs 实际 1」的形式报红 —— 报红本身没错，但它验的不再是
+    // planStats 对不对，故收法必须跟着穿透一层。
     const host = M.registerComponents(figma.currentPage);
-    const actualMasters = host.children.filter((n) => n.type === 'COMPONENT').length;
+    let actualMasters = 0;
+    let actualSets = 0;
+    for (const n of host.children) {
+      if (n.type === 'COMPONENT') { actualMasters++; continue; }
+      if (n.type !== 'COMPONENT_SET') continue;
+      actualSets++;
+      for (const v of n.children) if (v.type === 'COMPONENT') actualMasters++;
+    }
     check(
-      'planStats master 总数 == registerComponents 实际注册数',
+      'planStats master 总数 == registerComponents 实际注册数（穿透 Component Set）',
       st.masters.total === actualMasters &&
       st.masters.tabs === M.SHELL_TABS.length &&
       st.masters.buttons === M.BUTTON_VARIANTS.length &&
       st.masters.pins === cnt(M.CATEGORY_COLORS) * 2,
       '自报 ' + st.masters.total + '（Tab' + st.masters.tabs + '/按钮' + st.masters.buttons
       + '/Pin' + st.masters.pins + '）vs 实际 ' + actualMasters
+    );
+
+    // set 数单独一条：它是 batchSetup 第三道硬校验的判据来源。
+    // 合成漏一组在画布上只表现为「那几个 master 还是散着的」，没人会注意到
+    // host 里少了一个折叠容器 —— 这条与那道抛错校验互为正反面。
+    check(
+      'planStats masters.sets == COMPONENT_SETS 键数 == 实际合成的 set 数',
+      st.masters.sets === cnt(M.COMPONENT_SETS) && actualSets === st.masters.sets,
+      '自报 ' + st.masters.sets + ' / 真源表 ' + cnt(M.COMPONENT_SETS) + ' / 实际 ' + actualSets
     );
 
     check(
@@ -3325,14 +3400,30 @@ function allText(root) {
       pj(listKeys) + ' vs ' + pj(catKeys)
     );
 
-    // 建一套干净的 master 交给 describeComponents，避免受前面批次实跑的影响
+    // 建一套干净的 master 交给 describeComponents，避免受前面批次实跑的影响。
+    //
+    // 2026-09-01 条目 [77] 第二层 ⑦：不能再按「host 的直接子 COMPONENT」收 ——
+    // 合成 Component Set 后 host 直接子节点里只剩 1 个独立 master（状态栏），
+    // 另外 19 个降到 set 内一层。原写法此时只收得到 1 个，而 describeComponents
+    // 会照样返回 1 —— 两个数一致，断言全绿，实际 19 个契约一条没写。
+    // 故改走 collectMasters：与 hydrateComponents 同一套穿透 + flatNameOf 换算口径。
+    const collectMasters = (host) => {
+      const out = {};
+      for (const c of host.children) {
+        if (c.type === 'COMPONENT') { out[c.name] = c; continue; }
+        if (c.type !== 'COMPONENT_SET') continue;
+        for (const v of c.children) {
+          if (v.type !== 'COMPONENT') continue;
+          const flat = M.flatNameOf(c.name, v.name);
+          if (flat) out[flat] = v;
+        }
+      }
+      return out;
+    };
     const descPage = figma.createPage();
     descPage.name = 'probe/desc';
     const descHost = M.registerComponents(descPage);
-    const cache = {};
-    for (const c of descHost.children) {
-      if (c.type === 'COMPONENT') cache[c.name] = c;
-    }
+    const cache = collectMasters(descHost);
     const written = M.describeComponents(cache);
 
     check(
@@ -3449,11 +3540,19 @@ function allText(root) {
     // 接上这个调用，它们照样全绿，只有这条会红。
     // 名单用「集合相等」而非「全部 COMPONENT 都有描述」：本探针在 planStats
     // 那节为核对数量又裸注册过一套 master（无描述），那是探针自身的临时产物。
+    //
+    // 2026-09-01 条目 [77] 第二层 ⑦：收的名字必须换算回扁平名再比。合成后
+    // master 的 .name 已是变体语法（variant=primary），直接拿 n.name 与
+    // wantNames（扁平名）比会 20 项全部落空 —— 与 collectMasters 同一口径。
     const describedNames = [];
     for (const pg of figma.root.children) {
       if (pg.name === 'probe/desc') continue;
       for (const n of pg.findAll((x) => x.type === 'COMPONENT')) {
-        if (n.description && describedNames.indexOf(n.name) < 0) describedNames.push(n.name);
+        if (!n.description) continue;
+        const flat = n.parent && n.parent.type === 'COMPONENT_SET'
+          ? M.flatNameOf(n.parent.name, n.name)
+          : n.name;
+        if (flat && describedNames.indexOf(flat) < 0) describedNames.push(flat);
       }
     }
     check(
@@ -3463,6 +3562,250 @@ function allText(root) {
       (describedNames.length !== wantNames.length
         ? '，差集：' + wantNames.filter((n) => describedNames.indexOf(n) < 0).join(', ')
         : '')
+    );
+  }
+
+  // ============================================================
+  // 十一之三、Component Set 合成（2026-09-01，条目 [77] 第二层 ⑦）
+  //
+  // 为什么这一节非有不可：本轮改动的**唯一收益**是「改一个 master 全画布同步」，
+  // 而它的失效是**零征兆**的 —— 合成后 master 从 host 的直接子节点降到 set 内
+  // 一层，hydrateComponents 若没跟着穿透，批次 2/3/4 独立运行时一个 master 都
+  // 收不到，instanceOf 全部静默回退原生构造。此时画面完全正常、尺寸配色分毫不差、
+  // 渲染图一模一样，只有组件化收益悄悄归零。除了这几条断言，没有任何东西看得出来。
+  //
+  // 另一条同样看不出来的是「变体没摆位」：combineAsVariants 合成后所有变体的
+  // x/y 全堆在 (0,0)，set 自身也不抱内容 —— 不摆位则整个 set 在画布上塌陷成
+  // 一个方块。故 mock 刻意不给 COMPONENT_SET 做 Auto Layout（见 mock 处注释），
+  // 让「忘了摆位」在离线也能被量出来。
+  //
+  // 全部期望值一律从 COMPONENT_SETS 现算：变体名格式（Property=Value）与每组
+  // 变体数（6/3/10）都不在这里手抄一份（原则㊾）。
+  // ============================================================
+  console.log('\n--- Component Set 合成（变体轴）---');
+  if (!M.COMPONENT_SETS || typeof M.flatNameOf !== 'function') {
+    check('COMPONENT_SETS 与换算函数已导出', false, '未导出或不是函数');
+  } else {
+    const pj = (x) => JSON.stringify(x);
+    const setKeys = Object.keys(M.COMPONENT_SETS);
+
+    // ① 往返一致：20 个扁平名逐个 variantNameOf → flatNameOf 必须回到自身。
+    // 这对函数是 COMP_CACHE 键与 Figma 图层名之间唯一的桥；断一头的表现就是
+    // 「hydrate 收不回来」，而那是零征兆的，所以要在这里正面钉死。
+    const flatAll = ['shell/status-bar']
+      .concat(M.SHELL_TABS.map((t) => 'shell/bottom-tab/' + t))
+      .concat(M.BUTTON_VARIANTS.map((v) => 'ui/button/' + v));
+    for (const ck of Object.keys(M.CATEGORY_COLORS)) {
+      flatAll.push('ui/pin/' + ck + '/resource', 'ui/pin/' + ck + '/demand');
+    }
+    const tripBad = [];
+    for (const flat of flatAll) {
+      const setName = M.setNameOf(flat);
+      const vName = M.variantNameOf(flat);
+      if (!setName) {
+        // 不属于任何 set 的独立 master（状态栏）：两个函数都该返回 null，
+        // 而不是编出一个 `shell/status-bar=` 之类的空属性名
+        if (vName !== null) tripBad.push(flat + ' 非 set 成员却算出变体名 ' + vName);
+        continue;
+      }
+      if (M.flatNameOf(setName, vName) !== flat) {
+        tripBad.push(flat + ' → ' + vName + ' → ' + M.flatNameOf(setName, vName));
+      }
+      // 格式必须是 Property=Value，属性名逐个取自真源表
+      const props = M.COMPONENT_SETS[setName];
+      const segs = String(vName).split(', ');
+      if (segs.length !== props.length) tripBad.push(flat + ' 段数 ' + segs.length);
+      for (let i = 0; i < props.length; i++) {
+        if (String(segs[i]).indexOf(props[i] + '=') !== 0) {
+          tripBad.push(flat + ' 第 ' + (i + 1) + ' 段非 ' + props[i] + '=');
+        }
+      }
+    }
+    check(
+      '扁平名 ↔ 变体名往返一致，且变体名格式为 COMPONENT_SETS 派生的 Property=Value',
+      tripBad.length === 0,
+      tripBad.length ? tripBad.slice(0, 5).join('; ') : flatAll.length + ' 项全部往返回到自身'
+    );
+
+    // ② 画布实况：批次 1 真跑后 host 里应是 3 个 set + 1 个独立 master，
+    // 每组变体数与真源表派生值一致。数错一个就意味着有 master 没进 set
+    //（画布上表现为「那几个还散着」，没人会注意到）。
+    let compHost = null;
+    for (const pg of figma.root.children) {
+      for (const n of pg.children) {
+        if (n.name === M.COMP_HOST_NAME) compHost = n;
+      }
+    }
+    const wantCounts = {
+      'shell/bottom-tab': M.SHELL_TABS.length,
+      'ui/button': M.BUTTON_VARIANTS.length,
+      'ui/pin': Object.keys(M.CATEGORY_COLORS).length * 2
+    };
+    if (!compHost) {
+      check('批次 1 画布上找得到 master 容器', false, '未找到 ' + M.COMP_HOST_NAME);
+    } else {
+      const sets = {};
+      let loneMasters = 0;
+      for (const n of compHost.children) {
+        if (n.type === 'COMPONENT') loneMasters++;
+        else if (n.type === 'COMPONENT_SET') sets[n.name] = n;
+      }
+      const countBad = [];
+      for (const sk of setKeys) {
+        const s = sets[sk];
+        if (!s) { countBad.push(sk + ' 未合成'); continue; }
+        const vs = s.children.filter((c) => c.type === 'COMPONENT');
+        if (vs.length !== wantCounts[sk]) {
+          countBad.push(sk + ' 变体 ' + vs.length + '，期望 ' + wantCounts[sk]);
+        }
+        // 变体名必须能换算回扁平名 —— 换不回来的那个 master
+        // 就是 hydrateComponents 会静默丢掉的那个
+        for (const v of vs) {
+          if (!M.flatNameOf(sk, v.name)) countBad.push(sk + ' 变体名不可解析：' + v.name);
+        }
+      }
+      check(
+        '画布上 ' + setKeys.length + ' 组 Component Set 齐备，各组变体数与真源表一致，'
+        + '状态栏保持独立 master',
+        countBad.length === 0 && loneMasters === 1,
+        countBad.length ? countBad.slice(0, 5).join('; ')
+          : setKeys.map((k) => k + ' ' + wantCounts[k]).join(' / ') + '；独立 master ' + loneMasters
+      );
+
+      // ③ 摆位不塌陷：变体 x/y 不能全为 0，且 set 自身要装得下全部变体。
+      // combineAsVariants 把变体全堆在 (0,0) 且 set 不抱内容，忘了摆位的表现
+      // 是「整个 set 在画布上看着只有一个元素」—— 渲染图也看不出，只有量得出。
+      const layoutBad = [];
+      for (const sk of setKeys) {
+        const s = sets[sk];
+        if (!s) continue;
+        const vs = s.children.filter((c) => c.type === 'COMPONENT');
+        let moved = 0;
+        let needW = 0;
+        let needH = 0;
+        for (const v of vs) {
+          if (v.x !== 0 || v.y !== 0) moved++;
+          needW = Math.max(needW, v.x + v.width);
+          needH = Math.max(needH, v.y + v.height);
+        }
+        // 只有一个变体时无需挪动；两个以上则至少有一个不在原点
+        if (vs.length > 1 && moved === 0) layoutBad.push(sk + ' 全部变体堆在 (0,0)');
+        if (s.width < needW || s.height < needH) {
+          layoutBad.push(sk + ' set ' + Math.round(s.width) + '×' + Math.round(s.height)
+            + ' 装不下内容 ' + Math.round(needW) + '×' + Math.round(needH));
+        }
+      }
+      check(
+        '变体已摆位且 set 尺寸装得下全部变体（未塌陷成单个元素）',
+        layoutBad.length === 0,
+        layoutBad.length ? layoutBad.join('; ') : setKeys.length + ' 组全部撑开'
+      );
+
+      // ④ 排布方向与属性轴数对应：单属性排一行（y 只有一个取值），双属性排 grid
+      //（x 与 y 都出现两个以上取值）。这是 COMPONENT_SETS 里「Pin 刻意用双属性」
+      // 那条判据在画布上的可见形态 —— 若 combineSet 的 cols 算错，
+      // Pin 会退化成一行 10 个，正交关系就丢了。
+      const dirBad = [];
+      for (const sk of setKeys) {
+        const s = sets[sk];
+        if (!s) continue;
+        const vs = s.children.filter((c) => c.type === 'COMPONENT');
+        const ys = {};
+        const xs = {};
+        for (const v of vs) { ys[Math.round(v.y)] = 1; xs[Math.round(v.x)] = 1; }
+        const rows = Object.keys(ys).length;
+        const cols = Object.keys(xs).length;
+        if (M.COMPONENT_SETS[sk].length === 1) {
+          if (rows !== 1) dirBad.push(sk + ' 单属性却排了 ' + rows + ' 行');
+        } else if (rows < 2 || cols < 2) {
+          dirBad.push(sk + ' 双属性却未成 grid（' + rows + ' 行 × ' + cols + ' 列）');
+        }
+      }
+      check(
+        '单属性 set 排一行、双属性 set 排 grid（行=分类 / 列=供需）',
+        dirBad.length === 0,
+        dirBad.length ? dirBad.join('; ') : '按钮/Tab 一行，Pin 成 grid'
+      );
+    }
+
+    // ⑤ 零征兆路径的唯一守门：hydrateComponents 真跑一遍，必须收回全部 20 个。
+    // 它是批次 2/3/4 独立运行时唯一的 master 来源。收法没穿透 set 时这里返回 1，
+    // 而画布、渲染图、其余所有断言一概正常。
+    //
+    // 不查 COMP_CACHE 本身：它在 batchSetup 里被 `COMP_CACHE = {}` 整体重新
+    // 赋值过，探针手里的导出引用是那之前的旧壳，读它恒为空（见导出清单注释）。
+    // 故只信返回值 + instanceOf 的实际行为。
+    if (typeof M.hydrateComponents !== 'function') {
+      check('hydrateComponents 已导出', false, '未导出');
+    } else {
+      const hydrated = await M.hydrateComponents();
+      check(
+        'hydrateComponents 穿透 Component Set，收回全部 ' + flatAll.length
+        + ' 个 master（零征兆失效的唯一守门）',
+        hydrated === flatAll.length,
+        '收回 ' + hydrated + ' / 期望 ' + flatAll.length
+        + (hydrated === 1 ? '（只收到独立 master —— 收法没穿透 set）' : '')
+      );
+
+      // ⑥ Instance 图层名必须是扁平名而非变体语法。Instance 默认继承 master
+      // 图层名，而 master 名已改成 `variant=primary` —— 不显式设回去的话，
+      // 批次 5 的 FLOW_LINKS 与探针 tailPages 全都按节点名定位，成片失败，
+      // 且报错信息里完全看不出「图层名换了」这个原因。
+      const nameBad = [];
+      let fellBack = 0;
+      for (const flat of flatAll) {
+        const inst = M.instanceOf(flat, () => {
+          fellBack++;
+          return M.box('_fallback', 'VERTICAL', {});
+        });
+        if (inst.type !== 'INSTANCE') nameBad.push(flat + ' 回退了原生构造');
+        else if (inst.name !== flat) nameBad.push(flat + ' 图层名为 ' + inst.name);
+      }
+      check(
+        'instanceOf 出的 Instance 图层名是扁平名（不继承 master 的变体语法）',
+        nameBad.length === 0 && fellBack === 0,
+        nameBad.length ? nameBad.slice(0, 5).join('; ') : flatAll.length + ' 项全部命名正确且无回退'
+      );
+    }
+
+    // ⑦ [反向] setNameOf 必须带斜杠比对：`ui/pinx/...` 不是 `ui/pin` 的成员。
+    // 用 startsWith 不带斜杠的写法会把它误判进去，之后 flatNameOf 换算错位，
+    // 而错位的键在 COMP_CACHE 里只表现为「某个组件永远命中不了」。
+    check(
+      '[反向] setNameOf 带斜杠比对，ui/pinx/a/b 不被误判为 ui/pin 成员',
+      M.setNameOf('ui/pinx/a/b') === null && M.setNameOf('ui/pin/cat-work/resource') === 'ui/pin',
+      'ui/pinx → ' + pj(M.setNameOf('ui/pinx/a/b'))
+    );
+
+    // ⑧ [反向] 段数不符 / 属性名不符时必须返回 null，不能静默产出错名。
+    // 前者是「登记表与注册代码分叉」，后者是「画布上的变体名被手改过」——
+    // 两种情况若静默通过，都会往 COMP_CACHE 里塞一个永远命中不了的键。
+    check(
+      '[反向] 段数或属性名不符时 variantNameOf / flatNameOf 返回 null（不静默产出错名）',
+      M.variantNameOf('ui/pin/only-one') === null &&
+      M.flatNameOf('ui/pin', 'category=cat-work') === null &&
+      M.flatNameOf('ui/pin', 'kind=cat-work, supply=resource') === null &&
+      M.flatNameOf('ui/pin', 'category=cat-work, supply=resource') === 'ui/pin/cat-work/resource',
+      '三种非法输入全部返回 null，合法输入正常换算'
+    );
+
+    // ⑨ [反向] combineAsVariants 的两条真机前置约束必须真会抛：
+    // 传非 COMPONENT 节点、传空数组在真机都报错。mock 若宽容放过，
+    // 这类真机必炸的写法在离线会一路全绿（setReactionsAsync 那次的教训）。
+    const throwBad = [];
+    const holder = M.box('_probe-set-host', 'VERTICAL', {});
+    try {
+      figma.combineAsVariants([M.box('_not-a-component', 'VERTICAL', {})], holder);
+      throwBad.push('传 Frame 未抛');
+    } catch (e) { /* 期望抛 */ }
+    try {
+      figma.combineAsVariants([], holder);
+      throwBad.push('传空数组未抛');
+    } catch (e) { /* 期望抛 */ }
+    check(
+      '[反向] combineAsVariants 对非 COMPONENT 节点与空数组抛错（与真机一致）',
+      throwBad.length === 0,
+      throwBad.length ? throwBad.join('; ') : '两种非法调用均抛错'
     );
   }
 
