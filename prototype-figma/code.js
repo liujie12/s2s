@@ -182,7 +182,10 @@ var CARD_STATES = [
   },
   {
     key: 'selected', label: '选中态', inStock: true,
-    spec: '在正常态基础上加 1px color/primary-light 边框，其余一切不变（不改底色、不改阴影）',
+    spec: '在正常态基础上加 1px color/primary-light 边框，其余一切不变（不改底色、不改阴影）。'
+      + '硬约束：边框不得占据布局尺寸 —— Figma 侧须设 strokesIncludedInLayout = false，'
+      + 'CSS 侧须用 outline 或 box-shadow 描边而非 border，否则卡高会被顶高 2px，'
+      + '选中态与正常态在列表里相邻，一选中整列往下错位，看着像列表在抖',
     note: '实处在「00 · Tokens 与组件」页的状态实样板（2026-09-02 补），业务页内无实处 —— '
       + '列表卡在原型内不存在「选中」交互（点击即跳详情页，无多选场景），故只有规范演示位。'
       + '注意 primary-light 与 surface 的对比度仅 1.11:1（见 CONTRAST_PAIRS，纯装饰豁免），'
@@ -2537,6 +2540,13 @@ function card(title, sub, catRole, meta, completeness, state) {
     type: 'DROP_SHADOW', color: { r: 0, g: 0, b: 0, a: 0.04 },
     offset: { x: 0, y: 2 }, radius: 8, spread: 0, visible: true, blendMode: 'NORMAL'
   }];
+  // 描边不计入 Auto Layout 尺寸（2026-09-02 实机核验查出）：Figma 默认
+  // strokesIncludedInLayout = true，1px INSIDE 描边会把内容框上下各挤 1px，
+  // 于是选中态卡高 76 → 78 —— 而 CARD_STATES.selected.spec 写的是「其余一切不变」。
+  // 2px 的差在单张卡上看不出来，但选中态与正常态在列表里必然相邻，卡一被选中
+  // 整列就往下错 2px，看起来像列表在抖。只在描边存在时设，避免给无描边的两档
+  // 平白留一个无意义的属性写入。
+  if (stateKey === 'selected') c.strokesIncludedInLayout = false;
   // 下架态整卡降透明度：施加在卡容器而非逐个子节点上 —— 逐个设会让相互重叠处
   // 透出底色，且新增子节点时必漏。CARD_STATES 已写明「不得再叠加任何其他
   // 降透明度处理」，因为 50% 已把 text-primary 的 14.68:1 压到约 4.9:1，贴着 AA 线

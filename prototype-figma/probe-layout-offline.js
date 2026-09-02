@@ -72,6 +72,13 @@ function makeNode(type) {
     fills: [],
     strokes: [],
     strokeWeight: 1,
+    // 真 Figma 默认 true —— 描边计入 Auto Layout 尺寸，1px INSIDE 描边会把
+    // 内容框上下各挤 1px。mock 必须显式给这个默认，否则未赋值时是 undefined，
+    // 「真的设成 false」与「属性根本没设」就混为一谈了。
+    // ⚠️ 本 mock **不模拟描边对几何的挤压**（见文件头：只保证主轴累加 +
+    // 交叉轴取最大），故相关断言只能核属性值、核不出高度差 —— 那 2px 的差是
+    // 2026-09-02 实机核验查出来的，离线断言只负责防它回归。
+    strokesIncludedInLayout: true,
     opacity: 1,
     cornerRadius: 0,
     clipsContent: false,
@@ -335,6 +342,9 @@ function makeNode(type) {
         cc.fills = c.fills;
         cc.strokes = c.strokes;
         cc.strokeWeight = c.strokeWeight;
+        // 描边是否计入布局也要搬：漏了它，Instance 内的选中态卡会退回 mock
+        // 默认 true，于是「描边不挤内容」那条断言在 Instance 语境下永远报红
+        cc.strokesIncludedInLayout = c.strokesIncludedInLayout;
         cc.cornerRadius = c.cornerRadius;
         cc.opacity = c.opacity;
         cc.clipsContent = c.clipsContent;
@@ -4287,6 +4297,15 @@ function allText(root) {
             cardBad.push('selected:描边色≠primary-light');
           } else if (demo.strokeWeight !== 1) {
             cardBad.push('selected:描边粗 ' + demo.strokeWeight + '≠1');
+          }
+          // 描边不得计入 Auto Layout（2026-09-02 实机核验查出，离线防回归）：
+          // 真机上默认 true 时 1px INSIDE 描边把卡高从 76 顶到 78，而
+          // CARD_STATES.selected.spec 写的是「其余一切不变」。选中态与正常态
+          // 在列表里必然相邻，卡一被选中整列往下错 2px，看着像列表在抖。
+          // 本 mock 不模拟描边挤压几何，故只能核属性值 —— 高度差核不出来。
+          if (demo.strokesIncludedInLayout !== false) {
+            cardBad.push('selected:strokesIncludedInLayout='
+              + demo.strokesIncludedInLayout + '（描边会把卡高从 76 顶到 78）');
           }
         } else if (hasStroke) {
           cardBad.push(st.key + ':不该有描边（与阴影并存会出双线）');
