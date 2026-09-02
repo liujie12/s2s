@@ -2129,6 +2129,19 @@ function buttonRaw(label, variant, width) {
     w: width || 0
   });
   if (variant === 'disabled') b.opacity = 0.4;
+  // 描边不计入 Auto Layout（2026-09-02 实机核验，与 card() 选中态同一个病灶）：
+  // Figma 默认 strokesIncludedInLayout = true，secondary 那道 1px 描边把按钮高
+  // 从 45 顶到 47，而其余五个变体都是 45（pad 12+12 + body 行高 21）。
+  //
+  // 这不是理论风险：实测 5 处 align 为 MIN 的横排容器里，secondary 与 ghost
+  // 顶对齐、底部差 2px（_pub-actions 4 处的「编辑/下架」「刷新重发/删除」
+  // 「继续编辑/删除」，_actions 的「去首页看效果/我的发布」）—— 一排按钮
+  // 底线不齐是肉眼可见的。同理 CSS 侧须用 outline/box-shadow 而非 border，
+  // 否则 border-box 之外的 1px 会在浏览器里复现同一位移。
+  //
+  // 无条件设而不只对 secondary 设：六个变体走同一个构造器，将来任何变体加描边
+  // （如 danger 的 outline 变体）都会立刻踩同一个坑，条件判断只会漏。
+  b.strokesIncludedInLayout = false;
   b.appendChild(text(label, 'body', conf.textColor));
   return b;
 }

@@ -506,6 +506,13 @@ const figma = {
     c.counterAxisSizingMode = node.counterAxisSizingMode;
     c.primaryAxisAlignItems = node.primaryAxisAlignItems;
     c.counterAxisAlignItems = node.counterAxisAlignItems;
+    // 描边与「描边是否计入布局」也要搬（2026-09-02 补，第三次踩逐属性搬运的坑）：
+    // 漏了它，Frame 上设的 strokesIncludedInLayout = false 到不了 master，
+    // 「六类按钮等高」那条断言会对着 mock 默认 true 报红 —— 而源码明明设对了。
+    // 这类假红比假绿好，但仍是探针在测自己造出来的东西。
+    c.strokes = node.strokes;
+    c.strokeWeight = node.strokeWeight;
+    c.strokesIncludedInLayout = node.strokesIncludedInLayout;
     for (const ch of node.children.slice()) c.appendChild(ch);
     c._w = w0;
     c._h = h0;
@@ -3508,6 +3515,26 @@ function allText(root) {
       '六类按钮 description 的配色/圆角/内边距与 BUTTON_SPECS 现算值逐项对齐',
       btnBad.length === 0,
       btnBad.length ? btnBad.slice(0, 5).join('; ') : '6 档全部对齐（含 usage 与描边）'
+    );
+
+    // 六个按钮变体必须等高（2026-09-02 实机核验查出，离线防回归）：
+    // Figma 的 strokesIncludedInLayout 默认 true，secondary 那道 1px 描边曾把它
+    // 从 45 顶到 47。实测 5 处 align 为 MIN 的横排里 secondary 与 ghost 顶对齐、
+    // 底部差 2px（_pub-actions 4 处 + _actions 1 处），一排按钮底线不齐是肉眼
+    // 可见的。本 mock 不模拟描边挤压几何，故只能核 strokesIncludedInLayout 的
+    // 属性值 —— 那 2px 是实机量出来的，此处只负责拦住「有人把这行删掉」。
+    const btnStrokeBad = [];
+    for (const v of M.BUTTON_VARIANTS) {
+      const node = cache['ui/button/' + v];
+      if (!node) { btnStrokeBad.push(v + ':master 缺失'); continue; }
+      if (node.strokesIncludedInLayout !== false) {
+        btnStrokeBad.push(v + ':strokesIncludedInLayout=' + node.strokesIncludedInLayout);
+      }
+    }
+    check(
+      '六类按钮均设 strokesIncludedInLayout=false（描边计入布局会让 secondary 比同排 ghost 高 2px）',
+      btnStrokeBad.length === 0,
+      btnStrokeBad.length ? btnStrokeBad.join('; ') : '6 档全部不计入（横排底线可对齐）'
     );
 
     // Pin 档：分类色十六进制取自 CATEGORY_COLORS，且必须带两段 Pin 专有约束 ——
