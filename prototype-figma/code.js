@@ -5699,6 +5699,17 @@ function buildPrivacyDeclined() {
   lead.textAutoResize = 'HEIGHT';
   body.appendChild(lead);
   lead.layoutSizingHorizontal = 'FILL';
+  // 文字自身也要居中（2026-09-02 实机看图查出）：容器的 align: 'CENTER' 只把
+  // 子节点**块**摆到交叉轴中间，块内文字仍按默认 LEFT 排。两个文本又都 FILL 满宽，
+  // 于是「块居中」在这里等于没生效 —— 正文两行左对齐、按钮通栏，整屏重心偏左上，
+  // 与「居中收口页」的意图相反。这正是此前记下的「坐标断言判『中心 x=195 = 居中』
+  // 过于宽松」的实际后果：FILL 之后中心 x 必然是 195，断言永远绿。
+  //
+  // 只在本页显式设，不下沉进 text()：全项目其余文字一律 LEFT（正文段落、表单标签、
+  // 列表行都该左对齐），而别的居中场景（认证浮层、空态「没有更多了」）文案短且单行，
+  // 居中块内 LEFT 与 CENTER 无视觉差，改了只是无谓扩大改动面。
+  heading.textAlignHorizontal = 'CENTER';
+  lead.textAlignHorizontal = 'CENTER';
   // 正文与出口按钮之间走 ACTION_GAP 而非容器统一 gap：改前两者只隔 12px，
   // 实机看图（2026-09-01）读起来按钮像正文的最后一行。见 ACTION_GAP 说明。
   appendActionWithGap(body, button('重新阅读协议', 'primary', CANVAS.w - SPACING.xl * 2));

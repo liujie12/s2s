@@ -328,6 +328,10 @@ function makeNode(type) {
         cc.lineHeight = c.lineHeight;
         cc.textTruncation = c.textTruncation;
         cc.textAutoResize = c.textAutoResize;
+        // 对齐方式也要跟着克隆：漏了它，Instance 内文字会退回 mock 默认 LEFT，
+        // 于是「组件里的居中文字」在探针眼里全变左对齐（本 mock 逐属性搬运，
+        // 新增 TEXT 属性时都得在此登记一行，否则克隆出来的是半个节点）
+        cc.textAlignHorizontal = c.textAlignHorizontal;
         cc.fills = c.fills;
         cc.strokes = c.strokes;
         cc.strokeWeight = c.strokeWeight;
@@ -381,6 +385,10 @@ function makeNode(type) {
  */
 function makeText() {
   const t = makeNode('TEXT');
+  // 真 Figma 的 TEXT 默认左对齐；mock 必须显式给这个默认，否则未赋值时是
+  // undefined，「文字是否居中」那类判据会拿 undefined 去比 'CENTER'，
+  // 看着也不等于 CENTER，但退化征兆与「真的设成 LEFT」混为一谈了
+  t.textAlignHorizontal = 'LEFT';
   let chars = '';
   Object.defineProperty(t, 'characters', {
     get: () => chars,
@@ -5601,6 +5609,26 @@ function allText(root) {
         '[反向] appendActionWithGap 拒绝 gap 已过大的容器（否则会静默产出 0 高隔块 = 白加）',
         agapThrew,
         agapThrew ? '已抛错' : '未抛错 —— 会塞进非正高隔块，判据无防护力'
+      );
+      // 受限态两段文字必须自身居中（2026-09-02 条目 [77] ⑬，实机看图查出）。
+      //
+      // 为什么这条不与「块居中」混谈：容器 align: 'CENTER' 只摆子节点块的位置，
+      // 而这两个文本都 layoutSizingHorizontal = 'FILL' 满宽，块居中在此等于没生效，
+      // 块内文字仍按默认 LEFT 排。旧判据「中心 x = 195 即居中」测不出 ——
+      // FILL 之后中心 x 必然是 195，那条永远绿，这正是它过于宽松的实证。
+      //
+      // 判据取节点的 textAlignHorizontal 实际值而非核源码有没有写那两行：
+      // 万一将来 text() 内部改了默认对齐、或有人把 FILL 改成 hug 使块居中重新生效，
+      // 都该由这条如实反映当前画面，而不是盯着某两行赋值语句。
+      const centered = kids.filter(
+        (c) => c.type === 'TEXT' && c.textAlignHorizontal === 'CENTER'
+      ).length;
+      const declTexts = kids.filter((c) => c.type === 'TEXT' && c.name.indexOf('_ann') !== 0);
+      check(
+        '受限态标题与正文均为文字居中（容器 align 只管块位置，FILL 满宽后块居中等于没生效）',
+        declTexts.length >= 2 && centered >= 2,
+        declTexts.length + ' 段文字中 ' + centered + ' 段为 CENTER'
+          + (centered >= 2 ? '' : '（左对齐会让整屏重心偏左上，与居中收口页的意图相反）')
       );
     }
 
