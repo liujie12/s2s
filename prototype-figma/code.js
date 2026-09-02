@@ -1910,8 +1910,12 @@ var TAG_SPECS = {
   notTag: {
     nodes: ['_sheet-reset', '_sheet-confirm', '_filter-summary', '_overlay-cats'],
     // 登记它们是为了防止下一个人像我一样把它们数进标签里。其中前两个是
-    // 手搓按钮、绕过了 BUTTON_SPECS，那是另一个问题（真源表被旁路）
-    usage: '圆角 full 但语义为按钮或容器，规格不由本表定义；按钮档位一律查 BUTTON_SPECS'
+    // 手搓按钮、绕过了 BUTTON_SPECS，那是另一个问题（真源表被旁路）——
+    // 2026-09-02 补记后果：旁路真源表连带**破了 PRD §1.8 的 44px 触控下限**，
+    // 实测高 36 / 34。此前只登记了「旁路」这个症状，漏了这个后果，
+    // 于是读到本条的人会以为那只是个整洁性问题。
+    usage: '圆角 full 但语义为按钮或容器，规格不由本表定义；按钮档位一律查 BUTTON_SPECS。'
+      + '注：_sheet-reset / _sheet-confirm 高 36 / 34，低于 44 触控线，实现侧须补足'
   }
 };
 
@@ -4478,10 +4482,17 @@ function catTreeSheet(catKey, depth, openIdx) {
   });
   // 2026-09-01 条目 [77]：本行以下两个 box 是 TAG_SPECS.notTag（D 族）的实处 ——
   // 圆角虽为 full，语义是按钮而非标签，故**取值不由 TAG_SPECS 定义**。
-  // 已知遗留：它们是手搓按钮、绕过了 BUTTON_SPECS 真源表。改走真源表须先给
-  // BUTTON_SPECS 补一档「满宽 grow + full 圆角」（现有 capsule 档宽度写死 312），
-  // 会使 master 数由 20 变 22 而与 M4-3e 第二层的 Component Set 改动叠在一起，
-  // 故本轮只登记、不改，遗留项记在说明文档 M4-3e。
+  //
+  // ⚠️ 已知破线（2026-09-02 条目 [77] ⑰ 实机量出，交付时随稿声明）：
+  // 这两个手搓按钮实测高 36（reset，pad 8+8 + small 行高 20）与 34（confirm），
+  // **均低于 PRD §1.8 的「按钮最小触控区 44×44」**。它们在 T3 三级树三层弹层里
+  // 各出现一次，是产品主路径上的真实可点元素，不是演示件。
+  //
+  // 本轮不改的原因：改走 BUTTON_SPECS 真源表须先补一档「满宽 grow + full 圆角」
+  //（现有 capsule 档宽度写死 312），master 数由 20 变 22，牵动 Component Set
+  // 与全部断言基线 —— 等于交付前夜重开一轮全量重跑加重出图。
+  // 已在《设计系统与组件规范》§11 写明实测值与「实现侧务必补到 44」，
+  // 并在离线探针里列为**具名豁免**（豁免必须显式，否则新建矮按钮时断言仍全绿）。
   var reset = box('_sheet-reset', 'HORIZONTAL', {
     padTop: SPACING.sm, padBottom: SPACING.sm, padLeft: SPACING.xl, padRight: SPACING.xl,
     radius: RADIUS.full, stroke: 'color/border', align: 'CENTER', justify: 'CENTER'

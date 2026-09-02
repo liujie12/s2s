@@ -706,7 +706,7 @@ ${renderComponents(s)}
 | 多行输入（textarea） | 稿内零实现 | 发布页当前是四个单行框；补它属改产品形态，不属补规范 |
 | 动效进 Variables | 不做 | Figma 变量类型不支持时间与缓动 |
 | 画布文本挂 Text Style | Style 已注册，**既有文本节点尚未挂上 \`textStyleId\`** | 遗留项 |
-| \`_sheet-reset\` / \`_sheet-confirm\` | 手搓按钮，绕过按钮真源表 | 遗留项：改走真源表须给按钮补一档「满宽 grow + full 圆角」 |
+| \`_sheet-reset\` / \`_sheet-confirm\` | 手搓按钮，绕过按钮真源表；**且破 PRD §1.8 触控下限** —— 实测高 36 / 34，低于 44。各出现 3 次（T3 三级筛选树三层弹层的底部动作行） | **实现侧务必补到 44 高**，不要照稿取值。Figma 侧不改的原因：改走真源表须先给按钮补一档「满宽 grow + full 圆角」（现有 capsule 档宽度写死 312），master 数会由 20 变 22，牵动 Component Set 与全部断言基线 |
 `;
 }
 

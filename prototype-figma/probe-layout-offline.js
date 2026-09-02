@@ -4451,6 +4451,79 @@ function allText(root) {
       inlineBad.length ? '疑似手抄：' + inlineBad.join(', ') : '全部现算'
     );
 
+    // ⑥·bis 触控下限的遍历式体检（2026-09-02 条目 [77] ⑰ 补）
+    //
+    // 为什么要新写一条：上文 ③ 那三条 44 断言是**逐个点名**的（只查 `_tab-`
+    // 单元格与 `_nav-bell`，还是靠正则抠源码里的字面数字）。逐个点名的判据
+    // 天然只覆盖点到的名字 —— `_sheet-reset` / `_sheet-confirm` 破线 36 / 34，
+    // 六个实处一个都没被拦住，是实机量坐标时才发现的。
+    //
+    // 本条改为**遍历真实节点树**：凡语义为按钮的容器，一律核其高。这样将来
+    // 新建的矮按钮会被自动纳入，不必有人记得回来补一行点名。
+    //
+    // 只查纵向的理由同上文 ③：横向命中区由文案长度决定，PRD §1.4.1 已用
+    // 同一理由豁免过搜索框的 32 高。
+    const TOUCH_MIN = 44;
+    // 具名豁免必须写明**实测值与目标值**，不能只写个名字：
+    // 只写名字的话，将来这两个按钮变得更矮（比如 pad 改小）也照样全绿，
+    // 豁免就从「已知且已声明的偏差」退化成了「永久免检」。
+    //
+    // ⚠️ `at` 记的是**离线值**，不是实机值。两者必然不同且都没错：
+    // mock 按 `fontSize * 1.4` 估行高（small 12 → 17，+ pad 8+8 = 33），
+    // 真机 small 的行高是 20（→ reset 36 / confirm 34）。规范文档 §11 里
+    // 写给实现侧看的是**实机值**，此处防回归用的是**离线值** —— 混用会
+    // 让这条断言在离线永远报红，或者让文档给出一个实现侧量不到的数字。
+    // 两者共同的结论一致：都远低于 44。
+    const TOUCH_WAIVED = {
+      '_sheet-reset': { at: 33, live: 36, why: 'T3 弹层手搓按钮，绕过 BUTTON_SPECS；已在规范 §11 声明，实现侧须补到 44' },
+      '_sheet-confirm': { at: 33, live: 34, why: '同上，且 layoutGrow=1 满宽，改档位须先给 BUTTON_SPECS 补「满宽 grow + full 圆角」' }
+    };
+    const touchBad = [];
+    const waivedSeen = {};
+    for (const pg of figma.root.children) {
+      // 语义为按钮的容器：走真源表的 `btn/*`，加两个手搓件。
+      // `_annotation/*` 子树整体排除 —— 标注卡是给读稿人看的旁注，不上产品画面。
+      const cands = pg.findAll(
+        (n) => (n.name.indexOf('btn/') === 0
+          || n.name === '_sheet-reset' || n.name === '_sheet-confirm')
+      );
+      for (const n of cands) {
+        let anc = n.parent;
+        let inAnno = false;
+        while (anc) {
+          if (anc.name && anc.name.indexOf('_annotation/') === 0) { inAnno = true; break; }
+          anc = anc.parent;
+        }
+        if (inAnno) continue;
+        const h = Math.round(n.height);
+        const w = TOUCH_WAIVED[n.name];
+        if (w) {
+          // 豁免者反向核对：比声明值更矮说明又退化了，仍要报
+          waivedSeen[n.name] = h;
+          if (h < w.at) touchBad.push(n.name + ' 高 ' + h + ' < 已声明的 ' + w.at + '（更矮了）');
+          continue;
+        }
+        if (h < TOUCH_MIN) touchBad.push(n.name.slice(0, 28) + ' 高 ' + h);
+      }
+    }
+    check(
+      '全稿按钮语义容器高 ≥ ' + TOUCH_MIN + '（PRD §1.8；遍历节点树而非逐个点名）',
+      touchBad.length === 0,
+      touchBad.length
+        ? '破线：' + touchBad.slice(0, 6).join('; ')
+        : '除 ' + Object.keys(TOUCH_WAIVED).length + ' 个具名豁免外全部达标'
+    );
+    // 豁免项必须真的存在：若某个豁免名在稿里已找不到（改名或删掉），
+    // 这条豁免就成了僵尸条目，会替一个不存在的节点永久开口子。
+    const waiveStale = Object.keys(TOUCH_WAIVED).filter((k) => waivedSeen[k] === undefined);
+    check(
+      '触控豁免名单无僵尸条目（豁免的节点须确实还在稿内）',
+      waiveStale.length === 0,
+      waiveStale.length
+        ? '稿内已无：' + waiveStale.join(', ') + '（应删除对应豁免）'
+        : Object.keys(waivedSeen).map((k) => k + '=' + waivedSeen[k]).join(', ')
+    );
+
     // ⑥ 首页筛选展开态的画布文案也必须现算（三处手抄里唯一会渲染到画布、
     // 也就是唯一会被评审当判据读的一处，本轮已改）。这条查的是**画布文本**，
     // 与上面查 pluginData 的那几条互补。
