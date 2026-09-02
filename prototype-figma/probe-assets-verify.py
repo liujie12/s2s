@@ -17,8 +17,18 @@ import os
 import re
 import sys
 
-import cv2
-import numpy as np
+try:
+    import cv2
+    import numpy as np
+except ModuleNotFoundError as exc:
+    # 裸抛 ModuleNotFoundError 看不出该装什么，也看不出「装不上时还能怎么验」。
+    # PRD §1.4.1.2 把本探针的实测值引为权威依据，故这里必须指明替代核验路径，
+    # 否则依赖一缺，那些阈值就成了无人能复核的历史数字。
+    print('[缺依赖] ' + str(exc))
+    print('装：pip install -r prototype-figma/requirements-assets.txt')
+    print('若 cairosvg 因 GTK 原生库装不上：SVG 里的几何常量可直接读文本核算，')
+    print('例如 mini 档眼点 24px 折算 = r × 2 ÷ 1024 × 24（duck-symbol-mini.svg）。')
+    sys.exit(2)
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from importlib.machinery import SourceFileLoader

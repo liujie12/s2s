@@ -1,0 +1,16 @@
+# 素材类探针的第三方依赖（仅 prototype-figma/probe-assets-verify.py 与
+# probe-4b-structure.py 需要；其余探针如 probe-token-vars.py 只用标准库）。
+#
+# 为什么单独立这个文件：2026-09-02 想复跑 probe-assets-verify.py 核对
+# 鸭子 mini 档的 24px 辨识度，才发现 cv2 与 cairosvg 均未安装，而 PRD
+# §1.4.1.2 把该探针的实测值引为权威依据（「下表阈值由 probe-assets-verify.py
+# 实测反推，非拍定值」）。依赖不成文，等于那些断言无人能复核。
+#
+# 安装：pip install -r prototype-figma/requirements-assets.txt
+#
+# ⚠️ cairosvg 在 Windows 下需要 GTK 原生库（libcairo-2.dll），pip 装完仍可能
+# 因找不到 DLL 而导入失败。若装不上，SVG 里的几何常量可直接读文本核算 ——
+# 例如 mini 档眼点 24px 折算 = r × 2 ÷ 1024 × 24，无需光栅化即可验 2px 底线。
+opencv-python>=4.8
+numpy>=1.24
+cairosvg>=2.7
