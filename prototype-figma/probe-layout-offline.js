@@ -4010,22 +4010,30 @@ function allText(root) {
           : 'PRD 写「' + brand + '」，产物标题却是「' + docTitle.replace(/^#\s*/, '') + '」'
     );
 
-    // ⑦ CARD_STATES 里稿内零实现的两档，必须在产物里如实标「未出稿」。
-    // 这条守的是**诚实性**而非正确性：规格写得再好，若不声明「稿里没有」，
+    // ⑦ CARD_STATES 每一档都必须在产物 §4.1 有对应行，且「稿内实现」栏与
+    // inStock 字段一致 —— 有实处标「有」、无实处标「**无**」并声明「未出稿」。
+    // 这条守的是**诚实性**而非正确性：规格写得再好，若把「稿里没有」写成「有」，
     // 读文档的人会以为有可对照的画面，做出来的东西没有任何参照可核。
+    //
+    // 2026-09-02 改法说明：原写法是 `if (st.inStock) continue`，只查 false 的档。
+    // 三态全部补齐后 inStock 已无 false，那个循环会退化成空转、断言永真 ——
+    // 补完实现反而把守门的判据废掉了。故改为逐档双向核对：有实处的档若被误标
+    // 「未出稿」同样要报红（文档谎报缺口，会让人白做一遍已有的东西）。
     const undeclared = [];
     for (const st of M.CARD_STATES) {
-      if (st.inStock) continue;
       const line = docText.split('\n').find((l) => l.indexOf('| ' + st.label + ' |') === 0);
-      if (!line) undeclared.push(st.label + '：产物里找不到该行');
-      else if (line.indexOf('**无**') < 0) undeclared.push(st.label + '：未标「稿内实现＝无」');
-      else if (line.indexOf('未出稿') < 0) undeclared.push(st.label + '：未声明「本轮未出稿」');
+      if (!line) { undeclared.push(st.label + '：产物里找不到该行'); continue; }
+      const marked = line.indexOf('**无**') >= 0;
+      if (st.inStock && marked) undeclared.push(st.label + '：inStock=true 却标「稿内实现＝无」');
+      if (!st.inStock && !marked) undeclared.push(st.label + '：未标「稿内实现＝无」');
+      if (!st.inStock && line.indexOf('未出稿') < 0) undeclared.push(st.label + '：未声明「本轮未出稿」');
     }
     check(
-      'CARD_STATES 里 ' + M.CARD_STATES.filter((s) => !s.inStock).length
-        + ' 档未出稿的态在产物里被如实声明',
+      'CARD_STATES ' + M.CARD_STATES.length + ' 档在产物 §4.1 逐档存在，且「稿内实现」栏与 inStock 双向一致',
       undeclared.length === 0,
-      undeclared.length ? undeclared.join('; ') : '两档均标明「稿内实现＝无」+「本轮未出稿」'
+      undeclared.length ? undeclared.join('; ')
+        : M.CARD_STATES.length + ' 档齐备，'
+          + M.CARD_STATES.filter((s) => !s.inStock).length + ' 档标「无」+「未出稿」'
     );
 
     // ⑧ [反向] hexOfRole 查不到时必须返回 undefined，不得回退成黑色。
@@ -4245,6 +4253,103 @@ function allText(root) {
         barSheet && barSheet.annotations && barSheet.annotations.length
           ? '分类 ' + barSheet.annotations[0].categoryId
           : '未钉上'
+      );
+    }
+
+    // ③之三 画板 E「组件状态实样」（2026-09-02 补 §11 两项「规格已定、稿内零实现」）。
+    //
+    // 这块断言的存在理由与画板 D 同源：实样一旦画上去，「三态差异只有 1px 边框
+    // 与一层透明度」这件事就必须机读可核 —— 那点差异在渲染图上几乎看不出来，
+    // 人眼复核不可靠。逐档现取 CARD_STATES / FIELD_SPECS 的键序去核，
+    // 表里新增一档而板上漏画，下面两条会直接报红。
+    let stateBoard = null;
+    for (const pg of figma.root.children) {
+      const hit = pg.findAll((n) => n.name === 'board/组件状态实样 [PRD §1.4.7 + §1.8]');
+      if (hit.length) { stateBoard = hit[0]; break; }
+    }
+    check('画板 E「组件状态实样」已落到画布上', !!stateBoard,
+      stateBoard ? '已找到' : '未找到 —— batchSetup 未 push stateBoard？');
+    if (stateBoard) {
+      // 卡片三态：逐档核「差异是否真的施加在节点上」，而不是「有没有画三张卡」。
+      // 三张卡文案完全相同（唯一变量是状态），所以只能靠属性区分 ——
+      // 若 card() 的 state 分支写错，画面上仍是三张长得一样的卡，看不出错。
+      const cardBad = [];
+      for (const st of M.CARD_STATES) {
+        const row = stateBoard.findAll((n) => n.name === '_card-state/' + st.key)[0];
+        if (!row) { cardBad.push(st.key + ':无该档实样行'); continue; }
+        const demo = row.findAll((n) => n.name.indexOf('card/') === 0)[0];
+        if (!demo) { cardBad.push(st.key + ':行内无卡片'); continue; }
+        // selected 档：必须有 1px primary-light 描边；另两档必须无描边
+        const hasStroke = demo.strokes && demo.strokes.length > 0;
+        if (st.key === 'selected') {
+          if (!hasStroke) cardBad.push('selected:无描边（选中态失去唯一轮廓）');
+          else if (pj(demo.strokes) !== pj([M.paintOf('color/primary-light')])) {
+            cardBad.push('selected:描边色≠primary-light');
+          } else if (demo.strokeWeight !== 1) {
+            cardBad.push('selected:描边粗 ' + demo.strokeWeight + '≠1');
+          }
+        } else if (hasStroke) {
+          cardBad.push(st.key + ':不该有描边（与阴影并存会出双线）');
+        }
+        // archived 档：opacity 必须是 0.5；另两档必须全亮度（1 或未设）
+        const op = demo.opacity === undefined ? 1 : demo.opacity;
+        if (st.key === 'archived') {
+          if (op !== 0.5) cardBad.push('archived:opacity ' + op + '≠0.5');
+        } else if (op !== 1) {
+          cardBad.push(st.key + ':opacity ' + op + '≠1（非下架态不得降透明度）');
+        }
+        // 阴影三档共有：选中态「其余一切不变」，不许顺手把阴影去掉
+        if (!demo.effects || demo.effects.length !== 1
+          || demo.effects[0].type !== 'DROP_SHADOW') {
+          cardBad.push(st.key + ':阴影缺失（CARD_STATES 规定三档同阴影）');
+        }
+      }
+      check(
+        '画板 E 卡片 ' + M.CARD_STATES.length + ' 态逐档实样：selected 独有 1px primary-light 描边、'
+          + 'archived 独有 opacity 0.5，三档同阴影（差异只在属性上，画面上几乎看不出）',
+        cardBad.length === 0,
+        cardBad.length ? cardBad.join('; ') : M.CARD_STATES.length + ' 档属性全部对齐'
+      );
+
+      // 输入框五态：只核「五档是否逐档上稿」。取值正确性已由上文 field() 五态
+      // 那条断言全覆盖（底色/描边/描边粗/内文色逐项比 FIELD_SPECS），此处不重复 ——
+      // 重复实现同一判据就有了第三份口径（原则㊾）。
+      const fKeys = Object.keys(M.FIELD_SPECS.formField.states);
+      const fMissing = fKeys.filter(
+        (k) => !stateBoard.findAll((n) => n.name === '_field-state/' + k)[0]
+      );
+      check(
+        '画板 E 输入框 ' + fKeys.length + ' 态逐档上稿（键序现取 FIELD_SPECS.formField.states，表里加档则本条报红）',
+        fMissing.length === 0,
+        fMissing.length ? '缺档：' + fMissing.join(', ') : fKeys.join('/') + ' 五档齐备'
+      );
+
+      // error 档的实样必须真带错误文案行：field() 内部有强制校验，但强制的是
+      // 「不给 errorText 就抛错」—— 探针要核的是本板确实传了、那行确实画出来了
+      const errRow = stateBoard.findAll((n) => n.name === '_field-state/error')[0];
+      check(
+        'error 档实样带 _field-error 文案行（颜色是第二通道，文案才是主通道）',
+        !!errRow && !!errRow.findOne((n) => n.name === '_field-error'),
+        errRow ? (errRow.findOne((n) => n.name === '_field-error') ? '已画出' : '缺文案行')
+          : '无 error 档行'
+      );
+
+      // 板内无横向溢出：卡片实样宽 358 是写死的（CANVAS.w − lg×2），板宽 480
+      // 减 xl×2 内边距后可用 432，看着够 —— 但板宽或 SPACING.xl 一改就可能顶破，
+      // 而 Auto Layout 溢出在图上只表现为「卡被裁掉一点」，极易漏看
+      const overflow = [];
+      for (const st of M.CARD_STATES) {
+        const row = stateBoard.findAll((n) => n.name === '_card-state/' + st.key)[0];
+        const demo = row && row.findAll((n) => n.name.indexOf('card/') === 0)[0];
+        if (demo && Math.round(demo.width) > Math.round(row.width)) {
+          overflow.push(st.key + ':卡宽 ' + Math.round(demo.width) + ' > 行宽 ' + Math.round(row.width));
+        }
+      }
+      check(
+        '画板 E 内卡片实样不超出所在行可用宽（板宽或 xl 内边距一改就可能顶破，图上只表现为被裁一点）',
+        overflow.length === 0,
+        overflow.length ? overflow.join('; ')
+          : '三档卡宽 ' + (M.CANVAS.w - M.SPACING.lg * 2) + ' ≤ 行宽（板宽 480 − xl×2）'
       );
     }
 
@@ -4533,8 +4638,9 @@ function allText(root) {
 
     {
       // ② formField 五态：每态的底色/描边/描边粗/内文色必须逐项等于 FIELD_SPECS。
-      // focus / error / disabled 三态是本轮**新立**的规格（全稿零实处），
-      // 恰恰因为没有实处，它们最容易在后续改动里被悄悄改掉而无人察觉
+      // focus / error / disabled 三态在 19 个业务页面里零实处（规格本轮新立，
+      // 只在 Tokens 页的状态实样板有演示位），恰恰因为业务语境里没有实处，
+      // 它们最容易在后续改动里被悄悄改掉而无人察觉
       const FS = M.FIELD_SPECS.formField;
       const fBad = [];
       Object.keys(FS.states).forEach((key) => {

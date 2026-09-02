@@ -181,18 +181,19 @@ var CARD_STATES = [
     note: 'card() 的唯一实现形态，14 页内全部列表卡走此档。判据 PRD §1.4.7'
   },
   {
-    key: 'selected', label: '选中态', inStock: false,
+    key: 'selected', label: '选中态', inStock: true,
     spec: '在正常态基础上加 1px color/primary-light 边框，其余一切不变（不改底色、不改阴影）',
-    note: '⚠️ 本轮画布未出稿：列表卡在原型内不存在「选中」交互（点击即跳详情页，无多选场景），'
-      + '故无处可画。实现侧若引入多选（如批量下架），按本档构造。'
+    note: '实处在「00 · Tokens 与组件」页的状态实样板（2026-09-02 补），业务页内无实处 —— '
+      + '列表卡在原型内不存在「选中」交互（点击即跳详情页，无多选场景），故只有规范演示位。'
       + '注意 primary-light 与 surface 的对比度仅 1.11:1（见 CONTRAST_PAIRS，纯装饰豁免），'
       + '故边框不得作为选中与否的唯一线索，须同时有勾选框或其他形状标记。判据 PRD §1.4.7'
   },
   {
-    key: 'archived', label: '下架态', inStock: false,
+    key: 'archived', label: '下架态', inStock: true,
     spec: '整卡 opacity 50% + 右侧元数据槽位 lifecycle 填「已下架」',
-    note: '⚠️ 本轮画布未出稿：「我的发布」页三张卡的 lifecycle 槽位已能填「已下架」文字'
-      + '（见 CARD_META_SLOTS），但 opacity 折扣未施加 —— 稿上「已下架」只体现为文字，不体现为灰度。'
+    note: '实处在状态实样板（2026-09-02 补）。「我的发布」页那张卡的 lifecycle 槽位只填「已下架」文字'
+      + '（见 CARD_META_SLOTS）、未施加 opacity 折扣 —— 业务页保持全亮度是刻意的：'
+      + '那一页的卡带「刷新重发/删除」操作组，压到 50% 会连操作入口一起压暗。'
       + 'opacity 50% 会把卡内所有文字的实际对比度砍半（text-primary 14.68:1 降至约 4.9:1），'
       + '仍在 AA 线上，但**不得再叠加任何其他降透明度处理**。判据 PRD §1.4.7'
   }
@@ -1945,9 +1946,10 @@ var DOT_SIZES = {
  * 一行「输入框 44 高」，读到导航栏那个 32 高的框时只会当成画错了。
  *
  * ⚠️ 样本量如实标注（同 TAG_SPECS.mark 的处理）：formField 的
- * default / filled 两态与 navSearch 的两态**在稿内有实处**，是归纳；
- * focus / error / disabled **全稿零实处**，是本轮新立的规格。规范文档须照此
- * 区分，不能让接棒人以为三态是从既有画面里量出来的。
+ * default / filled 两态与 navSearch 的两态**在业务页内有实处**，是归纳；
+ * focus / error / disabled 三态**业务页内零实处**，规格本轮新立，2026-09-02 起
+ * 在「00 · Tokens 与组件」页的状态实样板有规范演示位。规范文档须照此区分，
+ * 不能让接棒人以为三态是从既有业务画面里量出来的。
  *
  * 三态的取值依据（都不靠颜色单通道，PRD :420 WCAG AA）：
  * - focus：描边由 border 换 primary 且加粗到 1.5 —— 换色 + 加粗双通道。
@@ -1969,11 +1971,11 @@ var FIELD_SPECS = {
     usage: '表单字段，6 处实处（登录页 3 + 发布页 2 + 地址补全 1）。44 高即 PRD §1.8 触控下限，'
       + '宽度默认 CANVAS.w - lg*2 = 358（页面用 lg 内边距时的可用宽），xl 内边距的登录页须显式传宽',
     states: {
-      'default':  { sample: '有实处', fill: 'color/surface',    stroke: 'color/border',     strokeWeight: 1,   textColor: 'color/text-placeholder', usage: '空值且未聚焦：框内是 placeholder 灰字' },
-      filled:     { sample: '有实处', fill: 'color/surface',    stroke: 'color/border',     strokeWeight: 1,   textColor: 'color/text-primary',     usage: '已有值：同一位置靠色阶从灰转实，与 selectField 已选态同口径' },
-      focus:      { sample: '本轮新立', fill: 'color/surface',  stroke: 'color/primary',    strokeWeight: 1.5, textColor: 'color/text-primary',     usage: '光标在框内：换主色描边 + 加粗，不靠颜色单通道' },
-      error:      { sample: '本轮新立', fill: 'color/surface',  stroke: 'color/error-text', strokeWeight: 1.5, textColor: 'color/text-primary',     hintColor: 'color/error-text', usage: '校验失败：描边换色 + 框下必配一行 caption 错误文案（_field-error）' },
-      disabled:   { sample: '本轮新立', fill: 'color/background', stroke: 'color/border',   strokeWeight: 1,   textColor: 'color/text-placeholder', usage: '不可编辑：底色降为 background；标签不降级，仍须读得清' }
+      'default':  { sample: '业务页有实处', fill: 'color/surface',    stroke: 'color/border',     strokeWeight: 1,   textColor: 'color/text-placeholder', usage: '空值且未聚焦：框内是 placeholder 灰字' },
+      filled:     { sample: '业务页有实处', fill: 'color/surface',    stroke: 'color/border',     strokeWeight: 1,   textColor: 'color/text-primary',     usage: '已有值：同一位置靠色阶从灰转实，与 selectField 已选态同口径' },
+      focus:      { sample: '仅状态实样板', fill: 'color/surface',  stroke: 'color/primary',    strokeWeight: 1.5, textColor: 'color/text-primary',     usage: '光标在框内：换主色描边 + 加粗，不靠颜色单通道' },
+      error:      { sample: '仅状态实样板', fill: 'color/surface',  stroke: 'color/error-text', strokeWeight: 1.5, textColor: 'color/text-primary',     hintColor: 'color/error-text', usage: '校验失败：描边换色 + 框下必配一行 caption 错误文案（_field-error）' },
+      disabled:   { sample: '仅状态实样板', fill: 'color/background', stroke: 'color/border',   strokeWeight: 1,   textColor: 'color/text-placeholder', usage: '不可编辑：底色降为 background；标签不降级，仍须读得清' }
     }
   },
   navSearch: {
@@ -1983,8 +1985,8 @@ var FIELD_SPECS = {
     usage: '导航栏内嵌搜索框，1 处实处（home 系列顶栏）。32 高有 PRD :1069 明文依据，'
       + '不适用 44px 下限；无独立标签（占位文案即引导），宽度由调用方 layoutGrow=1 拉满',
     states: {
-      'default': { sample: '有实处', fill: 'color/background', stroke: 'color/border',  strokeWeight: 1, textColor: 'color/text-placeholder', iconColor: 'color/text-placeholder', usage: '无关键词：图标与文案同为 placeholder 灰' },
-      active:    { sample: '有实处', fill: 'color/background', stroke: 'color/primary', strokeWeight: 1, textColor: 'color/text-primary',     iconColor: 'color/primary',          usage: '已输入关键词：主色描边 + 实色文字 + 右端补清空叉，让「正在过滤」在顶栏就有回执' }
+      'default': { sample: '业务页有实处', fill: 'color/background', stroke: 'color/border',  strokeWeight: 1, textColor: 'color/text-placeholder', iconColor: 'color/text-placeholder', usage: '无关键词：图标与文案同为 placeholder 灰' },
+      active:    { sample: '业务页有实处', fill: 'color/background', stroke: 'color/primary', strokeWeight: 1, textColor: 'color/text-primary',     iconColor: 'color/primary',          usage: '已输入关键词：主色描边 + 实色文字 + 右端补清空叉，让「正在过滤」在顶栏就有回执' }
     }
   }
 };
@@ -2508,17 +2510,37 @@ var CARD_META_SLOTS = [
  *        前置一个矢量完整度标识（条目 [70]）。之所以做成参数而非让调用方把
  *        「完整度 🟢｜」拼进 sub 字符串：拼进字符串就等于把状态语义降级成文案，
  *        既换不掉 emoji，也无法参与 §1.4.2 的对比度体系
+ * @param {string} [state] 卡片状态，取 CARD_STATES 的 key：normal（默认）/
+ *        selected（加 primary-light 边框）/ archived（整卡 opacity 50%）。
+ *        2026-09-02 补齐 —— 此前只有 normal 一种形态，另两档规格只存在于
+ *        CARD_STATES 表与规范文档里，画布上无从验证（§11 已知缺口之一）
  * @returns {FrameNode} 卡片节点
  */
-function card(title, sub, catRole, meta, completeness) {
+function card(title, sub, catRole, meta, completeness, state) {
+  // 状态名对不上表就当场炸掉，不静默退回 normal：三态在画面上的差异很小
+  //（一道 1px 边框、一层透明度），静默退回会让「三态画上去了」看起来是真的
+  var stateKey = state || 'normal';
+  var stateDef = null;
+  for (var si = 0; si < CARD_STATES.length; si++) {
+    if (CARD_STATES[si].key === stateKey) stateDef = CARD_STATES[si];
+  }
+  if (!stateDef) throw new Error('card() 未知状态：' + state + '。见 CARD_STATES');
   var c = box('card/' + title, 'HORIZONTAL', {
     w: CANVAS.w - SPACING.lg * 2, pad: SPACING.lg, gap: SPACING.md,
-    fill: 'color/surface', radius: RADIUS.lg, align: 'MIN'
+    fill: 'color/surface', radius: RADIUS.lg, align: 'MIN',
+    // 选中态的边框：描边与阴影并存在正常态会让卡片边界出现双线（见上方规格对齐 ①），
+    // 但选中态本就要一道可见轮廓来表达「这张被选了」，此处是刻意为之
+    stroke: stateKey === 'selected' ? 'color/primary-light' : null,
+    strokeWeight: stateKey === 'selected' ? 1 : undefined
   });
   c.effects = [{
     type: 'DROP_SHADOW', color: { r: 0, g: 0, b: 0, a: 0.04 },
     offset: { x: 0, y: 2 }, radius: 8, spread: 0, visible: true, blendMode: 'NORMAL'
   }];
+  // 下架态整卡降透明度：施加在卡容器而非逐个子节点上 —— 逐个设会让相互重叠处
+  // 透出底色，且新增子节点时必漏。CARD_STATES 已写明「不得再叠加任何其他
+  // 降透明度处理」，因为 50% 已把 text-primary 的 14.68:1 压到约 4.9:1，贴着 AA 线
+  if (stateKey === 'archived') c.opacity = 0.5;
   var bar = box('_cat-bar', 'VERTICAL', { w: 4, h: 44, radius: RADIUS.sm, fill: catRole });
   c.appendChild(bar);
   var main = box('_card-main', 'VERTICAL', { gap: SPACING.xs });
@@ -3608,6 +3630,100 @@ async function batchSetup() {
       + '两者口径不同层（U2 说的是转场，80ms 说的是按压反馈），不构成冲突，此处记档以免被当成矛盾修掉'
   ], { severity: 'info' }));
   boards.push(motionBoard);
+
+  // 画板 E：卡片三态 + 输入框五态实样（2026-09-02，补 §11 两项「规格已定、稿内零实现」）
+  //
+  // 为什么这两组必须落在本页而不是业务页：它们是**规范演示**，不是产品画面。
+  // 卡片选中态在原型内没有交互载体（列表卡点击即跳详情，无多选场景，见 CARD_STATES），
+  // 输入框 focus 更是瞬时态 —— 硬塞进业务页就得先造出一个 PRD 里不存在的画面。
+  // T6 板第 ⑤ 组「20px 真实尺寸对照条（图标验收用）」已是这一范式的先例。
+  //
+  // 为什么非补不可：这两组规格此前只存在于 CARD_STATES / FIELD_SPECS 两张表与
+  // 规范文档里，画布上一处实样都没有。设计师拿到「选中态加 1px primary-light 边框」
+  // 这句话，无从判断那道边框在真实卡片上是否看得见 —— 而它与 surface 的对比度
+  // 只有 1.11:1（CONTRAST_PAIRS 已登记，纯装饰豁免）。规格能读懂，观感只能看。
+  var stateBoard = box('board/组件状态实样 [PRD §1.4.7 + §1.8]', 'VERTICAL', {
+    w: 480, pad: SPACING.xl, gap: SPACING.xl, fill: 'color/surface', radius: RADIUS.lg
+  });
+  var stateInnerW = 480 - SPACING.xl * 2;
+
+  /**
+   * 往状态板追加一条会自动折行的说明文字
+   *
+   * 与 buildT6Board 的 wrapNote 同一手法：text() 不设 textAutoResize 时 Figma
+   * 默认 WIDTH_AND_HEIGHT，长文案会横铺成一整行把父容器撑宽并溢出画框。
+   * 顺序不可换 —— textAutoResize 要在 appendChild 之前设，layoutSizingHorizontal
+   * 要在之后设（没有自动布局父节点时赋值会抛错）。
+   *
+   * @param {FrameNode} parent 目标容器（须为自动布局且宽度确定）
+   * @param {string} content 说明文案
+   * @returns {TextNode} 已挂载的文本节点
+   */
+  function stateNote(parent, content) {
+    var t = text(content, 'caption', 'color/text-secondary');
+    t.textAutoResize = 'HEIGHT';
+    parent.appendChild(t);
+    t.layoutSizingHorizontal = 'FILL';
+    return t;
+  }
+
+  stateBoard.appendChild(text('组件状态实样（补 §11 两项零实现）', 'h2'));
+
+  // ① 卡片三态：逐档现取 CARD_STATES，不在此处手抄档位名与规格描述
+  var cardGroup = box('_state-card', 'VERTICAL', { gap: SPACING.md });
+  cardGroup.appendChild(text('① 卡片三态（PRD §1.4.7）', 'h3', 'color/primary'));
+  for (var ci = 0; ci < CARD_STATES.length; ci++) {
+    var cs = CARD_STATES[ci];
+    var csRow = box('_card-state/' + cs.key, 'VERTICAL', { gap: SPACING.xs });
+    csRow.appendChild(text(cs.label + '（' + cs.key + '）', 'small', 'color/text-primary'));
+    // 卡片实样宽 358（CANVAS.w - lg*2），比板内可用宽 432 窄，不会溢出。
+    // 三张卡的文案与分类色刻意一致 —— 唯一变量是状态，这样差异才只剩状态本身
+    var demo = card('招后厨帮工·包吃住', '工作 › 全职招聘 › 餐饮服务',
+      'category/cat-work',
+      { lifecycle: cs.key === 'archived' ? '已下架' : '在架' }, null, cs.key);
+    csRow.appendChild(demo);
+    stateNote(csRow, cs.spec);
+    cardGroup.appendChild(csRow);
+  }
+  stateBoard.appendChild(cardGroup);
+
+  // ② 输入框五态：field() 早已能生产全五态，缺的只是画布上没有一处画出来
+  var fieldGroup = box('_state-field', 'VERTICAL', { gap: SPACING.md });
+  fieldGroup.appendChild(text('② 输入框五态（PRD §1.8 触控下限 44）', 'h3', 'color/primary'));
+  // 逐档现取 FIELD_SPECS.formField.states 的键序，不手写数组 ——
+  // 表里新增一档时本板自动跟上，漏画会被下面那条断言当场发现
+  var fStates = FIELD_SPECS.formField.states;
+  // 五档各配一组最小可读的示例值：default 空值、其余按该档语义给值。
+  // 宽度统一传板内可用宽，避免沿用默认 358 后与板子内边距叠加溢出
+  var fSamples = {
+    'default': {},
+    filled: { value: '13800138000' },
+    focus: { value: '138001' },
+    error: { value: '1380013', errorText: '手机号须为 11 位数字' },
+    disabled: {}
+  };
+  for (var fk in fStates) {
+    var fRow = box('_field-state/' + fk, 'VERTICAL', { gap: SPACING.xs });
+    fRow.appendChild(text(fk + '（' + fStates[fk].sample + '）', 'small', 'color/text-primary'));
+    var fOpt = { state: fk };
+    for (var fp in fSamples[fk]) fOpt[fp] = fSamples[fk][fp];
+    fRow.appendChild(field('手机号', '请输入 11 位手机号', stateInnerW, fOpt));
+    stateNote(fRow, fStates[fk].usage);
+    fieldGroup.appendChild(fRow);
+  }
+  stateBoard.appendChild(fieldGroup);
+
+  stateBoard.appendChild(annotation('两组状态实样的验收口径', [
+    '卡片选中态的 primary-light 边框与 surface 底只差 1.11:1（CONTRAST_PAIRS 已登记为纯装饰豁免），'
+      + '故边框不得作为「选中与否」的唯一线索 —— 实现侧引入多选时须同时给勾选框或其他形状标记',
+    '卡片下架态的 opacity 50% 把 text-primary 的 14.68:1 压到约 4.9:1，仍在 AA 线上但已无余量，'
+      + '**不得再叠加任何其他降透明度处理**（含父容器的整体透明度）',
+    'error 态的描边换色只是第二通道，框下那行 caption 错误文案才是主通道 —— '
+      + 'field() 已强制 error 态必给 errorText，颜色不得作为唯一通道',
+    'disabled 态只降框底色为 background，标签色刻意不降级：框可以不可编辑，'
+      + '但「这一格是什么字段」必须始终读得清'
+  ], { severity: 'spec' }));
+  boards.push(stateBoard);
 
   layout(page, boards, 3, 0);
   // master 容器摆到画板下方，避免与规格板重叠
