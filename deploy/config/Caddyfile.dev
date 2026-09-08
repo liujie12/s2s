@@ -1,0 +1,70 @@
+# ============================================================================
+# S2S Caddy 配置 —— dev（本地开发，internal 自签证书）
+# ----------------------------------------------------------------------------
+# 依据：《部署架构设计文档》§14.3 三环境差异矩阵
+#
+# 用途：供开发者在本地用临时自签证书验证 HTTPS 链路。
+#       默认不启动（dev override 的 caddy 服务通过 profiles: [tls] 排除）。
+#       需要测试 TLS 时，用 --profile tls 拉起。
+#
+# 与 prod Caddyfile 的差异：
+#   1. tls internal 而非 ACME（localhost 无法申请 Let's Encrypt 证书）
+#   2. 无 301 跳转（dev 不需要 HTTP→HTTPS 强制跳转）
+#   3. 日志保留窗口更短（roll_keep 2 / roll_keep_for 24h，开发机不留长历史）
+# ============================================================================
+
+# 全局选项
+{
+    # localhost 环境使用 Caddy 内置自签 CA（internal），不依赖 ACME
+    # 浏览器会提示证书无效，对开发环境可接受
+    admin localhost:2019
+}
+
+# ---------------------------------------------------------------------------
+# HTTPS 站点 —— 使用自签证书，仅供本地验证
+# 域名取自 .env.dev 的 SITE_DOMAIN，dev 下通常填 localhost。
+# ⚠ {$SITE_DOMAIN} 是 Caddyfile 的环境变量替换（解析期展开），不是运行期占位符；
+#   该变量由 base compose 的 env_file 注入 caddy 容器，未设置则 Caddy 启动即失败。
+# ---------------------------------------------------------------------------
+{$SITE_DOMAIN} {
+    # internal 自签证书：Caddy 自动生成 CA 并签发，无需外部 CA
+    tls internal {
+        protocols tls1.2 tls1.3
+    }
+
+    # 反向代理到 Spring Boot 应用容器
+    reverse_proxy app:8080 {
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+
+        health_uri /actuator/health
+        health_interval 30s
+        health_timeout 5s
+    }
+
+    # 安全响应头（与 prod 相同）
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        -Server
+    }
+
+    # 访问日志：保留窗口短于 staging/prod，开发机不留长历史
+    log {
+        output file /var/log/caddy/access.log {
+            roll_size 20MiB
+            roll_keep 2
+            roll_keep_for 24h
+        }
+        format filter {
+            wrap json
+            fields {
+                request>headers>Authorization delete
+                request>headers>Cookie delete
+                request>headers>Idempotency-Key delete
+            }
+        }
+    }
+}

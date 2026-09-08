@@ -1,0 +1,67 @@
+# ============================================================================
+# S2S 外部化配置 —— prod（生产环境）
+# ----------------------------------------------------------------------------
+# 依据：《部署架构设计文档》§14.4 配置中心（Profile 外部化落地形态）
+#
+# 加载机制同 dev：本文件由 compose 挂载到容器 /opt/s2s/config/ 目录，
+# 优先级高于 jar 包内的 application-prod.yml。
+#
+# 纪律：
+#   1. 本文件【入 git】，禁止出现任何密钥/口令/AT。
+#   2. 日志级别 WARN（仅生产错误告警，INFO 级别的日志量在 2G 机器上
+#      会显著挤占磁盘预算，且日志轮转的 I/O 也会增加 CPU 开销）。
+#   3. ddl-auto: validate（禁止 update/create。DDL 变更必须走脚本手动执行，
+#      不能由 Hibernate 自动改表，否则发版时表结构变更不可控）。
+# ============================================================================
+
+spring:
+  jpa:
+    hibernate:
+      # validate：启动时检查 Entity 与表结构是否一致，不一致则启动失败。
+      # 生产环境【禁止】使用 update/create/drop。
+      # 修改表结构必须在发版前准备好 DDL 脚本，手动执行后再发版。
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+
+  datasource:
+    hikari:
+      # 2G 物理机、750MB JVM 下，10 个连接是合理上限。
+      # 每个连接约 10MB 堆外开销，10 个 = 100MB，在剩余预算内。
+      # 若并发不足需调整，同步更新《部署架构设计文档》§3.1 内存预算表。
+      maximum-pool-size: 10
+      minimum-idle: 5
+      connection-timeout: 30000
+
+# --- 日志级别 ---------------------------------------------------------------
+logging:
+  level:
+    root: WARN
+    # 生产环境只记 WARN 及以上，避免 INFO 日志量过大
+    # 如果出现需排查的线上问题，通过 Actuator 动态调整日志级别，
+    # 不重启容器（POST /actuator/loggers/com.s2s -d '{"configuredLevel":"DEBUG"}'）
+    com.s2s: WARN
+
+# --- Actuator ---------------------------------------------------------------
+management:
+  endpoints:
+    web:
+      exposure:
+        # 生产环境只暴露 health 端点
+        # 如果需动态调日志级别，临时启用 loggers 端点，用完即关
+        include: health
+  endpoint:
+    health:
+      # 生产环境不对外展示组件明细，只返回 UP/DOWN
+      # 内部组件详情通过容器内 curl 查看
+      show-details: never
+
+# --- 业务开关 ---------------------------------------------------------------
+s2s:
+  oss:
+    enabled: true
+  llm:
+    # 生产环境启用 LLM 真实调用
+    enabled: true

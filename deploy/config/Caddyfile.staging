@@ -1,0 +1,83 @@
+# ============================================================================
+# S2S Caddy 配置 —— staging（预发布验证，internal 自签证书）
+# ----------------------------------------------------------------------------
+# 依据：《部署架构设计文档》§14.3 三环境差异矩阵
+#
+# 用途：staging 环境使用 internal 自签证书，因为 staging 通常没有公网域名
+#       （或不能对外暴露），ACME 无法为其签发证书。
+#
+# 与 prod Caddyfile 的差异（仅两项）：
+#   1. tls internal 而非 ACME（staging 无公网域名，ACME 无法签发）
+#   2. roll_keep 与 prod 相同，但 staging 的端口映射为 8443/8080
+#      （由 docker-compose.staging.yml 控制，与本文件无关）
+# 上游 reverse_proxy 到 app:8080 走容器网络内明文 HTTP，与证书类型无关，
+# 因此 health_uri 检查无需任何 TLS 跳过配置 —— 这一点 staging 与 prod 完全一致。
+# ============================================================================
+
+# 全局选项
+{
+    # staging 使用自签证书，不依赖 ACME
+    email {$ACME_EMAIL}
+    admin localhost:2019
+}
+
+# ---------------------------------------------------------------------------
+# HTTPS 站点 —— 使用自签证书
+# 域名由环境变量 SITE_DOMAIN 注入，通常是 staging 用的内部域名
+# 即使具有公网解析能力，也只使用 internal 证书，避免 ACME 速率限制
+# ---------------------------------------------------------------------------
+{$SITE_DOMAIN} {
+    # internal 自签证书
+    tls internal {
+        protocols tls1.2 tls1.3
+    }
+
+    # 反向代理到 Spring Boot 应用容器
+    reverse_proxy app:8080 {
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+
+        # 上游是容器网络内的明文 HTTP，健康检查与本站证书类型无关
+        health_uri /actuator/health
+        health_interval 30s
+        health_timeout 5s
+    }
+
+    # 安全响应头
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        -Server
+    }
+
+    # 访问日志
+    log {
+        output file /var/log/caddy/access.log {
+            roll_size 20MiB
+            roll_keep 5
+            roll_keep_for 168h
+        }
+        format filter {
+            wrap json
+            fields {
+                request>headers>Authorization delete
+                request>headers>Cookie delete
+                request>headers>Idempotency-Key delete
+            }
+        }
+    }
+}
+
+# ---------------------------------------------------------------------------
+# HTTP 站点 —— 301 跳转到 HTTPS
+# staging 与 prod 一致，确保 HTTP 访问被强制跳转
+# 注意：staging 的 HTTP 端口是 8080（由 docker-compose.staging.yml 映射到 8080）
+# ⚠ {host} 不含端口号，跳转目标默认使用 443。但 staging 的 HTTPS 在宿主机上
+#   映射为 127.0.0.1:8443（而非 443），故必须显式写 :8443，否则浏览器连到
+#   宿主机的 443 端口会连接失败。（prod 版不需要，因为 prod 的 443 是标准端口。）
+# ---------------------------------------------------------------------------
+http://{$SITE_DOMAIN} {
+    redir https://{host}:8443{uri} permanent
+}

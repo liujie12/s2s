@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  S2S 应用日志配置 — logback-spring.xml
+  =========================================================================
+  依据：《部署架构设计文档》§4.2 硬性配置②（日志轮转）
+       《可观测性架构方案》§3（JSON 单行落盘、8 必备字段、日志脱敏）
+
+  纪律：
+    1. 日志格式为 JSON 单行，供后续 SLS 迁移时直接解析
+    2. 必须包含 8 个必备字段：timestamp、level、logger、thread、message、
+       traceId、userId、interactionId
+    3. 轮转策略：50MB 切分、保留 14 天、总容量上限 3GB
+    4. 【禁止】输出完整手机号、身份证号、联系方式（见《可观测性架构方案》§10.1）
+-------------------------------------------------------------------------->
+
+<configuration>
+  <!-- Spring Boot 3 默认日志配置会覆盖，使用 springProfile 确保生产环境生效 -->
+  <springProfile name="prod">
+
+    <!-- ====== 1. 控制台输出（仅 JSON 格式，用于 docker logs） ====== -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+      <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+        <!-- 包含 8 个必备字段：timestamp、level、logger、thread、message、
+             traceId、userId、interactionId -->
+        <includeContext>false</includeContext>
+        <customFields>{"app":"s2s","env":"prod"}</customFields>
+      </encoder>
+    </appender>
+
+    <!-- ====== 2. 文件输出（JSON 单行，带轮转） ====== -->
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+      <file>/var/log/app/s2s.log</file>
+
+      <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+        <includeContext>false</includeContext>
+        <customFields>{"app":"s2s","env":"prod"}</customFields>
+      </encoder>
+
+      <!-- 轮转策略：按大小与时间 -->
+      <!-- 盘分配中应用日志总预算 3GB，totalSizeCap 强制此上限 -->
+      <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+        <fileNamePattern>/var/log/app/s2s-%d{yyyy-MM-dd}.%i.log</fileNamePattern>
+        <maxFileSize>50MB</maxFileSize>
+        <maxHistory>14</maxHistory>
+        <totalSizeCap>3GB</totalSizeCap>
+      </rollingPolicy>
+    </appender>
+
+    <!-- ====== 3. 审计日志单独文件（保留 180 天，独立于应用日志） ====== -->
+    <!-- 审计日志路径与轮转策略在《可观测性架构方案》中定义 -->
+    <appender name="AUDIT_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+      <file>/var/log/app/audit.log</file>
+      <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+        <includeContext>false</includeContext>
+      </encoder>
+      <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+        <fileNamePattern>/var/log/app/audit-%d{yyyy-MM-dd}.%i.log</fileNamePattern>
+        <maxFileSize>50MB</maxFileSize>
+        <!-- 审计日志保留 180 天（依据 R15，合规下限），与应用日志的 14 天独立配置 -->
+        <maxHistory>180</maxHistory>
+        <totalSizeCap>1GB</totalSizeCap>
+      </rollingPolicy>
+    </appender>
+
+    <!-- ====== 4. 日志级别 ====== -->
+    <root level="INFO">
+      <appender-ref ref="CONSOLE"/>
+      <appender-ref ref="FILE"/>
+    </root>
+
+    <!-- 审计日志单独记录器 -->
+    <logger name="com.s2s.server.common.audit" level="INFO" additivity="false">
+      <appender-ref ref="AUDIT_FILE"/>
+    </logger>
+
+    <!-- 敏感信息脱敏说明（见《可观测性架构方案》§10.1）
+         日志脱敏在应用代码侧完成（写日志前即已脱敏），不在 logback 层做正则替换：
+         正则替换有漏网风险且每条日志都要跑一遍正则，2 核机器上不划算。
+         验收方式为门禁 G9：grep -E '1[3-9]\d{9}' /var/log/app/*.log 无输出。 -->
+
+  </springProfile>
+
+  <!-- 非生产环境使用默认配置（开发调试时更易读） -->
+  <springProfile name="!prod">
+    <include resource="org/springframework/boot/logging/logback/base.xml"/>
+  </springProfile>
+
+</configuration>

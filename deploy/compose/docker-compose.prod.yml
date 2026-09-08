@@ -1,0 +1,61 @@
+# ============================================================================
+# S2S 环境 override —— prod（生产环境）
+# ----------------------------------------------------------------------------
+# 依据：《部署架构设计文档》§14.3 三环境差异矩阵
+#
+# 用途：线上对外服务，公网可达，Caddy 使用 ACME 自动证书。
+#       prod 和 staging 的 app/mysql/redis 三者完全一致，
+#       差异仅在于 Caddy 端口映射（443/80）和 Caddyfile（ACME 公网证书）。
+#
+# 启动：bash deploy/scripts/env-up.sh prod
+#
+# 与 staging 的差异（仅以下两项）：
+#   ① Caddy 端口映射到标准 HTTPS/HTTP 端口（443/80），需 root 权限
+#   ② Caddyfile 使用 ACME 自动证书（Let's Encrypt），需公网 DNS 可达
+#
+# 安全性：
+#   · 数据面服务（app/mysql/redis）【无】端口映射，仅通过 Caddy 反向代理对外暴露
+#   · 即使 Caddy 被攻破，攻击者也无法直接访问数据库或 Redis
+#   · 见《部署架构设计文档》§5.1 网络暴露面：仅 Caddy 80/443 对外
+#
+# 注：env_file 统一在 base docker-compose.yml 中按 ${S2S_ENV} 声明，
+#     本文件不再重复声明，原因见 base 文件头部「env_file 与 --env-file 的分工」。
+# ============================================================================
+
+services:
+  # --------------------------------------------------------------------------
+  # Caddy —— prod 标准端口，ACME 自动证书
+  # 443/80 需要 root 权限，因此 docker compose up 需要 sudo 或 root 用户
+  # --------------------------------------------------------------------------
+  caddy:
+    # 无 volumes 段：Caddyfile 挂载由 base compose 统一按 ${S2S_ENV:-prod} 拼出
+    # 路径为 ./config/Caddyfile.prod，无需 override 重复声明
+    ports:
+      - "0.0.0.0:443:443"
+      - "0.0.0.0:80:80"
+    mem_limit: 64m
+
+  # --------------------------------------------------------------------------
+  # 应用 —— prod profile，严格内存限制
+  # --------------------------------------------------------------------------
+  app:
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      # prod 仅暴露 health 端点
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health
+      # 变量名必须是 JAVA_OPTS，与 Dockerfile ENTRYPOINT 中的 $JAVA_OPTS 对应，
+      # 详见 docker-compose.staging.yml 同处注释
+      JAVA_OPTS: "-Xmx600m -Djava.security.egd=file:/dev/./urandom -Dfile.encoding=UTF-8"
+    mem_limit: 750m
+
+  # --------------------------------------------------------------------------
+  # MySQL —— 无端口映射，严格内存限制
+  # --------------------------------------------------------------------------
+  mysql:
+    mem_limit: 450m
+
+  # --------------------------------------------------------------------------
+  # Redis —— 无端口映射，严格内存限制
+  # --------------------------------------------------------------------------
+  redis:
+    mem_limit: 150m

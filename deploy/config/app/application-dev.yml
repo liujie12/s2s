@@ -1,0 +1,73 @@
+# ============================================================================
+# S2S 外部化配置 —— dev（本地开发）
+# ----------------------------------------------------------------------------
+# 依据：《部署架构设计文档》§14.4 配置中心（Profile 外部化落地形态）
+#
+# 加载机制（不是自定义约定，是 Spring Boot 标准行为）：
+#   镜像 WORKDIR 为 /opt/s2s，compose 把本目录挂载到 /opt/s2s/config，
+#   即容器内的 ./config/ —— Spring Boot 默认配置搜索路径之一，
+#   优先级【高于】jar 包内的 application-dev.yml。
+#   因此本文件用于覆盖 jar 内默认值，改配置无需重新构建镜像，重启容器即可生效。
+#
+# 纪律：
+#   1. 本文件【入 git】，因此【禁止】出现任何密钥、口令、AccessKey。
+#      所有敏感值一律走 ${ENV_VAR} 占位，实际值由 deploy/env/.env.dev 注入。
+#      这条边界是「配置中心」与「密钥库」分工的核心：
+#      配置进 git 可审计，密钥不进 git 只在宿主机。
+#   2. 数据源 URL / 口令不在此定义 —— 它们由 compose 的 environment 段以
+#      SPRING_DATASOURCE_* 形式注入。同一项配置只保留一个来源，
+#      两处都写会在排障时产生「改了没生效」的困惑。
+# ============================================================================
+
+spring:
+  # --- JPA / Hibernate -------------------------------------------------------
+  jpa:
+    # dev 用 validate 而非 update：DDL 的唯一来源是 docs/database/ddl/ 下的
+    # 脚本（MySQL 容器首启自动执行）。让 Hibernate 自行改表会导致本地表结构
+    # 与 DDL 脚本悄悄分叉，到 staging 才暴露。validate 会在不一致时直接启动失败。
+    hibernate:
+      ddl-auto: validate
+    # dev 打开 SQL 打印便于排查慢查询与 N+1
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+  # --- 连接池 ---------------------------------------------------------------
+  datasource:
+    hikari:
+      # dev 并发极低，小池即可，省内存
+      maximum-pool-size: 5
+      minimum-idle: 2
+      connection-timeout: 30000
+
+# --- 日志级别 ---------------------------------------------------------------
+logging:
+  level:
+    root: INFO
+    # 业务包开 DEBUG，便于本地跟踪调用链
+    com.s2s: DEBUG
+    # 打印绑定参数（仅 dev；staging/prod 绝不可开 —— 参数里含手机号等
+    # 个人信息，开了等于把明文个信写进日志，直接违反门禁 G9）
+    org.hibernate.orm.jdbc.bind: TRACE
+
+# --- Actuator ---------------------------------------------------------------
+management:
+  endpoints:
+    web:
+      exposure:
+        # dev 放开全部端点便于排障（compose 中同名环境变量亦已放开，此处保持一致）
+        include: "*"
+  endpoint:
+    health:
+      # 展示各组件（db / redis / diskSpace）明细，快速定位是哪个依赖不通
+      show-details: always
+
+# --- 业务开关 ---------------------------------------------------------------
+s2s:
+  # dev 关闭真实 OSS 上传，走本地临时目录，避免污染线上桶且省流量
+  oss:
+    enabled: false
+  # dev 关闭 LLM 真实调用，走桩数据，避免消耗 Token 配额
+  llm:
+    enabled: false

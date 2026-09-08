@@ -1,0 +1,86 @@
+# ============================================================================
+# S2S Caddy 配置 —— prod（生产，ACME 公网证书）
+# ----------------------------------------------------------------------------
+# 依据：《部署架构设计文档》§6 TLS 终止与证书、§14.3 三环境差异矩阵
+#       《系统总体架构设计文档》§4.2（Caddy 内置 ACME、TLS 1.2 下限）
+#       《系统安全设计方案》§2 传输安全（301 跳转、access log 不记 Authorization）
+#
+# 文件名从 Caddyfile 改为 Caddyfile.prod：三套环境的 Caddyfile 由 base compose
+# 按 ./config/Caddyfile.${S2S_ENV} 统一挂载，命名必须能被 S2S_ENV 拼出来。
+# 详见 deploy/docker-compose.yml 头部注释。
+#
+# 纪律：
+#   1. 协议下限 TLS 1.2，禁用更低版本
+#   2. access log 【禁止】记录 Authorization 头（避免 Token 落盘）
+#   3. 明确不做证书固定（certificate pinning），内测期证书变更不应阻断客户端
+# ============================================================================
+
+# 全局选项
+{
+    # ACME 注册邮箱，用于证书到期提醒；值由 env_file 注入容器后 Caddy 自行展开
+    email {$ACME_EMAIL}
+    # 关闭 admin API 的默认公开监听，仅本机可访问
+    admin localhost:2019
+}
+
+# ---------------------------------------------------------------------------
+# HTTPS 站点 —— 唯一业务入口
+# 域名由 env_file 中的 SITE_DOMAIN 注入
+# ---------------------------------------------------------------------------
+{$SITE_DOMAIN} {
+    # TLS 配置：Caddy 自动申请与续期 Let's Encrypt 证书（零人工、零费用）
+    tls {
+        protocols tls1.2 tls1.3
+    }
+
+    # 反向代理到 Spring Boot 应用容器（明文 HTTP，仅容器网络内）
+    reverse_proxy app:8080 {
+        # 透传真实客户端信息，供服务端限流与审计使用
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+
+        # 上游健康检查：应用不健康时返回 502 而非把请求打进去
+        health_uri /actuator/health
+        health_interval 30s
+        health_timeout 5s
+    }
+
+    # 安全响应头
+    header {
+        # 强制 HTTPS 一年，含子域名
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        # 禁止浏览器 MIME 类型嗅探
+        X-Content-Type-Options "nosniff"
+        # 禁止被嵌入 iframe
+        X-Frame-Options "DENY"
+        # 移除暴露服务端技术栈的响应头
+        -Server
+    }
+
+    # 访问日志：JSON 格式落盘，容量由 roll_size / roll_keep 控制
+    # filter 段确保 Authorization 头永不落盘（见《系统安全设计方案》§2）
+    log {
+        output file /var/log/caddy/access.log {
+            roll_size 20MiB
+            roll_keep 5
+            roll_keep_for 168h
+        }
+        format filter {
+            wrap json
+            fields {
+                request>headers>Authorization delete
+                request>headers>Cookie delete
+                request>headers>Idempotency-Key delete
+            }
+        }
+    }
+}
+
+# ---------------------------------------------------------------------------
+# HTTP 站点 —— 仅用于 301 跳转到 HTTPS
+# 门禁 G6：curl -I http://{域名}/ 必须返回 301
+# ---------------------------------------------------------------------------
+http://{$SITE_DOMAIN} {
+    redir https://{host}{uri} permanent
+}

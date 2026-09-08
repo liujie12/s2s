@@ -1,0 +1,70 @@
+# ============================================================================
+# S2S 环境 override —— staging（预发布验证）
+# ----------------------------------------------------------------------------
+# 依据：《部署架构设计文档》§14.3 三环境差异矩阵
+#
+# 用途：与生产完全一致的部署面，但面向 QA/验收，端口不对外暴露。
+#       staging 和 prod 的区别仅在于 Caddyfile 不同（prod 用 ACME 公网证书，
+#       staging 用 internal 自签证书），以及 Caddy 端口映射差异。
+#       app/mysql/redis 三者的镜像、配置、内存限制在 staging 和 prod 之间
+#       【完全一致】，这是「staging 验证通过 = prod 也能过」的前提。
+#
+# 启动：bash deploy/scripts/env-up.sh staging
+#
+# 与 prod 的差异（仅以下两项）：
+#   ① Caddy 端口映射到 8443/8080 而非 443/80，且绑定 127.0.0.1
+#      —— staging 只供本机或跳板机验收，不对公网开放
+#   ② Caddyfile 使用 internal 自签证书而非 ACME 公网证书
+#      （staging 通常没有公网 DNS，ACME 无法完成 HTTP-01/TLS-ALPN 挑战；
+#        强行走 ACME 会反复失败并消耗 Let's Encrypt 的失败次数配额）
+#
+# 与 prod 完全一致的部分（这是「staging 过 = prod 过」的前提，不得分叉）：
+#   · 镜像 tag 与 digest（见 deploy/images.lock）
+#   · 无数据面端口映射（app/mysql/redis 仅在容器网络内通信）
+#   · 内存限制（app 750m / mysql 450m / redis 150m / caddy 64m = 1414m）
+#   · JVM 参数（-Xmx600m，与 2G 物理机适配）
+#   · Actuator 仅暴露 health 端点
+#
+# 注：env_file 统一在 base docker-compose.yml 中按 ${S2S_ENV} 声明，
+#     本文件不再重复声明，原因见 base 文件头部「env_file 与 --env-file 的分工」。
+# ============================================================================
+
+services:
+  # --------------------------------------------------------------------------
+  # Caddy —— staging 正常启动，使用 internal 自签证书
+  # 端口映射到 8443/8080 而非 443/80（避免特权端口需求）
+  # 与 prod 的唯一区别：Caddyfile 不同 + 端口不同
+  # --------------------------------------------------------------------------
+  caddy:
+    ports:
+      - "127.0.0.1:8443:443"
+      - "127.0.0.1:8080:80"
+    mem_limit: 64m
+
+  # --------------------------------------------------------------------------
+  # 应用 —— staging profile，严格内存限制
+  # --------------------------------------------------------------------------
+  app:
+    environment:
+      SPRING_PROFILES_ACTIVE: staging
+      # staging/prod 仅暴露 health 端点，不暴露 /env、/beans 等诊断端点
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health
+      # 变量名必须是 JAVA_OPTS：Dockerfile 的 ENTRYPOINT 是
+      #   sh -c "java $JAVA_OPTS -jar app.jar"
+      # 写成 JVM_OPTS 之类别名不会报错，只会被静默忽略，容器仍按镜像内置的
+      # 默认值启动 —— 是最难发现的一类配置漂移。
+      # -Xmx600m 与本服务 mem_limit 750m 匹配（差额 150m 留给 JVM 元空间与栈）
+      JAVA_OPTS: "-Xmx600m -Djava.security.egd=file:/dev/./urandom -Dfile.encoding=UTF-8"
+    mem_limit: 750m
+
+  # --------------------------------------------------------------------------
+  # MySQL —— 无端口映射，严格内存限制
+  # --------------------------------------------------------------------------
+  mysql:
+    mem_limit: 450m
+
+  # --------------------------------------------------------------------------
+  # Redis —— 无端口映射，严格内存限制
+  # --------------------------------------------------------------------------
+  redis:
+    mem_limit: 150m

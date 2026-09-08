@@ -1,0 +1,237 @@
+# ============================================================================
+# S2S Docker Compose 基线定义（环境无关部分）
+# ----------------------------------------------------------------------------
+# 依据：《部署架构设计文档》§2 容器职责与编排、§3 内存预算、§5 网络暴露面、
+#       §14 多环境与容器化环境搭建
+#       《系统总体架构设计文档》§4（R6/R7/R8）
+#       《DevSecOps 接入方案》§8 部署门禁
+#
+# ⚠ 本文件【不可单独启动】。它只定义三套环境的公共骨架，刻意不含
+#   ports / mem_limit / Caddyfile 挂载 —— 这三项全部由环境 override 提供。
+#   单独执行 docker compose up 会因 S2S_ENV 未设置而落到默认 prod 分支，
+#   进而缺少 ports 映射（Caddy 不对外可达），此为刻意设计：
+#   防止有人在未指定环境的情况下误起一套「既不是 dev 也不是 prod」的实例。
+#
+# 正确用法（统一入口，禁止手写 -f 组合）：
+#   bash deploy/scripts/env-up.sh dev
+#   bash deploy/scripts/env-up.sh staging
+#   bash deploy/scripts/env-up.sh prod
+#
+# 等价的原始命令（env-up.sh 内部即执行此形式）：
+#   S2S_ENV=<env> docker compose \
+#       -f deploy/docker-compose.yml \
+#       -f deploy/compose/docker-compose.<env>.yml \
+#       --env-file deploy/env/.env.<env> up -d
+#
+# 关于 env_file 与 --env-file 的分工（两者【都必需】，作用域不同）：
+#   · --env-file  → 只供 compose 文件自身的 ${VAR} 插值（如镜像 tag、连接串拼装）。
+#                   它【不会】自动把变量注入容器。
+#   · env_file:   → 把整份密钥文件注入容器进程环境（AEAD/HMAC/JWT/OSS/LLM 等
+#                   十余个变量不可能逐个在 environment: 里手抄）。
+#   env_file 的路径写成 ./env/.env.${S2S_ENV}，刻意声明在 base 而非各 override：
+#   Compose 各版本对「override 中 env_file 相对路径的基准目录」行为不一致
+#   （相对 project 目录 vs 相对声明它的文件目录）。写在 base 里两种解释结果相同，
+#   从根上消除该歧义。改动此处前请先确认这一点。
+#
+# 硬性纪律（违反任一即视为部署门禁失败）：
+#   1. app / mysql / redis 三个服务在 staging / prod 环境【禁止】出现 ports: 映射。
+#      dev 环境是唯一例外（本地调试需要连库），门禁 G1 因此按环境分级判定，
+#      详见《部署架构设计文档》§14.5。
+#   2. 所有密钥一律走 env_file，【禁止】在任何 compose 文件内出现真实密钥字面量。
+#   3. 基础镜像一律使用明确 tag 且三环境完全一致，【禁止】latest / RELEASE / 版本范围。
+#      镜像 tag 与 digest 台账见 deploy/images.lock，校验命令见 scripts/image-baseline.sh。
+#      三环境共用同一镜像基线是「dev 能过 prod 也能过」的前提，不得按环境分叉。
+#   4. mem_limit 由各环境 override 定义。staging / prod 之和不得超过 1414m，
+#      见《部署架构设计文档》§3.1 内存预算表。改任一值必须同步改该表。
+#
+# 语法校验：bash deploy/scripts/env-up.sh <env> --config-only
+# ============================================================================
+
+name: s2s
+
+services:
+  # --------------------------------------------------------------------------
+  # Caddy —— TLS 终止 + 反向代理（Batch1）
+  # 唯一对公网开放端口的进程，内存预算 64MB（见《部署架构设计文档》§3.1）
+  #
+  # dev 环境不启动本服务：override 中通过 profiles 排除，本地直连 app:8080 即可，
+  # 无需为本地调试申请证书（ACME 对 localhost 无意义，且会触发 Let's Encrypt 限流）。
+  # --------------------------------------------------------------------------
+  caddy:
+    image: caddy:2.8-alpine
+    container_name: s2s-caddy
+    restart: unless-stopped
+    env_file:
+      # Caddyfile 里的 {$SITE_DOMAIN} / {$ACME_EMAIL} 由 Caddy 进程自身在运行时
+      # 展开，不是 compose 插值 —— 因此必须作为容器环境变量注入，缺一即启动失败。
+      - ./env/.env.${S2S_ENV:-prod}
+    volumes:
+      # Caddyfile 按环境挂载：prod 走公网 ACME、staging 走 internal 自签、
+      # dev 不启动本服务（override 中 profiles 排除）。三份文件命名统一为
+      # Caddyfile.<env>，因此这里可用 S2S_ENV 一行拼出，无需在每个 override 里
+      # 重复声明整个 volumes 数组（重复声明时 Compose 是整体覆盖而非逐项合并，
+      # 漏写一行命名卷就会导致证书或日志不落盘）。
+      - ./config/Caddyfile.${S2S_ENV:-prod}:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+      - caddy_logs:/var/log/caddy
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - s2s-net
+
+  # --------------------------------------------------------------------------
+  # Spring Boot 应用（Batch1）
+  # 内存预算 750MB（-Xmx600m + JVM 自身开销约 150MB，仅 staging/prod）
+  #
+  # 外部化配置：config/app/ 挂载到容器 /opt/s2s/config/，Spring Boot 会自动
+  # 加载该目录下的 application-{profile}.yml（标准外部化配置位置，优先级高于
+  # jar 内同名文件）。这是本项目「配置中心」的落地形态，见《部署架构设计文档》§14.4。
+  # --------------------------------------------------------------------------
+  app:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      # 传入版本号供 Dockerfile 的 LABEL 使用（Dockerfile 侧已声明 ARG APP_VERSION）
+      args:
+        APP_VERSION: ${APP_VERSION:-latest}
+    image: s2s-app:${APP_VERSION:-latest}
+    container_name: s2s-app
+    restart: unless-stopped
+    env_file:
+      # 全量密钥注入（AEAD_MASTER_KEYS_JSON / HMAC_PEPPERS_JSON / JWT_SECRET /
+      # OSS_* / LLM_* 等），逐个在 environment: 里手抄既易漏又易在改密钥时漂移
+      - ./env/.env.${S2S_ENV:-prod}
+    environment:
+      # Profile 由环境 override 覆盖为 dev / staging / prod
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
+      # 数据面连接串在此拼装，口令部分引用 env_file 中的变量，不出现字面量
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE}?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8mb4
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD}
+      # 埋点独立 database（见《可观测性架构方案》§4.4）
+      TRACK_DATASOURCE_URL: jdbc:mysql://mysql:3306/${MYSQL_TRACK_DATABASE}?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8mb4
+      TZ: Asia/Shanghai
+    volumes:
+      # 应用日志落盘，容量上限由 logback 轮转策略控制在 3GB 内（见 §4.2 配置②）
+      - app_logs:/var/log/app
+      # GBDT 模型文件（R4：本地训练，随应用发布，线上只推理）
+      - ./models:/opt/s2s/models:ro
+      # 外部化配置目录（三套 application-{profile}.yml 全部挂载，
+      # 由 SPRING_PROFILES_ACTIVE 决定实际生效哪一份）
+      - ./config/app:/opt/s2s/config:ro
+    healthcheck:
+      # Spring Boot Actuator 健康端点，仅容器内可达。
+      # 用 curl 而非 wget：eclipse-temurin:21-jre-alpine 实测自带 /usr/bin/curl
+      # 但【不含 wget】。用 wget 会让 healthcheck 永远失败，进而卡住依赖它的
+      # caddy（condition: service_healthy），表现为「部署卡在启动阶段」。
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/actuator/health | grep -q '\"status\":\"UP\"' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - s2s-net
+
+  # --------------------------------------------------------------------------
+  # MySQL 8.4 LTS（Batch1）
+  # 内存预算 450MB（innodb_buffer_pool_size 256M，见 config/my.cnf）
+  # staging / prod 无 ports: 映射；dev 映射 3306 供本地客户端连接
+  # --------------------------------------------------------------------------
+  mysql:
+    image: mysql:8.4
+    container_name: s2s-mysql
+    restart: unless-stopped
+    # 注意：无显式 command。MySQL 8.4 镜像的 /etc/my.cnf 中已包含
+    #   !includedir /etc/mysql/conf.d/
+    # 挂载到 conf.d 下的 .cnf 文件会被自动扫描，无需 --defaults-extra-file 重复指定。
+    # 配置文件权限必须为 644 或更严格，否则 mysqld 会静默忽略它
+    # （日志仅打一行「World-writable config file is ignored」）。
+    # 详见：deploy/config/my.cnf 头部注释
+    env_file:
+      - ./env/.env.${S2S_ENV:-prod}
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      TZ: Asia/Shanghai
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./config/my.cnf:/etc/mysql/conf.d/my.cnf:ro
+      # 首次启动自动执行：业务库 DDL + 埋点库 DDL（按文件名顺序）
+      - ../docs/database/ddl:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - s2s-net
+
+  # --------------------------------------------------------------------------
+  # Redis 7（Batch1）
+  # 内存预算 150MB（maxmemory 128mb，见 config/redis.conf）
+  # staging / prod 无 ports: 映射，且必须设 requirepass
+  #       无口令 Redis 暴露 = 全量登录会话可被取走（《系统安全设计方案》§10）
+  # --------------------------------------------------------------------------
+  redis:
+    image: redis:7.4-alpine
+    container_name: s2s-redis
+    restart: unless-stopped
+    # 口令从环境变量取，不写入 redis.conf 文件（避免口令随配置文件进 git）
+    command: >
+      sh -c "redis-server /usr/local/etc/redis/redis.conf --requirepass \"$$REDIS_PASSWORD\""
+    env_file:
+      - ./env/.env.${S2S_ENV:-prod}
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      TZ: Asia/Shanghai
+    volumes:
+      - redis_data:/data
+      - ./config/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks:
+      - s2s-net
+
+# ----------------------------------------------------------------------------
+# 网络：单一自定义 bridge 网络。四个服务通过服务名互相解析（app / mysql / redis）
+# 未加入此网络的容器无法访问数据面
+# ----------------------------------------------------------------------------
+networks:
+  s2s-net:
+    driver: bridge
+
+# ----------------------------------------------------------------------------
+# 卷：全部使用命名卷，磁盘占用受《部署架构设计文档》§4.1 分配表约束
+#   mysql_data  → MySQL 业务数据 6GB + binlog 3GB
+#   redis_data  → Redis AOF 1GB
+#   app_logs    → 应用日志 3GB（由 logback totalSizeCap 强制）
+#   caddy_*     → 证书与访问日志，量级 MB
+#
+# 卷名带 compose project 前缀（name: s2s），三环境若在同一宿主机上先后启动会
+# 共用同一份卷。这正是「Profile 切换」方案的已知代价，见《部署架构设计文档》
+# §14.2：同一宿主机上三环境互斥运行，切换环境前必须先 down 并按需清卷。
+# ----------------------------------------------------------------------------
+volumes:
+  mysql_data:
+  redis_data:
+  app_logs:
+  caddy_data:
+  caddy_config:
+  caddy_logs:

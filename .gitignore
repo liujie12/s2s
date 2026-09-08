@@ -52,3 +52,19 @@ ios/Flutter/flutter_export_environment.sh
 
 # ── Windows 构建 ──
 windows/flutter/ephemeral/
+
+# ── 部署与密钥（绝不入库）──
+# 各环境真实密钥文件。三套环境的密钥全部落在 deploy/env/ 下，
+# 命名为 .env.dev / .env.staging / .env.prod。
+# 先用 .env* 通配全部忽略，再用 ! 显式放行 *.example 模板 ——
+# 顺序不可颠倒：gitignore 是后规则覆盖前规则，反了会把模板一起忽略掉，
+# 新同事 clone 后就没有任何可参照的变量清单。
+deploy/env/.env*
+!deploy/env/.env*.example
+# 兼容历史路径（早期方案把 .env 放在 deploy/ 根下）
+.env
+# env-up.sh 的当前环境记账文件，属机器本地状态
+deploy/.current-env
+# 本地备份文件
+/var/backups/
+/swapfile

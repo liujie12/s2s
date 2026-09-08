@@ -1,0 +1,59 @@
+# ============================================================================
+# S2S 外部化配置 —— staging（预发布验证）
+# ----------------------------------------------------------------------------
+# 依据：《部署架构设计文档》§14.4 配置中心（Profile 外部化落地形态）
+#
+# 加载机制同 dev：本文件由 compose 挂载到容器 /opt/s2s/config/ 目录，
+# 优先级高于 jar 包内的 application-staging.yml。
+#
+# 纪律：
+#   1. 本文件【入 git】，禁止出现任何密钥/口令/AT。
+#   2. DDL 验证与 prod 一致（ddl-auto: validate），确保表结构不出偏差。
+#      若 staging 验证通过而 prod 失败，说明 DDL 脚本在 staging 和 prod 之间
+#      未同步 —— 这是 CI/CD 流程缺陷，不是配置问题。
+#   3. 日志级别与 prod 一致（WARN），确保「staging 验过 = prod 能过」。
+#      若 staging 开 DEBUG 而 prod 关，则 staging 通过不能代表 prod 行。
+# ============================================================================
+
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+
+  datasource:
+    hikari:
+      # 与 prod 相同的池大小，模拟生产并发
+      maximum-pool-size: 10
+      minimum-idle: 5
+      connection-timeout: 30000
+
+# --- 日志级别（与 prod 一致：WARN）-------------------------------------------
+logging:
+  level:
+    root: WARN
+    com.s2s: WARN
+
+# --- Actuator ---------------------------------------------------------------
+management:
+  endpoints:
+    web:
+      exposure:
+        # staging 只暴露 health，与 prod 一致
+        include: health
+  endpoint:
+    health:
+      show-details: when-authorized
+
+# --- 业务开关 ---------------------------------------------------------------
+s2s:
+  oss:
+    # staging 启用真实 OSS，但用 staging 专属桶（s2s-media-staging）
+    # 不会污染线上数据
+    enabled: true
+  llm:
+    # staging 启用真实 LLM 调用，验证 API 连通性
+    enabled: true
