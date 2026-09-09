@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>数据库与数据架构设计 — 构思推导</title>
+<link rel="preconnect" href="https://fonts.bunny.net">
+<link rel="stylesheet" href="https://fonts.bunny.net/css?family=inter:400,500,600,700,800|jetbrains-mono:400,500" as="style" crossorigin>
+<style>
+:root {
+  --bg: #fafafa;
+  --surface: #ffffff;
+  --border: #e5e7eb;
+  --text: #1a1a2e;
+  --text-secondary: #6b7280;
+  --text-muted: #9ca3af;
+  --accent: #2563eb;
+  --accent-soft: #eff6ff;
+  --accent-text: #1d4ed8;
+  --green: #059669;
+  --green-soft: #ecfdf5;
+  --green-text: #047857;
+  --amber: #d97706;
+  --amber-soft: #fffbeb;
+  --amber-text: #b45309;
+  --red: #dc2626;
+  --red-soft: #fef2f2;
+  --red-text: #b91c1c;
+  --purple: #7c3aed;
+  --purple-soft: #f5f3ff;
+  --purple-text: #6d28d9;
+  --font: 'Inter', system-ui, -apple-system, sans-serif;
+  --mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --radius: 8px;
+  --card-radius: 10px;
+  --max-width: 960px;
+  --prose-width: 70ch;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 15px; scroll-behavior: smooth; }
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+.container { max-width: var(--max-width); margin: 0 auto; padding: 0 24px; }
+header.meta {
+  padding: 48px 0 32px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 40px;
+}
+header.meta .eyebrow {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+header.meta h1 {
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  margin-bottom: 12px;
+}
+header.meta .meta-row {
+  display: flex; flex-wrap: wrap; gap: 16px 32px;
+  font-size: 0.85rem; color: var(--text-secondary);
+}
+header.meta .meta-row dt { display: inline; font-weight: 600; }
+header.meta .meta-row dd { display: inline; margin: 0; }
+header.meta .meta-row dd::after { content: '·'; margin-left: 16px; color: var(--border); }
+header.meta .meta-row dd:last-child::after { content: none; }
+section { margin-bottom: 48px; }
+h2 {
+  font-size: 1.35rem;
+  font-weight: 700;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--accent);
+  display: inline-block;
+}
+h3 { font-size: 1.1rem; font-weight: 600; margin: 24px 0 10px; }
+p { max-width: var(--prose-width); margin-bottom: 12px; color: var(--text); }
+p + p { margin-top: 4px; }
+code, .code {
+  font-family: var(--mono);
+  font-size: 0.85em;
+  background: #f1f5f9;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+pre {
+  background: #1e293b;
+  color: #e2e8f0;
+  padding: 16px 20px;
+  border-radius: var(--radius);
+  overflow-x: auto;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  line-height: 1.6;
+  margin: 12px 0 16px;
+  max-width: 100%;
+}
+pre code { background: none; padding: 0; color: inherit; font-size: inherit; }
+a { color: var(--accent-text); text-decoration: none; }
+a:hover { text-decoration: underline; }
+.idea-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--card-radius);
+  padding: 24px;
+  margin-bottom: 20px;
+  position: relative;
+}
+.idea-card .id-badge {
+  display: inline-block;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+  letter-spacing: 0.04em;
+  margin-bottom: 8px;
+}
+.idea-card .id-badge.purple { background: var(--purple); }
+.idea-card .id-badge.green { background: var(--green); }
+.idea-card .id-badge.amber { background: var(--amber); }
+.idea-card h3 {
+  margin: 0 0 8px;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+.idea-card .meta-strip {
+  display: flex; flex-wrap: wrap; gap: 8px 20px;
+  margin-bottom: 12px; font-size: 0.8rem; color: var(--text-secondary);
+}
+.idea-card .meta-strip dt { display: inline; font-weight: 600; }
+.idea-card .meta-strip dd { display: inline; margin: 0; }
+.idea-card .basis { margin-bottom: 8px; }
+.idea-card .basis .tag {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 3px;
+  margin-right: 4px;
+}
+.idea-card .basis .tag.direct { background: var(--green-soft); color: var(--green-text); }
+.idea-card .basis .tag.external { background: var(--purple-soft); color: var(--purple-text); }
+.idea-card .basis .tag.reasoned { background: var(--amber-soft); color: var(--amber-text); }
+.idea-card .downsides {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: var(--red-soft);
+  border-radius: 6px;
+  font-size: 0.85rem;
+  border-left: 3px solid var(--red);
+}
+.idea-card .downsides strong { color: var(--red-text); }
+.secondary-card {
+  background: var(--surface);
+  border: 1px dashed var(--border);
+  border-radius: var(--card-radius);
+  padding: 16px 20px;
+  margin-bottom: 12px;
+}
+.secondary-card h4 {
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.secondary-card .meta-strip {
+  font-size: 0.78rem; color: var(--text-secondary);
+  display: flex; flex-wrap: wrap; gap: 4px 16px;
+}
+table.reject {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  margin-top: 8px;
+}
+table.reject th {
+  text-align: left;
+  padding: 8px 12px;
+  background: #f1f5f9;
+  font-weight: 600;
+  border-bottom: 2px solid var(--border);
+}
+table.reject td {
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+table.reject tr:hover td { background: #f8fafc; }
+table.reject .rej-id { font-family: var(--mono); font-size: 0.8rem; white-space: nowrap; color: var(--text-secondary); }
+.survivor-jump {
+  display: flex; flex-wrap: wrap; gap: 6px 12px;
+  margin-bottom: 20px; font-size: 0.85rem;
+}
+.survivor-jump a { padding: 3px 8px; border-radius: 4px; background: var(--accent-soft); }
+.survivor-jump a:hover { background: #dbeafe; text-decoration: none; }
+.callout {
+  padding: 12px 16px;
+  border-radius: var(--radius);
+  margin: 12px 0 16px;
+  font-size: 0.88rem;
+  border-left: 4px solid;
+}
+.callout.info { background: var(--accent-soft); border-color: var(--accent); }
+.callout.warn { background: var(--amber-soft); border-color: var(--amber); }
+.callout.danger { background: var(--red-soft); border-color: var(--red); }
+.callout.green { background: var(--green-soft); border-color: var(--green); }
+figure.diagram {
+  margin: 20px 0;
+  text-align: center;
+}
+figure.diagram svg {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+figure.diagram figcaption {
+  margin-top: 8px;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+footer.composition-signal {
+  margin-top: 56px;
+  padding: 16px 0;
+  border-top: 1px solid var(--border);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+.chip {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+  margin-right: 4px;
+}
+.chip.conf-H { background: var(--green-soft); color: var(--green-text); }
+.chip.conf-M { background: var(--amber-soft); color: var(--amber-text); }
+.chip.cx-S { background: #f1f5f9; color: #475569; }
+.chip.cx-M { background: var(--amber-soft); color: var(--amber-text); }
+@media (max-width: 640px) {
+  html { font-size: 14px; }
+  .container { padding: 0 16px; }
+  header.meta h1 { font-size: 1.5rem; }
+  .idea-card { padding: 16px; }
+}
+</style>
+</head>
+<body>
+<div class="container">
+
+<header class="meta">
+  <div class="eyebrow">构思推导 · 非定稿</div>
+  <h1>数据库与数据架构设计</h1>
+  <dl class="meta-row">
+    <dt>日期</dt><dd>2026-09-04</dd>
+    <dt>主题</dt><dd>database-architecture-ideation</dd>
+    <dt>模式</dt><dd>repo-grounded</dd>
+    <dt>源</dt><dd>PRD §13 · 架构 §5 · domain 模型 · 原型冲突</dd>
+  </dl>
+</header>
+
+<section>
+  <h2 id="codebase-context">代码库上下文</h2>
+  <p>基于 <strong>找鸭找</strong> 项目现有约束进行构思：</p>
+  <ul style="max-width:var(--prose-width);margin-bottom:12px;padding-left:20px;line-height:1.8;">
+    <li><strong>技术栈</strong>：Flutter 客户端 + Spring Boot 3 单体后端 + MySQL 8.4 LTS（唯一持久化） + Redis 7 + Caffeine + 阿里云 OSS + 高德地图 SDK（GCJ-02）</li>
+    <li><strong>基础设施预算</strong>：131 元/年 · ECS 经济型 e（2 核 2G） · 内存：MySQL 450M / Redis 150M / JVM -Xmx600m</li>
+    <li><strong>排期</strong>：38 自然日，无缓冲</li>
+    <li><strong>14 张业务表</strong>（三批次）：<code>user</code> · <code>user_identity</code> · <code>post</code> · <code>contact_event</code> · <code>publish_memory</code> · <code>category</code> · <code>report</code> · <code>audit_log</code> · <code>system_config</code> · <code>scheduled_task</code> · <code>task_log</code> · <code>notification</code> · <code>notification_template</code> · <code>file_metadata</code></li>
+    <li><strong>数据模型核心机制</strong>：<code>grid_id</code> ~500m 网格冗余列 · <code>l2_category_id</code> 二级类目冗余列 · <code>version</code> 乐观锁（40903） · <code>user_identity</code> 身份归一化（双唯一索引） · 分类树三级编号规则</li>
+    <li><strong>5 条已知口径冲突</strong>（原型代码遗留）：完整度计数 · 分类树编号 · 网格边界 · 状态流转 · 敏感字段</li>
+    <li><strong>11 条保留策略</strong>：含 90 天埋点整表 drop · 180 天 audit_log · 7 天冷静期 · 通知 30 天等</li>
+    <li><strong>Past Learning 判据</strong>：<a href="file:///d:/developer/code/aicoding/s2s/docs/solutions/workflow-issues/data-model-reservation-for-deferred-features.md">延期的是逻辑，不是数据</a> —— 延后后是否需要在有真实数据的库上改表结构</li>
+  </ul>
+</section>
+
+<section>
+  <h2 id="topic-axes">主题轴</h2>
+  <ol style="max-width:var(--prose-width);padding-left:20px;line-height:1.9;">
+    <li><strong>空间读路径的数据组织</strong> — <code>grid_id</code> 编码、索引、写入出口</li>
+    <li><strong>分类树与模板 Schema</strong> — 冗余列真源、编号不变量、版本管理</li>
+    <li><strong>敏感字段的落库形态</strong> — 加密与唯一索引的矛盾、盲索引、哈希不可逆</li>
+    <li><strong>生命周期、状态与保留</strong> — 乐观锁守卫分流、下架、清理</li>
+    <li><strong>分析侧数据与业务侧的边界</strong> — 可回溯性、埋点快照、降采样</li>
+  </ol>
+</section>
+
+<section>
+  <h2 id="ranked-ideas">排名想法</h2>
+
+  <div class="survivor-jump">
+    <a href="#s1">S1. 敏感字段结构性建模</a>
+    <a href="#s2">S2. 可回溯性最小注入</a>
+    <a href="#s3">S3. 冗余列生成列化</a>
+    <a href="#s4">S4. 状态写守卫分流</a>
+    <a href="#s5">S5. 地图取 Pin 覆盖索引</a>
+    <a href="#s6">S6. 网格计算整数微度域</a>
+    <a href="#secondary">次级项</a>
+  </div>
+
+  <!-- S1 -->
+  <article class="idea-card" id="s1">
+    <span class="id-badge">S1</span> <span class="chip conf-H">信心 H</span> <span class="chip cx-M">复杂度 M</span>
+    <h3>敏感字段结构性建模：盲索引双列 + key_version + 掩码退化 + 真不可逆哈希</h3>
+    <dl class="meta-strip">
+      <dt>轴</dt><dd>③ 敏感字段落库形态</dd>
+      <dt>来源</dt><dd>X-3 = A3-1 · A3-2 · A3-5 · A3-6</dd>
+    </dl>
+    <div class="basis">
+      <span class="tag direct">direct</span> <code>PRD.md:2354-2357</code> <code>identity_value varbinary</code> 加密存储 + <code>uk_type_value</code> 唯一索引 → AEAD 随机 IV 下唯一约束与等值查密码学上不可用
+    </div>
+    <div class="basis">
+      <span class="tag direct">direct</span> <code>PRD.md:2335</code> <code>user.phone varchar(20) UNIQUE 加密存储</code> 是同一矛盾
+    </div>
+    <div class="basis">
+      <span class="tag direct">direct</span> <code>PRD.md:2339-2340</code> <code>id_card_hash char(64) "只存不可逆哈希"</code> 与 <code>id_card_last4</code> 明文并存 → 18 位强结构化 + 后 4 位明文 → 候选空间可 GPU 穷举
+    </div>
+    <div class="basis">
+      <span class="tag direct">direct</span> <code>可观测性:437</code> 出包门禁只查明文列不查是否加盐，缺口真实
+    </div>
+    <div class="basis">
+      <span class="tag reasoned">reasoned</span> 无 <code>key_version</code> 列则密钥轮换必须停机全表重写
+    </div>
+    <p><strong>落地形态</strong>：</p>
+    <ul style="max-width:var(--prose-width);padding-left:20px;margin-bottom:8px;line-height:1.8;">
+      <li><code>identity_hash char(64)</code>（HMAC-SHA256 + pepper）— 承载唯一索引与等值查</li>
+      <li><code>identity_value_enc varbinary(1024)</code>（AEAD 密文）— 仅解密展示</li>
+      <li><code>key_version tinyint</code> — 支持可灰度密钥轮换</li>
+      <li><code>user.phone</code> 拆为 <code>phone_mask varchar(20)</code>（明文掩码，仅展示）与归一化到 <code>user_identity</code> 的加密原文</li>
+      <li><code>id_card_hash</code> 改 HMAC + pepper</li>
+    </ul>
+    <p><strong>不可逆性</strong>：事后修改必须在有真实密文的库上重写全表并重算全部唯一索引。</p>
+    <div class="downsides"><strong>权衡</strong>：增加一列存储开销；<code>key_version</code> 引入密钥管理复杂度；<code>phone_mask</code> 与 <code>identity_value</code> 的展示一致性需业务层保障。</div>
+
+    <figure class="diagram">
+      <svg viewBox="0 0 720 320" xmlns="http://www.w3.org/2000/svg" font-family="Inter, system-ui, sans-serif" font-size="13">
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 Z" fill="#2563eb"/></marker>
+          <marker id="arrow-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 Z" fill="#dc2626"/></marker>
+        </defs>
+        <!-- 标题 -->
+        <text x="360" y="22" text-anchor="middle" font-weight="700" font-size="15" fill="#1a1a2e">当前方案 vs 盲索引方案 — 密码学矛盾演示</text>
+
+        <!-- 左侧：当前方案 -->
+        <rect x="20" y="40" width="200" height="38" rx="6" fill="#fef2f2" stroke="#dc2626" stroke-width="1.5"/>
+        <text x="120" y="64" text-anchor="middle" font-weight="600" fill="#b91c1c" font-size="13">当前：identity_value</text>
+
+        <rect x="20" y="88" width="200" height="38" rx="6" fill="#fff" stroke="#e5e7eb" stroke-width="1"/>
+        <text x="120" y="112" text-anchor="middle" font-size="12" fill="#6b7280">varbinary 加密</text>
+        <text x="120" y="148" text-anchor="middle" font-size="12" fill="#6b7280">uk_type_value 唯一索引</text>
+        <text x="120" y="164" text-anchor="middle" font-size="12" fill="#6b7280">WHERE value = ? 等值查</text>
+
+        <!-- 矛盾箭头 -->
+        <path d="M220,126 L280,126" stroke="#dc2626" stroke-width="2" marker-end="url(#arrow-red)" stroke-dasharray="6,3"/>
+        <text x="250" y="118" text-anchor="middle" font-size="11" fill="#dc2626" font-weight="600">AEAD 随机 IV</text>
+        <text x="250" y="142" text-anchor="middle" font-size="11" fill="#dc2626" font-weight="600">三者不可同时成立</text>
+
+        <!-- 右侧：盲索引方案 -->
+        <rect x="490" y="40" width="210" height="38" rx="6" fill="#ecfdf5" stroke="#059669" stroke-width="1.5"/>
+        <text x="595" y="64" text-anchor="middle" font-weight="600" fill="#047857" font-size="13">盲索引双列方案</text>
+
+        <rect x="490" y="88" width="210" height="32" rx="6" fill="#fff" stroke="#e5e7eb" stroke-width="1"/>
+        <text x="595" y="109" text-anchor="middle" font-size="12" fill="#1a1a2e">identity_hash</text>
+        <text x="595" y="125" text-anchor="middle" font-size="11" fill="#6b7280">HMAC-SHA256 + pepper</text>
+        <text x="595" y="139" text-anchor="middle" font-size="11" fill="#059669" font-weight="600">承载唯一索引 + 等值查</text>
+
+        <rect x="490" y="152" width="210" height="32" rx="6" fill="#fff" stroke="#e5e7eb" stroke-width="1"/>
+        <text x="595" y="173" text-anchor="middle" font-size="12" fill="#1a1a2e">identity_value_enc</text>
+        <text x="595" y="189" text-anchor="middle" font-size="11" fill="#6b7280">AEAD 密文·仅解密展示</text>
+
+        <rect x="490" y="196" width="210" height="32" rx="6" fill="#fff" stroke="#e5e7eb" stroke-width="1"/>
+        <text x="595" y="217" text-anchor="middle" font-size="12" fill="#1a1a2e">key_version</text>
+        <text x="595" y="233" text-anchor="middle" font-size="11" fill="#6b7280">tinyint 支持密钥轮换</text>
+
+        <!-- 箭头：从 hash 到索引 -->
+        <path d="M595,87 L595,78" stroke="#059669" stroke-width="1.5" marker-end="url(#arrow)"/>
+        <text x="610" y="74" font-size="10" fill="#059669">唯一索引</text>
+
+        <path d="M490,165 L410,165" stroke="#059669" stroke-width="1.5" marker-end="url(#arrow)"/>
+        <text x="450" y="158" text-anchor="middle" font-size="11" fill="#059669">密码学上分离</text>
+
+        <!-- phone_mask 特殊标注 -->
+        <rect x="490" y="244" width="210" height="32" rx="6" fill="#fffbeb" stroke="#d97706" stroke-width="1"/>
+        <text x="595" y="265" text-anchor="middle" font-size="12" fill="#1a1a2e">phone_mask (明文)</text>
+        <text x="595" y="281" text-anchor="middle" font-size="11" fill="#b45309">仅展示·加密原文归到 identity</text>
+
+        <text x="595" y="310" text-anchor="middle" font-size="11" fill="#9ca3af" font-style="italic">四目标同时满足：唯一索引可用 · 密钥可轮换 · 哈希真不可逆 · 密文可解密</text>
+      </svg>
+      <figcaption>图 1：当前 <code>identity_value</code> 方案的密码学矛盾（左）与盲索引双列解耦方案（右）</figcaption>
+    </figure>
+  </article>
+
+  <!-- S2 -->
+  <article class="idea-card" id="s2">
+    <span class="id-badge">S2</span> <span class="chip conf-H">信心 H</span> <span class="chip cx-S">复杂度 S</span>
+    <h3>可回溯性最小注入：<code>status_reason</code> + <code>status_changed_at</code> + 埋点维度快照</h3>
+    <dl class="meta-strip">
+      <dt>轴</dt><dd>⑤ 分析侧与业务侧边界</dd>
+      <dt>来源</dt><dd>X-4′ = A5-1 · A5-4</dd>
+    </dl>
+    <div class="basis">
+      <span class="tag direct">direct</span> <code>PRD.md:2386</code> <code>post</code> 仅有 <code>created_at</code> / <code>updated_at</code>，无 <code>status_changed_at</code>
+    </div>
+    <div class="basis">
+      <span class="tag direct">direct</span> <code>PRD.md:1451</code> 客观代理档位标签定义为：「<code>post.status</code> 变更时刻 − 首次 <code>contact_event.created_at</code>」—— <strong>该时刻在表上不存在，标签当前数学上不可计算</strong>
+    </div>
+    <div class="basis">
+      <span class="tag direct">direct</span> <code>架构:287</code> 埋点已隔到独立 database，跨库 join 不可行；<code>可观测性:151-153</code> 宽表 + JSON 结构已适配退化维度
+    </div>
+    <div class="basis">
+      <span class="tag external">external</span> Kimball 退化维度：事实行自带维度快照，避免跨库 join 与改帖污染历史
+    </div>
+    <p><strong>落地形态</strong>：</p>
+    <ul style="max-width:var(--prose-width);padding-left:20px;margin-bottom:8px;line-height:1.8;">
+      <li><code>post</code> 增 <code>status_reason tinyint</code>（枚举：1=主动下架 · 2=到期 · 3=审核下架 · 4=成交）</li>
+      <li><code>post</code> 增 <code>status_changed_at datetime</code>（非空，每次 <code>status</code> 变更同步更新）</li>
+      <li>埋点事实行自带维度快照（红线：冗余 <code>grid_id</code> 只能是发布点网格，不得引入用户位置）</li>
+    </ul>
+    <p><strong>不可逆性</strong>：唯一「今天不做则永久缺失」项——90 天窗口内未采到的维度不可追补，非 active 状态事后不可区分。</p>
+    <div class="downsides"><strong>权衡</strong>：<code>post</code> 表增两列增加存储；<code>status_changed_at</code> 需在每次 status 变更时同步更新（增加写路径复杂度）；埋点快照增加单行写入体积。</div>
+
+    <figure class="diagram">
+      <svg viewBox="0 0 720 280" xmlns="http://www.w3.org/2000/svg" font-family="Inter, system-ui, sans-serif" font-size="13">
+        <defs>
+          <marker id="arrow2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 Z" fill="#2563eb"/></marker>
+        </defs>
+        <text x="360" y="22" text-anchor="middle" font-weight="700" font-size="15" fill="#1a1a2e">四种进入非 active 的路径 — 当前不可区分</text>
+
+        <!-- 顶部：active -->
+        <rect x="280" y="40" width="160" height="36" rx="18" fill="#ecfdf5" stroke="#059669" stroke-width="2"/>
+        <text x="360" y="63" text-anchor="middle" font-weight="600" fill="#047857">post.status = active</text>
+
+        <!-- 四条路径 -->
+        <path d="M320,76 L240,110" stroke="#2563eb" stroke-width="1.5" marker-end="url(#arrow2)"/>
+        <path d="M360,76 L360,110" stroke="#2563eb" stroke-width="1.5" marker-end="url(#arrow2)"/>
+        <path d="M400,76 L480,110" stroke="#2563eb" stroke-width="1.5" marker-end="url(#arrow2)"/>
+        <path d="M360,76 L360,110" stroke="#d97706" stroke-width="1.5" marker-end="url(#arrow2)" stroke-dasharray="6,3"/>
+
+        <!-- 标签 -->
+        <text x="240" y="100" text-anchor="middle" font-size="11" fill="#1a1a2e">① 用户主动下架</text>
+        <text x="360" y="100" text-anchor="middle" font-size="11" fill="#1a1a2e">② 到期自动下架</text>
+        <text x="480" y="100" text-anchor="middle" font-size="11" fill="#1a1a2e">③ 审核下架</text>
+        <text x="360" y="130" text-anchor="middle" font-size="11" fill="#b45309">④ 成交（PRD 允许）</text>
+
+        <!-- 底部：非 active -->
+        <rect x="280" y="148" width="160" height="36" rx="18" fill="#fef2f2" stroke="#dc2626" stroke-width="2"/>
+        <text x="360" y="171" text-anchor="middle" font-weight="600" fill="#b91c1c">post.status = inactive</text>
+
+        <!-- 问题标注 -->
+        <rect x="20" y="148" width="220" height="50" rx="6" fill="#fef2f2" stroke="#dc2626" stroke-width="1"/>
+        <text x="130" y="168" text-anchor="middle" font-size="12" fill="#b91c1c" font-weight="600">事后不可区分</text>
+        <text x="130" y="184" text-anchor="middle" font-size="11" fill="#b91c1c">四条路径在表上不可逆</text>
+        <text x="130" y="198" text-anchor="middle" font-size="11" fill="#b91c1c">标签数学上不可计算</text>
+
+        <!-- 解决方案 -->
+        <rect x="520" y="148" width="190" height="60" rx="6" fill="#ecfdf5" stroke="#059669" stroke-width="1"/>
+        <text x="615" y="168" text-anchor="middle" font-size="12" fill="#047857" font-weight="600">解决方案</text>
+        <text x="615" y="184" text-anchor="middle" font-size="11" fill="#1a1a2e">+ status_reason tinyint</text>
+        <text x="615" y="198" text-anchor="middle" font-size="11" fill="#1a1a2e">+ status_changed_at datetime</text>
+
+        <path d="M480,170 L520,170" stroke="#2563eb" stroke-width="1.5" marker-end="url(#arrow2)"/>
+
+        <!-- 埋点快照 -->
+        <rect x="20" y="220" width="680" height="36" rx="6" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1"/>
+        <text x="360" y="244" text-anchor="middle" font-size="12" fill="#1a1a2e">埋点事实行自带维度快照（Kimball 退化维度）避免跨库 join 与改帖污染历史</text>
+
+        <text x="360" y="272" text-anchor="middle" font-size="11" fill="#9ca3af" font-style="italic">其中 ④ 只有在 status_reason 存在时才能被正确归因</text>
+      </svg>
+      <figcaption>图 2：四种进入非 active 的路径（左）与 <code>status_reason</code> 解决方案（右）</figcaption>
+    </figure>
+  </article>
+
+  <!-- S3 -->
+  <article class="idea-card" id="s3">
+    <span class="id-badge">S3</span> <span class="chip conf-H">信心 H</span> <span class="chip cx-S">复杂度 S</span>
+    <h3>冗余列生成列化 + 类目编号不变量定案</h3>
+    <dl class="meta-strip">
+      <dt>轴</dt><dd>② 分类树与模板 Schema</dd>
+      <dt>来源</dt><dd>X-1′ = A2-1 · A2-2</dd>
+    </dl>
+    <div class="basis">
+      <span class="tag direct">direct</span> <code>PRD.md:2370</code> "运营调整父子关系时须批量回刷本列" 与 <code>category_tree.dart:66</code> "已发布的编号不得重排" 自相矛盾
+    </div>
+    <div class="basis">
+      <span class="tag direct">direct</span> <code>categoryPathOf</code> 已在用 <code>leafId ~/ 100</code>（line 449）—— 项目内部已默认编号即不变量
+    </div>
+    <div class="basis">
+      <span class="tag direct">direct</span> <code>PRD.md:2380-2381</code> <code>completeness_level</code> 与 <code>completeness_conditions</code> 双真源并存；<code>publish_completeness.dart:71</code> 证明前者是后者的纯函数
+    </div>
+    <div class="basis">
+      <span class="tag reasoned">reasoned</span> <strong>校验新增实证</strong>：ENUM 声明序 green/yellow/red 与 <code>PRD.md:2175</code> API 映射 <code>0=⚪/1=🟡/2=🟢</code> 方向相反，存在隐式排序契约
+    </div>
+    <p><strong>落地形态</strong>：</p>
+    <ul style="max-width:var(--prose-width);padding-left:20px;margin-bottom:8px;line-height:1.8;">
+      <li>先定死「三级编号即不变量」—— 已发布编号不得重排</li>
+      <li><code>l2_category_id</code> 改为 <code>leaf_category_id DIV 100</code> STORED 生成列</li>
+      <li><code>completeness_level</code> 改为 STORED 生成列（基于 <code>completeness_conditions</code> 计算）</li>
+      <li>ENUM 声明序与 API int 映射对齐并显式文档化</li>
+    </ul>
+    <div class="downsides"><strong>权衡</strong>：STORED 生成列增加存储开销；若未来编号规则变更（如三级升级为四级），需全表重建；`completeness_conditions` JSON 内部不变量变更需同时重建生成列。</div>
+
+    <figure class="diagram">
+      <svg viewBox="0 0 720 240" xmlns="http://www.w3.org/2000/svg" font-family="Inter, system-ui, sans-serif" font-size="13">
+        <defs>
+          <marker id="arrow3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 Z" fill="#2563eb"/></marker>
+        </defs>
+        <text x="360" y="22" text-anchor="middle" font-weight="700" font-size="15" fill="#1a1a2e">冗余列真源收敛 — 从写路径到 DDL 生成列</text>
+
+        <!-- 当前 -->
+        <rect x="30" y="40" width="200" height="130" rx="8" fill="#fef2f2" stroke="#dc2626" stroke-width="1.5"/>
+        <text x="130" y="62" text-anchor="middle" font-weight="600" fill="#b91c1c" font-size="14">当前：写路径维护</text>
+        <text x="130" y="84" text-anchor="middle" font-size="12" fill="#1a1a2e">l2_category_id</text>
+        <text x="130" y="100" text-anchor="middle" font-size="11" fill="#6b7280">← 运营回刷 / 服务端 / 客户端</text>
+        <text x="130" y="120" text-anchor="middle" font-size="12" fill="#1a1a2e">completeness_level</text>
+        <text x="130" y="136" text-anchor="middle" font-size="11" fill="#6b7280">← 服务端 / 客户端 / 定时任务</text>
+        <text x="130" y="160" text-anchor="middle" font-size="11" fill="#b91c1c">双真源可漂移 · 两条契约自相矛盾</text>
+
+        <!-- 箭头 -->
+        <path d="M230,100 L290,100" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow3)"/>
+        <text x="260" y="92" text-anchor="middle" font-size="11" fill="#2563eb" font-weight="600">收敛</text>
+
+        <!-- 目标 -->
+        <rect x="300" y="40" width="200" height="130" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.5"/>
+        <text x="400" y="62" text-anchor="middle" font-weight="600" fill="#047857" font-size="14">目标：DDL 生成列</text>
+        <text x="400" y="84" text-anchor="middle" font-size="12" fill="#1a1a2e">l2_category_id</text>
+        <text x="400" y="100" text-anchor="middle" font-size="11" fill="#059669">← leaf_id DIV 100 STORED</text>
+        <text x="400" y="120" text-anchor="middle" font-size="12" fill="#1a1a2e">completeness_level</text>
+        <text x="400" y="136" text-anchor="middle" font-size="11" fill="#059669">← conditions 纯函数 STORED</text>
+        <text x="400" y="160" text-anchor="middle" font-size="11" fill="#059669">不可能写错 · 单一真源</text>
+
+        <!-- 前提不变量 -->
+        <rect x="530" y="40" width="175" height="130" rx="8" fill="#fffbeb" stroke="#d97706" stroke-width="1.5"/>
+        <text x="617" y="62" text-anchor="middle" font-weight="600" fill="#b45309" font-size="14">前提不变量</text>
+        <text x="617" y="88" text-anchor="middle" font-size="12" fill="#1a1a2e">三级编号即不变量</text>
+        <text x="617" y="106" text-anchor="middle" font-size="11" fill="#6b7280">已发布编号不得重排</text>
+        <text x="617" y="128" text-anchor="middle" font-size="12" fill="#1a1a2e">ENUM 声明序 = API 映射</text>
+        <text x="617" y="146" text-anchor="middle" font-size="11" fill="#6b7280">显式文档化排序契约</text>
+
+        <path d="M500,100 L530,100" stroke="#d97706" stroke-width="1.5" marker-end="url(#arrow3)" stroke-dasharray="6,3"/>
+      </svg>
+      <figcaption>图 3：冗余列从写路径维护收敛为 DDL 生成列，依赖「编号即不变量」前提</figcaption>
+    </figure>
+  </article>
+
+  <!-- S4 -->
+  <article class="idea-card" id="s4">
+    <span class="id-badge">S4</span> <span class="chip conf-H">信心 H</span> <span class="chip cx-S">复杂度 S</span>
+    <h3>状态写守卫分流：用户意图用 version 守卫，系统派生用状态守卫</h3>
+    <dl class="meta-strip">
+      <dt>轴</dt><dd>④ 生命周期、状态与保留</dd>
+      <dt>来源</dt><dd>A4-1 · A4-6</dd>
+    </dl>
+    <div class="basis">
+      <span class="tag direct">direct</span> <code>架构:325</code> 三条并发写路径；<code>架构:339</code> <code>40903</code> 不允许自动重试；<code>架构:602</code> §8 定时任务表
+    </div>
+    <div class="basis">
+      <span class="tag direct">direct</span> <code>架构:814</code> 已有「定时任务与手动下架相撞」验收项，却未定守卫口径
+    </div>
+    <div class="basis">
+      <span class="tag external">external</span> NEMA 交通信号冲突监测矩阵：硬件矩阵保证不出现冲突相位 ≈ SQL 谓词保证非法流转 0 行
+    </div>
+    <p><strong>落地形态</strong>：</p>
+    <ul style="max-width:var(--prose-width);padding-left:20px;margin-bottom:8px;line-height:1.8;">
+      <li>用户意图写 → <code>WHERE version = ?</code> 版本守卫（冲突返回 <code>40903</code>）</li>
+      <li>系统派生写 → <code>WHERE status IN (合法前驱集)</code> 状态守卫（定时任务永不产生 <code>40903</code>）</li>
+      <li>两者在同一 <code>UPDATE</code> 的 <code>WHERE</code> 中组合</li>
+    </ul>
+    <div class="downsides"><strong>权衡</strong>：增加了状态流转矩阵的维护成本（需明确定义每个状态所有合法前驱）；系统派生写失去版本乐观锁的冲突检测能力。</div>
+
+    <figure class="diagram">
+      <svg viewBox="0 0 720 200" xmlns="http://www.w3.org/2000/svg" font-family="Inter, system-ui, sans-serif" font-size="13">
+        <defs>
+          <marker id="arrow4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 Z" fill="#2563eb"/></marker>
+        </defs>
+        <text x="360" y="22" text-anchor="middle" font-weight="700" font-size="15" fill="#1a1a2e">写守卫分流规则</text>
+
+        <!-- 用户路径 -->
+        <rect x="30" y="40" width="180" height="50" rx="25" fill="#dbeafe" stroke="#2563eb" stroke-width="2"/>
+        <text x="120" y="70" text-anchor="middle" font-weight="600" fill="#1d4ed8">用户意图写</text>
+
+        <path d="M210,65 L270,65" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow4)"/>
+
+        <rect x="270" y="40" width="200" height="50" rx="6" fill="#fff" stroke="#2563eb" stroke-width="1.5"/>
+        <text x="370" y="65" text-anchor="middle" font-size="13" fill="#1a1a2e">WHERE version = ?</text>
+        <text x="370" y="82" text-anchor="middle" font-size="11" fill="#6b7280">冲突 → 40903 告知用户重试</text>
+
+        <!-- 系统路径 -->
+        <rect x="30" y="110" width="180" height="50" rx="25" fill="#fffbeb" stroke="#d97706" stroke-width="2"/>
+        <text x="120" y="140" text-anchor="middle" font-weight="600" fill="#b45309">系统派生写</text>
+
+        <path d="M210,135 L270,135" stroke="#d97706" stroke-width="2" marker-end="url(#arrow4)"/>
+
+        <rect x="270" y="110" width="200" height="50" rx="6" fill="#fff" stroke="#d97706" stroke-width="1.5"/>
+        <text x="370" y="135" text-anchor="middle" font-size="13" fill="#1a1a2e">WHERE status IN (合法前驱集)</text>
+        <text x="370" y="152" text-anchor="middle" font-size="11" fill="#6b7280">非法流转 → 0 行受影响 · 永不 40903</text>
+
+        <!-- 组合说明 -->
+        <rect x="500" y="40" width="200" height="120" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.5"/>
+        <text x="600" y="62" text-anchor="middle" font-weight="600" fill="#6d28d9" font-size="13">组合规则</text>
+        <text x="600" y="84" text-anchor="middle" font-size="12" fill="#1a1a2e">同一 UPDATE 中</text>
+        <text x="600" y="104" text-anchor="middle" font-size="12" fill="#1a1a2e">version 守卫 + status 守卫</text>
+        <text x="600" y="124" text-anchor="middle" font-size="12" fill="#1a1a2e">同时起效</text>
+        <text x="600" y="148" text-anchor="middle" font-size="11" fill="#6b7280">定时任务只有 status 守卫</text>
+
+        <path d="M470,80 L500,80" stroke="#7c3aed" stroke-width="1.5" marker-end="url(#arrow4)" stroke-dasharray="6,3"/>
+      </svg>
+      <figcaption>图 4：用户意图写与系统派生写的守卫分流模型</figcaption>
+    </figure>
+  </article>
+
+  <!-- S5 -->
+  <article class="idea-card" id="s5">
+    <span class="id-badge">S5</span> <span class="chip conf-H">信心 H</span> <span class="chip cx-S">复杂度 S</span>
+    <h3>地图取 Pin 升级为覆盖索引</h3>
+    <dl class="meta-strip">
+      <dt>轴</dt><dd>① 空间读路径的数据组织</dd>
+      <dt>来源</dt><dd>A1-5</dd>
+    </dl>
+    <div class="basis">
+      <span class="tag direct">direct</span> <code>PRD.md:2166</code> <code>/map/pins</code> 响应 schema 恰为六字段 <code>[id, lng, lat, category_id, type, completeness_level]</code>
+    </div>
+    <div class="basis">
+      <span class="tag reasoned">reasoned</span> 在 <code>idx_grid_status</code> 后追加上述五列，消除 500 次回表宽行随机读；450M buffer pool 下这是 P95 ≤150ms 的关键
+    </div>
+    <p><strong>落地形态</strong>：<code>idx_grid_status</code> 后追加 <code>lng</code> / <code>lat</code> / <code>category_id</code> / <code>type</code> / <code>completeness_level</code>，形成 index-only scan。</p>
+    <div class="downsides"><strong>权衡</strong>：复合索引宽度增加，写入和 B+ 树维护开销略增；需验证索引覆盖确实消除全部回表。</div>
+  </article>
+
+  <!-- S6 -->
+  <article class="idea-card" id="s6">
+    <span class="id-badge">S6</span> <span class="chip conf-H">信心 H</span> <span class="chip cx-S">复杂度 S</span>
+    <h3>网格计算改整数微度域</h3>
+    <dl class="meta-strip">
+      <dt>轴</dt><dd>① 空间读路径的数据组织</dd>
+      <dt>来源</dt><dd>A1-1</dd>
+    </dl>
+    <div class="basis">
+      <span class="tag direct">direct</span> <code>PRD.md:2371</code> 步长 <code>0.0045°</code> + floor 运算
+    </div>
+    <div class="basis">
+      <span class="tag reasoned">reasoned</span> 0.0045 在 IEEE-754 下不可精确表示，<code>floor(lng / 0.0045)</code> 在网格边界附近会跳格；10 条测试向量全绿不能证明线上正确。<code>lng_e6 DIV 4500</code> 使运算全整数域，不改变编码结果
+    </div>
+    <p><strong>落地形态</strong>：<code>grid_id</code> 生成算法在服务端与客户端统一改为整数微度运算（先 <code>round(deg * 1e6)</code> 再整除 4500），编码格式与既有定案不变。</p>
+    <div class="downsides"><strong>权衡</strong>：需同步修改客户端与服务端两处实现并在分界点确认一致；<code>round</code> 的精度边界需与测试向量对齐。</div>
+  </article>
+
+  <!-- 次级项 -->
+  <h3 id="secondary" style="margin-top:32px;">次级项（顺带定口径，不单独占议题）</h3>
+
+  <div class="secondary-card">
+    <h4>N1 · <code>category.version</code> 全局版本号存哪</h4>
+    <div class="meta-strip"><span class="chip conf-M">信心 M</span> <span class="chip cx-S">复杂度 S</span></div>
+    <p style="max-width:var(--prose-width);"><code>PRD.md:2417</code> 全局分类树版本号却存在 74 行上，撕裂读成立。只需定「全局版本号存哪」，不新建 <code>config_snapshot</code> 表（A2-3 缩小后）。</p>
+  </div>
+
+  <div class="secondary-card">
+    <h4>N2 · <code>post</code> 增 <code>template_version int</code></h4>
+    <div class="meta-strip"><span class="chip conf-M">信心 M</span> <span class="chip cx-S">复杂度 S</span></div>
+    <p style="max-width:var(--prose-width);">A2-5 最小形式，命中 past learning 判据（延期的是逻辑，不是数据 — 模板冻结只需一个 int）。不做 openEHR 完整两层建模。</p>
+  </div>
+
+  <div class="secondary-card">
+    <h4>N3 · CI 断言「每条保留策略在 §8 有对应执行者」</h4>
+    <div class="meta-strip"><span class="chip conf-M">信心 M</span> <span class="chip cx-S">复杂度 S</span></div>
+    <p style="max-width:var(--prose-width);">A4-4 可落地的那一半：<code>架构:375</code> 要求「每一行都必须在 §8 定时任务表里有对应的执行者」—— 用 CI 静态断言，不做 <code>retention_policy</code> 元表。</p>
+  </div>
+
+  <div class="secondary-card">
+    <h4>N4 · 埋点月表加 MAXVALUE 兜底或写入前 CREATE TABLE IF NOT EXISTS</h4>
+    <div class="meta-strip"><span class="chip conf-M">信心 M</span> <span class="chip cx-S">复杂度 S</span></div>
+    <p style="max-width:var(--prose-width);">A5-3 缩小后：把「跨月首写当天全丢」降为「错分区可补」，不做完整 RANGE 分区推广。</p>
+  </div>
+
+</section>
+
+<section>
+  <h2 id="rejection-summary">淘汰摘要</h2>
+  <table class="reject">
+    <thead><tr><th>#</th><th>想法</th><th>淘汰原因</th></tr></thead>
+    <tbody>
+      <tr><td class="rej-id">A1-2</td><td>粗网格列兼作 city_id</td><td><code>radius=city</code> 走行政边界过滤；粗网格跨边界无法承担 city_id 语义</td></tr>
+      <tr><td class="rej-id">A1-3</td><td><code>grid_id</code> 改 STORED</td><td>受「客户端逐位一致」约束，搬进 DDL 新增两套实现</td></tr>
+      <tr><td class="rej-id">A1-4</td><td>定宽 bigint 分层编码</td><td>重开 <code>varchar(24)</code> 已决参数，违反批次纪律</td></tr>
+      <tr><td class="rej-id">A1-6</td><td>grid_ver + city_id 预留</td><td>步长变更仍须全表回刷；city_id 归属表未定</td></tr>
+      <tr><td class="rej-id">A1-7</td><td>测试向量机器可读化</td><td>已定「10 条带期望值向量是 Batch1 交付物」，属工程增量</td></tr>
+      <tr><td class="rej-id">A1-8</td><td>网格水位线 + 增量响应</td><td>Pin TTL 60s / gzip 4-5KB 有余量；增量协议在 150M Redis 下是净负担</td></tr>
+      <tr><td class="rej-id">A2-4</td><td>分类树演变映射表</td><td>「编号不得重排」不变量替代了映射表；48 叶子与万级不同阶</td></tr>
+      <tr><td class="rej-id">A2-6</td><td>JSON 键注册表 + VIRTUAL 晋升</td><td>Hard Filter 粒度定为二级类目，需求不存在</td></tr>
+      <tr><td class="rej-id">A3-3</td><td>禁出字段垂直切侧表</td><td>5 字段分属三表需 2-3 张侧表 + join；白名单 + 出包门禁更便宜</td></tr>
+      <tr><td class="rej-id">A3-4</td><td>截断 HMAC + k-匿名桶</td><td>先例误引；哈希不对外发布，截断破坏唯一索引</td></tr>
+      <tr><td class="rej-id">A4-2</td><td>移除到期扫描</td><td>与通知义务及「点击时须仍在架」冲突</td></tr>
+      <tr><td class="rej-id">A4-3</td><td>audit_log 升状态流转源</td><td>定位为运营留痕且后台本期不做；<code>可观测性:225-228</code> 警告勿复用</td></tr>
+      <tr><td class="rej-id">A4-4</td><td>retention_policy 元表</td><td>6 条策略清理逻辑异构，只可取 CI 断言那半</td></tr>
+      <tr><td class="rej-id">A4-5</td><td>所有清理表 RANGE 分区</td><td>论证限定千万行；推广引入分区维护单点</td></tr>
+      <tr><td class="rej-id">A5-2</td><td>metric_daily 降采样</td><td>先例失真（Prometheus 无原生降采样）；应是 T3 命中后处置</td></tr>
+      <tr><td class="rej-id">A5-5</td><td>埋点写入分层</td><td>与 <code>nfr_constants.dart:176-180</code> 全量上报不采样直接冲突</td></tr>
+      <tr><td class="rej-id">A5-6</td><td>正负标签同批 + fail-closed</td><td>恰好是现有契约，剩下是实现纪律</td></tr>
+      <tr><td class="rej-id">X-1</td><td>生成列三连</td><td>捆绑了受客户端约束的 grid_id</td></tr>
+      <tr><td class="rej-id">X-2</td><td>元数据驱动生命周期</td><td>内核不成立，sound 部分即是 S4</td></tr>
+      <tr><td class="rej-id">X-4</td><td>可回溯性完整组合</td><td>含 weak 的 audit_log 复用，缩小后即 S2</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<footer class="composition-signal">
+  Composed 2026-09-04T16:00+08:00 by ce-ideate · repo-grounded · 找鸭找 数据库与数据架构设计构思
+</footer>
+
+</div>
+</body>
+</html>

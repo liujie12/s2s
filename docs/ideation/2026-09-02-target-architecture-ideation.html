@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>目标态系统架构 Ideation · 2026-09-02</title>
+<style>
+:root{
+  --ink:#12232a; --ink-2:#3d5560; --ink-3:#6b8290;
+  --paper:#f6f4ef; --card:#fffefb; --line:#dcd6c9;
+  --brand:#0B7C8C; --brand-soft:#e6f2f3;
+  --warn:#8a5a00; --warn-soft:#fdf3e0;
+  --stop:#8e2f2f; --stop-soft:#fbeceb;
+  --mono:ui-monospace,"SFMono-Regular",Consolas,"Liberation Mono",monospace;
+}
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font:16px/1.72 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+}
+.wrap{max-width:920px;margin:0 auto;padding:48px 24px 96px}
+header.doc{border-bottom:3px solid var(--brand);padding-bottom:24px;margin-bottom:8px}
+header.doc h1{font-size:30px;line-height:1.3;margin:0 0 6px;letter-spacing:-.01em}
+header.doc .sub{color:var(--ink-2);font-size:15px}
+dl.meta{display:grid;grid-template-columns:auto 1fr;gap:4px 16px;margin:20px 0 0;font-size:14px}
+dl.meta dt{color:var(--ink-3)}
+dl.meta dd{margin:0;color:var(--ink)}
+h2{font-size:21px;margin:56px 0 4px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+h2 .n{color:var(--brand);font:600 13px/1 var(--mono);vertical-align:middle;margin-right:8px}
+h3{font-size:17px;margin:0 0 8px}
+p{margin:12px 0}
+code{font:.88em var(--mono);background:#eae6dc;padding:1px 5px;border-radius:3px}
+.lead{color:var(--ink-2);font-size:15px;margin-top:14px}
+ul.jump{list-style:none;padding:0;margin:16px 0 0;display:grid;gap:6px;
+  grid-template-columns:repeat(auto-fill,minmax(280px,1fr));font-size:14px}
+ul.jump a{color:var(--brand);text-decoration:none;border-bottom:1px dotted var(--brand)}
+ul.jump a:hover{background:var(--brand-soft)}
+article.idea{background:var(--card);border:1px solid var(--line);border-left:5px solid var(--brand);
+  border-radius:6px;padding:22px 24px;margin:22px 0}
+article.idea .hd{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px;margin-bottom:2px}
+.id{font:600 12px/1.6 var(--mono);color:var(--brand);background:var(--brand-soft);
+  padding:2px 8px;border-radius:3px}
+.tags{margin:10px 0 14px;display:flex;flex-wrap:wrap;gap:8px;font-size:12.5px}
+.tag{border:1px solid var(--line);border-radius:999px;padding:2px 10px;color:var(--ink-2);background:#fbf9f4}
+.tag b{color:var(--ink);font-weight:600}
+dl.f{display:grid;grid-template-columns:96px 1fr;gap:10px 16px;margin:16px 0 0;font-size:15px}
+dl.f dt{color:var(--ink-3);font-size:13.5px;padding-top:2px}
+dl.f dd{margin:0}
+dl.f dd ul{margin:0;padding-left:20px}
+dl.f dd li{margin:3px 0}
+.basis{font-size:14px;color:var(--ink-2)}
+.basis .k{font:600 11.5px/1 var(--mono);color:var(--brand);text-transform:uppercase;margin-right:5px}
+.down{background:var(--warn-soft);border-left:3px solid var(--warn);padding:10px 14px;border-radius:0 4px 4px 0;font-size:14.5px}
+.down ul{margin:0;padding-left:18px}
+table{width:100%;border-collapse:collapse;font-size:14.5px;margin:18px 0}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:13px;color:var(--ink-3);font-weight:600;background:#efece4}
+td.rid{font:600 12px var(--mono);color:var(--ink-2);white-space:nowrap}
+.axis{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:16px 20px;margin:14px 0}
+.axis h3{color:var(--brand);font:600 15px/1.5 var(--mono);margin-bottom:4px}
+.axis p{margin:6px 0 0;font-size:15px}
+.gap{background:var(--stop-soft);border-left:3px solid var(--stop);padding:12px 16px;border-radius:0 4px 4px 0;font-size:14.5px;margin:18px 0}
+figure.dia{margin:20px 0;background:var(--card);border:1px solid var(--line);border-radius:6px;padding:18px}
+figure.dia figcaption{font-size:13.5px;color:var(--ink-3);margin-top:10px}
+figure.dia svg{display:block;width:100%;height:auto}
+.svgtext{font:12px var(--mono);fill:var(--ink)}
+.svglabel{font:11px var(--mono);fill:var(--ink-2);paint-order:stroke fill;stroke:#fffefb;stroke-width:3px;stroke-linejoin:round}
+footer.composition-signal{margin-top:72px;padding-top:18px;border-top:1px solid var(--line);
+  color:var(--ink-3);font-size:13px;line-height:1.9}
+footer.composition-signal b{color:var(--ink-2);font-weight:600}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc">
+  <h1>目标态系统架构 Ideation</h1>
+  <div class="sub">从「PRD 全量目标态 + 零后端的客户端骨架」到「架构文档该写什么」——七个方向</div>
+  <dl class="meta">
+    <dt>稳定 ID</dt><dd id="ARTIFACT-2026-09-02-TARGET-ARCHITECTURE-IDEATION">ARTIFACT-2026-09-02-TARGET-ARCHITECTURE-IDEATION</dd>
+    <dt>创建日期</dt><dd>2026-09-02</dd>
+    <dt>主题</dt><dd>为《系统总体架构设计文档》《技术栈选型说明》《可观测性架构方案》三份文档确定值得写进去的架构方向</dd>
+    <dt>基线范围</dt><dd>PRD 全量目标态（含后台 7 页 / RBAC / 审计 / LR+GBDT / 3B 模型），不区分 9-30 内测包裁剪</dd>
+    <dt>候选 / 存活</dt><dd>48 条原始想法 → 去重 24 条 + 跨切综合 5 条 → 候选 29 → 存活 7 条</dd>
+    <dt>模式</dt><dd>repo-grounded ideation（PRD.md 192913 B + lib/ 全量 + 说明文档 567 KB + 3 次联网检索）</dd>
+    <dt>交付约定</dt><dd>本轮只产出 ideation 工件。三份架构文档留待后续 ce-plan / ce-work，本文件不代替它们</dd>
+  </dl>
+</header>
+
+<h2 id="SEC-GROUNDING"><span class="n">SEC-GROUNDING</span>依据现状</h2>
+
+<p class="lead">这一轮的起点不是「架构该长什么样」，而是一个更难堪的事实：<strong>PRD 已经把目标态写到了接口级与数据字典级，而代码侧的后端一行都没有。</strong>两侧之间没有任何自动对账通路，所以每一处不一致都要等到联调那天才会现身。</p>
+
+<p>代码侧的硬事实：全库检索 <code>http</code> / <code>dio</code> / <code>HttpClient</code> / <code>retrofit</code> / <code>freezed</code> / <code>json_serializable</code> <strong>零命中</strong>——不存在网络层，也不存在序列化代码生成。四个 Repository（auth / listing / contact / publish）全部是假实现，内含 <strong>7 处 <code>TODO(接后端)</code></strong>。<code>request_id</code> 在 <code>lib/**</code> 与 <code>test/**</code> 均为 0 命中。PRD §6.10 规定的三级缓存、三档 TTL、50 键 LRU，以及 §14 要求的 <code>layer_switch</code> 埋点，<strong>一处实现都没有</strong>。</p>
+
+<p>PRD 侧的硬事实：§12 接口契约、§13 数据字典、§14 非功能需求已作为 SRS 三章并入，共 192913 B。北极星在 PRD:32 直接写定 <code>0.6 × 0.6 × 0.6 = 0.216</code>（三轴等权硬线）。§14.1 给出七个数字：图层切换 P95 ≤ 300ms、读接口 P95 ≤ 150ms、帧渲染 ≤ 16ms、单次取数 ≤ 10KB、渲染上限 500 Pin、推送 1min 触达 Top20/Top30。</p>
+
+<p>已经落地的三块地基虽小但方向明确，且都在为架构决策提供先例：<code>lib/features/map/clustering/grid_cluster.dart</code> 刻意不 import Flutter（<code>:6-8</code> 原文「聚合是纯计算，不碰 UI。好处是 POC-A 能在 Dart VM 里直接跑基准」）；<code>lib/features/perf/frame_metrics.dart</code> 已经实现了一套完整的分位与直方图口径（<code>:129</code> 桶边界 <code>[8,16,32,50,100]</code>）；<code>lib/features/map/map_screen.dart:206-217</code> 的 <code>canRenderRealMap</code> 双分支同结果，实际上已经是「能力降级注册表」的第一个实例。</p>
+
+<div class="gap">
+  <b>取证时抓出的九条 PRD↔代码冲突（C1–C9）</b>，其中最硬的是 <strong>C6，量纲级冲突</strong>：<code>map_screen.dart:40</code> 的 <code>_kClusterGridSize = 60</code>（像素）× <code>:46</code> 的 <code>_kInitialMetersPerPixel = 12</code> ≈ <strong>720m</strong>，而 PRD:1354 写「约 500m 网格取整」。两侧不只是数值不同，<strong>量纲都不是同一个</strong>——一边是屏幕像素，一边是地理米。这条冲突后来成了存活想法 A2 的全部动力。
+</div>
+
+<div class="gap">
+  <b>取证缺口，须先声明</b>：web research 子代理连续两次空返回，已按降级路径改用 3 次直接检索（OTel Dart 生态现状 / 空间检索方案对比 / 模块化单体趋势），均成功。但下列外部数字<strong>独立核验环节无法证实</strong>，因此依赖它们的候选（R15 模块边界 CI 门禁、R09 三通道分层）一律未进存活集：Shopify Packwerk 的 68% / 55%、CNCF Q1 2026 的 42% 微服务回并率、Workiva OTel Dart v0.18.x「logs 未实现」。<br><br>
+  <b>独立核验推翻的一处自造事实</b>：发散阶段有三路想法共同建立在「22 个错误码 ↔ 22 个失败枚举值」这个漂亮对称上。逐行点算后，PRD §12.5 错误码表实为 <strong>20 行 / 19 个非零码</strong>，客户端侧 <code>AuthFailure</code> 8 个 + <code>ContactFailure</code> 5 个 = <strong>13 个</strong>。<strong>22 ↔ 22 是编造的。</strong>据此 X1 整条前提崩塌被驳倒，R02 降级。<br><br>
+  <b>引文精度扣分项</b>：PRD §12 及其之后的引文存在系统性 <strong>+1 行偏移</strong>（如实际 2057 被引为 2058）。逐字内容全部真实，故只扣分不判否；而 §6.10、§9.10、§13、§14.5 段的行号完全精确。
+</div>
+
+<h2 id="SEC-AXES"><span class="n">SEC-AXES</span>主题的五条轴</h2>
+
+<p class="lead">「目标态架构」这个题目太大，无法整体思考。从上面的缺口反推，它实际被五条互不重叠的轴切开——每一条都能独立决策，且每一条上都存在真取舍而非单一正确答案。</p>
+
+<div class="axis">
+  <h3 id="AXIS-1">轴 1 · 后端服务形态与分层接缝</h3>
+  <p>后端从零开始，这是一次性的自由。单体还是拆分、按什么维度切、客户端与服务端之间那条缝由谁定义、谁是契约的真源。这一轴决定另外四轴的落点。</p>
+</div>
+<div class="axis">
+  <h3 id="AXIS-2">轴 2 · 数据模型与空间检索</h3>
+  <p>C1–C9 九条冲突全部落在这一轴。空间检索选型（PostGIS / MySQL SPATIAL / Redis GEO）只是表象，底下的问题是<strong>空间量纲由谁定义、两侧命名要不要统一</strong>。</p>
+</div>
+<div class="axis">
+  <h3 id="AXIS-3">轴 3 · 300ms 四段预算的算力归属</h3>
+  <p>缓存查找 + 网络 + Dart 聚合 + Pin 渲染四段，总预算 300ms。真问题不是「怎么更快」，而是<strong>每一段的算力放在哪一侧、新鲜度的权威归谁</strong>。聚合实测仅占 1.6%，说明瓶颈不在算得快慢上。</p>
+</div>
+<div class="axis">
+  <h3 id="AXIS-4">轴 4 · 可观测性链路的贯通</h3>
+  <p>trace / metrics / logs / 审计四类信号，PRD 分散在 §14.4、§9.10、§12.1 三处规定。这一轴的核心矛盾是<strong>度量主权在客户端还是服务端</strong>，而 PRD 目前两边都写了一点。</p>
+</div>
+<div class="axis">
+  <h3 id="AXIS-5">轴 5 · AI 能力的部署与降级路径</h3>
+  <p>LR + GBDT 与 3B 模型放在读路径上还是写路径上、降级有几档、降级态算不算一种要验收的产品形态。这一轴上的候选最少，说明它被想得最浅。</p>
+</div>
+
+<h2 id="SEC-IDEAS"><span class="n">SEC-IDEAS</span>存活想法（7 条，按推荐度排序）</h2>
+
+<ul class="jump">
+  <li><a href="#IDEA-A1">A1 · 按「可预计算性」划分架构，不按端点划分</a></li>
+  <li><a href="#IDEA-A2">A2 · grid_id 升为唯一空间量纲</a></li>
+  <li><a href="#IDEA-A3">A3 · 先定新鲜度权威在哪一侧，再定缓存实现</a></li>
+  <li><a href="#IDEA-A4">A4 · 客户端是唯一能算出真实 P95 分母的地方</a></li>
+  <li><a href="#IDEA-A5">A5 · 契约即代码：PRD §12/§13 升为机器可读真源</a></li>
+  <li><a href="#IDEA-A6">A6 · 0.216 反解为三份 error budget</a></li>
+  <li><a href="#IDEA-A7">A7 · AI 移出读路径，在线只取物化结果</a></li>
+</ul>
+
+<article class="idea" id="IDEA-A1">
+  <div class="hd"><span class="id">A1</span><h3>先按「数据的可预计算性」画一条分割线，再谈服务形态——语言与框架选型会自动退化为次要决策</h3></div>
+  <div class="tags">
+    <span class="tag">轴 <b>轴 1 服务形态与分层接缝</b></span>
+    <span class="tag">信心 <b>84%</b></span>
+    <span class="tag">复杂度 <b>Medium</b></span>
+    <span class="tag">推荐 <b>Top pick</b></span>
+  </div>
+
+  <p>《技术栈选型说明》最自然的写法是从「后端用什么语言」起手。这条想法主张<strong>那是第二个问题</strong>。第一个问题是：这个系统里哪些数据能在请求到来之前就算好，哪些必须在请求当时才能算。</p>
+
+  <p>之所以说这条线本来就存在，是因为 PRD 自己已经画了一半、只是没给它起名字。PRD:2274 规定「计数走缓存不落库，避免热点行」——这是承认某类数据不需要在线一致性；PRD:2221 规定「落库存条件而非加权分」——这是承认另一类数据必须是已落库的事实而不能是请求时的推导结果。<strong>两条相邻的规定，方向相反，各自都对，但没人说过它们合起来是一条架构分割线。</strong></p>
+
+  <p>把这条线明确画出来之后，在线面剩下的东西非常少：<code>/contact</code> 的手机号解密、三维限频判定（PRD:2151 的账号 / 设备 / IP 任一）、配额扣减、幂等去重。<strong>其余全部可以是预计算面。</strong>这个划分的价值在于它把「性能」这个模糊要求变成了归属问题——300ms 里的每一段都能问一句「你在线上算这个是必须的吗」。</p>
+
+  <p>更关键的连带效果是：一旦分割线成立，<strong>三个看起来在互相竞争的方案其实是同一条光谱上的三点</strong>。静态化 CDN 快照、瓦片化 z/x/y、网格位图——差别只在固化粒度（快照 / 瓦片 / 位图）与固化时机（版本变更 / 烘焙周期 / 请求时），而它们的取舍完全一致：<strong>都是用新鲜度换确定性</strong>。所以架构文档里应该写的不是「我们选了瓦片」，而是这条固化程度轴，以及我们在轴上选了哪个点、为什么。</p>
+
+  <figure class="dia">
+    <svg viewBox="0 0 860 220" role="img" aria-label="固化程度光谱：从请求时计算到版本化快照的四个刻度">
+      <line x1="60" y1="120" x2="800" y2="120" stroke="#3d5560" stroke-width="2"/>
+      <polygon points="800,120 788,114 788,126" fill="#3d5560"/>
+      <circle cx="130" cy="120" r="7" fill="#fffefb" stroke="#0B7C8C" stroke-width="2"/>
+      <circle cx="330" cy="120" r="7" fill="#fffefb" stroke="#0B7C8C" stroke-width="2"/>
+      <circle cx="530" cy="120" r="7" fill="#fffefb" stroke="#0B7C8C" stroke-width="2"/>
+      <circle cx="730" cy="120" r="7" fill="#fffefb" stroke="#0B7C8C" stroke-width="2"/>
+      <text class="svgtext" x="130" y="100" text-anchor="middle">请求时计算</text>
+      <text class="svgtext" x="330" y="100" text-anchor="middle">网格位图</text>
+      <text class="svgtext" x="530" y="100" text-anchor="middle">瓦片烘焙</text>
+      <text class="svgtext" x="730" y="100" text-anchor="middle">版本化快照</text>
+      <text class="svglabel" x="130" y="152" text-anchor="middle">新鲜度最高</text>
+      <text class="svglabel" x="730" y="152" text-anchor="middle">确定性最高</text>
+      <text class="svglabel" x="430" y="188" text-anchor="middle">判据：依赖已落库事实（可右移） vs 依赖请求时上下文（必须留左）</text>
+      <text class="svglabel" x="60" y="42">在线面</text>
+      <text class="svglabel" x="770" y="42" text-anchor="end">预计算面</text>
+      <line x1="60" y1="52" x2="230" y2="52" stroke="#8e2f2f" stroke-width="3"/>
+      <line x1="230" y1="52" x2="800" y2="52" stroke="#0B7C8C" stroke-width="3"/>
+      <text class="svglabel" x="230" y="72" text-anchor="middle">分割线在此</text>
+    </svg>
+    <figcaption>固化程度不是三选一，而是一条轴。架构文档需要写下判据与选点，而不是写下一个方案名。</figcaption>
+  </figure>
+
+  <p>最后一层：这条线也顺手解决了 300ms 该怎么用的问题。PRD:2306 留了一条后路——「POC 不通过则下调 Pin 上限并按实测改写 SLA」。那条后路正是「先做出来再优化」的产物。反过来用，<strong>300ms 应当是方案的准入筛选器</strong>：一个方案如果只能靠调优才勉强够，它在分割线上的位置就是错的。</p>
+
+  <dl class="f">
+    <dt>依据</dt>
+    <dd class="basis"><ul>
+      <li><span class="k">direct</span>PRD:2274「计数走缓存不落库，避免热点行」 vs PRD:2221「落库存条件而非加权分」——分割线的两个雏形，相邻但未被命名</li>
+      <li><span class="k">direct</span>PRD:2151 42901 限频维度「账号 / 设备 / IP 任一」——典型的必须在线判定项，客户端无法自行区分</li>
+      <li><span class="k">direct</span>PRD:2270「空间条件必须先行否则退化全表」——查询计划已被钉死，不留在线插入推理的余量</li>
+      <li><span class="k">direct</span>PRD:2306「POC 不通过则下调 Pin 上限并按实测改写 SLA」——这条后路的存在本身，证明 300ms 目前不是筛选器</li>
+      <li><span class="k">direct</span><code>tool/poc_b_paint_benchmark.dart:10-11</code>「开发机绝对毫秒不得写入 SLA」+ <code>:16-18</code> 形状判据——项目已有「用形状而非绝对值判定」的先例</li>
+      <li><span class="k">direct</span><code>说明文档:1959</code> 原则 74</li>
+    </ul></dd>
+    <dt>为何重要</dt>
+    <dd>它是七条里唯一会改变其余六条形态的想法：分割线一旦落定，A3 的缓存权威、A7 的 AI 归属、以及技术栈选型的自由度全部随之收窄。因此它应该最先被拍。</dd>
+    <dt>风险</dt>
+    <dd class="down"><ul>
+      <li><strong>分割线画错的代价不对称</strong>：若把配额扣减误划到预计算侧，直接后果是超发——这是钱和信任的损失，不是性能问题。在线面宁可画大不可画小。</li>
+      <li>作为准入筛选器使用时，需要在没有真机数据的阶段用推算淘汰方案，而推算本身可能错。</li>
+      <li>若落到 CI 门禁上，容差定紧则天天红灯没人信，定松则抓不住回归。这一层建议后置，不与分割线本身混做。</li>
+    </ul></dd>
+  </dl>
+</article>
+
+<article class="idea" id="IDEA-A2">
+  <div class="hd"><span class="id">A2</span><h3>grid_id 升为系统唯一的空间量纲，屏幕像素网格退回纯渲染去重——C6 不是数值不符，是两个量纲在打架</h3></div>
+  <div class="tags">
+    <span class="tag">轴 <b>轴 2 数据模型与空间检索</b></span>
+    <span class="tag">信心 <b>88%</b></span>
+    <span class="tag">复杂度 <b>Low</b></span>
+    <span class="tag">性价比 <b>最高</b></span>
+  </div>
+
+  <p>C6 通常被记成「代码 720m，PRD 500m，数值不符」。但把两侧引文并排看，会发现问题深一层。<code>grid_cluster.dart:13</code> 的注释原文是：<strong>「用屏幕像素坐标而非经纬度：聚合阈值按 PRD §6.15 定义在屏幕像素网格上」</strong>。而 PRD:1354 写的是「约 500m 网格取整」。<strong>一边的单位是像素，一边的单位是米。</strong>720 与 500 的差距只是这件事在当前缩放级别下的投影。</p>
+
+  <p>算术是这样来的：<code>map_screen.dart:40</code> 的 <code>_kClusterGridSize = 60</code>（像素）乘以 <code>:46</code> 的 <code>_kInitialMetersPerPixel = 12</code>，得 720m。<strong>但这个乘积会随缩放变化</strong>——也就是说今天代码里的「网格」在不同缩放级别下代表不同的地理范围，而 PRD 的「500m 网格」是一个固定的地理单位。两者不是可以通过调参数对上的关系。</p>
+
+  <p>所以收口方向应当是单向的：<strong>地理量纲的 grid_id 是唯一权威</strong>，它同时是空间检索的索引键、预聚合的分组键、缓存键的一个要素、以及埋点的一个维度。而像素网格降格为渲染层的一个局部实现细节——它只负责「屏幕上这两个 Pin 挨得太近，画一个就够了」，不再承担任何数据含义。</p>
+
+  <p>之所以说这条性价比最高，是因为它成本极低而影响面极大。<strong>它顺带消解了 C1 / C2 / C4 那组「两侧命名要不要统一」的争论</strong>：一旦承认存在一个明确的权威量纲，剩下的命名差异就是投影关系而不是冲突，用不着为它建一整套双向映射层。同一个代码库里其实已经两种策略并存 —— <code>listing.dart:48</code> 遇到 <code>decimal→double</code> 精度问题时只留了注释，而 <code>listing_detail.dart:7</code> 明写「列名直接作为字段名，不做重命名」。这不是不一致，这是不同层次该有不同待遇。</p>
+
+  <p>还有一个隐藏收益值得单独说。<code>grid_cluster.dart:6-8</code> 刻意不 import Flutter，理由是「聚合是纯计算，不碰 UI」，好处是能在 Dart VM 里直接跑基准——正因如此我们才拿到了「5 万点聚合仅 4.73ms，占 300ms 预算的 1.6%」这个数字。<strong>把 grid_id 定为地理量纲，等于把这个纯度从一个文件的局部选择升格为分层约束</strong>：网格 ID 计算、缓存键规范化、完整度判定、编解码都属于同一类无设备依赖的纯逻辑。</p>
+
+  <dl class="f">
+    <dt>依据</dt>
+    <dd class="basis"><ul>
+      <li><span class="k">direct</span><code>grid_cluster.dart:13</code>「用屏幕像素坐标而非经纬度：聚合阈值按 PRD §6.15 定义在屏幕像素网格上」——量纲声明的原文</li>
+      <li><span class="k">direct</span>PRD:1354「约 500m 网格取整」+ PRD:2063 服务端预聚合口径</li>
+      <li><span class="k">direct</span><code>map_screen.dart:40</code> <code>_kClusterGridSize = 60</code> × <code>:46</code> <code>_kInitialMetersPerPixel = 12</code> ≈ 720m，且乘积随缩放浮动</li>
+      <li><span class="k">direct</span><code>grid_cluster.dart:102</code> <code>final String key = '$gx:$gy:${p.categoryId}';</code>——聚合键当前由像素坐标构成</li>
+      <li><span class="k">direct</span><code>listing.dart:48-49</code>（留注释）vs <code>listing_detail.dart:7-9</code>（明写不重命名）——同库两种命名策略并存，证明层次差异是刻意的</li>
+      <li><span class="k">direct</span><code>说明文档:1908</code>「5 万点聚合仅 4.73ms，占 300ms 预算的 1.6%」+ <code>grid_cluster.dart:6-8</code> 不 import Flutter 的自陈理由</li>
+      <li><span class="k">direct</span><code>category_tree.dart:22</code> <code>TODO(M5)</code>——数据字典派生尚未接通</li>
+    </ul></dd>
+    <dt>为何重要</dt>
+    <dd>C6 是九条冲突里唯一的量纲级冲突，也是唯一一条「联调时会表现为数据看起来对但聚不到一起」的隐蔽故障。收口成本是改几个常量与一处注释，不收口的成本是每次讨论聚合都要先对一遍单位。</dd>
+    <dt>风险</dt>
+    <dd class="down"><ul>
+      <li><strong>反过来要求 PRD §6.15 的聚合阈值重新定义</strong>：现在那句话在「屏幕上几条聚成一个」和「500m 内几条聚成一个」之间是含混的，收口意味着必须选一个，而这是产品口径而非技术口径。</li>
+      <li>阈值本身还带分类差异化（工作 3 / 房屋 5 / 生活 8）× 供需态 × 完整度，量纲切换后这几个数字都要复核一遍。</li>
+      <li><code>marker_builder.dart:75</code> 已警告：若用簇中心当单点位置，同格两条会精确重叠，第二个 Pin 永远点不到。地理网格化后这个风险不降反升。</li>
+    </ul></dd>
+  </dl>
+</article>
+
+<article class="idea" id="IDEA-A3">
+  <div class="hd"><span class="id">A3</span><h3>先回答「新鲜度的权威在客户端还是服务端」，缓存实现是这个答案的推论——不是反过来</h3></div>
+  <div class="tags">
+    <span class="tag">轴 <b>轴 3 300ms 预算的算力归属</b></span>
+    <span class="tag">信心 <b>82%</b></span>
+    <span class="tag">复杂度 <b>Medium</b></span>
+    <span class="tag">属性 <b>真两难，无优解</b></span>
+  </div>
+
+  <p>PRD §6.10 已经把缓存写得很具体：三级、三档 TTL（1h / 15min / 5min）、50 键 LRU、五要素缓存键。代码侧的实现情况是<strong>零</strong>——检索 <code>lib/</code> 内无三级缓存、无 TTL、无 LRU，三处出现「缓存」字样的地方经核实均不是 §6.10 所指的第 3 层。</p>
+
+  <p>但这条想法的重点不是「去把它实现出来」。重点是 PRD 里有两处规定<strong>在权威归属上互相拉扯，而实现之前必须先解开</strong>：</p>
+
+  <ul>
+    <li>PRD:1347 / :1357 / :1358 描述的是<strong>客户端持有权威</strong>的形态：本地命中就直接读，不发请求（这也是 <code>cache_hit</code> 埋点存在的前提）</li>
+    <li>PRD:1355「运营改配置即全量失效」+ PRD:2025「3 秒内清三级缓存」描述的是<strong>服务端持有权威</strong>的形态：服务端一变，客户端必须在 3 秒内知道</li>
+  </ul>
+
+  <p>这两者不能同时成立，因为<strong>客户端本地缓存没有推送通道</strong>。要在 3 秒内让所有客户端丢弃本地缓存，只有两条路：主动推送（而推送受 42904 的「≤10 条 / 日」限制，配额上根本不够用），或者每次读之前先问一次服务端（那就等于放弃了「直接读本地不发请求」，<code>cache_hit</code> 的语义随之改变，300ms 的第一段预算也从「0」变成「一次往返」）。</p>
+
+  <figure class="dia">
+    <svg viewBox="0 0 860 260" role="img" aria-label="新鲜度权威两种归属方案的代价对比">
+      <rect x="40" y="30" width="350" height="190" rx="6" fill="#fffefb" stroke="#dcd6c9"/>
+      <rect x="470" y="30" width="350" height="190" rx="6" fill="#fffefb" stroke="#dcd6c9"/>
+      <text class="svgtext" x="215" y="58" text-anchor="middle">权威在客户端</text>
+      <text class="svgtext" x="645" y="58" text-anchor="middle">权威在服务端</text>
+      <line x1="70" y1="110" x2="360" y2="110" stroke="#0B7C8C" stroke-width="2"/>
+      <circle cx="70" cy="110" r="6" fill="#0B7C8C"/>
+      <circle cx="360" cy="110" r="6" fill="#fffefb" stroke="#0B7C8C" stroke-width="2"/>
+      <text class="svglabel" x="215" y="132" text-anchor="middle">命中即返回，0 往返</text>
+      <text class="svglabel" x="215" y="172" text-anchor="middle">代价：运营改配置后</text>
+      <text class="svglabel" x="215" y="192" text-anchor="middle">最长 1h 停留在旧世界</text>
+      <line x1="500" y1="98" x2="790" y2="98" stroke="#3d5560" stroke-width="2"/>
+      <line x1="790" y1="122" x2="500" y2="122" stroke="#3d5560" stroke-width="2"/>
+      <circle cx="500" cy="110" r="6" fill="#0B7C8C"/>
+      <circle cx="790" cy="110" r="6" fill="#fffefb" stroke="#0B7C8C" stroke-width="2"/>
+      <text class="svglabel" x="645" y="152" text-anchor="middle">每次切图层至少一次往返</text>
+      <text class="svglabel" x="645" y="182" text-anchor="middle">代价：违反「直接读本地」</text>
+      <text class="svglabel" x="645" y="202" text-anchor="middle">cache_hit 语义改变</text>
+      <text class="svglabel" x="430" y="248" text-anchor="middle">PRD 目前同时写了两侧：:1347/:1357 属左，:1355/:2025 属右</text>
+    </svg>
+    <figcaption>两种归属各有明确代价，且代价落在不同的人身上——左边由运营承受，右边由用户承受。这是产品决策，不是技术决策。</figcaption>
+  </figure>
+
+  <p>把权威问题解开之后，缓存的失效机制才有意义可谈。而一旦选了服务端权威，一个连带推论会自然出现：<strong>时间维的 TTL 就不再是正确工具</strong>。三档 TTL 本质上是「不知道什么时候变，所以定期重问」，而 PRD:1355 恰恰说明我们知道什么时候变（运营改配置那一刻）。此时更贴合的是版本号或标签化失效——但这需要服务端为每个网格维护版本号，会引入新的热点风险，且 PRD:2022 已有的 304 语义要如何与之共存也要一并想清楚。<strong>这些都是权威归属的下游问题，先答上游再谈。</strong></p>
+
+  <p>顺带一提：PRD:2139 把「缓存键要素不全」专门编成了错误码 40001。<strong>一个专用错误码的存在，说明设计时已经预见到缓存键会被写错</strong>——而缓存键的五个要素里就含坐标网格，也就是说 A2 的量纲收口是这条想法的前置条件。</p>
+
+  <dl class="f">
+    <dt>依据</dt>
+    <dd class="basis"><ul>
+      <li><span class="k">direct</span>PRD:1347 / :1357 / :1358——三级缓存、TTL 三档、50 键 LRU 的原文规定</li>
+      <li><span class="k">direct</span>PRD:1355「运营改配置即全量失效」+ PRD:2025「3 秒内清三级缓存」——服务端权威侧的规定</li>
+      <li><span class="k">direct</span>取证档案第十二节：<code>lib/</code> 内无三级缓存 / TTL / LRU 实现，三处「缓存」字样均非 §6.10 第 3 层</li>
+      <li><span class="k">direct</span>PRD:2139 专设 40001「缓存键要素不全」——设计时已预见此处易错</li>
+      <li><span class="k">direct</span>PRD:42904 推送 ≤10 条 / 日 的配额限制——决定了主动推送失效在配额上不可行</li>
+      <li><span class="k">direct</span>PRD:2022 已定义 304 语义——与版本化失效存在语义重叠，需一并处理</li>
+    </ul></dd>
+    <dt>为何重要</dt>
+    <dd>缓存是 300ms 四段里的第一段，也是唯一一段可以为 0 的。这一段的归属决定其余三段的预算余量。且这条决策一旦实现落地就很难反转——本地缓存的语义会渗进埋点口径与 SLA 定义里。</dd>
+    <dt>风险</dt>
+    <dd class="down"><ul>
+      <li><strong>这条想法本身不给答案，只强制排序。</strong>如果决策者希望文档给出「就用三级缓存」这种确定结论，这条会让人失望。</li>
+      <li>权威放客户端 = 运营改配置后最长 1h 旧世界，而这个代价 PRD 从未定义可接受性——「Pin 的新鲜度 SLA」至今是空白。</li>
+      <li>权威放服务端 = 每次切图层至少一次往返，直接与「图层切换 P95 ≤ 300ms」抢预算，且 <code>cache_hit</code> 这个已定的埋点字段含义要重新定义。</li>
+    </ul></dd>
+  </dl>
+</article>
+
+<article class="idea" id="IDEA-A4">
+  <div class="hd"><span class="id">A4</span><h3>客户端是唯一能算出真实 P95 分母的地方——这个事实应当决定整份《可观测性架构方案》的组织方式</h3></div>
+  <div class="tags">
+    <span class="tag">轴 <b>轴 4 可观测性链路</b></span>
+    <span class="tag">信心 <b>80%</b></span>
+    <span class="tag">复杂度 <b>Medium</b></span>
+  </div>
+
+  <p>《可观测性架构方案》的默认写法是「客户端埋点上报 → 服务端聚合计算 → 看板与告警」。这条想法主张那个组织方式在本项目里是错的，理由是三条互相独立的证据指向同一个结论。</p>
+
+  <p><strong>第一条：计时的两端都在客户端。</strong>PRD:2129 把图层切换的计时定义得非常明确——起点是「手指离开分类 Tab」，终点是「Pin 首屏绘制完成」。这两个时刻服务端一个都看不见。服务端能看见的只有中间那一段网络往返，而 PRD:2124 已经把 <code>net_rt_ms</code> 单列成一个字段——<strong>说明「四段各自计时」这个念头 PRD 里本来就有，只是没被组织成一条 trace。</strong></p>
+
+  <p><strong>第二条：服务端的样本天生有偏。</strong>如果缓存命中就不发请求（A3 的左侧方案），那么服务端 trace 里出现的<strong>永远只是那些没命中缓存的慢样本</strong>。用这批样本算出来的 P95 不是 P95，是「未命中集合的 P95」——数值会系统性偏高，而且偏多少无法从服务端侧知道。同理，PRD:2130 规定「2G / 3G / 断网会话不计入 P95 分母」，而<strong>「当前是什么网络」这个信息也只有客户端知道</strong>。分母的两次修正都发生在客户端。</p>
+
+  <p><strong>第三条：服务端判定这条路本期没有执行通路。</strong>PRD:2358 规定「P95 > 300ms 自动告警」，PRD:1403-1404 规定「连续 3 次帧渲染 > 16ms 或 P95 > 800ms 触发降级」。但 PRD:2379 明写<strong>「降级开关本期不实施」</strong>——也就是说服务端即使判定出该降级，本期也没有下发通路。</p>
+
+  <p>三条合起来的结论是：<strong>可观测性的重心必须在客户端，服务端是佐证方与长期存储方，而不是计算方。</strong>这个结论会连带改变两件具体的事。一是告警与降级判定必须分离——告警在服务端按群体样本聚合（含弱网剔除），降级在客户端按本机短窗自判，<strong>两者不共用判定逻辑也不共用阈值</strong>，因为它们要回答的是不同问题（「系统是不是坏了」vs「我这台机器现在是不是该退让」）。二是 <code>layer_switch</code> 应当做成一条本地 trace（四个 span + 一个 root，环形缓冲平时只留不传，超 300ms 或用户报错时才上报），而不是一条打平的埋点事件。</p>
+
+  <dl class="f">
+    <dt>依据</dt>
+    <dd class="basis"><ul>
+      <li><span class="k">direct</span>PRD:2129「计时起点 = 手指离开分类 Tab，终点 = Pin 首屏绘制完成」——两端均在客户端</li>
+      <li><span class="k">direct</span>PRD:2130「2G / 3G / 断网会话不计入 P95 分母」——分母修正所需信息只有客户端持有</li>
+      <li><span class="k">direct</span>PRD:2124 <code>net_rt_ms</code> 已被单列为独立字段——分段计时的念头已存在于契约中</li>
+      <li><span class="k">direct</span>PRD:2379「降级开关本期不实施」——服务端判定本期无下发通路</li>
+      <li><span class="k">direct</span>PRD:2358「P95 > 300ms 自动告警」 vs PRD:1403-1404 客户端降级判据——两套判据用途不同却常被混谈</li>
+      <li><span class="k">direct</span>取证档案第九节：<code>lib/</code> 内无 <code>layer_switch</code> 埋点、切换入口无 <code>Stopwatch</code></li>
+      <li><span class="k">direct</span><code>frame_metrics.dart</code> capacity 2000（60fps 下约 33 秒）——现有客户端窗口长度</li>
+      <li><span class="k">external</span>W3C Trace Context 的 <code>traceparent</code> 头规范；Last9 的 Approach A（拦截器注入而非全量 SDK）</li>
+    </ul></dd>
+    <dt>为何重要</dt>
+    <dd>它决定《可观测性架构方案》的章节骨架。按「上报后计算」组织，方案会长成一套 APM 接入指南；按「客户端为度量主权方」组织，方案的第一章会变成分位口径与窗口设计——而后者才是 0.216 能不能被真实测出来的关键。</dd>
+    <dt>风险</dt>
+    <dd class="down"><ul>
+      <li><strong>SLA 数字由不可信端产出</strong>，对外承诺的可审计性下降。若将来需要向第三方证明性能，客户端自报的数字说服力不足。</li>
+      <li><code>frame_metrics</code> 现有的 33 秒窗口<strong>远不足以支撑分位统计</strong>——33 秒样本的 P95 统计意义薄弱，且会把弱网误判成性能问题。窗口设计要重做，这是这条想法的必要前置工作。</li>
+      <li>PRD:1998 明写 trace 起点由服务端生成，与 W3C Trace Context 的方向相反；采纳本条意味着要反向修改已定契约。</li>
+      <li>在 <code>grid_cluster</code> 里插桩会污染它「不 import Flutter」的纯度（见 A2），需要设计一个不依赖 UI 的计时注入方式。</li>
+    </ul></dd>
+  </dl>
+</article>
+
+<article class="idea" id="IDEA-A5">
+  <div class="hd"><span class="id">A5</span><h3>PRD §12 / §13 升为机器可读的单一真源，两侧代码从它派生——顺带消解「删不删 Repository」这场争论</h3></div>
+  <div class="tags">
+    <span class="tag">轴 <b>轴 1 服务形态与分层接缝</b></span>
+    <span class="tag">信心 <b>78%</b></span>
+    <span class="tag">复杂度 <b>High</b></span>
+  </div>
+
+  <p>PRD §12 已经把接口写到了逐字段级，§13 已经把数据字典写到了列级。但它们是<strong>散文</strong>——没有任何一处代码拿它们跟自己比过。最能说明问题的证据在 <code>test/category_tree_test.dart:5</code>：那份测试<strong>安静地躺过了一整个里程碑，因为没有任何一处代码拿它跟真源比过</strong>。</p>
+
+  <p>把 §12 / §13 转成机器可读格式（OpenAPI 或等价物）之后，能派生的东西超出直觉：Dart 侧的数据模型、后端的接口骨架、Mock server、契约测试，甚至<strong>埋点字段的校验</strong>——因为 §14 的必埋事件字段和 §12 的接口字段本质上是同一批名字。</p>
+
+  <p>但真正让这条想法值得进存活集的，不是 codegen 本身，而是它<strong>消解了轴 1 上一场看起来无解的争论</strong>。发散阶段产生了两个直接对立的候选：</p>
+
+  <ul>
+    <li>一边主张<strong>删掉 Repository 抽象层</strong>：<code>listing_repository.dart:3</code> 和 <code>contact_repository.dart:8</code> 给出的存在理由只有「可替换」一条，而 Riverpod 已经是注入接缝了，所以这一层只做同义转发，还是命名漂移的产地（C2 就是在这一层产生的）</li>
+    <li>另一边主张<strong>双实现长期保留</strong>：那 7 处 <code>TODO(接后端)</code> 不是「填个 URL」而是「删除本地逻辑」。<code>auth_repository.dart:211</code> 写的是「删除本地生成」，<code>publish_screen.dart:129</code> 写的是「一律视为未持有」——<strong>这些业务判定要等到上线那天才第一次被真正执行</strong>，所以 fake 实现必须留着当契约测试基座</li>
+  </ul>
+
+  <p>两边都对。而如果 Mock 是<strong>从契约生成的</strong>而不是手写的，两边的矛盾就消失了：手写搬运层的批评不再成立（因为那层是生成物，不会漂移），而「无 Key / 无网环境的开发通路」与「假实现里藏着的业务判定需要提前被测试」这两个价值仍然保留。<strong>这三个决策应当作为一个包裹评估，不是三个独立选项。</strong></p>
+
+  <p>还有一处约束值得在这里点出，因为它直接影响生成物的形状。PRD §14.1 写了单次取数 ≤ 10KB，同时写了渲染上限 500 Pin。<strong>10KB ÷ 500 ≈ 20 字节 / Pin</strong>，而 §12 的 <code>/map/pins</code> 出参每个 Pin 有 6 个字段。20 字节装 6 个字段，<strong>JSON 在数学上就不可能</strong>——连字段名都放不下。这不是优化问题，这是选型问题：要么改协议（定点量化坐标 + 位打包 + 定长二进制或列式），要么改数字。<strong>一次除法就能推翻默认选型，而这个除法在 PRD 定稿至今没人做过。</strong></p>
+
+  <dl class="f">
+    <dt>依据</dt>
+    <dd class="basis"><ul>
+      <li><span class="k">direct</span><code>test/category_tree_test.dart:5-6</code>——测试「安静躺了一个里程碑，因为没有任何一处代码拿它跟真源比过」</li>
+      <li><span class="k">direct</span>PRD §12 <code>/map/pins</code> 入参已逐字包含五要素、出参含 6 字段与 <code>clusters[]</code>；<code>/posts/search</code> 出参含 <code>items[]</code> 与 <code>has_more</code>——契约精度已足以支撑生成</li>
+      <li><span class="k">direct</span>PRD §14.1 单次取数 ≤ 10KB + 渲染上限 500 Pin → 20 字节 / Pin；PRD:1983「超出须减字段或提高聚合粒度」</li>
+      <li><span class="k">direct</span><code>listing_repository.dart:3-5</code> + <code>contact_repository.dart:8</code>——Repository 自陈存在理由只有「可替换」一条</li>
+      <li><span class="k">direct</span><code>auth_repository.dart:211</code>「删除本地生成」+ <code>publish_screen.dart:129</code>「一律视为未持有」——业务判定藏在 fake 实现里，上线那天才首次执行</li>
+      <li><span class="k">direct</span><code>contact_repository.dart:3</code>「模拟的是一个服务端接口，不是本地数据加工」——Mock 先行的可行性依据</li>
+      <li><span class="k">direct</span>全库 <code>freezed</code> / <code>json_serializable</code> 零命中——尚无既有生成体系需要迁移，是一次性窗口</li>
+    </ul></dd>
+    <dt>为何重要</dt>
+    <dd>九条 PRD↔代码冲突全部是「人工搬运」的产物。冲突在 CI 暴露还是在联调暴露，成本差一个数量级。而后端零遗产 + 契约已冻结，是这条想法唯一的可行窗口——有了第一版手写实现之后，迁移成本会陡增。</dd>
+    <dt>风险</dt>
+    <dd class="down"><ul>
+      <li><strong>会出现第二个真源</strong>，与「PRD 是唯一权威」这条项目宪法直接冲突。必须先决定：机器可读文件是 PRD 的投影（PRD 改了它跟着改），还是它取代 PRD 成为接口章的正文。这个决定不做，两份东西必然分叉。</li>
+      <li>生成物膨胀是真实代价——检索到的一份 Dart OTel 实现被批评生成了 75 个以上 <code>.pb.dart</code> 文件。需要预先决定生成物是否入库。</li>
+      <li><strong>把三个决策捆成一个包会放大失败的连带面</strong>：若 codegen 路线走不通，「删 Repository」与「Mock 先行」会一起落空。</li>
+      <li>二进制协议的代价是调试性——<code>curl</code> 看不懂响应。这一项与 A4 的客户端插桩需求存在张力。</li>
+      <li>先写契约测试与 Mock 意味着「为还不存在的东西写测试」，短期产出观感差，首次赶工时必然是第一个被砍的。</li>
+    </ul></dd>
+  </dl>
+</article>
+
+<article class="idea" id="IDEA-A6">
+  <div class="hd"><span class="id">A6</span><h3>0.216 = 0.6³ 反解为三份独立的 error budget：每一轴都必须有被设计过、被埋点过、被 UI 承认的失败路径</h3></div>
+  <div class="tags">
+    <span class="tag">轴 <b>轴 4 可观测性链路</b></span>
+    <span class="tag">信心 <b>76%</b></span>
+    <span class="tag">复杂度 <b>Low</b></span>
+  </div>
+
+  <p>PRD:32 把北极星写成 <code>0.6 × 0.6 × 0.6 = 0.216（三轴等权硬线）</code>。这个式子通常被当成一个目标值读。反过来读一次，它说的是另一件事：<strong>每一轴都被允许失败 40%。</strong></p>
+
+  <p>40% 不是一个可以靠「尽量别出错」应付的数字。它意味着<strong>失败是常态路径而不是异常路径</strong>，因此每一轴都必须有三样东西：被设计过的失败路径（用户看到什么）、被埋点过的失败原因（我们知道为什么）、被 UI 承认的失败状态（不是白屏也不是 toast 一闪）。</p>
+
+  <p>而现在的埋点口径与这个要求是错位的。PRD:2124-2127 规定的必埋事件记录的是<strong>发生量</strong>——<code>duration_ms</code>、<code>cache_hit</code>、<code>rank</code>。<strong>失败原因的枚举位是缺失的。</strong>换句话说，今天的埋点能告诉我们「成功了多少次」，但不能告诉我们「那 40% 是怎么没的」。而对一个允许 40% 失败的系统，<strong>后者才是第一需求。</strong></p>
+
+  <p>还有一处需要在文档里明写，因为它会让按独立性做的规划系统性偏乐观：<strong>三轴不独立。</strong>乘法形式借来的是可用性串联模型，而那个模型假设各环节故障独立。本项目里不成立——图层加载失败会同时打掉「资源详情点击」（轴①的分子）和发布入口（轴③），<strong>同一个根因被惩罚三次</strong>。所以按独立性算出来的容量与冗余规划一定偏乐观。</p>
+
+  <p>反过来这也是一条正面情报：<strong>修好图层能同时抬三轴。</strong>三轴不独立意味着投入不是均摊的，而是有杠杆点的——这直接决定优先级排序，而不只是一个统计学注脚。</p>
+
+  <figure class="dia">
+    <svg viewBox="0 0 860 230" role="img" aria-label="三轴不独立：图层故障同时影响三条轴">
+      <rect x="330" y="20" width="200" height="46" rx="6" fill="#fbeceb" stroke="#8e2f2f"/>
+      <text class="svgtext" x="430" y="49" text-anchor="middle">图层加载失败</text>
+      <line x1="380" y1="66" x2="150" y2="150" stroke="#8e2f2f" stroke-width="2"/>
+      <line x1="430" y1="66" x2="430" y2="150" stroke="#8e2f2f" stroke-width="2"/>
+      <line x1="480" y1="66" x2="710" y2="150" stroke="#8e2f2f" stroke-width="2"/>
+      <rect x="60" y="150" width="180" height="46" rx="6" fill="#fffefb" stroke="#dcd6c9"/>
+      <rect x="340" y="150" width="180" height="46" rx="6" fill="#fffefb" stroke="#dcd6c9"/>
+      <rect x="620" y="150" width="180" height="46" rx="6" fill="#fffefb" stroke="#dcd6c9"/>
+      <text class="svgtext" x="150" y="179" text-anchor="middle">轴① AI 匹配召回率</text>
+      <text class="svgtext" x="430" y="179" text-anchor="middle">轴② 图层加载成功率</text>
+      <text class="svgtext" x="710" y="179" text-anchor="middle">轴③ 完整发布率</text>
+      <text class="svglabel" x="250" y="112" text-anchor="middle">打掉详情点击</text>
+      <text class="svglabel" x="446" y="112">直接命中</text>
+      <text class="svglabel" x="612" y="112">打掉发布入口</text>
+      <text class="svglabel" x="430" y="222" text-anchor="middle">一个根因被乘法惩罚三次 → 按独立性做的容量规划必然偏乐观</text>
+    </svg>
+    <figcaption>0.6³ 借用的串联可用性模型假设故障独立；本项目不满足该假设，故乘积既低估风险也低估修复收益。</figcaption>
+  </figure>
+
+  <dl class="f">
+    <dt>依据</dt>
+    <dd class="basis"><ul>
+      <li><span class="k">direct</span>PRD:32 <code>0.6 × 0.6 × 0.6 = 0.216（三轴等权硬线）</code>——式子原文，逐字确证</li>
+      <li><span class="k">direct</span>PRD:2360「三轴各自可独立采集并计算乘积」——但未给出每轴各自的目标值</li>
+      <li><span class="k">direct</span>PRD:2124-2127 必埋事件字段为 <code>duration_ms</code> / <code>cache_hit</code> / <code>rank</code>——记发生量，失败原因枚举位缺失</li>
+      <li><span class="k">external</span>Google SRE 的串联可用性与 error budget 模型——乘法形式与其假设的独立性前提</li>
+      <li><span class="k">direct</span><code>frame_metrics.dart:111-112</code> <code>final int rank = (percentile / 100 * sorted.length).ceil();</code> + <code>:129</code> 桶边界 <code>[8,16,32,50,100]</code>——已有一套可复用的分位与直方图口径</li>
+      <li><span class="k">direct</span><code>test/frame_metrics_test.dart:3-5</code>「分位算错的表现是 P95 看起来达标，没有任何异常现象提示它错了」</li>
+    </ul></dd>
+    <dt>为何重要</dt>
+    <dd>它把北极星从一个季度看板数字变成一份对埋点字段的硬要求，而且要求很具体：每一轴加一个失败原因枚举位。这条改动的实施成本在七条里最低，但它决定了 0.216 达不到时我们能不能说出原因。</dd>
+    <dt>风险</dt>
+    <dd class="down"><ul>
+      <li><strong>PRD 至今未定义「超 300ms 但最终成功」算不算轴②成功。</strong>这个定义不明，轴②的 error budget 就没有分母，本条无法落地。这是必须先补的空白。</li>
+      <li>把三轴的失败原因都枚举出来会显著扩大埋点维度基数，需要评估上报量与存储成本。</li>
+      <li>实施前提是分位口径统一。现有 <code>frame_metrics</code> 每次读都执行 <code>sorted()</code>（<code>:107</code>），多指标高频复用时会成为新的性能源——需要在「精确排序」与 t-digest / HDR 之间做一次取舍。</li>
+      <li>承认三轴不独立之后，「三轴等权」这条硬线本身的合理性会被质疑，而它是 PRD 明写的产品口径。</li>
+    </ul></dd>
+  </dl>
+</article>
+
+<article class="idea" id="IDEA-A7">
+  <div class="hd"><span class="id">A7</span><h3>AI 整体移出读路径：3B 在写路径抽特征，GBDT 批式预计算并物化，在线只做「取 + 过滤 + 截断」</h3></div>
+  <div class="tags">
+    <span class="tag">轴 <b>轴 5 AI 部署与降级</b></span>
+    <span class="tag">信心 <b>72%</b></span>
+    <span class="tag">复杂度 <b>High</b></span>
+    <span class="tag">属性 <b>轴 5 唯一存活</b></span>
+  </div>
+
+  <p>读接口的 P95 预算是 150ms，而且这 150ms 本身是 300ms 里的一段。PRD:2270 已经把查询计划钉死到「空间条件必须先行否则退化全表」的程度——<strong>这个计划里没有留出插入模型推理的余量</strong>。也就是说「AI 在请求内推理」这个方案从预算上就不成立，不需要等到实测。</p>
+
+  <p>更值得注意的是 PRD 自己已经给出了一条不需要在线推理的采集路径。PRD:2275 规定召回率的采集口径是「<code>demand_push_sent</code> 与 <code>resource_detail_click</code> 按 <code>post_id</code> 关联 5min 窗口」——<strong>这个口径完全不要求推理发生在请求内</strong>。而 PRD:2304 给推送留的时限是 1 分钟，<strong>比 150ms 宽 400 倍</strong>。两条合起来说明：AI 的产出在时间上有巨大的腾挪空间，是我们自己把它想成了在线组件。</p>
+
+  <p>所以形态应当是：3B 模型在<strong>写路径</strong>（发布时）抽特征并落库；GBDT 按 <code>grid_id</code> × 叶类目 × 供需态 批式预计算并把结果物化；在线请求只做三件不含推理的事——取物化结果、按当前条件过滤、截断到上限。配额扣减仍留在服务端在线面（<code>ai_confirm_screen.dart:167</code> 已明确「配额扣减必须在服务端」），这与 A1 的分割线一致。</p>
+
+  <p>这条想法必须连带承认一件事，因为它是对核心心智的让步：<strong>新鲜度受批次周期限制，新发布的内容在进入名单之前有一段可见的空窗。</strong>而「双向撮合」是产品的核心卖点，空窗直接削弱它。这个代价必须被显式接受，不能悄悄产生。</p>
+
+  <p>还有一个更根本的限制，它不是这条想法引入的，而是被这条想法暴露的：PRD:2236 明写<strong>禁止增加 <code>contacted_success</code> / <code>deal_done</code> 等字段</strong>。这意味着系统里<strong>没有成交回报</strong>——一个撮合引擎最重要的反馈信号在契约层面被禁掉了。后果是召回率只能用「5min 内 Top20 是否被点击」来近似，而点击不等于撮合成功。<strong>这不是可以靠架构解决的问题，只能在文档里如实写明，并说清它对模型迭代能力的限制。</strong></p>
+
+  <dl class="f">
+    <dt>依据</dt>
+    <dd class="basis"><ul>
+      <li><span class="k">direct</span>PRD:2300 读接口 P95 ≤ 150ms，且是 300ms 四段中的一段</li>
+      <li><span class="k">direct</span>PRD:2270「空间条件必须先行否则退化全表」——查询计划已钉死，不留在线推理余量</li>
+      <li><span class="k">direct</span>PRD:2275「<code>demand_push_sent</code> 与 <code>resource_detail_click</code> 按 <code>post_id</code> 关联 5min 窗口」——召回率采集不要求推理在请求内</li>
+      <li><span class="k">direct</span>PRD:2304 推送 1min 触达 Top20 / Top30——比 150ms 宽 400 倍</li>
+      <li><span class="k">direct</span>PRD:2155 已定义 50301 AI 降级错误码——降级契约位已存在</li>
+      <li><span class="k">direct</span><code>ai_confirm_screen.dart:167</code>「配额扣减必须在服务端」</li>
+      <li><span class="k">direct</span>PRD:2236 禁止增加 <code>contacted_success</code> / <code>deal_done</code> 字段——无成交回报，反馈闭环在契约层被禁</li>
+    </ul></dd>
+    <dt>为何重要</dt>
+    <dd>轴 5 上唯一存活的一条，也是唯一一条会改变数据流形状（而非仅改变部署位置）的想法。它同时把「AI 是在线依赖」这个隐含假设摆到桌面上——若不摆，150ms 预算会在联调时被推理时间悄悄吃掉。</dd>
+    <dt>风险</dt>
+    <dd class="down"><ul>
+      <li><strong>新鲜度空窗是对核心心智的直接让步</strong>，且空窗长度等于批次周期，无法通过优化消除，只能通过缩短周期缓解（而缩短周期会推高预计算成本）。</li>
+      <li><strong>无成交回报导致反馈闭环原理上搬不过来</strong>——召回率的近似口径（点击代替成交）会让模型朝「更容易被点」而非「更容易成交」的方向优化，这个偏差随时间累积。</li>
+      <li>批式物化的存储量随 <code>grid_id</code> × 叶类目 × 供需态 的组合数增长，需要在选型阶段估一遍量级，否则会在轴 2 的空间检索选型上产生反向约束。</li>
+      <li>降级面（AI 不可用时给什么）在本条中只留了接缝未定策略。PRD:2379 写「降级开关本期不实施」，所以降级形态的产品定义仍是空白。</li>
+    </ul></dd>
+  </dl>
+</article>
+
+<h2 id="SEC-REJECTED"><span class="n">SEC-REJECTED</span>被否想法与理由</h2>
+
+<p class="lead">29 条候选经独立依据核验（fresh context，逐条抽查行号与逐行点算）后，判决为 24 条依据成立 / 11 条依据薄弱 / 1 条被驳倒；再经仲裁按轴分布与取舍强度筛选，存活 7 条。被吸收的不算失败——它们是存活想法的组成部分。被驳倒的记下理由，以便前置条件变化时复评。</p>
+
+<table>
+  <thead><tr><th style="width:96px">候选</th><th style="width:104px">结果</th><th>理由</th></tr></thead>
+  <tbody>
+    <tr><td class="rid">X1</td><td>驳倒</td><td>「22 个错误码 ↔ 22 个失败枚举值 ↔ 四个 503 ↔ 三轴失败原因是同一张表的四个视图」——<strong>前提是编造的</strong>。逐行点算后 §12.5 错误码表实为 20 行 / 19 个非零码，客户端 <code>AuthFailure</code> 8 + <code>ContactFailure</code> 5 = 13。数字既不相等也不成比例，整条论证塌陷。其中「埋点缺失败原因枚举位」这一有效部分已由 A6 承载。</td></tr>
+    <tr><td class="rid">R02</td><td>依据降级</td><td>错误码与失败枚举穷尽映射 + gRPC 式结构化 details。映射的两端计数均不成立（同上）；且统一响应包已定死 4 字段，RFC 9457 的 media-type 机制搬不过来；文案权在 PRD（明写禁透传）。真实缺口「映射只存在于注释里」已作为 A5 的一个派生项。</td></tr>
+    <tr><td class="rid">R15</td><td>外部依据无法核实</td><td>模块边界 CI 门禁（Packwerk 式）。核心论证依赖三个外部百分比——Packwerk 跨模块回归降 68% / 新人上手降 55%、CNCF Q1 2026 42% 微服务回并——独立核验环节均无法证实。方向不误但不能以未核实数字支撑架构决策。「用会失败的检查代替评审」这一层已并入 A1 的风险条。</td></tr>
+    <tr><td class="rid">R09</td><td>外部依据无法核实</td><td>三通道分层、不引 OTel SDK。所依赖的「Workiva v0.18.x logs 未实现 / traces 仍 beta」「dartastic v1.1.0-beta.6 全局可变状态」无法核实。<code>traceparent</code> 注入这一有效部分已并入 A4 的依据。</td></tr>
+    <tr><td class="rid">R16</td><td>属待办非取舍</td><td>契约测试与 Mock server 先行。它没有对立面——没人主张「后写测试更好」，因此它是 A5 的实施顺序而不是一个独立的架构选择。已作为 A5 正文与风险条。</td></tr>
+    <tr><td class="rid">R21</td><td>属待办非取舍</td><td>缓存键五要素提升为一等类型。同样无对立面；且其真正的争议点（坐标网格量纲必须当场收口）已由 A2 完整承载。</td></tr>
+    <tr><td class="rid">R28</td><td>属重构待办</td><td><code>frame_metrics</code> 采集范式提取为通用指标内核。引文精度是全部候选里最高的，但主张本身是一次重构而非架构决策，没有需要权衡的对立选项。已作为 A6 的实施前提（含 <code>:107</code> 每次读都 <code>sorted()</code> 的取舍）。</td></tr>
+    <tr><td class="rid">R20</td><td>类比失效已抵尽收益</td><td>瓦片化 <code>/map/pins</code>（MVT + tippecanoe）。候选自陈了三条失效：数据变化太快（expire 7 天 / TTL 5min）使烘焙成本压不住、聚合阈值按分类×供需态×完整度差异化导致维度爆炸、最值钱的 GPU 矢量渲染红利搬不过来（渲染是高德 SDK 上的单层 CustomPaint）。作为固化光谱上的一个刻度并入 A1。</td></tr>
+    <tr><td class="rid">R22</td><td>依赖未决前提</td><td>纯 Dart 无 Flutter 依赖计算内核。最大回报绑定在「后端也选 Dart」这个尚未决定的选项上；不含该前提的那部分收益已由 A2 的分层约束吸收。</td></tr>
+    <tr><td class="rid">R12</td><td>依赖未决前提</td><td>审计作为主数据源（横切装饰器 / event-sourcing 两档）。依据本身最扎实（四条引文零偏移，且含真取舍：装饰器需多读一次取前值、吃 150ms 预算）。未存活原因是它的取舍需要先知道写路径形态，而写路径形态由 A1 的分割线决定。<strong>建议在 A1 落定后立即复评，这是最有希望的第 8 条。</strong></td></tr>
+    <tr><td class="rid">R06</td><td>下游问题</td><td>删 TTL，改网格级版本号 / surrogate-key 分族失效。是 A3 的下游推论——权威归属未定时，失效机制无从选择。已作为 A3 正文的第二段推论。</td></tr>
+    <tr><td class="rid">R13 R14</td><td>对立对，已消解</td><td>删 Repository 抽象层 / 双实现长期保留。两条直接对立且各自都有硬依据；其对立由「Mock 从契约生成」消解，因此并入 A5 作为一个包裹决策，而非在存活集里保留一对互斥项。</td></tr>
+    <tr><td class="rid">R04b R19</td><td>对立对，已消解</td><td>C1–C9 全量收口关卡 / 承认两套命名 + 显式双向映射层。争论的实质是「有没有唯一权威量纲」；A2 给出了这个权威，于是双向映射层不再必要、全量收口也不必一次做完。</td></tr>
+    <tr><td class="rid">X4</td><td>已吸收</td><td>R13 / R14 的对立由 R16 消解——这正是 A5 的核心论证结构，已完整并入。</td></tr>
+    <tr><td class="rid">X5</td><td>已吸收</td><td>R26 / R20 / R24 是同一光谱上的三点，判据来自 R17——已完整并入 A1，含固化程度轴的示意图。原候选形式（「在架构文档里做成一条轴」）本身偏向文档组织建议，越出 ideation 范围。</td></tr>
+    <tr><td class="rid">X2</td><td>已吸收 + 引文有误</td><td>「预算必须被反推到实现细节」。20 字节 / Pin 的除法已并入 A5，<code>sorted()</code> 的取舍已并入 A6。原候选形式是流程性主张（「把 §14.1 七个数字逐个做除法」），容易被当成待办；且其中一处行号引用有误。</td></tr>
+    <tr><td class="rid">R23</td><td>已吸收</td><td>10KB / 500 Pin 反推序列化层（定长二进制 / 列式 / 定点量化 / 位打包）。作为 A5 的协议形状约束并入，含调试性丧失的风险条。</td></tr>
+    <tr><td class="rid">R24</td><td>已吸收</td><td>「再严 10 倍」→ Pin 是网格位图。作为固化光谱的一个刻度并入 A1；其 <code>marker_builder.dart:75</code> 重叠风险并入 A2。</td></tr>
+    <tr><td class="rid">R26</td><td>已吸收</td><td>地图读路径静态化 + CDN。作为固化光谱最右端的刻度并入 A1；其与「3 秒内清缓存」的冲突并入 A3。</td></tr>
+    <tr><td class="rid">R11</td><td>已吸收</td><td>300ms 作为准入筛选器 + CI 形状门禁。前半已并入 A1 正文末段，后半（CI 门禁）作为 A1 的风险条并建议后置。</td></tr>
+    <tr><td class="rid">R05</td><td>已吸收</td><td><code>layer_switch</code> 四段做成本地 trace。其核心洞察（<code>cache_hit</code> 路径不发请求 → 服务端 trace 只含慢样本）是 A4 的第二条证据，具体形态并入 A4 末段。</td></tr>
+    <tr><td class="rid">R25</td><td>已吸收</td><td>16ms 升为全局准入原则 → 划 isolate 边界。与 A2 的「纯计算分层」和 A4 的「不污染纯度的插桩方式」同源，作为两者的实现约束并入。</td></tr>
+    <tr><td class="rid">R27</td><td>本期无执行通路</td><td>告警与降级判定分离。服务端判定这一半受 PRD:2379「降级开关本期不实施」所限；客户端判定这一半（含 33 秒窗口不足）已并入 A4。</td></tr>
+    <tr><td class="rid">R04</td><td>反向改已定契约</td><td><code>request_id</code> 客户端生成 + 视为用户可见凭据。真实需求（被网关拦下的请求无 ID 可申诉，对应 42903 申诉入口）成立，但把 ID 空间交给不可信端会引入伪造 / 碰撞 / 日志投毒，需服务端加校验去重；而该需求存在更轻的解法。列为 A4 落地时的一个待决细节。</td></tr>
+    <tr><td class="rid">R18</td><td>非改变现状的主张</td><td>500 Pin 作为服务端强不变式、地图路径无分页。这已经是 §12 契约的现状（<code>/map/pins</code> 出参本就无分页字段），不构成一个待做的决策。其唯一新增内容——超密城区第 501 条永久不可达——已作为 A5 的协议约束背景。</td></tr>
+    <tr><td class="rid">R10</td><td>同轴但更下游</td><td>能力 / 降级注册表（地图 / AI / 认证 / 推送 / OCR）。四个 503 同构、<code>map_screen.dart:206-217</code> 已是第一个实例，依据成立；但它是 A7 的降级面，且与 PRD:2379 的排期口径有张力（主张即使不实施策略也要先立接缝）。作为 A7 的风险条留下，建议紧随 A7 复评。</td></tr>
+    <tr><td class="rid">R30</td><td>类比被自陈推翻 + 与 R10 重叠</td><td>统一 ABR 式质量阶梯控制面。候选自己指出降档会砸北极星轴③（手动路径 <code>is_ai_assisted=false</code> 且完整度很可能掉档），而 ABR 世界不存在「降码率污染码率统计」这个问题——类比在最关键处失效；且与 R10 大幅重叠而未承认。</td></tr>
+    <tr><td class="rid">X3</td><td>已存活</td><td>即 A4，原为跨切综合项，因其重组三条独立证据形成新主张而单独存活。</td></tr>
+    <tr><td class="rid">R01 R03 R07<br>R08 R17 R29</td><td>已存活</td><td>依次对应 A5 / A2 / A3 / A7 / A1 / A6。</td></tr>
+  </tbody>
+</table>
+
+<div class="gap">
+  <b>引文精度记录（供后续文档引用时校正）</b>：本轮 PRD §12 及其之后的引文存在系统性 <strong>+1 行偏移</strong>（如实际 2057 被引为 2058、2123 被引为 2124、2303 被引为 2302）。逐字内容全部真实，故未据此否决任何候选，但<strong>三份架构文档在引用 PRD §12 行号时必须重新核对</strong>。§6.10、§9.10、§13、§14.5 各段行号经抽查完全精确。
+</div>
+
+<footer class="composition-signal">
+  <b>组成信号</b>：本文件由 ce-ideate 于 <b>2026-09-02</b> 组成，来源标识 <b>ARTIFACT-2026-09-02-TARGET-ARCHITECTURE-IDEATION</b>。<br>
+  <b>组成路径</b>：Grounding（PRD.md 192913 B 全量标题 + §14 逐行 / lib 全量检索 / 说明文档 567 KB 标题与抽段 / 3 次联网检索）→ 五轴分解并落三份证据档案 → 5 个并行框架发散共 48 条 → 去重合并 24 条 + 跨切综合 5 条 → 独立依据核验（fresh context，逐条抽查行号、逐行点算错误码表）→ 仲裁存活 7 条。<br>
+  <b>基线</b>：PRD 全量目标态，含后台 7 页 / RBAC / 审计 / LR+GBDT / 3B 模型；不区分 9-30 内测包裁剪（由用户在本轮开始时确认）。<br>
+  <b>交付范围</b>：本轮只产出 ideation 工件。用户已确认《系统总体架构设计文档》《技术栈选型说明》《可观测性架构方案》三份文档留待后续流程，本文件不代替它们。<br>
+  <b>已知取证缺口</b>：Shopify Packwerk 68% / 55%、CNCF Q1 2026 42%、Workiva OTel Dart v0.18.x logs 未实现——三项外部数字独立核验无法证实，依赖它们的候选未进存活集。<br>
+  <b>核验推翻的自造事实</b>：「22 个错误码 ↔ 22 个失败枚举值」不成立；实为 19 个非零码 vs 13 个枚举值。
+</footer>
+
+</div>
+</body>
+</html>

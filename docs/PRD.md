@@ -26,6 +26,9 @@
 **三轴口径定义**：
 - **AI 匹配召回率** = 用户发布需求后 5min 内被推送到 Top20 资源方中至少 1 个资源方点击查看该需求详情的比例（依赖 S1 双向推送引擎 + T1 LR+GBDT 模型）
   - **分母生效条件**：仅当该需求"同城 + 同二级类目"在库有效资源 ≥20 条时，本次发布才计入分母；不足 20 条的发布**不计入召回率**，单独归入「供给不足占比」作为冷启动观测指标（不参与乘积计算）；
+  - **分子分母同粒度**（2026-09-02 缺陷评审第 14 条定案）：本条分母按**二级类目**统计，§6.12 Hard Filter 亦已由三级放宽为**二级**，两者粒度一致。此前 Hard Filter 按三级筛而分母按二级算，会让「二级够 20 条但三级仅数条」的发布注定填不满 Top20、却照样占据分母，使本轴系统性偏低且偏差不可归因——该问题已随第 14 条消除；
+  - **已下架不计成功**（2026-09-02 缺陷评审第 7 条定案）：点击发生时该帖须**仍在架**，否则不计入分子。否则脏 Pin 越多本轴越高 —— 反向激励；
+  - ⚠️ **本轴是代理指标，不是终局指标**（2026-09-02 缺陷评审第 12 条定案）：它衡量的是**推送是否吸引点击**，而非**匹配是否真的有用**。受 §5.11/§6.12/§6.14「不收集主观撮合反馈」红线约束，平台没有任何主观信号能反证「点了但没用」，故模型会稳定朝**「更容易被点开、更容易被要电话」**优化。这与「更容易成交」在多数场景同向，但在标题党、低价钓鱼、联系方式诱人而服务差的重复发布者三类场景会分叉，且**该偏差在本轴数值上不可见**（跑偏时看板只显示本轴在涨）。这是接受该红线后的已知代价，非疏漏。缓解手段见 §6.12 客观行为代理档位与 §14.6 反向哨兵；
 - **分类图层加载成功率** = 用户切换分类 Tab/二级类目/三级类目后，地图 Pin 首屏渲染 P95 耗时 ≤300ms 的会话占比
 - **完整发布率** = 发布完成时即满足 🟢 完整档（必填 100% + 位置到门牌号 + 三级类目精准命中）的发布条数 / 总发布条数
 
@@ -604,6 +607,26 @@ U2 浏览时按分类筛选：首页一级分类 Tab → 列表页二级筛选 �
 - 第三方入口折叠（本期不实现，灰禁用）：微信/QQ/Apple；
 - 协议勾选（默认不勾，必须手动勾"我同意用户协议与隐私政策"）；
 - 主按钮：主色胶囊（80% 宽）"登录 / 注册"。
+
+**登录身份归一化（2026-09-04 裁定，本期只落数据模型）**
+
+微信快捷登录的可行性核实结论：技术上可行，但工作量落在开放平台资质与账号合并两处，不在 38 自然日的 Batch1 预算内，故**微信登录整体延到 Batch2**，Batch1 只做数据模型预留，避免 Batch2 做账号迁移。
+
+预留的方式是引入 `user_identity` 表，把「一个账号只能有一个手机号」改成「一个账号可以挂多种身份」：
+
+| 列 | 说明 |
+|---|---|
+| `user_id` | 指向 `user.id`，多条身份共用同一个 `user_id` 即代表是同一个人 |
+| `identity_type` | `phone` / `wechat` / `apple`，Batch1 只会出现 `phone` |
+| `identity_value` | 手机号密文 / 微信 unionid / Apple sub，与 `identity_type` 组成唯一索引 |
+
+由此产生三条本期必须遵守的约束：
+
+1. **`user` 表不再直接持有手机号作为登录主标识。** 手机号以 `identity_type='phone'` 的一行写进 `user_identity`，且每个 `user_id` 有且仅有一条 `phone` 行。上文「手机号（唯一主标识）」在 Batch1 的实际含义是「唯一的**已启用**登录身份」，不是「账号的唯一标识」—— 账号的唯一标识是 `user_id`。
+2. **所有账号级风控与配额计数必须以 `user_id` 为键**，不得以手机号为键。否则 Batch2 微信登录进来的会话会绕开这些限制（详见《系统总体架构设计文档》§9.1）。
+3. **注销清理必须按 `user_id` 删除该账号名下的全部 `user_identity` 行**，不能只删 `phone` 那一行，否则 Batch2 起会出现「微信身份残留、下次微信登录复活已注销账号」（详见《系统总体架构设计文档》§8）。
+
+**Apple 登录的连带约束**：上文灰禁的三个第三方入口里，微信与 Apple 不是并列关系。App Store 审核指引 4.8 要求，只要 iOS 端上线了任一第三方社交登录（微信即属此列），就必须同时提供 Sign in with Apple。因此 Batch2 打开微信登录时，**Apple 登录必须同批交付，不能拆两批**；如果 Batch2 只上微信、Apple 继续灰禁，iOS 版会被拒审。这条约束在 Batch2 排期时必须按「微信 + Apple 两项一起估」，QQ 则可继续无限期灰禁。
 
 #### 3.4.2 个人中心（profile-screen）
 
@@ -1414,16 +1437,53 @@ POC 拆为**算法级（POC-A）与定标级（POC-B）两级**，二者回答�
 
 | 步骤 | 名称 | 规格 |
 |---|---|---|
-| **Step 1** | 标签强度打标 | 联系点击×5 / 详情页点击×2 / 详情停留 30s×1（仅取联系点击/位置/时效/类目，**不取撮合反馈、不设成交核销环节**，Scope 对齐） |
+| **Step 1** | 标签强度打标 | 联系点击×5 / 详情页点击×2 / 详情停留 30s×1（仅取联系点击/位置/时效/类目，**不取撮合反馈、不设成交核销环节**，Scope 对齐）；**另加客观行为代理档位，见下表** |
 | **Step 2** | 一阶 LR 召回 | 五因子 + 非线性距离惩罚 + 分层池 |
 | **Step 3** | 二阶 GBDT 精排 | 100 棵树 + 40 特征（行为 × 上下文） |
 | **Step 4** | Top 30 展示 + 10% Explore | 🔴/🟡 新发布打破茧房（10% 流量探索新发布） |
 
-**Hard Filter 前置**：必须同三级类目 + 同城 + 同需求态（资源对需求 / 需求对资源）。
+**客观行为代理档位（2026-09-02 缺陷评审第 12 条定案）**
+
+红线（§5.11 / §6.12 / §6.14 / §13.2）禁止的是**向用户主动收集主观反馈**（弹窗问「已联系上/已成交」）。下列信号全部是**用户用行动表达**的客观行为，且**全部可从现有表推导，零新增字段、零新增采集**，故纳入标签体系不触碰红线：
+
+| 信号 | 权重 | 数据来源（均为现有表） | 为何比「联系点击」更接近有效匹配 |
+|---|---|---|---|
+| 联系后 24h 内发布者主动下架 | **×8** | `post.status` 变更时刻 − 首次 `contact_event.created_at` | 供给方被联系后立即下架，通常意味着已成交。这是最接近成交的客观代理 |
+| 重复联系同一 post | **×6** | `contact_event` 按 `(from_user_id, post_id)` 计数 | 反复回看同一条 ≠ 只点开一次，后者可能只是好奇 |
+| 联系后该需求方停止再发同类需求 | **×6** | `post` 按 `(user_id, leaf_category_id)` 时序 | 不再发同类需求 = 需求已被满足 |
+| 拉号成功但中转页停留 <2s 即返回 | **×0** | §6.14 已埋的一级漏斗三事件 | 拿了号却没打算用，是弱负样本，不应与真实联系同权 |
+
+- **与红线的边界**：以上四项均**不向用户提任何问题、不弹任何窗**，仅读取用户已产生的行为记录，与 §6.14「不做 24h 三选一弹窗」不冲突；
+- **`contact_event` 表仍禁止增加 `contacted_success` / `deal_done` 字段**（§13.2 红线不变）—— 上述信号是**离线推导得出的训练标签**，不是入库字段；
+- **本期（Batch1）不实施**：LR+GBDT 属 T1，Batch1 只跑规则加权（§6.12），本表自 Batch2 模型训练起生效。
+
+
+**Hard Filter 前置**（2026-09-02 缺陷评审第 14 条定案，粒度由三级放宽为二级）：
+
+| 条件 | 粒度 | 性质 |
+|---|---|---|
+| 同城 | 城市 | **硬过滤**，不满足即排除 |
+| 同**二级**类目 | 二级 | **硬过滤**，不满足即排除 |
+| 同供需态（资源对需求 / 需求对资源） | — | **硬过滤**，不满足即排除 |
+| 同三级类目 | 三级 | **软特征**，同三级在精排加权，不同三级**不排除** |
+
+**为何放宽**：
+
+- **口径统一**：§0.2 轴① 分母（同城 + 同二级 ≥20 条）、§6.12 单用户冷启动兜底、§6.12 单类目回落**三处均按二级**，原「同三级」是全 PRD 唯一孤例，导致**分母按二级算、分子按三级筛**，这部分发布注定失败却照样占分母，使轴① 系统性偏低且在数值上不可归因；
+- **样本量**：§2.4 实际为 **21 个二级 / 48 个三级**。单城试点按全站 1 万条有效 post 估算，三级粒度平均约 208 条，再分供需两态仅约 104 条，**永远够不到阶段 2 要求的「单类目 ≥2000 条」**；二级粒度平均约 476 条／单态约 238 条，配合类目间不均衡分布，头部二级类目有望达标。原 §6.12「三级不足则回落二级」实为常态路径而非异常兜底，故直接将二级定为主口径；
+- **可替代性**：「主卧出租」与「次卧出租」、「日常保洁」与「深度清洁」高度可替代，三级硬过滤把本应由模型判断的相关性提前用硬条件写死，Step 2 五因子与 Step 3 的 100 棵树在百条级池子里投入产出严重不对称。
+
+**放宽后的精度保障**（不靠硬过滤靠排序）：
+
+- 同三级类目作为精排特征给**最高相关性权重**，确保完全对口的仍排在前列；
+- Top20/Top30 的位置有限（§6.14），不对口的自然被挤出可见区间；
+- §6.12 Step 4 的「Top 30 + 10% Explore」本就允许一定比例的探索性曝光，二级内跨三级推荐与该设计同向。
 
 **供需分模型**：
 - **资源方模型权重**：时效 60% / 距离 30% / 认证 10%；
 - **需求方模型权重**：认证 40% / 完整度档 40% / 时效 20%（完整度档 = 🟢1.0 / 🟡0.5 / 🔴0.2，**不使用信誉分**）。
+
+- **三级类目相关性系数**（第 14 条放宽 Hard Filter 后新增，作用于上述两模型的加权结果）：同三级 **×1.0**，同二级不同三级 **×0.7**。该系数是 Hard Filter 放宽后精度不下降的唯一保障，**不得省略**；系数值待 Batch2 双轨灰度期按实际点击率校准，校准后须回写本节与 `NfrConstants`。
 
 **10% 用户双轨灰度**（仅在冷启动阶段 2 样本量达标后开启）：GBDT 组 vs PRD 基线加权组，连续 7 天**推送触达后的详情点击率**（只统计点击动作，不追踪撮合结果）≥+15% → 100%，否则立刻回滚基线。
 
@@ -1436,7 +1496,7 @@ POC 拆为**算法级（POC-A）与定标级（POC-B）两级**，二者回答�
 | **阶段 2 · 全量期** | 标签 ≥10 万条 且 单类目样本 ≥2000 条 | 启用二阶 GBDT 精排，进入 10% 双轨灰度 |
 
 - **单用户冷启动**：新用户无行为标签时，用「同城 + 同二级类目 + 最近 7 天」热门排序兜底，不返回空列表；
-- **单类目冷启动**：某三级类目样本不足 2000 条时，该类目回落到其二级类目模型；二级仍不足则回落规则加权；
+- **单类目冷启动**：**类目粒度统一为二级**（第 14 条定案）。某二级类目样本不足 2000 条时，该类目回落规则加权；**不再设「三级→二级」回落层**——三级已不是 Hard Filter 条件，自然不再是独立建模粒度；
 - **降级不可逆判定由后台开关控制**，运营可强制回落到阶段 0（应对模型异常）。
 
 ### 6.13 T6 三轴联动飞轮视觉交互规格
@@ -1483,6 +1543,16 @@ POC 拆为**算法级（POC-A）与定标级（POC-B）两级**，二者回答�
 | **车辆/服务** | 8 条聚 | 参照生活类（低密度长尾，无独立 evidence） |
 
 **理由**：有 evidence 溯源的阈值更具说服力，研发/评审/未来迭代都有据可依。
+
+**聚合网格边长（2026-09-02 缺陷评审第 11 条补入）**：
+
+| 项 | 值 | 依据 |
+|---|---|---|
+| 聚合网格边长 | **60 逻辑像素** | 略大于单点 Marker 直径 40px（§6.4.2）。小于直径会让「聚不起来的两个点」在视觉上依然重叠、聚合等于没做；过大则相隔很远的点被聚成一簇，用户点开发现成员分散在屏幕各处 |
+
+- **本值原先只存在于代码而 PRD 无对应条目**（§6.7 / §6.15 只写了「按屏幕像素网格归并」却未给边长），2026-09-02 评审补入，因为它直接影响聚合效果与 §6.10.1 POC 结论；
+- **量纲提示**：本值是**屏幕像素网格**，与 §6.10 缓存键五要素中的「坐标网格约 500m」是两个不同量纲、不同用途的东西（后者是地理网格，用于缓存键取整），不得混用；
+- 代码侧真源见 `lib/nfr_constants.dart` 的 `NfrPerf.clusterGridSizePx`。
 
 ---
 
@@ -1870,7 +1940,7 @@ POC 拆为**算法级（POC-A）与定标级（POC-B）两级**，二者回答�
 | 分类配置生效 | 保存后 3 秒内前端拉到新版本号并清缓存 |
 | 举报工单 | 风险分 ≥60 自动进队列且自动下架，紧急工单 4h 内可闭环 |
 | 认证审核 | 队列按提交时间排序，单条处理 ≤3 步操作完成 |
-| 权限隔离 | 用 4 个角色账号交叉验证，越权入口不可见且接口返回 403 |
+| 权限隔离 | 用 4 个角色账号交叉验证，越权入口不可见且接口返回 403 + `40305`（§12.5） |
 | 审计完整性 | 上述"必留操作"逐项抽查均有记录且变更前后值可读 |
 
 #### 9.10.2 72h 临时类目快速验证通道
@@ -1973,14 +2043,17 @@ POC 拆为**算法级（POC-A）与定标级（POC-B）两级**，二者回答�
 |---|---|---|
 | 协议 | HTTPS only，禁明文 HTTP；TLS 1.2+ | §9.6 数据最小化 |
 | 基址 | `https://<自有域名>/api/v1`，域名须为已 ICP 备案的自有域名 | 上架手册 P2/P4 |
-| 编码 | 请求与响应均 `application/json; charset=utf-8`；媒体上传用 `multipart/form-data` | — |
+| 编码 | 请求与响应均 `application/json; charset=utf-8`。**媒体不走本 API**：图片由客户端凭一次性凭证直传对象存储（见 §12.3 两步式上传），故本 API 无 `multipart/form-data` 接口 | — |
 | 鉴权 | `Authorization: Bearer <JWT>`；有效期 30 天、自动续期 | §3.7 会话 Token |
 | 幂等 | 所有写接口须带 `Idempotency-Key`（客户端 UUID），服务端 24h 内重复键直接返回首次结果 | 本节新增的传输层约定（不改 §5 任何发布规则） |
+| **交互标识** | 所有请求须带 `X-Interaction-Id: <客户端 UUID>`，标识**一次用户交互**（而非一次 HTTP 请求）。服务端不做任何校验与业务使用，仅在访问日志中单列记录，用于与客户端埋点 join。同一次交互内的多个请求（如重试、分页续拉）共用同一值 | 2026-09-02 缺陷评审第 2 条新增 |
+| **设备标识** | 所有请求须带 `X-Device-Id: <客户端首启生成的 UUID v4>`，用于 §7.7 三维限频的设备维。**明确不可信**（重装即变），定义与采集红线见 §12.5 末尾 | 2026-09-03 架构评审新增 |
 | 时间 | 一律 `RFC3339` UTC 带时区（`2026-09-30T12:00:00+08:00`），禁用时间戳裸整数 | — |
-| 坐标 | 一律 **GCJ-02**（高德坐标系），字段名 `lng` / `lat`，精度 6 位小数 | §6.7 高德原生 SDK |
+| 坐标 | 一律 **GCJ-02**（高德坐标系），字段名 `lng` / `lat`；详情/发布用 6 位小数，**`/map/pins` 用 5 位小数**。5 位小数是**响应体积优化**（Pin 定位精度足够），**不是隐私措施** —— 5 位小数约 1m，与 6 位小数同属门牌级，二者隐私强度无差异。本项目**明确不做坐标模糊化**，理由见 §14.3 位置精度行 | §6.7 高德原生 SDK |
+| **压缩** | **响应强制 `Content-Encoding: gzip`**（客户端须发 `Accept-Encoding: gzip`）| 2026-09-02 缺陷评审第 4 条新增 |
 | 分页 | `page`（从 1 起）+ `page_size`（默认 20，上限 50） | §6.7「列表无限滚动每页 20」 |
 | 地图取数上限 | 单次 Pin 请求最多返回 **500** 条，超出由服务端按 §6.15 阈值先聚合再返回 | §6.7 / §6.8 |
-| 单响应体积 | 地图取数接口单次响应 **≤10KB**（超出须减字段或提高聚合粒度） | §6.10 第 2 层 |
+| 单响应体积 | 地图取数接口单次响应 **≤10KB，口径为压缩后（over-the-wire）字节数**；未压缩原始体积另设 ≤24KB 上限 | §6.10 第 2 层 + 2026-09-02 评审第 4 条 |
 | 接口时延 | 读接口 **RT P95 ≤150ms**（§6.10 明确的子指标，与整体 300ms 一同上报） | §6.10 |
 
 **统一响应包**：
@@ -1997,12 +2070,23 @@ POC 拆为**算法级（POC-A）与定标级（POC-B）两级**，二者回答�
 - `code = 0` 为成功，非 0 见 §12.5 错误码表；HTTP 状态码与 `code` **同时使用**（HTTP 表达传输层，`code` 表达业务语义）；
 - `request_id` 由服务端生成并写入日志，客户端报错时须回显以便排障（对齐 §14.5 可观测性）。
 
+**两个标识的分工（2026-09-02 缺陷评审第 2 条）**：
+
+| 标识 | 生成方 | 覆盖范围 | 用途 | 不能做什么 |
+|---|---|---|---|---|
+| `interaction_id` | **客户端** | 一次用户交互全程，含**缓存查找 → 网络 → Dart 聚合 → Pin 渲染**四段（§6.10） | 关联客户端埋点四段耗时；透传服务端后可 join 到访问日志 | **不可信**，服务端禁止用它做鉴权、限流、幂等或任何业务判断 |
+| `request_id` | **服务端** | 单次 HTTP 请求在服务端内的处理 | 服务端日志检索；UI 报错回显（§12.5 `50001`） | 覆盖不到交互的首尾两端；**缓存命中时不存在**（§6.10「命中直接读本地不发请求」） |
+
+- 二者关系：一次交互可对应 0 个（缓存命中）、1 个或多个（重试）`request_id`，但**恒有且仅有 1 个** `interaction_id`；
+- 因此**轴② 的分母只能由 `interaction_id` 统计**——它是唯一同时覆盖计时起点（手指离开分类 Tab）与终点（Pin 首屏绘制完成）的标识；
+- 客户端生成 `interaction_id` 的时机**必须早于缓存查找**，否则 `t_cache_ms` 无归属。
+
 ### 12.2 鉴权与账号
 
 | 方法 | 路径 | 说明 | 关键出入参 | 来源 |
 |---|---|---|---|---|
 | POST | `/auth/sms/send` | 发送登录验证码 | in: `phone`；out: `expire_in`(秒) | §3.7 短信验证码主方案 |
-| POST | `/auth/sms/login` | 验证码登录（注册合并） | in: `phone`,`code`,`agreement_accepted`(必 true)；out: `token`,`user`,`is_new_user` | §3.7 / §3.8 协议必勾 |
+| POST | `/auth/sms/login` | 验证码登录（注册合并） | in: `phone`,`code`,`agreement_accepted`(必 true)；out: `token`,`user`,`is_new_user`。**登录查表路径**：2026-09-04 起登录不再按 `user.phone` 查账号，改为先查 `user_identity`（`identity_type='phone'`）拿到 `user_id`，再生成 Token；`user.phone` 降为展示与脱敏输出用途。注册时同一事务内先建 `user` 行、再写 `user_identity` 的 `phone` 行、并回填 `user.phone`。此变更对客户端完全透明，出入参不变。 | §3.7 / §3.8 协议必勾 / §3.4.1 |
 | POST | `/auth/password/login` | 密码登录（保留方案） | in: `phone`,`password` | §3.7 |
 | POST | `/auth/token/refresh` | Token 续期 | out: `token` | §3.7 自动续期 |
 | POST | `/auth/logout` | 退出登录 | — | — |
@@ -2011,7 +2095,9 @@ POC 拆为**算法级（POC-A）与定标级（POC-B）两级**，二者回答�
 | POST | `/users/me/deactivate` | 发起注销（进 7 天冷静期） | out: `cooling_until` | §3.7 注销 7 天冷静期 |
 | DELETE | `/users/me/deactivate` | 撤回注销 | — | §9.7「撤回后数据原封不动」 |
 
-**登录风控**：同一 `phone` 连续 5 次验证码/密码校验失败 → 返回 `40105` 并锁定 **15 分钟**（§3.8）。
+**登录风控**：同一 `phone` 连续 5 次验证码/密码校验失败 → 返回 `40105` 并锁定 **15 分钟**（§3.8）。此处以 `phone` 为键属**渠道级**限频（限的是短信通道与密码校验入口本身），保持不变；但**账号级**的风控与配额（联系次数、AI 配额、举报频次、熔断冻结）一律以 `user_id` 为键，不得以手机号为键 —— 否则 Batch2 微信登录进来的会话会整体绕开（§3.4.1 约束 2、架构 §9.1）。
+
+**注销清理口径**：7 天冷静期到期后，清理按 `user_id` 删除该账号名下的**全部** `user_identity` 行与实名结果、联系方式，不得只删 `phone` 行（§3.4.1 约束 3、架构 §8）。
 
 ### 12.3 业务接口清单
 
@@ -2030,15 +2116,22 @@ POC 拆为**算法级（POC-A）与定标级（POC-B）两级**，二者回答�
 | 方法 | 路径 | 说明 | 关键出入参 | 来源 |
 |---|---|---|---|---|
 | GET | `/posts/memory?leaf_category_id=` | 取发布记忆 | out: `values{}`,`saved_at`,`stale`(>30 天为 true) | §5.7 记忆机制 / §5.8 记忆值过时 |
-| POST | `/media/upload` | 媒体上传 | in: file；out: `media_id`,`url`,`audit_status` | §9.6 图片审核 |
+| POST | `/media/upload/ticket` | 申请直传凭证（第 1 步） | in: `filename`,`size`,`content_type`；out: `media_id`,`upload_url`,`expire_at` | §9.6 图片审核 / 架构 §2.1.1 |
+| POST | `/media/{media_id}/commit` | 直传完成后登记（第 2 步） | out: `media_id`,`url`,`audit_status` | §9.6 图片审核 / 架构 §2.1.1 |
 | POST | `/posts/precheck` | 提交前校验（敏感词 + 禁发类目 + 认证拦截） | out: `blocked`,`reasons[]`,`need_cert`,`cert_type` | §5.7 强制认证拦截 / §9.6 |
 | POST | `/posts` | 发布 | in: `type`(resource/demand),`leaf_category_id`,`title`,`price`,`price_unit`,`desc`,`lng`,`lat`,`address`,`media_ids[]`,`contact_channel`,`contact_value`,`template_values{}`；out: `post_id`,`completeness_level`,`completeness_conditions{}`(供发布完成页「还差哪几项」回显),`restricted`(未实名受限态) | §5.7 / §3.7 先发后审 / §9.8 |
-| GET | `/posts/{id}` | 详情 | out: post 全字段 + `owner`(脱敏) + `trust_signals` | §7.4.1 |
+| GET | `/posts/{id}` | 详情 | out: post 全字段 + **`version`**(int64，乐观锁) + `owner`(脱敏) + `trust_signals` | §7.4.1 / 架构 §5.2.1 |
 | PATCH | `/posts/{id}` | 编辑 | — | §8.3.1 |
 | POST | `/posts/{id}/renew` | 一键刷新续 7 天 | out: `expire_at` | §5.11 有效期 |
 | POST | `/posts/{id}/repost` | 一键重发（带原内容） | out: 新 `post_id` | §8.3.1 |
-| PATCH | `/posts/{id}/status` | 上/下架（取值须合 §8.6 状态机：`active` / `archived`） | in: `status` | §8.6 状态机 |
-| GET | `/posts/mine?status=` | 我的发布（全部/在架/下架/草稿） | 分页 | §8.3.1 |
+| PATCH | `/posts/{id}/status` | 上/下架（取值须合 §8.6 状态机：`active` / `archived`） | in: `status`,**`version`**(int64，必带) | §8.6 状态机 / 架构 §5.2.1 |
+| GET | `/posts/mine?status=` | 我的发布（全部/在架/下架/草稿） | 分页；每项均带 **`version`** | §8.3.1 / 架构 §5.2.1 |
+
+**图片上传为两步式（2026-09-03 架构评审定案）**：原设计为单个 `POST /media/upload` 且入参含 `file`，即图片流经服务端。这与 §14.1 的 3M 带宽约束不共存 —— 单张 2MB 图上行占满带宽约 5.5 秒，多图发布必然超时。改为客户端凭一次性凭证直传对象存储：先调 `/media/upload/ticket` 拿 `media_id` 与 `upload_url`，直传成功后调 `/media/{media_id}/commit` 触发元数据剥离与内容审核。**接口总数因此由 38 变为 39，其中 Batch1 为 20 个。** 两条配套红线：客户端只拿一次性直传凭证、不持有对象存储长期密钥；存储桶不开公共读。图片「不经服务端**传输**，但必须经服务端**登记与审核**」，§9.6 的 EXIF 剥离与先发后审两条要求由 `commit` 步骤承载，未被绕过。
+
+**直传的七条安全约束（2026-09-04 直传安全复核补充）**：直传把「谁上传」交给了不可信客户端，安全性取决于以下七条是否逐条落到配置里，完整表述与「不落会怎样」见架构 §2.1.0，此处只列条款：①客户端不持有对象存储长期密钥，凭证由服务端每次签发、单文件、限时、限大小；②存储桶不开公共读，一律走限时签名地址；③**原图删除必须与 `commit` 同事务同步完成，不得做成异步任务或定时清理** —— 阿里云 `x-oss-process=image/info` 可直接读出 `GPSLatitude`/`GPSLongitude`，异步窗口期内发帖人的家庭住址坐标是可被任意读取的，这是本 PRD 唯一一条会造成人身安全风险的实现细节；④图片域不挂 CDN，若必须挂则禁止开启「过滤参数」（开启后 URL 问号之后参数被全部去除、请求直接命中原图，处理规则整体失效）；⑤`media_id` 与对象名一律由服务端生成、客户端不可指定，凭证资源路径精确到单个对象（否则可用自己的合法凭证覆盖他人已过审的图）；⑥直传 Policy 必须由对象存储侧强制 `content-length-range` 与 `content-type` 白名单，`commit` 时二次校验副本真实格式与尺寸，不信任客户端声明的 `size` / `content_type`；⑦以对象存储上传回调作为 `commit` 的触发源，客户端主动调 `commit` 只作回调失败时的补偿，且创建超过 24 小时仍为 `pending` 的 `media` 记录连同对象一并清理。⑥⑦合起来还堵住「先传合规图过审、再用同一签名 URL 覆盖为违规图」的审核绕过：`commit` 成功后该对象立即设为不可覆写，签名有效期不作为唯一防线。
+
+**`version` 乐观锁字段（2026-09-03 架构评审定案）**：`post.status` 有三条并发写路径 —— 用户手动下架、定时任务到期自动下架、审核结论回写。三者同时改一行时后写覆盖前写，会让「已下架」被改回「在架」，且此错误在日志里不留痕迹。故 `PATCH /posts/{id}/status` 的请求体**必带** `version`，服务端走 `UPDATE ... WHERE id = ? AND version = ?`，影响行数为 0 时返回 `40903`（§12.5）。两条纪律：`version` 缺失时返回 `40001`，**服务端不得「按当前值兜底」**（一兜底乐观锁就彻底失效且没人会发现）；客户端收到 `40903` 后**不可自动重试**，必须重新 `GET /posts/{id}` 取新 `version` 与新 `status`、展示最新状态后由用户决定是否再提交。
 
 **T2 AI 智能发布**
 
@@ -2055,18 +2148,53 @@ POC 拆为**算法级（POC-A）与定标级（POC-B）两级**，二者回答�
 
 | 方法 | 路径 | 说明 | 关键出入参 | 来源 |
 |---|---|---|---|---|
-| GET | `/map/pins` | 按分类+半径+坐标取 Pin | in: `category_ids[]`,`radius`(1/3/5/10/city),`lng`,`lat`,`post_type`(resource/demand/all),`grid_id`,`category_version`；out: `pins[]`(id,lng,lat,category_id,type,completeness_level),`clusters[]`(lng,lat,count,category_id),`total` | §6.10 第 2 层 + 缓存键五要素 |
+| GET | `/map/pins` | 按分类+半径+坐标取 Pin | in: `category_ids[]`,`radius`(1/3/5/10/city),`lng`,`lat`,`post_type`(resource/demand/all),`grid_id`,`category_version`,**`zoom`**；out: **`pins[]`（数组化紧凑格式，见下）**,`clusters[]`(lng,lat,count,category_id),`total`,**`mode`(pins/clusters)** | §6.10 第 2 层 + 缓存键五要素 |
 | GET | `/posts/search` | 列表页 / 首页内搜索 | in: `keyword`,`category_ids[]`,`radius`,`lng`,`lat`,`post_type`,`sort`(distance/time/completeness),`page`,`page_size`；out: `items[]`,`has_more` | §6.4.3 列表页 / §2.6「首页搜索态」 |
 
 - `/map/pins` 的入参**必须完整包含 §6.10 缓存键五要素**（分类 ID、供需态、半径档、坐标网格、数据版本号），任一缺失服务端返回 `40001` —— 否则客户端无法正确判定缓存命中；
 - `radius=city` 时按用户定位所在城市行政边界过滤（§6.8）；
-- 聚合在客户端 Dart 侧完成（§6.7），服务端仅在 `total>500` 时按 §6.15 阈值预聚合后返回 `clusters[]`。
+
+**Pin 响应格式与聚合归属（2026-09-02 缺陷评审第 4 条定案）**
+
+原文「聚合在客户端完成，服务端仅在 `total>500` 时预聚合」与 §14.1「单次 ≤10KB + 上限 500 Pin」**无法同时成立**：按 6 字段对象式 JSON 实测单 Pin 约 118 字节，500 条约 57.6KB，为 10KB 的 5.8 倍；而 10240÷500≈20.5 字节/Pin，仅六个字段名加引号冒号就已 60 字节。且客户端聚合的前提是拿到全部原始 Pin，故切换点设在 500 时**达标区间为空**。定案如下：
+
+**(1) `pins[]` 改为数组化紧凑格式**，配一份固定字段序字典，不再逐条重复字段名：
+
+```json
+{
+  "mode": "pins",
+  "schema": ["id", "lng", "lat", "category_id", "type", "completeness_level"],
+  "pins": [
+    ["p_10001", 116.39743, 39.90923, 1201, 0, 2],
+    ["p_10002", 116.40105, 39.91260, 1201, 1, 1]
+  ],
+  "total": 2
+}
+```
+
+- `type`：`0=resource` / `1=demand`；`completeness_level`：`0=⚪` / `1=🟡` / `2=🟢`（枚举转 int，省约 20 字节/条）；
+- `category_id` 用整型叶子类目 ID；
+- 坐标 5 位小数（见 §12.1 坐标行）。
+
+四项优化叠加后：原始体积约 22KB（满足 ≤24KB），gzip 后约 4–5KB，**对 10KB 有一倍余量**。
+
+**(2) 聚合切换点由「点数」改为「缩放层级」**：
+
+| `zoom` 区间 | `mode` | 服务端行为 | 聚合归属 |
+|---|---|---|---|
+| 远景（metersPerPixel 大于阈值） | `clusters` | 按 §6.15 阈值预聚合，只返回 `clusters[]` | 服务端 |
+| 近景 | `pins` | 返回紧凑 `pins[]` | 客户端 Dart 侧（§6.7） |
+
+- **为何不再用 `total>500` 切换**：远景时用户在屏幕上根本分辨不出单点，传 500 条原始 Pin 是纯浪费带宽；近景时可见范围内的点本就不多，正好让客户端聚合的实测优势（说明文档：5 万点聚合 4.73ms）继续生效。按点数切换则恰好在体积临界点翻转，两个约束互相抵消；
+- `zoom` 由客户端上传，服务端据此决定 `mode` 并在响应中回显，客户端按 `mode` 分派渲染路径；
+- 具体 metersPerPixel 阈值由 §6.10.1 Batch1 POC 实测确定，代码侧常量见 `lib/nfr_constants.dart`。
+
 
 **详情与联系（S7 永久单轨）**
 
 | 方法 | 路径 | 说明 | 关键出入参 | 来源 |
 |---|---|---|---|---|
-| POST | `/posts/{id}/contact` | 拉取完整联系方式并记联系事件 | out: `channel_type`,`contact_value`(完整) | §7.7 反爬 |
+| GET | `/posts/{id}/contact` | 拉取完整联系方式并记联系事件 | out: `channel_type`,`contact_value`(完整) | §7.7 反爬 |
 | POST | `/posts/{id}/report` | 举报 | in: `reason`(不实信息/诈骗/违规类目/骚扰/其他),`evidence[]` | §7.7 / §9.10.3 |
 | POST | `/posts/{id}/favorite` / DELETE | 收藏 / 取消 | — | §8.3.2 |
 | GET | `/favorites?type=` | 我的收藏（资源/需求/全部） | 分页 | §8.3.2 |
@@ -2076,11 +2204,13 @@ POC 拆为**算法级（POC-A）与定标级（POC-B）两级**，二者回答�
 - **熔断**：单账号 1 分钟内 ≥10 次调用 → 当日冻结该能力并进风控待审，返回 `42903`（§7.7）；
 - 未登录调用一律 `40101`（§7.7 使换 IP 无法绕过账号维度上限）；
 - 调用成功即写 `contact_event`，是**北极星辅助指标的唯一统计点**（§7.7）。
+- **方法为 `GET` 而非 `POST`，且这不是笔误（2026-09-07 裁定）**：本表原写 `POST`，与 `openapi.yaml`（`operationId: getPostContact`）、安全方案 §2.1/§3.2、详设 §5.5.1 的 `GET` 冲突且为全仓孤例 —— 经裁定**以 openapi 为准**，依据是方法动词属接口契约细节、口径源在 openapi，而 PRD 的权威性覆盖需求内容（是否限频、阈值多少）而非动词。**它是一个有副作用的 `GET`**（写 `contact_event` + 写 `audit_log`），故在需求层面**不可缓存、不可预取、不可自动重试**（重试会虚增北极星辅助指标并多落一条审计）。具体以何种响应头落实属契约细节，由 `openapi.yaml` 定，本表不新造口径。不要因为「`GET` 应当幂等」而把它改回 `POST` —— 那会引发上述 9 处联动改动。
 
 **详情浏览额度（未实名防爬）**
 
 - `GET /posts/{id}` 对**已登录未实名**用户每日放行 3 条，第 4 条返回 `40301` + `data.quota_used=3`，客户端按 §3.7 弹半屏引导，**不进入页面也不留空白页**；
-- 未登录用户可只读查看首页/列表/详情（§3.8），额度按设备指纹计。
+- 未登录用户可只读查看首页/列表/详情（§3.8），额度按设备指纹计。**该接口不要求鉴权**（`security: []`），此为唯一口径 —— 与 `/posts/{id}/contact` 的「未登录一律 `40101`」不同，二者不可混同。
+- **未登录详情浏览限频（2026-09-06 安全方案 G2 派生裁定，必做）**：因 §14.3 已定「不做坐标模糊化」，`PostDetail` 返回的 `address` 含门牌号，若未登录详情不限频则精确住址可零成本批量采集 —— 而联系方式有三维限频、地址却无，防线不对称。故规定：**未登录访问 `GET /posts/{id}` 按设备维每日 ≤30 次、IP 维每日 ≤100 次**（阈值直接沿用 §7.7 联系方式的设备/IP 维口径，不新造数字），任一超限返 `42907`。已登录用户不受此限（其行为已可按 `user_id` 追溯）。
 
 **认证**
 
@@ -2126,6 +2256,7 @@ POC 拆为**算法级（POC-A）与定标级（POC-B）两级**，二者回答�
 | `demand_push_sent` / `resource_detail_click` | `post_id`、`rank`、`elapsed_sec` | 北极星轴① AI 匹配召回率（5min 内 Top20 ≥1 次点击） |
 | `contact_event` | `post_id`、`channel_type`、`elapsed_min` | 辅助指标首次联系触发率（30 分钟窗口） |
 
+- **所有事件均须带 `interaction_id`**（§12.1 交互标识），它是客户端埋点与服务端访问日志的唯一 join 键；服务端日志侧同时留有 `request_id` 与 `X-Interaction-Id` 两列，未命中缓存的会话可双向关联，命中缓存的会话仅存在于客户端埋点侧（**此为预期行为，不是数据缺失**）；
 - `layer_switch` 的 `duration_ms` **计时起点＝手指离开分类 Tab，终点＝Pin 首屏绘制完成**，务必包含缓存查找 + 网络 + 聚合 + 渲染四段（§6.10 口径边界）；
 - `network_type` 为 2G/3G/断网的会话**不计入 P95 分母**（§6.10 弱网口径）。
 
@@ -2144,19 +2275,35 @@ POC 拆为**算法级（POC-A）与定标级（POC-B）两级**，二者回答�
 | `40302` | 403 | 高敏类目未认证，禁止发布 | 弹 `cert-modal` 跳认证 | §5.7 |
 | `40303` | 403 | 该类目禁发（医疗/金融/武器等） | 弹「此类信息平台禁止发布」 | §9.6 |
 | `40304` | 403 | 未实名发布已达上限（每日 1 条 / 在库 3 条） | 引导实名 | §3.7 |
+| `40305` | 403 | 无权限访问该资源（后台 RBAC 越权，含读与写） | **后台专用**：提示「无权限执行此操作」，不透出资源是否存在；App 端不应收到此码 | §9.10.1 权限隔离 |
 | `40901` | 409 | 命中敏感词 | 提示「包含敏感词：xxx，请修改」 | §9.6 |
-| `40902` | 409 | 图片未通过内容审核 | 该图位显示「该图未通过审核，无法发布」 | §9.6 |
+| `40902` | 409 | 图片未通过内容审核 | 该图位显示「该图未通过审核，无法发布」；**仅本人可见**（编辑态与「我的发布」），非本人视图中该图位不出现 | §9.6 / 架构 §2.1.1 |
+| `40903` | 409 | 乐观锁版本冲突（`post` 行在读取后被他人改过） | **不可自动重试**，必须重新 `GET /posts/{id}` 取新 `version` 与 `status`，展示最新状态后由用户决定是否再提交 | 架构 §5.2.1 |
 | `41001` | 410 | 信息已下架/过期 | 页面 Opacity 60% + 顶部红条，联系按钮禁用，收藏保留 | §7.8 |
 | `42901` | 429 | AI 配额耗尽 | 提示剩余额度与重置时间，降级手动填写 | §5.8 |
 | `42902` | 429 | 联系方式拉取超限（账号/设备/IP 任一） | 提示「今日联系数已达上限，明天再来」 | §7.8 |
 | `42903` | 429 | 异常访问熔断，当日冻结 | 提示已受限并告知申诉入口 | §7.7 |
 | `42904` | 429 | 推送频控（≤10 条/日） | 服务端静默转站内通知，客户端无感 | §6.14 |
+| `42905` | 429 | 验证码发送频控（同手机号或同 IP 超限） | 按 `Retry-After` 展示剩余秒数，倒计时期间按钮置灰；**不可自动重试** | 架构 §9.1、§9.1.1 |
+| `42906` | 429 | 埋点上报频控 | **唯一不向用户呈现的错误码**：事件退回本地队列、按 `Retry-After` 延后重试，不弹任何提示 | 架构 §9.1.1 |
+| `42907` | 429 | 未登录详情浏览超限（设备 30 / IP 100 每日，任一超限） | 提示「今日浏览次数较多，登录后可继续查看」+ 登录入口；**不告知是哪个维度超限** | §12.3 未登录详情浏览限频 |
 | `50001` | 500 | 服务端内部错误 | 通用重试 + 回显 `request_id` | §12.1 |
 | `50301` | 503 | AI 解析不可用（超时 / 无返回 / 图不可识别） | 停留原页，Error toast + 「重试」「改为手动填写」，已输入内容全保留 | §5.9 |
 | `50302` | 503 | 第三方认证服务不可用 | 支持手动重填字段 + 转人工复核 | §4.8 |
 | `50303` | 503 | 地图/定位服务不可用 | 定位失败 ≥3 次降级手动选城市 | §6.8 |
 
 **错误提示口径**：`4xxxx` 用具体文案（用户能改），`5xxxx` 用统一「服务暂时不可用，请稍后重试」+ `request_id`，**禁止把服务端堆栈或第三方原始报错透传到 UI**。
+
+**`Retry-After` 响应头（2026-09-03 架构评审补充）**：本表原先只有错误码没有剩余时长，客户端拿不到具体秒数，只能显示「请稍后再试」——用户不知道等 10 秒还是等到明天，会反复点击、进一步触发限频。故规定所有 `429` 段错误码（`42901` 至 `42907`）与 `40105`（登录锁定 15 分钟）**必须同时返回 `Retry-After` 响应头**，值为剩余秒数（整数，HTTP 标准语义）。客户端行为：解析该头驱动倒计时与按钮置灰；头缺失时按兜底文案处理但**不得自行猜测时长**；`42906` 只用它调度队列重试，不呈现给用户。
+
+**设备指纹（2026-09-03 架构评审补充）**：§7.7、§12.3 的三维限频（账号 / 设备 / IP）与 §13.1 的 `device` 表都依赖设备指纹，但本文档此前从未定义它怎么生成、怎么传输、可信度如何。补齐如下：
+
+| 项 | 定义 |
+|---|---|
+| 生成方式 | 客户端**首次启动**时生成 UUID v4，持久化到本地安全存储，此后不再变更 |
+| 传输方式 | 所有请求携带 `X-Device-Id` 请求头 |
+| 可信度 | **明确标注为不可信**：用户重装应用或清数据即得到新指纹。它只提高刷量成本，不构成安全边界，因此三维限频中账号维与 IP 维不可因它而放宽 |
+| 采集红线 | **禁止采集 IMEI、MAC 地址、广告标识符（IDFA/OAID）等设备唯一标识**——这类标识属个人信息且需单独授权，与 §4.7 的最小必要原则冲突。自生成 UUID 不涉及此风险 |
 
 ---
 
@@ -2168,7 +2315,8 @@ POC 拆为**算法级（POC-A）与定标级（POC-B）两级**，二者回答�
 
 | 表 | 说明 | 关键关系 |
 |---|---|---|
-| `user` | 用户账号 | 1:N `post` / `cert` / `favorite` / `notification` / `device` |
+| `user` | 用户账号 | 1:N `user_identity` / `post` / `cert` / `favorite` / `notification` / `device` |
+| `user_identity` | 登录身份映射（phone/wechat/apple） | N:1 `user`；同一 `user_id` 下 `identity_type` 唯一 |
 | `cert` | 实名与资质认证记录 | N:1 `user` |
 | `category` | 三级分类树（含大类色、是否高敏） | 自引用 `parent_id`；1:1 `template` |
 | `template` | 叶子类目发布模板 Schema | N:1 `category`(leaf) |
@@ -2181,6 +2329,9 @@ POC 拆为**算法级（POC-A）与定标级（POC-B）两级**，二者回答�
 | `notification` | 站内通知 | N:1 `user` |
 | `device` | 推送 token 与设备指纹 | N:1 `user` |
 | `audit_log` | 运营操作留痕（后台补齐时使用） | — |
+| `system_config` | 系统级 key-value 配置（含分类树全局版本号） | — |
+
+> **2026-09-04 修正**：表总数由 14 张扩为 15 张，新增 `system_config`。构思稿曾凭空列出 `scheduled_task`/`task_log`/`notification_template`/`file_metadata` 四张表，作废。详见 `docs/database/数据库设计文档.md`。
 
 ### 13.2 核心表字段字典
 
@@ -2189,17 +2340,37 @@ POC 拆为**算法级（POC-A）与定标级（POC-B）两级**，二者回答�
 | 字段 | 类型 | 约束 | 说明 | 来源 |
 |---|---|---|---|---|
 | `id` | bigint | PK | — | — |
-| `phone` | varchar(20) | UNIQUE, **加密存储** | 登录唯一标识；对外一律 `138****8888` | §3.7 脱敏 |
+| `phone_mask` | varchar(20) | NOT NULL | **2026-09-04 修正**：手机号脱敏掩码（如 `138****8000`），仅展示用途；登录查表改走 `user_identity` 走盲索引；原 `phone` 列删除 | §3.7 脱敏 / §3.4.1 |
 | `nickname` / `avatar_url` | varchar | — | 基本资料 | §3 |
 | `realname_status` | enum | none/pending/passed/rejected | 决定 §3.7 两档权限 | §3.7 |
-| `real_name_enc` | varbinary | 加密 | **姓名加密保存** | §4.7 |
-| `id_card_hash` | char(64) | 索引 | **只存不可逆哈希** | §4.7 / §9.6 |
+| `real_name_enc` | varbinary | 加密 | **姓名 AEAD 密文**（仅解密展示） | §4.7 |
+| `id_card_hash` | binary(32) | NULL, **唯一索引** `uk_id_card_hash` | **HMAC-SHA256+pepper 32 字节，不可逆**（原 `char(64)` 裸摘要已修正，身份证号强结构化可被穷举）。唯一索引实现「一证一号」实名去重；未实名用户该列为 NULL，MySQL 唯一索引允许多个 NULL 故不冲突 | §4.7 / §9.6 |
 | `id_card_last4` | char(4) | — | 后 4 位明文，供用户自查与客服核对 | §4.7 |
 | `default_radius` | enum | 1/3/5/10/city | 用户可保存的默认范围 | §3.6 / §9.3 |
 | `deactivate_at` | datetime | NULL | 注销发起时间，+7 天冷静期 | §3.7 |
+| `key_version` | tinyint | NOT NULL DEFAULT 0 | **加解密密钥版本号**（支持灰度轮换） | §4.7 / 数据库设计文档 §7.1 |
 | `created_at` / `updated_at` | datetime | — | — | — |
 
-- **对外视图 `user` 只允许输出**：`id`,`nickname`,`avatar_url`,`realname_status`,`qualification_badges[]`；`phone` / `real_name_enc` / `id_card_hash` **禁止出现在任何 API 响应中**（§9.6 数据最小化）。
+- **对外视图 `user` 只允许输出**：`id`,`nickname`,`avatar_url`,`realname_status`,`qualification_badges[]`；`phone_mask` / `real_name_enc` / `id_card_hash` **禁止出现在任何 API 响应中**（§9.6 数据最小化）。
+
+**`user_identity`**（2026-09-04 新增，Batch1 建表、Batch1 只写 `phone` 行）
+
+| 字段 | 类型 | 约束 | 说明 | 来源 |
+|---|---|---|---|---|
+| `id` | bigint | PK | — | — |
+| `user_id` | bigint | FK, 索引 | 指向 `user.id`；多条身份共用同一 `user_id` 即同一自然人 | §3.4.1 |
+| `identity_type` | enum | phone/wechat/apple | Batch1 只会出现 `phone`；`wechat`/`apple` 于 Batch2 打开 | §3.4.1 |
+| `identity_hash` | binary(32) | NOT NULL, UNIQUE 与 type 复合 | **HMAC-SHA256+pepper 32 字节**，承载唯一索引与等值查询（确定性，同明文同密文） | §4.7 / 数据库设计文档 §7.1 |
+| `identity_value_enc` | varbinary(255) | NOT NULL | **AEAD 密文**（AES-GCM-256 + 随机 IV），仅用于解密展示 | §4.7 |
+| `key_version` | tinyint | NOT NULL | 加解密密钥版本号（支持灰度轮换） | §4.7 |
+| `created_at` | datetime | — | 绑定时间 | — |
+
+- **2026-09-04 修正**：原 `identity_value varbinary 加密存储` 三要求（加密+唯一索引+等值查）在密码学上不可同时满足（AEAD 随机 IV 导致同明文异密文），改盲索引双列范式：`identity_hash` 承载唯一索引与等值查，`identity_value_enc` 仅展示。
+- 唯一索引 `uk_type_hash (identity_type, identity_hash)` —— 保证同一个微信 unionid 不会绑到两个账号。
+- 唯一索引 `uk_user_type (user_id, identity_type)` —— 保证一个账号在每种身份上至多一条，即「一个 `user_id` 有且仅有一条 `phone` 行」。
+- `identity_value_enc` **禁止出现在任何 API 响应中**，与 `user.phone_mask` 同级处置。
+- 注销清理按 `user_id` 删除本表**全部**行，不得只删 `phone` 行（§3.4.1 约束 3）。
+- HMAC 计算在 Java 应用层（`javax.crypto.Mac`），MySQL 无内置 HMAC；等值查以 `byte[]` 传 JDBC `setBytes`。
 
 **`post`**
 
@@ -2209,21 +2380,30 @@ POC 拆为**算法级（POC-A）与定标级（POC-B）两级**，二者回答�
 | `user_id` | bigint | FK, 索引 | 发布者 | — |
 | `type` | enum | resource/demand | 决定 Marker 实心/空心与详情标题区 | §5.7 |
 | `leaf_category_id` | int | FK, 索引 | 驱动模板与详情字段渲染 | §5.7 / §7.7 |
+| `l2_category_id` | int | **STORED 生成列**，索引 | **2026-09-04 修正**：由 `leaf_category_id DIV 100` 派生的 STORED 生成列，不可写，由 DDL 保证与 `leaf_category_id` 不漂移。**§6.12 Hard Filter 按二级过滤后为必需**。前提不变量：三级类目编号不得重排 | §6.12 第 14 条定案 / 数据库设计文档 §7.3 |
+| `grid_id` | varchar(24) | **冗余列**，索引 | 约 **500m** 网格 ID，由 `(lng,lat)` 写入时计算，**与 §6.10 缓存键坐标网格、`/map/pins` 入参 `grid_id` 同一套网格**。作用是把半径查询从范围条件降为等值集合 `grid_id IN (...)`，使其可与类目条件进同一 B-Tree（详见 §13.3）。**类型为 `varchar(24)` 而非 `int`**：编码形式是 `"{gx}_{gy}"` 字符串（如 `"26700_6727"`，负数保留 `-` 号），无法用整数列承载；算法（步长 `0.0045°`、原点 `(0,0)`、`floor` 取整）与 10 条带期望值的测试向量见架构 §7.1.1，服务端与客户端必须逐位一致。**实现采用整数微度域**：先将度值转为整数微度（`floor(x * 100000)`），再整除网格步长对应的整数 450，全程整数运算，不用浮点除法 | §6.10 / §12.3 / 架构 §7.1.1 |
 | `title` / `desc` | varchar / text | 非空 | 过敏感词双重校验 | §9.6 |
 | `price` | decimal(12,2) | NULL | 允许「面议」时为 NULL | §5.8 价格为空 |
 | `price_unit` | varchar(16) | — | 取模板 `price_units` 之一 | §5.7 |
-| `lng` / `lat` | decimal(10,6) | 索引（空间索引） | **GCJ-02，只存发布点不存轨迹** | §6.7 / §9.6 |
+| `lng` / `lat` | decimal(10,6) | 在 `idx_pins_cover` 覆盖索引内（非空间索引，理由见数据库设计文档 §4.2） | **GCJ-02，只存发布点不存轨迹** | §6.7 / §9.6 |
 | `address` | varchar | — | 到门牌号影响完整度档 | §9.8 |
 | `template_values` | json | — | 模板字段实际值 | §5.7 |
 | `contact_channel` | enum | phone/wechat | **二选一单轨** | §7.4.2 |
 | `contact_value_enc` | varbinary | **加密存储** | 仅 `/contact` 接口解密返回 | §9.6 |
-| `completeness_level` | enum | green/yellow/red | 三档分级结果 | §9.8 |
 | `completeness_conditions` | json | — | 三条件各自达成态（`required_full` / `address_precise` / `leaf_matched`），**档位＝三者达成计数**（3 个＝🟢 / 2 个＝🟡 / ≤1 个＝🔴），落库存条件而非加权分，便于「还差哪几项」逐项回显 | §9.8 唯一判定口径 |
+| `completeness_level` | tinyint | **STORED 生成列** | **2026-09-04 修正**：由三条件达成计数派生的 STORED 生成列，产出 `tinyint`（`0=红/1=黄/2=绿`），与 API 返回值同构，取数无需转换。原 `enum green/yellow/red` 已废弃 | §9.8 / 数据库设计文档 §7.3 |
 | `restricted` | bool | — | 未实名先发后审受限态 | §3.7 |
 | `status` | enum | draft/active/archived/hidden | 取值须与 §8.6 状态机严格一致；`hidden`＝24h 未实名自动隐藏（**不删除**，实名后可一键恢复） | §8.6 状态机 / §3.7 |
+| `status_reason` | tinyint | NULL | **2026-09-04 新增**：进入非 active 路径，`0=用户主动下架/1=到期自动下架/2=审核下架/3=成交`。§6.12 客观行为代理档位依赖 `status_changed_at - contact_event.created_at` | §6.12 / 数据库设计文档 §7.2 |
+| `status_changed_at` | datetime | NOT NULL DEFAULT CURRENT_TIMESTAMP | **2026-09-04 新增**：`status` 变更时刻，每次变更同步更新 | §6.12 |
+| `template_version` | int | NOT NULL | **2026-09-04 新增**：发布时模板版本号，模板改版不改变已发布帖语义 | §5.7 |
+| `version` | bigint | NOT NULL DEFAULT 0 | **2026-09-04 新增**（架构 §5.2 已定义）：MyBatis-Plus `@Version` 乐观锁字段，`post.status` 至少 3 条并发写路径（用户手动下架/定时到期/审核回写）必需 | 架构 §5.2 |
+| `key_version` | tinyint | NOT NULL | 联系方式 AEAD 密钥版本号 | §9.6 |
 | `expire_at` | datetime | 索引 | 默认 +7 天；连续 14 天未刷新自动下架为 `archived` | §5.11 有效期唯一口径 |
 | `risk_score` | smallint | 默认 0 | 累计 ≥60 自动下架 | §9.10.3 |
 | `created_at` / `updated_at` | datetime | — | — | — |
+
+- **写守卫分流**（数据库设计文档 §7.2）：用户意图写（`PATCH /posts/{id}/status`）用 `WHERE version = ?` 守卫，冲突返 `40903` 交由用户重试；系统派生写（定时任务、审核流转）用 `WHERE status IN (合法前驱集)` 守卫，非法流转表现为 0 行受影响、永不返 `40903`。`40903` 错误码定义见架构 §5.2.1。
 
 **`contact_event`**（北极星辅助指标唯一统计点）
 
@@ -2234,6 +2414,7 @@ POC 拆为**算法级（POC-A）与定标级（POC-B）两级**，二者回答�
 | `created_at` | datetime | 用于「发布后 30 分钟内」窗口判定 | §11 联系埋点 |
 
 - **表中只记录「联系动作是否发生」，禁止增加 `contacted_success` / `deal_done` 等字段** —— 与 §5.11「不做撮合反馈收集」、§6.12「不取撮合反馈」、§6.14「不做意向/成交两级」为同一红线。
+- **红线的边界**（2026-09-02 缺陷评审第 12 条）：本红线禁的是**向用户主动索取主观反馈**（弹窗问「成交了吗」）与**入库该类字段**，**不禁止从本表已有三字段离线推导客观行为标签**（如「联系后 24h 内发布者主动下架」「重复联系同一 post」）。合规的代理标签体系见 §6.12「客观行为代理档位」，配套反向哨兵见 §14.5。
 
 **`publish_memory`**
 
@@ -2252,41 +2433,199 @@ POC 拆为**算法级（POC-A）与定标级（POC-B）两级**，二者回答�
 | `need_cert` | varchar | 非空即高敏类目，发布前强制认证 | §5.7 |
 | `forbidden` | bool | 禁发类目（运营可配） | §9.6 |
 | `cluster_threshold` | tinyint | 差异化聚合阈值（工作 3 / 房屋 5 / 生活 8 / 车辆·服务 8） | §6.15 |
-| `version` | int | 全局分类树版本号，改配置即 +1 | §2 / §6.10 |
+| `sort_order` | int | 同级排序 | §2 |
+
+> **2026-09-04 修正**：`version` 列移出至新建 `system_config` 表的 `category_tree_version` 配置项（数据库设计文档 §3.15），不再以 74 行各存一份的形式存在。客户端 `GET /categories/tree` 响应 `version` 字段从 `system_config` 查询。三级类目编号即不变量，已发布编号不得重排（生成列 `post.l2_category_id` 派生的前提）。
 
 **`report`**
 
 | 字段 | 类型 | 说明 | 来源 |
 |---|---|---|---|
 | `post_id` / `reporter_id` | bigint | — | §7.7 |
-| `reason` | enum | 不实信息/诈骗/违规类目/骚扰/其他 | §7.7 |
+| `reported_user_id` | bigint | **2026-09-04 新增**：被举报发布者 user_id，用于按用户查举报历史 | §7.7 |
+| `reason` | enum | **取值为英文标识符**（DDL 真源）：`false_info`＝不实信息、`fraud`＝诈骗、`wrong_category`＝违规类目、`harassment`＝骚扰、`other`＝其他。中文仅为客户端展示文案，不入库 | §7.7 |
+| `description` | varchar(512) | 举报描述 | §7.7 |
+| `evidence` | json | **2026-09-04 新增**：举报凭证 media_ids 数组 | §7.7 |
 | `weight` | tinyint | 风险分权重，**运营可配** | §3.8 |
 | `is_false_report` | bool | 运营打标误报，**不计入累计风险分** | §9.7 |
+| `status` | enum | **2026-09-04 新增**：pending/handled/dismissed，默认 pending | §9.7 |
+| `handler_id` | bigint | **2026-09-04 新增**：处理人 user_id | §9.7 |
+| `handled_at` | datetime | **2026-09-04 新增**：处理时间 | §9.7 |
+| `created_at` | datetime | 举报时间 | §7.7 |
+
+**`template`**（2026-09-04 新造，Batch1）
+
+| 字段 | 类型 | 约束 | 说明 | 来源 |
+|---|---|---|---|---|
+| `id` | bigint | PK | — | — |
+| `leaf_category_id` | int | FK, 唯一索引 | 叶子类目 ID，与 `category` 表叶子节点 1:1 | §5.7 |
+| `fields` | json | NOT NULL | 动态表单 Schema（字段定义、校验规则、价格单位等） | §5.7 |
+| `template_version` | int | NOT NULL | 模板版本号，与 `post.template_version` 对齐；模板改版不改变已发布帖语义 | §5.7 |
+| `updated_at` | datetime | NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP | 模板更新时间 | — |
+
+- 唯一索引 `uk_leaf_category_id(leaf_category_id)` —— 叶子类目 1:1 模板。
+- 按 `leaf_category_id` 单查取模板，渲染发布表单与详情字段（§5.7）。
+- 模板版本号 `template_version` 与 `post.template_version` 对齐：已发布帖快照该版本号，模板后续改版不改变其渲染语义。
+
+**`post_media`**（2026-09-04 新造，Batch1，表名沿用 PRD 不用架构 §5.1 的 `media`）
+
+| 字段 | 类型 | 约束 | 说明 | 来源 |
+|---|---|---|---|---|
+| `id` | bigint | PK | — | — |
+| `post_id` | bigint | NULL, FK→`post.id` | 关联帖子 ID；未关联 post 时为孤儿 media（编辑态，OSS 两步直传登记落此表） | §6.7 / 架构 §2.1 |
+| `object_key` | varchar(128) | NOT NULL | OSS 对象键 | §6.7 |
+| `audit_status` | enum | NOT NULL DEFAULT 'pending' | pending/pass/reject，云端审核结果 | §9.6 |
+| `reject_reason` | varchar(64) | NULL | 审核拒绝原因，本人在编辑态可见 | §9.6 |
+| `content_type` | varchar(32) | NOT NULL | MIME 类型 | §9.6 |
+| `size_bytes` | int | NOT NULL | 文件字节数 | §9.6 |
+| `created_at` | datetime | NOT NULL DEFAULT CURRENT_TIMESTAMP | 创建时间 | — |
+
+- 索引 `idx_post_id_audit(post_id, audit_status)` —— 按 post 取已审核通过的 media；`idx_audit_status_created(audit_status, created_at)` —— 审核流转扫描。
+- **可见性**：`audit_status != pass` 的 `media_id` 不出现在任何**非本人**可见的响应里；本人在编辑态与"我的发布"中必须能看到 `pending`/`reject` 图位及拒绝原因（架构 §2.1）。
+- **EXIF 剥离**：上传时服务端强制剥离 GPS/设备/拍摄时间（§13.4 NFR）。
+- OSS 两步直传流程：客户端预登记→服务端发签名→客户端直传 OSS→回调登记 `object_key` 落此表（架构 §2.1）。
+
+**`favorite`**（2026-09-04 新造，Batch2 但本期建表）
+
+| 字段 | 类型 | 约束 | 说明 | 来源 |
+|---|---|---|---|---|
+| `id` | bigint | PK | — | — |
+| `user_id` | bigint | FK | 收藏者 user_id | §8.6 |
+| `post_id` | bigint | FK | 被收藏帖子 ID | §8.6 |
+| `created_at` | datetime | NOT NULL DEFAULT CURRENT_TIMESTAMP | 收藏时间 | — |
+| `deleted_at` | datetime | NULL | 软删时间，30 天后物删（供误删恢复） | §8.6 / §13.4 |
+
+- 索引 `uk_user_post(user_id, post_id)` UNIQUE —— 唯一性约束本体；`idx_user_deleted(user_id, deleted_at)` —— 按 user_id 查未删收藏列表；`idx_deleted_at(deleted_at)` —— 30 天物删定时任务扫描。
+- **唯一性**：由**物理唯一索引 `uk_user_post(user_id, post_id)`** 保证（不含 `deleted_at`，故一对 user-post 全生命周期只有一行），取消收藏置 `deleted_at`、重新收藏置回 `NULL`；service 层用 `INSERT ... ON DUPLICATE KEY UPDATE deleted_at = NULL` 一条语句完成「插入或复活」。原「service 层显式查重」方案在两请求并发时会双插，已于 2026-09-04 评审改为由数据库保证幂等。
+- **保留策略**：取消收藏记录保留 30 天软删，满 30 天物删（§13.4 NFR）。
+
+**`cert`**（2026-09-04 新造，Batch2 但本期建表）
+
+| 字段 | 类型 | 约束 | 说明 | 来源 |
+|---|---|---|---|---|
+| `id` | bigint | PK | — | — |
+| `user_id` | bigint | FK, 索引 | 申请人 user_id | §4.7 |
+| `cert_type` | enum | NOT NULL | personal_realname/personal_qualification/enterprise/vehicle | §4.7 |
+| `status` | enum | NOT NULL DEFAULT 'pending' | pending/approved/rejected/expired | §4.7 |
+| `submitted_at` | datetime | NOT NULL DEFAULT CURRENT_TIMESTAMP | 提交时间 | — |
+| `approved_at` | datetime | NULL | 审核通过时间 | — |
+| `expire_at` | datetime | NULL | 认证到期时间（资质类必填） | §4.7 |
+| `reject_reason` | varchar(256) | NULL | 审核拒绝原因 | §4.7 |
+| `ocr_image_ref` | varchar(128) | NULL | OCR 原始证照图 OSS 引用，**7 天后自动清理**（§13.4） | §4.7 / §9.6 |
+| `fail_count` | tinyint | NOT NULL DEFAULT 0 | 该用户该类型认证失败次数（防刷阈值依据） | §4.7 |
+| `lock_until` | datetime | NULL | 锁定到（失败超阈值后防刷锁定） | §4.7 |
+
+- 索引 `idx_user_type_status(user_id, cert_type, status)` —— 按用户查认证历史；`idx_status_submitted(status, submitted_at)` —— 审核待办扫描。
+- **与 `user.realname_status` 职责边界**：`user` 存最新聚合态（决定 §3.7 两档权限），`cert` 存每次申请记录（含拒绝历史）。
+- **OCR 图保留**：7 天后由 `cert` 域定时任务自动清理 OSS 对象并清空 `ocr_image_ref` 列（§13.4 NFR）。
+
+**`device`**（2026-09-04 新造，Batch1）
+
+| 字段 | 类型 | 约束 | 说明 | 来源 |
+|---|---|---|---|---|
+| `id` | bigint | PK | — | — |
+| `user_id` | bigint | FK, 索引 | 所属 user_id | §7.7 |
+| `fingerprint` | varchar(64) | NOT NULL, UNIQUE | 设备指纹（UUID，限频键，重装即变） | §7.7 |
+| `platform` | enum | NOT NULL | android/ios | §6.7 |
+| `push_token` | varchar(128) | NULL | 推送 token（FCM/APNs/小米/华为） | §6.14 |
+| `last_active_at` | datetime | NOT NULL DEFAULT CURRENT_TIMESTAMP | 最后活跃时间 | — |
+
+- 唯一索引 `uk_fingerprint(fingerprint)` —— 设备指纹唯一，作为联系限频的设备维键；`idx_user_id(user_id)` —— 按用户查设备列表；`idx_last_active_at(last_active_at)` —— 推送下发扫描活跃设备。
+- **双重职责**：`fingerprint` 做联系限频的设备维（§7.7 三维限频），`push_token` 做推送下发（架构 §2）。
+- **设备指纹不可信**：用户重装应用或清数据即得到新指纹，**只提高刷量成本，不构成安全边界**，因此三维限频中账号维与 IP 维不可因它而放宽（§7.7 采集红线）。
+- **采集红线**：禁止采集 IMEI、MAC、IDFA/OAID 等设备唯一标识（§7.7）。
+
+**`notification`**（2026-09-04 新造，Batch1）
+
+| 字段 | 类型 | 约束 | 说明 | 来源 |
+|---|---|---|---|---|
+| `id` | bigint | PK | — | — |
+| `user_id` | bigint | FK, 索引 | 接收者 user_id | §6.14 |
+| `type` | enum | NOT NULL | system/interaction/cert（对应三 Tab：系统/互动/认证） | §8.5 |
+| `title` | varchar(64) | NOT NULL | 通知标题 | — |
+| `summary` | varchar(256) | NULL | 通知摘要 | — |
+| `target_id` | bigint | NULL | 关联对象 ID（post/report/cert 等） | §6.14 |
+| `created_at` | datetime | NOT NULL DEFAULT CURRENT_TIMESTAMP | 创建时间 | — |
+| `read_at` | datetime | NULL | 已读时间，NULL 即未读 | — |
+| `deleted_at` | datetime | NULL | 软删时间 | — |
+
+- 索引 `idx_user_type_deleted_created(user_id, type, deleted_at, created_at)` —— 按用户按 Tab 分流取未删通知列表。
+- **三 Tab 分流**：`type=system` 系统通知 / `type=interaction` 互动通知（联系/收藏/举报回执）/ `type=cert` 认证通知（§8.5）。
+- 推送通道下发后，离线用户经 APNs/FCM/小米/华为推送，在线用户经站内通知兜底（§6.14）。
+
+**`audit_log`**（2026-09-04 新造，Batch1，180 天保留）
+
+| 字段 | 类型 | 约束 | 说明 | 来源 |
+|---|---|---|---|---|
+| `id` | bigint | PK | — | — |
+| `operator_id` | bigint | 索引 | 操作人 user_id（系统操作时为 `0`） | §9.10.1 |
+| `operator_role` | enum | NOT NULL | super_admin/admin/auditor/system | §9.10.1 |
+| `action` | varchar(64) | NOT NULL | 动作名（如 `post.archive`、`user.deactivate`、`cert.approve`） | §9.10.1 |
+| `target_type` | varchar(32) | NOT NULL | 目标对象类型（post/user/cert 等） | §9.10.1 |
+| `target_id` | bigint | NOT NULL | 目标对象 ID | §9.10.1 |
+| `before_value` | json | NULL | 变更前值快照 | §9.10.1 |
+| `after_value` | json | NULL | 变更后值快照 | §9.10.1 |
+| `reason` | varchar(256) | NULL | 操作理由（运营人工操作必填，系统操作可空） | §9.10.1 |
+| `created_at` | datetime | NOT NULL DEFAULT CURRENT_TIMESTAMP, 索引 | 操作时间 | — |
+
+- 索引 `idx_operator_created(operator_id, created_at)` —— 按操作人查历史；`idx_target_created(target_type, target_id, created_at)` —— 按目标对象追溯操作链。
+- **7 项审计字段口径**：PRD §9.10.1 已定义 operator_id/operator_role/action/target_type/target_id/before_value/after_value，本表落地（`reason` 为第 8 项扩展）。
+- **必留场景**：认证通过/驳回、内容下架/恢复、分类与模板变更、权重与开关变更、定向邀请、查看用户脱敏信息**必留**（§14.5）。
+- **保留策略**：≥180 天保留，仅超级管理员可查，导出需二次确认（§9.10.1 / §13.4 NFR）。
+
+**`system_config`**（2026-09-04 新建，Batch1）
+
+| 字段 | 类型 | 约束 | 说明 | 来源 |
+|---|---|---|---|---|
+| `id` | bigint | PK | — | — |
+| `config_key` | varchar(64) | NOT NULL, UNIQUE | 配置键 | §13.1 |
+| `config_value` | text | NOT NULL | 配置值 | §13.1 |
+| `description` | varchar(256) | NULL | 配置说明 | — |
+| `updated_at` | datetime | NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP | 更新时间 | — |
+| `version` | int | NOT NULL DEFAULT 0 | 乐观锁版本号，运营改配置时 `+1` 并经乐观锁守卫 | §9.10.1 |
+
+- 唯一索引 `uk_config_key(config_key)` —— 配置键唯一。
+- **承载分类树全局版本号**（R12 落地）：初始数据 `config_key='category_tree_version'`、`config_value='1'`。客户端 `GET /categories/tree` 响应 `version` 字段从此查询；运营改分类配置即 `+1` 并触发客户端 3 秒内拉到新版本号清缓存（§14.2）。
+- **未来扩展**：风控阈值、推送策略、AI 配额等系统级 key-value 配置。
+- **写入路径**：运营改配置走乐观锁守卫（`WHERE config_key=? AND version=?`），冲突返 `40903` 由运营重试；系统派生读不走乐观锁，直接按 `config_key` 等值查。
 
 ### 13.3 索引与查询要求
 
 | 查询场景 | 索引要求 | 来源 |
 |---|---|---|
-| 地图按半径取 Pin | `(lng,lat)` 空间索引 + `(leaf_category_id,type,status,expire_at)` 复合索引；**空间条件必须先行**否则半径查询退化全表 | §6.10 RT P95 ≤150ms |
-| 列表三种排序 | 距离＝空间索引；时效＝`(status,created_at)`；完整度＝`(status,completeness_level,created_at)` | §6.4.3 |
+| 地图按半径取 Pin | 候选索引 `(grid_id,leaf_category_id,type,status,expire_at)`；查询以 `grid_id IN (覆盖半径的网格集合)` 表达空间条件。**验收标准＝无全表扫描 + RT P95 ≤150ms**，最终列序以 `EXPLAIN` 实测为准（见下方说明） | §6.10 RT P95 ≤150ms |
+| **AI 匹配 Hard Filter** | `(city_id,l2_category_id,type,status,expire_at)` —— 对齐 §6.12 第 14 条定案的**二级**粒度；`l2_category_id` 为 §13.2 冗余列，**禁止在读路径上 join `category` 树上溯** | §6.12 |
+| 列表三种排序 | 距离＝以 `grid_id` 集合（视野内 9 格）经 `idx_pins_cover` 前缀过滤出候选集，再在**应用层**对候选集做 Haversine 距离计算与排序（**不使用空间索引**：`lng`/`lat` 为 `decimal(10,6)`，MySQL `SPATIAL` 索引仅支持 `GEOMETRY` 类型，且对 ORDER BY 距离场景本就不提供加速；理由与实测见数据库设计文档 §4.2）；时效＝`(status,created_at)`；完整度＝`(status,completeness_level,created_at)` | §6.4.3 |
 | 我的发布筛选 | `(user_id,status,created_at)` | §8.3.1 |
 | 到期自动下架扫描 | `(status,expire_at)`，定时任务按批扫描 | §5.8 |
 | 联系限频判定 | `contact_event(from_user_id,created_at)` + `device(fingerprint)` + IP 计数走缓存（**不落库计数**，避免热点行） | §7.7 三维限频 |
 | 北极星轴①统计 | `demand_push_sent` 与 `resource_detail_click` 埋点按 `post_id` 关联，5min 窗口 | §11 |
 
+**索引条款的边界（2026-09-02 缺陷评审第 14 条修正）**：
+
+本节**只规定验收标准，不规定执行计划**。原表述「空间条件必须先行，否则半径查询退化全表」已删除，原因有三：
+
+1. **自相矛盾**：该句要求空间条件先行，但同行给出的复合索引 `(leaf_category_id,…)` 最左列是类目。一个查询不可能既让空间索引先行、又让这条复合索引生效，二者互斥；
+2. **选择性判断反了**：5km 半径在城区可能圈住数万条，而单个二级类目全城仅数百条（§2.4 共 21 个二级）。**类目条件的选择性远高于空间条件**，强制空间先行反而更慢；
+3. **越界**：执行计划是优化器职责，PRD 规定它会在数据分布变化后失效，且无法验证。
+
+因此改为：给出候选索引 + 明确验收口径（**无全表扫描 + RT P95 ≤150ms**），由研发以 `EXPLAIN` 实测确定最终列序。**若实测不达标，按 §14.1 尾注纪律处理——不得下调本批次 SLA，只能调整下一批次目标。**
+
 ### 13.4 数据保留与删除策略
 
-| 数据 | 保留期 | 处置 | 来源 |
-|---|---|---|---|
-| OCR 原始证照图 | **7 天** | 加密存储，到期自动删除 | §4.7 / §9.6 |
-| 中转脱敏日志 | **30 天** | 自动清理 | §7.4.2 触达埋点 |
-| 取消收藏记录 | **30 天** | 软删，供误删恢复 | §8.6 实现逻辑 |
-| 发布记忆 | **180 天** | >30 天提示、>180 天清空 | §5.8 |
-| 注销账号 | **7 天** | 冷静期内可撤回，撤回后数据原封不动 | §3.7 / §9.7 |
-| 已下架/过期 `post` | 保留 | `status` 置位，**不物理删除**（收藏与申诉需可追溯） | §7.8 / §9.6 |
-| 审计留痕 `audit_log` | **≥180 天** | 仅超级管理员可查，导出需二次确认 | §9.10.1 审计留痕 |
-| 图片 EXIF | 不保留 | 上传后服务端**强制剥离** GPS/设备/拍摄时间 | §9.6 媒体元数据剥离 |
-| 用户位置轨迹 | 不采集 | 只存发布时选择的经纬度点 | §9.6 |
+| 数据 | 保留策略键 | 保留期 | 处置 | 来源 |
+|---|---|---|---|---|
+| OCR 原始证照图 | `ocr_image_7d` | **7 天** | 加密存储，到期自动删除 | §4.7 / §9.6 |
+| 中转脱敏日志 | `transit_log_30d` | **30 天** | 自动清理 | §7.4.2 触达埋点 |
+| 取消收藏记录 | `favorite_deleted_30d` | **30 天** | 软删，供误删恢复 | §8.6 实现逻辑 |
+| 发布记忆 | `publish_memory_180d` | **180 天** | >30 天提示、>180 天清空 | §5.8 |
+| 注销账号 | `deactivate_7d` | **7 天** | 冷静期内可撤回，撤回后数据原封不动 | §3.7 / §9.7 |
+| 已下架/过期 `post` | `post_archived_keep` | 保留 | `status` 置位，**不物理删除**（收藏与申诉需可追溯） | §7.8 / §9.6 |
+| 审计留痕 `audit_log` | `audit_log_180d` | **≥180 天** | 仅超级管理员可查，导出需二次确认 | §9.10.1 审计留痕 |
+| 图片 EXIF | `exif_strip` | 不保留 | 上传后服务端**强制剥离** GPS/设备/拍摄时间 | §9.6 媒体元数据剥离 |
+| 用户位置轨迹 | `location_no_collect` | 不采集 | 只存发布时选择的经纬度点 | §9.6 |
+
+- **「保留策略键」列是 CI 门禁的比对键**（Batch1 R17）：`RetentionRuleRegistry` 注册的 key 集合须与本列逐值相等，任一侧改动而另一侧未跟进则 `RetentionRuleCoverageTest` 构建失败。
 
 ---
 
@@ -2294,25 +2633,31 @@ POC 拆为**算法级（POC-A）与定标级（POC-B）两级**，二者回答�
 
 ### 14.1 性能
 
+> **数字真源约定（2026-09-02 缺陷评审第 11 条定案）**：本节及 §6.10 / §6.15 / §12.1 / §12.4 / §0.2 中的 NFR 数字常量，代码侧集中落于 `lib/nfr_constants.dart`，**值以该文件为准**，消费方一律引用而不复制字面量。
+>
+> **改动纪律**：任一常量改动**必须同时改本 PRD 对应行与该文件**，缺一即视为未改 —— 否则真源变成两个，比没有真源更糟（两处都"看起来是权威"）。
+>
+> **为何本期手写而不上生成脚本**：21 项常量中 18 项当前尚无代码消费方（缓存层、埋点层、接口层未实现），写 Markdown 表格解析器不划算。Batch2 接口面变宽后，照 `design_tokens.dart` 那套上生成脚本 + 断言校验（参照 `prototype-figma/export-dart-tokens.js` + `probe-token-vars.py`）。
+
 | 指标 | 目标 | 判定口径 | 来源 |
 |---|---|---|---|
 | 分类图层切换 | **P95 ≤300ms** | 四段之和（缓存查找 + 网络 + Dart 聚合 + Pin 渲染），4G 及以上网络统计 | §6.10 |
 | 读接口 RT | **P95 ≤150ms** | 未命中缓存时的服务端响应，单列上报 | §6.10 |
 | 预渲染 | 5 大类聚合 Marker **1000 条内 ≤50ms** | 冷启动后台一次性完成 | §6.10 第 1 层 |
 | 帧渲染 | **≤16ms**（60fps） | POC 三机型实测 | §6.10.1 |
-| 地图取数体积 | 单次 **≤10KB** | 按需取数每请求 | §6.10 第 2 层 |
-| 单次渲染上限 | 500 Pin | 超出强制聚合 | §6.7 / §6.8 |
+| 地图取数体积 | 单次 **≤10KB（压缩后）** / 原始 ≤24KB | 按需取数每请求，强制 gzip；紧凑数组格式见 §12.3 | §6.10 第 2 层 + 评审第 4 条 |
+| 单次渲染上限 | 500 Pin | 超出强制聚合；聚合归属按 `zoom` 切换（§12.3） | §6.7 / §6.8 |
 | 双向推送时延 | 发布后 **1min 内**触达 Top20/Top30 | 需求推 Top20 资源方 / 资源推 Top30 需求方 | §6.14 |
 
-- **P95≤300ms 须经 §6.10.1 的 Batch1 前置 1 天 POC 验证后才成为对外承诺**；POC 不通过则渲染上限下调至 500 Pin 并按实测值改写 SLA，同步修订 §0.2 北极星第二轴基准；
-- **降级开关**（预留不实施）：连续 3 次帧渲染 >16ms 或 P95 >800ms → 关聚合动画 + 上限降 500 Pin + toast「当前区域信息较多，已开启性能模式」（§6.10.1）。
+- **P95≤300ms 须经 §6.10.1 的 Batch1 前置 1 天 POC 验证后才成为对外承诺**；POC 不通过时**不得下调本批次目标、不得按实测改写 SLA**，只能调整下一批次的阶段目标（见 §0.2 轴② 阶梯）——「按实测改写 SLA」等于让 SLA 可被结果反向修改，那就不是约束（2026-09-02 缺陷评审第 13 条定案）；亦不得下调 Pin 上限，§6.10.1 已明确该方向错误（掩盖根因）；
+- **降级开关**（预留不实施）：连续 3 次帧渲染 >16ms 或 P95 >800ms → 按 §14.2「服务降级次序」**逐级**触发，不打包同时降（2026-09-02 缺陷评审第 10 条定案）；且删去「上限降 500 Pin」这一动作——它等于常态值，降级等于没做。
 
 ### 14.2 可用性与容量
 
 | 项 | 规格 | 依据 |
 |---|---|---|
 | 交付形态 | 内测包（蒲公英 / TestFlight），真实后端 + 真实数据 | 说明文档 §1.3 交付基线 |
-| 容量基线 | 按**单城试点**规模设计，不做多城分片；扩城前须重估空间索引与聚合策略 | 说明文档 M8 单城试点 |
+| 容量基线 | 按**单城试点**规模设计，不做多城分片；扩城前须重估网格划分与聚合策略 | 说明文档 M8 单城试点 |
 | 本地缓存容量 | 单设备最多 50 个缓存键，超出按 LRU 淘汰 | §6.10 |
 | 缓存 TTL | 大类 1h / 二级 15min / 三级 5min | §6.10 |
 | 配置生效 | 运营改分类配置 → 客户端 **3 秒内**拉到新版本号并清缓存 | §9.10.1 |
@@ -2331,6 +2676,8 @@ POC 拆为**算法级（POC-A）与定标级（POC-B）两级**，二者回答�
 | 反爬限频 | 账号 30 / 设备 30 / IP 100（每日，三维同时生效，任一超限即拒） | §7.7 |
 | 熔断 | 单账号 1min ≥10 次拉取 → 当日冻结 + 进风控待审 | §7.7 |
 | 未登录 | 一律不可拉取完整号码（使换 IP 无法绕过账号维度） | §7.7 |
+| **位置精度** | **明确不做坐标模糊化**：坐标按用户选点原样存储与返回（`/map/pins` 的 5 位小数是体积优化，非隐私措施），`address` 保留门牌号精度。理由：🟢 完整档以「位置到门牌号」换 ×2 曝光（§9.8），`address` 明文照原样返回，坐标即使模糊到 500m 也挡不住任何人 —— **半吊子模糊化会同时损失产品价值与隐私保护，是最坏结果**。保护手段改为下一行的知情告知 + §12.3 的详情页限频 | 2026-09-06 安全方案 G2 裁定 |
+| **位置知情告知** | 因不做模糊化，**必须在两处显式告知**：① 地图选点页与完整度引导文案须写明「门牌号将对所有看到这条信息的人可见」，不得只写「附近更多人看到」；② 隐私政策（P6）须列明「精确位置（含门牌号）会向其他用户公开展示」。**这是 PIPL 告知同意在位置数据上的唯一落点** | 2026-09-06 安全方案 G2 裁定 |
 | 内容安全 | 敏感词本地 + 云端双重；图片云端审核（涉黄/涉政/广告）；禁发类目强制拦截 | §9.6 |
 | AI 幻觉防御 | Scope 四步管线 + 生成内容与源交叉比对 + 1% 抽审 + SimHash 去重 | §5.10 严格 Scope 四步管线 |
 | 地图合规 | **先弹隐私协议获同意，再调 `AMapInitializer.updatePrivacyAgree`**，未同意不初始化地图 | §6.7 |
@@ -2356,8 +2703,9 @@ POC 拆为**算法级（POC-A）与定标级（POC-B）两级**，二者回答�
 | 项 | 规格 | 来源 |
 |---|---|---|
 | 性能日志 | 图层切换耗时 + FPS + 内存峰值三项实时上报，**P95>300ms 自动告警** | §6.10.1 兜底方案 1 |
-| 链路标识 | 每请求 `request_id` 贯穿客户端日志与服务端日志，UI 报错须回显 | §12.1 |
+| 链路标识 | **两个标识分工，不混用**（§12.1）：`interaction_id` 客户端生成、贯穿一次交互的四段（缓存/网络/聚合/渲染），经 `X-Interaction-Id` 请求头透传至服务端并单列入访问日志；`request_id` 服务端生成、覆盖服务端处理侧，且是 UI 报错唯一回显值。**未命中缓存的会话两者可 join；命中缓存的会话无 `request_id`，仅客户端埋点侧可见，此为预期行为** | §12.1 / 2026-09-02 评审第 2 条 |
 | 北极星采集 | 三轴各自可独立采集并计算乘积（≥0.216） | §0.2 / §11 |
+| **轴① 反向哨兵** | 两项与轴① 一同上看板：①「联系后 7 天内该资源方被举报数」；②「同一资源方被重复联系但无任何用户二次联系的占比」。**若此二项随轴① 上升而同步上升，即判定模型朝「更易被点」而非「更易成交」跑偏**，触发标签体系复审 | 2026-09-02 评审第 12 条；数据取 §13.2 `report` 表 + `contact_event`，零新增采集 |
 | 上线后复测 | 上线第一周复测实网 P95，不达标则启用降级开关 | §6.10.1 假设 A8 |
 | 审计留痕 | 认证通过/驳回、内容下架/恢复、分类与模板变更、权重与开关变更、定向邀请、查看用户脱敏信息**必留**，≥180 天 | §9.10.1 审计留痕 |
 

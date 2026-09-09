@@ -1,0 +1,2653 @@
+# =============================================================================
+# S2S（Supply-to-Supply 本地供需撮合）API 接口契约
+# -----------------------------------------------------------------------------
+# 规格版本：OpenAPI 3.0.3
+# 唯一口径源：
+#   - docs/PRD.md §12（接口需求，错误码表以 §12.5 为准）
+#   - docs/architecture/系统总体架构设计文档.md §6（接口契约落地）、§9（接口批次矩阵）
+#   - docs/architecture/可观测性架构方案.md §4（埋点事件）
+#   - docs/database/数据库设计文档.md + docs/database/ddl/V1__init_schema.sql（字段类型）
+#   - lib/nfr_constants.dart（性能与容量常量，禁止在本文件复制字面量含义）
+#
+# 批次约定（x-batch 扩展字段）：
+#   Batch1 = 2026-09-30 内测包范围，共 20 个业务接口 + 1 个埋点接口 /track/events（另计）
+#   Batch2 / Batch3 = 后续批次，本文件仅以 x-batch 标注占位，未展开出入参
+#
+# 全局纪律（对所有接口生效，不在每个接口重复声明）：
+#   1. 统一响应包：任何 HTTP 状态码下响应体均为 {code, message, data, request_id}
+#   2. code=0 表示成功；非 0 时 data 为 null，message 为可直接呈现的中文文案
+#   3. request_id 由服务端生成，是 UI 报错唯一回显值；缓存命中时不存在（预期行为）
+#   4. 所有写接口必须携带 Idempotency-Key 请求头，24h 内重复 Key 返回首次结果
+#   5. 时间统一 RFC3339 UTC（形如 2026-09-30T12:00:00Z）；坐标统一 GCJ-02
+#   6. 响应强制 gzip；全站无 multipart（图片走 OSS 两步式直传）
+# =============================================================================
+
+openapi: 3.0.3
+
+info:
+  title: S2S 本地供需撮合平台 API
+  version: 1.0.0-batch1
+  description: |
+    ## 1. 基础约定
+
+    | 项 | 口径 |
+    | --- | --- |
+    | 基址 | `https://<自有域名>/api/v1` |
+    | 时间格式 | RFC3339 UTC，例 `2026-09-30T12:00:00Z` |
+    | 坐标系 | GCJ-02（火星坐标），经纬度均保留 5 位小数 |
+    | 分页 | `page` 从 1 起，`page_size` 默认 20、上限 50 |
+    | 压缩 | 响应强制 gzip |
+    | 文件上传 | 无 multipart，统一 OSS 两步式直传（ticket + commit） |
+
+    ## 2. 统一响应包
+
+    ```json
+    { "code": 0, "message": "ok", "data": { }, "request_id": "req_7f3a..." }
+    ```
+
+    - `code`：业务码，`0` 为成功，非 0 见错误码表；**前 3 位与 HTTP 状态码对齐**
+    - `message`：中文文案，非 0 时可直接呈现给用户
+    - `data`：成功时为业务负载，失败时恒为 `null`
+    - `request_id`：服务端生成的请求标识，是 UI 报错时唯一回显值
+
+    ## 3. 错误码表（25 个 code：成功码 1 个 + 错误码 24 个）
+
+    | code | HTTP | 含义 | 用户可见 | Retry-After |
+    | --- | --- | --- | --- | --- |
+    | 0 | 200 | 成功 | - | - |
+    | 40001 | 400 | 参数缺失或非法 | 是 | - |
+    | 40002 | 400 | 未勾选用户协议与隐私政策 | 是 | - |
+    | 40101 | 401 | 未登录或登录态失效 | 是（静默续期） | - |
+    | 40105 | 401 | 验证码连续错误，登录锁定 15 分钟 | 是 | 是 |
+    | 40301 | 403 | 未实名，今日详情浏览额度已用尽 | 是 | - |
+    | 40302 | 403 | 高敏类目需先完成资质认证 | 是 | - |
+    | 40303 | 403 | 该类目当前禁止发布 | 是 | - |
+    | 40304 | 403 | 未实名用户发布数量已达上限 | 是 | - |
+    | 40305 | 403 | 无权限访问该资源（后台 RBAC 越权，含读与写） | 是（**后台专用**，App 端不返回） | - |
+    | 40901 | 409 | 内容命中敏感词 | 是 | - |
+    | 40902 | 409 | 图片未通过审核 | 是 | - |
+    | 40903 | 409 | 数据已被其他操作修改（乐观锁冲突） | 是 | - |
+    | 41001 | 410 | 帖子已下架或已过期 | 是 | - |
+    | 42901 | 429 | AI 生成配额已用尽 | 是 | 是 |
+    | 42902 | 429 | 联系次数超出每日限额 | 是 | 是 |
+    | 42903 | 429 | 异常操作已触发熔断，当日冻结 | 是 | 是 |
+    | 42904 | 429 | 推送频次受限 | 是 | 是 |
+    | 42905 | 429 | 验证码发送过于频繁 | 是 | 是 |
+    | 42906 | 429 | 埋点上报频次受限 | **否**（唯一不向用户呈现） | 是 |
+    | 42907 | 429 | 未登录详情浏览超限（设备 30 / IP 100 每日） | 是（提示附登录入口） | 是 |
+    | 50001 | 500 | 服务内部错误 | 是 | - |
+    | 50301 | 503 | AI 服务暂不可用 | 是 | - |
+    | 50302 | 503 | 认证服务暂不可用 | 是 | - |
+    | 50303 | 503 | 地图定位服务暂不可用 | 是 | - |
+
+    **`Retry-After` 响应头**：`42901`–`42907` 与 `40105` 必须回剩余秒数（整数秒）。
+
+    ## 4. 客户端错误码行为四分类
+
+    | 类别 | code | 客户端行为 |
+    | --- | --- | --- |
+    | 可自动重试 | `50001` `50301` `50302` `50303` + 网络超时 | **总共**最多 2 次，退避 1s / 2s，叠加 ±20% 抖动 |
+    | 不可自动重试（须提示） | `42901`–`42905`、`42907` | 按 `Retry-After` 提示，不自动发起；`42907` 的提示须附登录入口 |
+    | 静默退回队列 | `42906` | 埋点事件按 `Retry-After` 退回队列头部，不提示用户 |
+    | 强制重取 | `40903` | 不自动重试，但必须强制重新拉取最新数据后由用户重试 |
+    | 确定性失败 | `40001` `40002` `40105` `40301`–`40305` `40901` `40902` `41001` | 直接呈现 `message`，不重试 |
+
+    ## 5. `40101` 单飞续期时序（客户端强约束）
+
+    1. 任一请求收到 `40101` → 暂停全部 in-flight 请求与新发请求
+    2. 单飞调用 `POST /auth/token/refresh`（并发场景下**实际调用次数必须等于 1**）
+    3. 成功 → 重放挂起请求，且 **沿用原 `X-Interaction-Id` 与 `Idempotency-Key`（逐字相同）**
+    4. 失败 → 清空本地会话并跳转登录页
+
+    单 Token 模型，有效期 30 天；客户端**不依赖本地过期判断**，一律以服务端 `40101` 为触发源。
+
+    ## 6. 时钟不一致口径
+
+    | 场景 | 以谁为准 |
+    | --- | --- |
+    | 登录态是否过期 | 服务端 |
+    | 幂等 24h 窗口 | 服务端收到请求的时间 |
+    | 帖子有效期倒计时 | 允许本地时间（仅用于文案展示） |
+    | 埋点事件 `ts` | 客户端采集时刻 |
+
+  contact:
+    name: S2S 服务端
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://api.example.com/api/v1
+    description: 生产环境（域名以实际备案域名替换）
+  - url: http://localhost:8080/api/v1
+    description: 本地开发环境
+
+tags:
+  - name: auth
+    description: 鉴权与账号（功能域 auth）
+  - name: category
+    description: 分类与模板（功能域 category）
+  - name: post
+    description: 发布与媒体（功能域 post）
+  - name: map
+    description: 首页地图与列表（功能域 map）
+  - name: contact
+    description: 详情联系与举报（功能域 contact）
+  - name: cert
+    description: 实名与资质认证（功能域 cert，Batch2）
+  - name: ai
+    description: T2 AI 辅助（功能域 ai，Batch2）
+  - name: notify
+    description: 通知与推送（功能域 notify）
+  - name: track
+    description: 埋点上报（功能域 common）
+
+security:
+  - bearerAuth: []
+
+paths:
+
+  # ===========================================================================
+  # 分组一：鉴权与账号（共 9 个接口，Batch1 覆盖 6 个）
+  # ===========================================================================
+
+  /auth/sms/send:
+    post:
+      tags: [auth]
+      summary: 发送短信验证码
+      operationId: sendSmsCode
+      x-batch: Batch1
+      x-domain: auth
+      security: []
+      description: |
+        **限频（超限回 `42905`，并携带 `Retry-After`）**：
+
+        | 维度 | 阈值 |
+        | --- | --- |
+        | 同手机号 | 1 分钟 1 条 / 1 小时 5 条 / 1 天 10 条 |
+        | 同 IP | 1 小时 20 条 |
+
+        限频维度为「渠道级」，保留手机号维度（不使用 `user_id`，此时尚未登录）。
+        计数键存 Redis，允许丢失。
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/XDeviceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone, scene]
+              properties:
+                phone:
+                  type: string
+                  pattern: '^1[3-9]\d{9}$'
+                  description: 中国大陆手机号，11 位
+                  example: '13800138000'
+                scene:
+                  type: string
+                  enum: [login]
+                  description: 验证码场景。Batch1 仅 login
+      responses:
+        '200':
+          description: 发送成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          expire_in:
+                            type: integer
+                            description: 验证码有效期（秒）
+                            example: 300
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /auth/sms/login:
+    post:
+      tags: [auth]
+      summary: 短信验证码登录（含首次注册）
+      operationId: smsLogin
+      x-batch: Batch1
+      x-domain: auth
+      security: []
+      description: |
+        - 手机号不存在则自动注册，`is_new_user=true`
+        - **必须勾选协议**：`agreed=false` 或缺失回 `40002`
+        - **连续 5 次验证码错误锁定 15 分钟**，回 `40105` 并携带 `Retry-After`
+        - 登录成功写 `device` 表（以 `X-Device-Id` 为指纹），设备指纹**明确不可信**，
+          禁止采集 IMEI / MAC / IDFA / OAID
+        - 单 Token 模型，有效期 30 天
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/XDeviceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone, code, agreed]
+              properties:
+                phone:
+                  type: string
+                  pattern: '^1[3-9]\d{9}$'
+                  example: '13800138000'
+                code:
+                  type: string
+                  pattern: '^\d{6}$'
+                  description: 6 位数字验证码
+                  example: '123456'
+                agreed:
+                  type: boolean
+                  description: 是否已勾选《用户协议》与《隐私政策》。false 或缺失回 40002
+                platform:
+                  type: string
+                  enum: [android, ios]
+                  description: 客户端平台，用于写 device 表
+                push_token:
+                  type: string
+                  maxLength: 128
+                  description: 推送 token，可空
+      responses:
+        '200':
+          description: 登录成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/LoginResult'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /auth/token/refresh:
+    post:
+      tags: [auth]
+      summary: 续期登录态（单飞调用）
+      operationId: refreshToken
+      x-batch: Batch1
+      x-domain: auth
+      description: |
+        由客户端在收到任意 `40101` 后**单飞**调用（并发场景实际调用次数必须等于 1）。
+        请求需携带当前（已失效）Token 于 `Authorization` 头。
+        续期失败（返回 `40101`）时客户端必须清空会话并跳转登录页。
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/XDeviceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: 续期成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          token:
+                            type: string
+                            description: 新的 JWT
+                          expire_at:
+                            type: string
+                            format: date-time
+                            description: 新 Token 到期时间（服务端为准）
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: 退出登录
+      operationId: logout
+      x-batch: Batch1
+      x-domain: auth
+      description: 服务端使当前 Token 失效并清理该设备的 push_token；客户端同步清空本地会话与全部 Pin 缓存。
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/XDeviceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: 退出成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        nullable: true
+                        example: null
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /users/me:
+    get:
+      tags: [auth]
+      summary: 获取当前用户资料
+      operationId: getMyProfile
+      x-batch: Batch1
+      x-domain: auth
+      description: |
+        **对外视图白名单**（数据库设计文档 §3.1）：仅可返回
+        `id` / `nickname` / `avatar_url` / `realname_status` / `qualification_badges[]`
+        （本接口为本人视角，额外附 `default_radius` / `phone_mask`）。
+
+        `real_name_enc`、`id_card_hash` 等敏感列**禁止出现在任何 API 响应中**。
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/XDeviceId'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/MyProfile'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    patch:
+      tags: [auth]
+      summary: 更新当前用户资料
+      operationId: updateMyProfile
+      x-batch: Batch1
+      x-domain: auth
+      description: 局部更新，仅提交需变更字段。昵称命中敏感词回 `40901`；头像 `media_id` 未过审回 `40902`。
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/XDeviceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              minProperties: 1
+              properties:
+                nickname:
+                  type: string
+                  minLength: 1
+                  maxLength: 20
+                avatar_media_id:
+                  type: string
+                  description: 已 commit 且 audit_status=pass 的媒体 ID
+                default_radius:
+                  $ref: '#/components/schemas/RadiusEnum'
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/MyProfile'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /users/me/deactivate:
+    post:
+      tags: [auth]
+      summary: 申请注销账号（进入冷静期）
+      operationId: deactivateAccount
+      x-batch: Batch2
+      x-domain: auth
+      description: 占位。Batch2 交付，冷静期到期后由定时任务按 user_id 删除全部身份行。
+      responses:
+        '200': { description: 占位，Batch2 交付 }
+
+  /users/me/devices:
+    post:
+      tags: [auth]
+      summary: 上报/更新设备推送 token
+      operationId: upsertDevice
+      x-batch: Batch2
+      x-domain: auth
+      description: 占位。Batch2 交付，与双向推送下发能力配套。
+      responses:
+        '200': { description: 占位，Batch2 交付 }
+
+  /users/{user_id}:
+    get:
+      tags: [auth]
+      summary: 查看他人公开资料
+      operationId: getUserPublicProfile
+      x-batch: Batch2
+      x-domain: auth
+      description: |
+        占位。Batch2 交付。出参严格遵循 `user` 对外视图白名单：
+        `id` / `nickname` / `avatar_url` / `realname_status` / `qualification_badges[]`。
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        '200': { description: 占位，Batch2 交付 }
+
+  # ===========================================================================
+  # 分组二：分类与模板（共 2 个接口，全部 Batch1）
+  # ===========================================================================
+
+  /categories/tree:
+    get:
+      tags: [category]
+      summary: 拉取分类树全量数据
+      operationId: getCategoryTree
+      x-batch: Batch1
+      x-domain: category
+      security: []
+      description: |
+        ### 版本协商
+
+        - 版本号格式为 **`YYYY-MM-DD.N` 字符串**（如 `2026-08-31.1`），
+          同日再改递增 `N`，跨日重置为当日日期 `.1`；字符串比较即可判新旧
+        - 客户端传入本地 `version`，若与服务端一致：**返回 HTTP 200 + `code=0` + `data=null`**
+          （表达 304 语义，**不是真 304 状态码**），客户端沿用本地缓存
+        - 若不一致：返回全量分类树，客户端替换本地数据并**清空全部本地 Pin 缓存**
+        - 版本不一致**永不报错**、不阻塞、不强升，不回 `40001`
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - name: version
+          in: query
+          required: false
+          description: 客户端本地分类树版本号，缺省表示强制全量拉取
+          schema:
+            $ref: '#/components/schemas/CategoryVersion'
+      responses:
+        '200':
+          description: |
+            成功。`data` 为 `null` 时表示版本未变（304 语义），客户端沿用本地缓存。
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        nullable: true
+                        allOf:
+                          - $ref: '#/components/schemas/CategoryTree'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /templates/{leaf_category_id}:
+    get:
+      tags: [category]
+      summary: 获取叶子类目的发布模板
+      operationId: getTemplate
+      x-batch: Batch1
+      x-domain: category
+      description: |
+        返回该叶子类目的字段模板定义，驱动客户端动态表单渲染。
+        模板字段的 `required` 标记同时是 `post.attributes` 完整度判定
+        （`required_full`）的依据。
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - name: leaf_category_id
+          in: path
+          required: true
+          description: 叶子类目 ID（L3）。非法或不存在回 40001
+          schema: { type: integer, format: int32, example: 10101 }
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Template'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  # ===========================================================================
+  # 分组三：发布与媒体（共 11 个接口，Batch1 覆盖 7 个）
+  # ===========================================================================
+
+  /media/upload/ticket:
+    post:
+      tags: [post]
+      summary: 申请 OSS 直传票据（两步式第 1 步）
+      operationId: createUploadTicket
+      x-batch: Batch1
+      x-domain: post
+      description: |
+        ### OSS 两步式直传的七条安全约束
+
+        1. 客户端**不持有任何长期密钥**，仅拿到短时效的直传签名
+        2. OSS 桶**不开公共读**，下发的 `url` 为带签名的临时访问地址
+        3. **原图删除与 `commit` 在同一事务内同步完成**（不走异步补偿）
+        4. 不挂 CDN；若挂则必须禁用图片处理过滤参数
+        5. `media_id` 与 OSS 对象名（`object_key`）**均由服务端生成**，客户端不可指定
+        6. OSS 侧强制 `content-length-range` 与 `content-type` 白名单，
+           `commit` 时服务端**二次校验**实际对象的大小与类型
+        7. 以 OSS 回调为 `commit` 的触发源；24h 未 `commit` 的 pending 记录由定时任务清理；
+           `commit` 成功后对象**不可覆写**
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/XDeviceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [filename, size, content_type]
+              properties:
+                filename:
+                  type: string
+                  maxLength: 128
+                  description: 原始文件名，仅用于记录与后缀推断，不作为对象名
+                  example: IMG_0421.jpg
+                size:
+                  type: integer
+                  format: int32
+                  description: 文件字节数。超出 OSS content-length-range 上限回 40001
+                  example: 1843200
+                content_type:
+                  type: string
+                  description: MIME 类型，须在服务端白名单内
+                  enum: [image/jpeg, image/png, image/webp]
+      responses:
+        '200':
+          description: 票据签发成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/UploadTicket'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /media/{media_id}/commit:
+    post:
+      tags: [post]
+      summary: 确认媒体上传完成（两步式第 2 步）
+      operationId: commitMedia
+      x-batch: Batch1
+      x-domain: post
+      description: |
+        ### `audit_status` 三态双视角
+
+        | 状态 | 本人视角 | 他人视角 |
+        | --- | --- | --- |
+        | `pending` | 展示「审核中」，**允许提交发布** | **不下发** |
+        | `pass` | 正常展示 | 正常展示 |
+        | `reject` | 可见 `reject_reason`，可替换重传 | **不下发** |
+
+        **硬规则**：`audit_status != pass` 的 `media_id`
+        不得出现在任何**非本人**可见的响应中。
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/XDeviceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - name: media_id
+          in: path
+          required: true
+          schema: { type: string, example: mda_9c1f4e7b2a }
+      responses:
+        '200':
+          description: 确认成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/MediaCommitResult'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /posts/precheck:
+    post:
+      tags: [post]
+      summary: 发布前置校验（不落库）
+      operationId: precheckPost
+      x-batch: Batch1
+      x-domain: post
+      description: |
+        在用户点击「发布」之前提前暴露阻断项，避免填完长表单才报错。
+        校验项与 `POST /posts` 完全一致但**不写库**：
+        敏感词（`40901`）、图片过审（`40902`）、类目禁发（`40303`）、
+        高敏类目资质（`40302`）、未实名发布上限（`40304`）。
+
+        校验通过时 `data.passed=true`；发现问题时**仍返回 200 + code=0**，
+        由 `data.blocks[]` 列出全部阻断项（一次性给全，不逐条打断用户）。
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/XDeviceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostDraft'
+      responses:
+        '200':
+          description: 校验完成（通过或存在阻断项均为 200/code=0）
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PrecheckResult'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /posts:
+    post:
+      tags: [post]
+      summary: 发布帖子（资源或需求）
+      operationId: createPost
+      x-batch: Batch1
+      x-domain: post
+      description: |
+        ### 落库派生字段（客户端不可传，传了也被忽略）
+
+        | 字段 | 派生方式 |
+        | --- | --- |
+        | `l2_category_id` | STORED 生成列 `leaf_category_id DIV 100` |
+        | `completeness_level` | STORED 生成列，由 `required_full` / `address_precise` / `leaf_matched` 三条件达成数映射：3→2、2→1、其他→0 |
+        | `grid_id` | 服务端按 0.0045° 步长算法计算 |
+        | `expire_at` | 发布时间 + 有效天数（见 lib/nfr_constants.dart NfrPostLifecycle.validDays） |
+        | `version` | 初始 0 |
+
+        ### 联系方式加密
+
+        `contact_value` 落库为双列范式：
+        `contact_hash`（HMAC-SHA256 + pepper，`BINARY(32)`，承载等值查询）+
+        `contact_value_enc`（AES-GCM-256 + 随机 IV，`VARBINARY`，AAD 绑定 `post_id`）。
+        **本接口响应中不回显 `contact_value`**；完整联系方式只由
+        `GET /posts/{id}/contact` 返回。
+
+        成功后异步产出埋点事件 `post_published`。
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/XDeviceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostCreateRequest'
+      responses:
+        '200':
+          description: 发布成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PostDetail'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /posts/{post_id}:
+    get:
+      tags: [post]
+      summary: 获取帖子详情
+      operationId: getPostDetail
+      x-batch: Batch1
+      x-domain: post
+      security: []
+      description: |
+        ### 未登录可只读访问（口径以 PRD §12.3 为准）
+
+        本接口 `security: []`，未登录可只读查看详情。**注意与
+        `/posts/{id}/contact` 区分**：后者未登录一律 `40101`，本接口不是。
+
+        ### 未登录详情浏览限频（`42907`）
+
+        因 PRD §14.3 已裁定**不做坐标模糊化**，本接口返回的 `address`
+        含门牌号，若未登录不限频则精确住址可零成本批量采集。故未登录访问
+        按**设备维每日 ≤30 次、IP 维每日 ≤100 次**（沿用 §7.7 联系方式的
+        设备/IP 维阈值，非新增数字），任一超限返 `42907` + `Retry-After`。
+        已登录用户不受此限。
+
+        ### 出参必带 `version`
+
+        用于 `PATCH /posts/{id}/status` 的乐观锁入参。
+
+        ### 未实名详情浏览额度（`40301`）
+
+        PRD §12.3 规定已登录未实名用户每日放行 3 条、第 4 条回 `40301`。
+
+        **Batch1 该额度关闭**：由 `system_config.detail_quota_enabled` 开关控制，
+        Batch1 置 `off`。原因是 `cert` 域整体延后导致全员
+        `realname_status='none'`，额度生效会把「地图→详情→联系」P0 闭环卡死。
+        服务端代码路径完整实现、仅由开关短路；Batch2 实名上线时置 `on`。
+
+        ### 状态
+
+        已下架或已过期回 `41001`；本人查看自己的帖子不受此限。
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/XDeviceId'
+        - $ref: '#/components/parameters/PostIdPath'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PostDetail'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '410': { $ref: '#/components/responses/Gone' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    patch:
+      tags: [post]
+      summary: 编辑帖子内容
+      operationId: updatePost
+      x-batch: Batch2
+      x-domain: post
+      description: 占位。Batch2 交付，同样以 version 做乐观锁。
+      parameters:
+        - $ref: '#/components/parameters/PostIdPath'
+      responses:
+        '200': { description: 占位，Batch2 交付 }
+
+  /posts/{post_id}/status:
+    patch:
+      tags: [post]
+      summary: 变更帖子状态（下架 / 重新上架 / 延期）
+      operationId: updatePostStatus
+      x-batch: Batch1
+      x-domain: post
+      description: |
+        ### 乐观锁强约束
+
+        - 入参**必须携带 `version`**；缺失回 `40001`，**服务端不得兜底**
+          （不允许「不传就跳过版本校验」）
+        - 更新语句形如 `UPDATE post SET ... WHERE id=? AND version=?`
+        - 影响行数为 0 → 回 `40903`，客户端必须强制重取详情后由用户重试
+
+        ### 写守卫分流
+
+        | 变更来源 | 守卫条件 |
+        | --- | --- |
+        | 用户意图变更（本接口） | 守 `version`（乐观锁） |
+        | 系统派生变更（定时任务到期下架等） | 守 `status IN (合法前驱集)`，不守 `version` |
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/XDeviceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/PostIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action, version]
+              properties:
+                action:
+                  type: string
+                  enum: [offline, republish, renew]
+                  description: |
+                    - `offline`：下架（active → offline）
+                    - `republish`：重新上架（offline → active，重算 expire_at）
+                    - `renew`：延期（active → active，顺延 expire_at）
+                version:
+                  type: integer
+                  format: int64
+                  description: 从 GET 详情或 GET /posts/mine 取得的当前版本号。**缺失回 40001**
+      responses:
+        '200':
+          description: 变更成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          id: { type: integer, format: int64 }
+                          status: { $ref: '#/components/schemas/PostStatusEnum' }
+                          expire_at: { type: string, format: date-time }
+                          version:
+                            type: integer
+                            format: int64
+                            description: 变更后的新版本号
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '410': { $ref: '#/components/responses/Gone' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /posts/mine:
+    get:
+      tags: [post]
+      summary: 我发布的帖子列表
+      operationId: listMyPosts
+      x-batch: Batch1
+      x-domain: post
+      description: |
+        出参每项**必带 `version`**（供状态变更的乐观锁使用）。
+        本人视角，`audit_status=pending/reject` 的媒体也会下发（含 `reject_reason`）。
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/XDeviceId'
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: status
+          in: query
+          required: false
+          description: 状态筛选，缺省返回全部
+          schema: { $ref: '#/components/schemas/PostStatusEnum' }
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items:
+                            type: array
+                            items: { $ref: '#/components/schemas/MyPostItem' }
+                          total: { type: integer, format: int32 }
+                          page: { type: integer, format: int32 }
+                          page_size: { type: integer, format: int32 }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /posts/{post_id}/favorite:
+    post:
+      tags: [post]
+      summary: 收藏帖子
+      operationId: favoritePost
+      x-batch: Batch2
+      x-domain: post
+      description: |
+        占位。Batch2 交付。`favorite` 表唯一键 `uk_user_post`，
+        取消后重新收藏走 `ON DUPLICATE KEY UPDATE` 复活行而非插新行。
+      parameters:
+        - $ref: '#/components/parameters/PostIdPath'
+      responses:
+        '200': { description: 占位，Batch2 交付 }
+    delete:
+      tags: [post]
+      summary: 取消收藏
+      operationId: unfavoritePost
+      x-batch: Batch2
+      x-domain: post
+      description: 占位。Batch2 交付。取消收藏记录由定时任务 30 天后清理。
+      parameters:
+        - $ref: '#/components/parameters/PostIdPath'
+      responses:
+        '200': { description: 占位，Batch2 交付 }
+
+  /posts/favorites:
+    get:
+      tags: [post]
+      summary: 我的收藏列表
+      operationId: listFavorites
+      x-batch: Batch2
+      x-domain: post
+      description: 占位。Batch2 交付。
+      responses:
+        '200': { description: 占位，Batch2 交付 }
+
+  /posts/draft:
+    get:
+      tags: [post]
+      summary: 拉取发布记忆（草稿）
+      operationId: getDraft
+      x-batch: Batch2
+      x-domain: post
+      description: 占位。Batch2 交付。发布记忆由定时任务清理。
+      responses:
+        '200': { description: 占位，Batch2 交付 }
+
+  # ===========================================================================
+  # 分组四：T2 AI 辅助（共 2 个接口，Batch1 覆盖 0 个）
+  # ===========================================================================
+
+  /ai/parse:
+    post:
+      tags: [ai]
+      summary: AI 解析自然语言为结构化发布内容
+      operationId: aiParse
+      x-batch: Batch2
+      x-domain: ai
+      description: |
+        占位。Batch2 交付。
+        配额耗尽回 `42901`（携带 `Retry-After`）；上游不可用回 `50301`。
+      responses:
+        '200': { description: 占位，Batch2 交付 }
+
+  /ai/ocr:
+    post:
+      tags: [ai]
+      summary: OCR 识别（名片 / 单据）
+      operationId: aiOcr
+      x-batch: Batch2
+      x-domain: ai
+      description: 占位。Batch2 交付。OCR 中间数据由定时任务清理。
+      responses:
+        '200': { description: 占位，Batch2 交付 }
+
+  # ===========================================================================
+  # 分组五：首页地图与列表（共 2 个接口，全部 Batch1）—— 全系统性能最敏感路径
+  # ===========================================================================
+
+  /map/pins:
+    get:
+      tags: [map]
+      summary: 拉取地图图钉集合（紧凑数组格式）
+      operationId: getMapPins
+      x-batch: Batch1
+      x-domain: map
+      description: |
+        ### 缓存键五要素（任一缺失回 `40001`）
+
+        1. 分类 ID（`category_ids`）
+        2. 供需态（`post_type`）
+        3. 半径档（`radius`）
+        4. 约 500m 坐标网格（`grid_id`）
+        5. 数据版本号（`category_version`）
+
+        服务端 Pin 集合缓存 TTL 见 `NfrCache.pinSetTtlSec`；
+        客户端单设备缓存键上限见 `NfrCache.maxKeys`，按 LRU 淘汰。
+
+        ### `grid_id` 算法（客户端 / 服务端 / SQL 三方逐位一致）
+
+        - 步长 `0.0045°`（约 500m），原点 `(0, 0)`
+        - 取整用 `floor`（**向负无穷**，不是截断）
+        - 编码 `"{gx}_{gy}"`，存储类型 `varchar(24)`
+        - 精度先向下取整到 5 位小数：`floor(x * 100000) / 100000`
+        - 实现走**整数微度域**（避免浮点误差）
+        - 入参正则 `^-?\d+_-?\d+$`，不符回 `40001`
+
+        测试向量（10 条，三端共用）：
+
+        | 输入 (lng, lat) | 期望 grid_id |
+        | --- | --- |
+        | (120.15000, 30.28000) | `26700_6728` |
+        | (0, 0) | `0_0` |
+        | (0.00450, 0.00450) | `1_1` |
+        | (0.00449, 0.00449) | `0_0` |
+        | (-0.00001, -0.00001) | `-1_-1` |
+        | (-0.00450, -0.00450) | `-1_-1` |
+        | (-0.00451, -0.00451) | `-2_-2` |
+        | (0.004500049, 0.004500049) | `1_1` |
+        | (-0.000015, -0.000015) | `-1_-1`（关键探针，须断言中间值） |
+        | (120.15000, -30.28000) | `26700_-6729` |
+
+        ### 聚合模式切换
+
+        按 `zoom` 换算的 metersPerPixel 决定（**不按点数**），
+        阈值见 `NfrPerf.clusterModeSwitchMetersPerPixel`：
+
+        - 远景 → `mode=cluster`，服务端预聚合返回 `clusters[]`
+        - 近景 → `mode=pin`，返回 `pins[]`，由客户端 Dart 侧做视觉聚合
+
+        ### 响应体积与性能红线
+
+        - `pins` 上限见 `NfrPerf.renderMaxPins`
+        - gzip 后 ≤ `NfrPerf.mapPayloadMaxBytes`，原始 ≤ `NfrPerf.mapPayloadMaxRawBytes`
+        - 坐标保留位数见 `NfrPerf.mapPinCoordDecimals`
+        - 查询走 `post` 表 10 列覆盖索引 `idx_pins_cover`
+          （前 5 列过滤 + 后 5 列即响应字段，`EXPLAIN` 须为 `Using where; Using index`）
+        - 客户端读取超时对本接口**收紧至 3 秒**（其余接口 10 秒）
+
+        ### 分类树版本协商
+
+        `category_version` 与服务端不一致时**不报错**，响应附
+        `category_version_stale: true`；客户端异步拉 `/categories/tree`
+        并**清空全部本地 Pin 缓存**。不阻塞、不强升、不回 `40001`。
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/XDeviceId'
+        - name: category_ids
+          in: query
+          required: true
+          description: 分类 ID 列表（缓存键要素 1）。缺失回 40001
+          style: form
+          explode: false
+          schema:
+            type: array
+            minItems: 1
+            items: { type: integer, format: int32 }
+          example: '10101,10102'
+        - name: post_type
+          in: query
+          required: true
+          description: 供需态（缓存键要素 2）。缺失回 40001
+          schema: { $ref: '#/components/schemas/PostTypeEnum' }
+        - name: radius
+          in: query
+          required: true
+          description: 半径档（缓存键要素 3）。缺失回 40001
+          schema: { $ref: '#/components/schemas/RadiusEnum' }
+        - name: grid_id
+          in: query
+          required: true
+          description: 约 500m 坐标网格（缓存键要素 4）。正则不符回 40001
+          schema: { $ref: '#/components/schemas/GridId' }
+        - name: category_version
+          in: query
+          required: true
+          description: 分类树版本号（缓存键要素 5）。缺失回 40001；不一致不报错
+          schema: { $ref: '#/components/schemas/CategoryVersion' }
+        - name: lng
+          in: query
+          required: true
+          description: 视野中心经度（GCJ-02）
+          schema: { type: number, format: double, example: 120.15 }
+        - name: lat
+          in: query
+          required: true
+          description: 视野中心纬度（GCJ-02）
+          schema: { type: number, format: double, example: 30.28 }
+        - name: zoom
+          in: query
+          required: true
+          description: 当前地图缩放级别，决定 cluster / pin 模式切换
+          schema: { type: number, format: float, example: 14.5 }
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PinsCompactResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+
+  /posts/search:
+    get:
+      tags: [map]
+      summary: 列表检索（与地图同源筛选条件）
+      operationId: searchPosts
+      x-batch: Batch1
+      x-domain: map
+      description: |
+        与 `/map/pins` 共用同一套筛选参数与 `category_version` 协商机制，
+        差异仅在于返回**带完整卡片字段的分页列表**而非紧凑坐标数组。
+
+        硬过滤层级见 `NfrMatch.hardFilterCategoryLevel`（按 L2 类目硬过滤）。
+        列表项**不含完整联系方式**。
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/XDeviceId'
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: category_ids
+          in: query
+          required: true
+          style: form
+          explode: false
+          schema:
+            type: array
+            minItems: 1
+            items: { type: integer, format: int32 }
+        - name: post_type
+          in: query
+          required: true
+          schema: { $ref: '#/components/schemas/PostTypeEnum' }
+        - name: radius
+          in: query
+          required: true
+          schema: { $ref: '#/components/schemas/RadiusEnum' }
+        - name: grid_id
+          in: query
+          required: true
+          schema: { $ref: '#/components/schemas/GridId' }
+        - name: category_version
+          in: query
+          required: true
+          schema: { $ref: '#/components/schemas/CategoryVersion' }
+        - name: lng
+          in: query
+          required: true
+          schema: { type: number, format: double }
+        - name: lat
+          in: query
+          required: true
+          schema: { type: number, format: double }
+        - name: keyword
+          in: query
+          required: false
+          description: 关键词，可空
+          schema: { type: string, maxLength: 32 }
+        - name: sort
+          in: query
+          required: false
+          description: 排序方式，缺省 distance
+          schema:
+            type: string
+            enum: [distance, publish_time, completeness]
+            default: distance
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [items, total, page, page_size]
+                        properties:
+                          items:
+                            type: array
+                            items: { $ref: '#/components/schemas/PostCard' }
+                          total: { type: integer, format: int32 }
+                          page: { type: integer, format: int32 }
+                          page_size: { type: integer, format: int32 }
+                          category_version_stale:
+                            type: boolean
+                            description: true 表示客户端分类树版本已过期，需异步刷新并清空 Pin 缓存
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  # ===========================================================================
+  # 分组六：详情与联系（共 4 个接口，Batch1 覆盖 2 个）
+  # ===========================================================================
+
+  /posts/{post_id}/contact:
+    get:
+      tags: [contact]
+      summary: 获取完整联系方式（全系统唯一出口）
+      operationId: getPostContact
+      x-batch: Batch1
+      x-domain: contact
+      description: |
+        **本接口是全系统唯一返回完整联系方式的接口**，其他任何接口
+        （详情、列表、卡片）都只回脱敏值。
+
+        ### 五重防护
+
+        | 层 | 阈值 | 触发错误码 |
+        | --- | --- | --- |
+        | 未登录 | — | `40101` |
+        | 账号维度 | ≤ 30 次/日 | `42902` |
+        | 设备指纹维度 | ≤ 30 次/日 | `42902` |
+        | IP 维度 | ≤ 100 次/日 | `42902` |
+        | 熔断 | 1 分钟内 ≥ 10 次 → 当日冻结 | `42903` |
+
+        账号级风控键一律用 `user_id`（不用手机号）。
+        `42902` / `42903` 均携带 `Retry-After`。
+
+        ### 成功后的两件事（写两张表，不可省）
+
+        1. 写 `contact_event` —— **北极星辅助指标的唯一统计点**
+        2. 写 `audit_log` —— 合规审计留痕
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/XDeviceId'
+        - $ref: '#/components/parameters/PostIdPath'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ContactInfo'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '410': { $ref: '#/components/responses/Gone' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /posts/{post_id}/report:
+    post:
+      tags: [contact]
+      summary: 举报帖子
+      operationId: reportPost
+      x-batch: Batch1
+      x-domain: contact
+      description: |
+        举报原因枚举与 `report.reason` 列一致。
+        举报频次异常触发熔断回 `42903`。
+        举报成功同时落 `audit_log`。
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/XDeviceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/PostIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason:
+                  type: string
+                  enum: [false_info, fraud, wrong_category, harassment, other]
+                  description: 举报原因，与 report.reason 枚举严格一致
+                remark:
+                  type: string
+                  maxLength: 200
+                  description: 补充说明，可空
+                evidence:
+                  type: array
+                  description: 证据媒体 ID 列表，落 report.evidence（JSON 列）
+                  maxItems: 3
+                  items: { type: string }
+      responses:
+        '200':
+          description: 举报已受理
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          report_id: { type: integer, format: int64 }
+                          status:
+                            type: string
+                            enum: [pending, handled, dismissed]
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '410': { $ref: '#/components/responses/Gone' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /posts/{post_id}/similar:
+    get:
+      tags: [contact]
+      summary: 相似推荐
+      operationId: listSimilarPosts
+      x-batch: Batch2
+      x-domain: contact
+      description: 占位。Batch2 交付。
+      parameters:
+        - $ref: '#/components/parameters/PostIdPath'
+      responses:
+        '200': { description: 占位，Batch2 交付 }
+
+  /posts/{post_id}/view:
+    post:
+      tags: [contact]
+      summary: 详情曝光上报
+      operationId: reportPostView
+      x-batch: Batch2
+      x-domain: contact
+      description: 占位。Batch2 交付，配套埋点事件 resource_detail_click。
+      parameters:
+        - $ref: '#/components/parameters/PostIdPath'
+      responses:
+        '200': { description: 占位，Batch2 交付 }
+
+  # ===========================================================================
+  # 分组七：认证（共 3 个接口，Batch1 覆盖 0 个）
+  # ===========================================================================
+
+  /cert/realname:
+    post:
+      tags: [cert]
+      summary: 提交实名认证
+      operationId: submitRealname
+      x-batch: Batch2
+      x-domain: cert
+      description: |
+        占位。Batch2 交付。
+        `real_name_enc` 的 AAD 绑定 `user_id`；`id_card_hash` 走盲索引双列范式。
+        上游认证服务不可用回 `50302`。
+        **实名相关敏感列禁止出现在任何 API 响应中**。
+      responses:
+        '200': { description: 占位，Batch2 交付 }
+
+  /cert/qualification:
+    post:
+      tags: [cert]
+      summary: 提交资质认证（高敏类目前置）
+      operationId: submitQualification
+      x-batch: Batch2
+      x-domain: cert
+      description: 占位。Batch2 交付。未认证发高敏类目时 post 域回 40302。
+      responses:
+        '200': { description: 占位，Batch2 交付 }
+
+  /cert/status:
+    get:
+      tags: [cert]
+      summary: 查询认证状态
+      operationId: getCertStatus
+      x-batch: Batch2
+      x-domain: cert
+      description: 占位。Batch2 交付。
+      responses:
+        '200': { description: 占位，Batch2 交付 }
+
+  # ===========================================================================
+  # 分组八：通知与推送（共 3 个接口，Batch1 覆盖 1 个）
+  # ===========================================================================
+
+  /notifications:
+    get:
+      tags: [notify]
+      summary: 通知列表
+      operationId: listNotifications
+      x-batch: Batch1
+      x-domain: notify
+      description: |
+        通知类型与 `notification.type` 列枚举一致：
+        `system`（系统）/ `interaction`（互动）/ `cert`（认证结果）。
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/XDeviceId'
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: type
+          in: query
+          required: false
+          description: 类型筛选，缺省返回全部
+          schema:
+            type: string
+            enum: [system, interaction, cert]
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [items, total, page, page_size, unread_count]
+                        properties:
+                          items:
+                            type: array
+                            items: { $ref: '#/components/schemas/Notification' }
+                          total: { type: integer, format: int32 }
+                          page: { type: integer, format: int32 }
+                          page_size: { type: integer, format: int32 }
+                          unread_count:
+                            type: integer
+                            format: int32
+                            description: 未读总数，用于 Tab 角标
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /notifications/read:
+    post:
+      tags: [notify]
+      summary: 标记通知已读
+      operationId: markNotificationsRead
+      x-batch: Batch2
+      x-domain: notify
+      description: 占位。Batch2 交付。
+      responses:
+        '200': { description: 占位，Batch2 交付 }
+
+  /notifications/settings:
+    patch:
+      tags: [notify]
+      summary: 推送偏好设置
+      operationId: updateNotifySettings
+      x-batch: Batch2
+      x-domain: notify
+      description: 占位。Batch2 交付。推送频控超限回 42904（携带 Retry-After）。
+      responses:
+        '200': { description: 占位，Batch2 交付 }
+
+  # ===========================================================================
+  # 分组九：设置与合规（共 3 个接口，Batch1 覆盖 0 个）
+  # ===========================================================================
+
+  /settings/privacy:
+    get:
+      tags: [auth]
+      summary: 隐私设置
+      operationId: getPrivacySettings
+      x-batch: Batch2
+      x-domain: common
+      description: 占位。Batch2 交付。
+      responses:
+        '200': { description: 占位，Batch2 交付 }
+
+  /legal/documents:
+    get:
+      tags: [auth]
+      summary: 协议与政策文本
+      operationId: getLegalDocuments
+      x-batch: Batch2
+      x-domain: common
+      security: []
+      description: 占位。Batch2 交付。Batch1 协议文本内置在客户端。
+      responses:
+        '200': { description: 占位，Batch2 交付 }
+
+  /feedback:
+    post:
+      tags: [auth]
+      summary: 意见反馈
+      operationId: submitFeedback
+      x-batch: Batch3
+      x-domain: common
+      description: 占位。Batch3 交付。
+      responses:
+        '200': { description: 占位，Batch3 交付 }
+
+  # ===========================================================================
+  # 分组十：埋点（1 个接口，Batch1，独立于 20 个业务接口另计）
+  # ===========================================================================
+
+  /track/events:
+    post:
+      tags: [track]
+      summary: 批量上报埋点事件
+      operationId: trackEvents
+      x-batch: Batch1
+      x-domain: common
+      description: |
+        ### 限频（超限回 `42906`）
+
+        - **必须登录态**，未登录回 `40101`
+        - 同用户 1 分钟 60 个请求
+        - 单请求事件数上限见 `NfrApi.trackBatchMaxEvents`
+        - `user_id` **一律取登录态**，不取请求体（请求体传了也忽略）
+        - `42906` 是**唯一不向用户呈现**的错误码：客户端静默按 `Retry-After`
+          将事件退回队列头部
+
+        ### 客户端队列规则
+
+        | 项 | 口径 |
+        | --- | --- |
+        | 存储 | 本地持久化。**不放 `shared_preferences`** —— 2000 条约 400KB~1MB，Android 侧启动全量同步加载 + 每次 `setString` 全量重写会形成 O(n²) 写放大。用追加写文件（JSON Lines） |
+        | 上限 | 2000 条，超出丢最旧 |
+        | 丢弃计数 | `dropped_count` 随下一批上报 |
+        | `ts` | 取**客户端采集时刻**（不是上报时刻） |
+        | 月表归属 | 服务端按事件 `ts` 归入 `track_event_YYYYMM` |
+        | 触发上报 | 满 50 条 / 距上次 30 秒 / 进入后台 |
+        | 失败处理 | 整批退回队列**头部** |
+        | 回灌限速 | 50 条一批，批间 ≥ 1 秒 |
+        | 未登录事件 | 本地缓存，登录后补报 |
+
+        ### 两个请求头在本接口上的特殊规则（与其他写接口相反）
+
+        | 头 | 其他写接口 | 本接口 |
+        | --- | --- | --- |
+        | `Idempotency-Key` | 重试**沿用**原值 | **每次组批换新值** |
+        | `X-Interaction-Id` | 由交互起点生成并向下透传，重放沿用 | 由上报器**每批新生成**，语义是「这次传输动作」 |
+
+        两条规则的完整论证见对应 parameter 的 description。要点：
+
+        - 失败批次退回队列头部后会与新采集事件**重新组批**，内容已变；沿用旧幂等键
+          会命中服务端幂等缓存直接回 `code=0`，客户端误判成功并出队 →
+          **事件静默丢失且无任何错误日志**；
+        - 埋点上报没有「交互起点」，且一批 50 条可能来自几十个不同交互，
+          沿用其中任一条的 `interaction_id` 都会让排查线索指向无关交互。
+          事件所属交互保留在请求体 `events[].interaction_id`，与请求头互不覆盖。
+
+        ### 服务端去重（客户端换新幂等键的前提）
+
+        因客户端每批换新 Key，同一批事件在「响应丢在回程」时可能被上报两次。
+        服务端须按**事件维度**去重，**不依赖幂等键**。
+
+        去重约束已在 DDL 中固化为唯一索引
+        `uk_event_dedup(interaction_id, event_name, user_id, ts)`
+        （`V1__init_track_schema.sql`；列名 `event_name` 对应请求体字段 `event`）。
+        落库语句**必须**是 `INSERT ... ON DUPLICATE KEY UPDATE id = id`，
+        **严禁 `INSERT IGNORE`** —— 后者会把数据截断、非空列插 NULL 等一并
+        降级为 warning，等于在埋点写入路径上关掉全部数据质量报错。
+
+        **该约束成立的前提是 `ts` 取客户端采集时刻。** 若实现时改成服务端到达时刻，
+        重传的同一批事件会拿到不同 `ts`，唯一键当场失效、去重归零，
+        而表面上一切正常（索引还在、不报错、只是不再挡住任何东西）。
+
+        取舍：宁可重一条（分析侧可去重），不可丢一条（不可恢复）。
+        对应的反向风险是「同一毫秒内合法重复触发的事件会被丢弃」，
+        故**新增事件类型时须先核验它是否可能在同一交互内同毫秒重复触发**。
+        当前五个事件均为用户级离散动作，不满足该条件。
+
+        ### 四段耗时纪律（`layer_switch` 事件）
+
+        `t_cache_ms + t_net_ms + t_agg_ms + t_render_ms == duration_ms`
+        （容差 ±1ms）。四段**必须各自独立打点计时**，
+        **禁止用总时长减法**倒推任何一段。
+
+        缓存命中时不存在 `request_id`，属预期行为，不得因此判为异常。
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/XDeviceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [events]
+              properties:
+                events:
+                  type: array
+                  minItems: 1
+                  maxItems: 50
+                  description: 事件数组，超出上限回 42906
+                  items: { $ref: '#/components/schemas/TrackEvent' }
+                dropped_count:
+                  type: integer
+                  format: int32
+                  default: 0
+                  description: 自上次成功上报以来因队列溢出被丢弃的事件数
+      responses:
+        '200':
+          description: 受理成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          accepted:
+                            type: integer
+                            format: int32
+                            description: 实际入库事件数
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+components:
+
+  # ===========================================================================
+  # 安全方案
+  # ===========================================================================
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        单 Token 模型，有效期 30 天。请求头形如 `Authorization: Bearer <JWT>`。
+        Token 失效由服务端回 `40101` 触发客户端单飞续期，
+        客户端**不做本地过期判断**。
+
+  # ===========================================================================
+  # 复用参数：四个自定义请求头 + 通用分页 + 通用路径参数
+  # ===========================================================================
+  parameters:
+
+    XInteractionId:
+      name: X-Interaction-Id
+      in: header
+      required: true
+      description: |
+        **客户端生成**的交互标识，覆盖「缓存 → 网络 → 聚合 → 渲染」四段全链路。
+        服务端**仅用于日志串联**，**严禁**用于鉴权、限流、幂等判定。
+        与 `request_id` 分工不同：`request_id` 由服务端生成、是 UI 报错唯一回显值。
+        `40101` 重放挂起请求时必须**沿用原值**（逐字相同）。
+
+        ### 例外：POST /track/events
+
+        埋点上报是本系统唯一**没有交互起点**的调用场景 —— 定时触发、进后台触发、
+        登录后补报、离线回灌，四种触发方式都不属于任何进行中的用户交互；
+        且一批最多 50 条事件**可能来自几十个不同交互**，让批次沿用其中任一条的
+        `interaction_id` 都是错的（会把整批的排查线索指向一个无关交互）。
+
+        因此在该接口上，本头的语义收窄为「**这一次上报传输动作**」：
+
+        - 由上报器**为每个批次新生成**一个值，仍满足 required；
+        - 事件自身所属的交互保留在**请求体** `events[].interaction_id` 字段里，
+          与本头**互不覆盖**；
+        - 重发（失败退回队列后重新组批）时**必须换新值**，不沿用 —— 与上面
+          `40101` 重放的规则相反，因为重新组批就是一次新的传输动作。
+
+        排查方式：查某个用户交互用事件体内的 `interaction_id`；
+        查某次上报为何失败用本头的值。
+      schema:
+        type: string
+        maxLength: 64
+        example: itx_1a2b3c4d5e6f
+
+    XDeviceId:
+      name: X-Device-Id
+      in: header
+      required: true
+      description: |
+        首次启动生成的 UUID v4，落 `device.fingerprint`。
+        **明确不可信**（可被清数据重置），仅作风控辅助维度之一。
+        **严禁**采集 IMEI / MAC / IDFA / OAID 等设备唯一标识。
+      schema:
+        type: string
+        format: uuid
+        example: 3f2504e0-4f89-41d3-9a0c-0305e82c3301
+
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: |
+        **所有写接口必带**。UUID v4，36 字符，小写，带连字符。
+
+        正则：`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`
+        不符合回 `40001`。
+
+        ### 四类必测输入
+
+        | 场景 | 期望行为 |
+        | --- | --- |
+        | 缺失该头 | 回 `40001`，**不得放行** |
+        | 大写 UUID 或 v1 UUID | 判非法，回 `40001` |
+        | 重复 Key 但请求体不同 | **返回首次结果**（不按新请求体执行） |
+        | 首次执行失败后用同 Key 重放 | **必须重新执行**（只有成功响应才进缓存） |
+
+        窗口 24 小时（见 `NfrApi.idempotencyWindowHours`），
+        以**服务端收到请求的时间**为准。键与首次响应体存 Redis。
+        `40101` 重放挂起请求时必须**沿用原值**（逐字相同）。
+        网络层重试（`50001` / `503xx` / 网络失败）同样必须**沿用原值** ——
+        客户端 `HeaderInterceptor` 注入前须先判该头是否已存在，已存在则不覆盖。
+
+        ### 例外：POST /track/events —— 每次组批必须换新 Key
+
+        埋点批次的幂等语义与其他写接口**相反**，原因在于「重发的内容会变」：
+
+        上报失败的批次退回队列**头部**后，会与期间新采集的事件**重新组批**，
+        内容已经不是首次那一批了。而上表第三行规定「重复 Key 但请求体不同 →
+        返回首次结果」，服务端会**直接命中幂等缓存返回 `code=0`，业务逻辑一行不执行**。
+
+        于是形成这个静默丢失链条：
+
+        ```
+        第 1 次上报 50 条 → 服务端返 42906，一条未落库
+        退回队列头部      → 期间新采集 20 条
+        第 2 次组批       → 内容变为「原 50 条的部分 + 新 20 条」
+           若沿用旧 Key   → 命中幂等缓存 → 回 code=0
+                          → 客户端判成功，把 70 条全部出队
+        结果：70 条事件一条未落库，且【不产生任何错误日志】
+        ```
+
+        `dropped_count` 也不会 +1（它只统计容量溢出丢弃），所有可观测性指标都是绿的
+        —— 可观测性系统自己成了盲区。
+
+        **规则：该接口每次组批生成新的 `Idempotency-Key`**（批次是「一次传输动作」，
+        不是「一笔业务意图」）。
+
+        由此带来的重复写入风险（响应丢在回程 → 同批写两次）由服务端按**事件维度**
+        去重兜住，**不依赖幂等键**：埋点库唯一索引
+        `uk_event_dedup(interaction_id, event_name, user_id, ts)`，
+        落库用 `INSERT ... ON DUPLICATE KEY UPDATE id = id`。详见该接口的 description。
+        取舍方向明确：宁可重一条（分析侧可去重），不可丢一条（永久不可恢复）。
+      schema:
+        type: string
+        pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+        example: 9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d
+
+    PageParam:
+      name: page
+      in: query
+      required: false
+      description: 页码，从 1 起
+      schema: { type: integer, format: int32, minimum: 1, default: 1 }
+
+    PageSizeParam:
+      name: page_size
+      in: query
+      required: false
+      description: 每页条数，默认见 NfrApi.pageSizeDefault，上限见 NfrApi.pageSizeMax
+      schema: { type: integer, format: int32, minimum: 1, maximum: 50, default: 20 }
+
+    PostIdPath:
+      name: post_id
+      in: path
+      required: true
+      description: 帖子 ID
+      schema: { type: integer, format: int64, example: 1001 }
+
+  # ===========================================================================
+  # 复用响应：按 HTTP 状态码组织，每个响应列明其可能承载的全部业务 code
+  # ===========================================================================
+  responses:
+
+    BadRequest:
+      description: |
+        `40001` 参数缺失或非法 / `40002` 未勾选用户协议与隐私政策
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          examples:
+            missingParam:
+              summary: 参数缺失（40001）
+              value: { code: 40001, message: 缺少必填参数 grid_id, data: null, request_id: req_7f3a91 }
+            notAgreed:
+              summary: 未勾选协议（40002）
+              value: { code: 40002, message: 请先阅读并同意用户协议与隐私政策, data: null, request_id: req_7f3a92 }
+
+    Unauthorized:
+      description: |
+        `40101` 未登录或登录态失效（客户端触发单飞续期） /
+        `40105` 验证码连续错误导致登录锁定 15 分钟（**携带 `Retry-After`**）
+      headers:
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          examples:
+            expired:
+              summary: 登录态失效（40101）
+              value: { code: 40101, message: 登录已过期，请重新登录, data: null, request_id: req_7f3a93 }
+            locked:
+              summary: 登录锁定（40105）
+              value: { code: 40105, message: 验证码错误次数过多，请 15 分钟后再试, data: null, request_id: req_7f3a94 }
+
+    Forbidden:
+      description: |
+        `40301` 未实名今日详情额度用尽（Batch1 由开关关闭） /
+        `40302` 高敏类目需先完成资质认证 /
+        `40303` 该类目当前禁止发布 /
+        `40304` 未实名用户发布数量已达上限 /
+        `40305` 无权限访问该资源（**后台 RBAC 越权专用**，App 端接口不返回此码）
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          examples:
+            quotaExhausted:
+              summary: 详情额度用尽（40301）
+              value: { code: 40301, message: 今日可查看详情数量已用完，完成实名后不受限制, data: null, request_id: req_7f3a95 }
+            needQualification:
+              summary: 缺资质（40302）
+              value: { code: 40302, message: 该类目需先完成资质认证, data: null, request_id: req_7f3a96 }
+            categoryBanned:
+              summary: 类目禁发（40303）
+              value: { code: 40303, message: 该类目当前禁止发布, data: null, request_id: req_7f3a97 }
+            publishLimit:
+              summary: 发布上限（40304）
+              value: { code: 40304, message: 未实名用户发布数量已达上限, data: null, request_id: req_7f3a98 }
+
+    Conflict:
+      description: |
+        `40901` 内容命中敏感词 /
+        `40902` 图片未通过审核 /
+        `40903` 数据已被其他操作修改（乐观锁冲突，客户端须强制重取后由用户重试）
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          examples:
+            sensitiveWord:
+              summary: 敏感词（40901）
+              value: { code: 40901, message: 内容包含不允许发布的词汇，请修改后重试, data: null, request_id: req_7f3a99 }
+            imageRejected:
+              summary: 图片未过审（40902）
+              value: { code: 40902, message: 图片未通过审核，请更换后重试, data: null, request_id: req_7f3a9a }
+            versionConflict:
+              summary: 乐观锁冲突（40903）
+              value: { code: 40903, message: 数据已更新，请刷新后重试, data: null, request_id: req_7f3a9b }
+
+    Gone:
+      description: '`41001` 帖子已下架或已过期'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          example: { code: 41001, message: 该信息已下架或已过期, data: null, request_id: req_7f3a9c }
+
+    TooManyRequests:
+      description: |
+        `42901` AI 配额已用尽 /
+        `42902` 联系次数超出每日限额 /
+        `42903` 异常操作触发熔断当日冻结 /
+        `42904` 推送频次受限 /
+        `42905` 验证码发送过于频繁 /
+        `42906` 埋点上报频次受限（**唯一不向用户呈现**，客户端静默退回队列） /
+        `42907` 未登录详情浏览超限（设备 30 / IP 100 每日，任一超限即拒）
+
+        以上 7 个 code **必须携带 `Retry-After`** 响应头，值为剩余整数秒。
+        `42901`–`42905`、`42907` 客户端**不可自动重试**，须按 `Retry-After` 提示用户。
+        `42907` 的提示须附登录入口，且**不告知是哪个维度超限**（风控阈值不外泄）。
+      headers:
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          examples:
+            aiQuota:
+              summary: AI 配额（42901）
+              value: { code: 42901, message: 今日 AI 辅助次数已用完, data: null, request_id: req_7f3a9d }
+            contactLimit:
+              summary: 联系超限（42902）
+              value: { code: 42902, message: 今日查看联系方式次数已达上限, data: null, request_id: req_7f3a9e }
+            circuitBreak:
+              summary: 熔断冻结（42903）
+              value: { code: 42903, message: 操作过于频繁，该功能今日已暂停使用, data: null, request_id: req_7f3a9f }
+            pushLimit:
+              summary: 推送频控（42904）
+              value: { code: 42904, message: 推送发送过于频繁, data: null, request_id: req_7f3aa0 }
+            smsLimit:
+              summary: 验证码频控（42905）
+              value: { code: 42905, message: 验证码发送过于频繁，请稍后再试, data: null, request_id: req_7f3aa1 }
+            trackLimit:
+              summary: 埋点频控（42906，不呈现给用户）
+              value: { code: 42906, message: track rate limited, data: null, request_id: req_7f3aa2 }
+            guestDetailLimit:
+              summary: 未登录详情浏览超限（42907）
+              value: { code: 42907, message: 今日浏览次数较多，登录后可继续查看, data: null, request_id: req_7f3aa3 }
+
+    InternalError:
+      description: |
+        `50001` 服务内部错误。客户端**可自动重试**，
+        与 `50301`/`50302`/`50303` 及网络超时共享「总共 2 次」的重试预算，
+        退避 1s / 2s 并叠加 ±20% 抖动。
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          example: { code: 50001, message: 服务繁忙，请稍后重试, data: null, request_id: req_7f3aa3 }
+
+    ServiceUnavailable:
+      description: |
+        `50301` AI 服务暂不可用 /
+        `50302` 认证服务暂不可用 /
+        `50303` 地图定位服务暂不可用
+
+        三者均**可自动重试**（与 `50001` 共享总共 2 次预算）。
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          examples:
+            aiDown:
+              summary: AI 不可用（50301）
+              value: { code: 50301, message: AI 服务暂时不可用，请稍后重试, data: null, request_id: req_7f3aa4 }
+            certDown:
+              summary: 认证服务不可用（50302）
+              value: { code: 50302, message: 认证服务暂时不可用，请稍后重试, data: null, request_id: req_7f3aa5 }
+            mapDown:
+              summary: 定位服务不可用（50303）
+              value: { code: 50303, message: 定位服务暂时不可用，请检查定位权限或稍后重试, data: null, request_id: req_7f3aa6 }
+
+  # ===========================================================================
+  # 复用响应头
+  # ===========================================================================
+  headers:
+    RetryAfter:
+      description: |
+        剩余可重试秒数（**整数**，非 HTTP-date 形式）。
+        `42901`–`42907` 与 `40105` **必须**返回本头。
+      required: true
+      schema: { type: integer, format: int32, minimum: 1, example: 900 }
+
+  # ===========================================================================
+  # 数据模型
+  # ===========================================================================
+  schemas:
+
+    # ---------- 统一响应包 ----------
+
+    ApiEnvelope:
+      type: object
+      description: |
+        统一响应包骨架。所有接口无论成功失败均返回该结构，
+        各接口通过 `allOf` 收窄 `data` 的具体类型。
+      required: [code, message]
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: 业务码。0 成功；非 0 见错误码表，前 3 位与 HTTP 状态码对齐
+          example: 0
+        message:
+          type: string
+          description: 中文文案。非 0 时可直接呈现给用户
+          example: ok
+        data:
+          description: 业务负载。失败时恒为 null
+          nullable: true
+        request_id:
+          type: string
+          description: |
+            服务端生成的请求标识，是 UI 报错时唯一回显值。
+            **缓存命中时该字段不存在**，属预期行为。
+          example: req_7f3a91c2
+
+    ApiError:
+      type: object
+      description: 失败响应（`data` 恒为 null）
+      required: [code, message, request_id]
+      properties:
+        code: { type: integer, format: int32, example: 40001 }
+        message: { type: string, example: 缺少必填参数 grid_id }
+        data: { nullable: true, example: null }
+        request_id: { type: string, example: req_7f3a91c2 }
+
+    # ---------- 通用枚举与基础类型 ----------
+
+    PostTypeEnum:
+      type: string
+      description: 供需态。resource=资源方（我有），demand=需求方（我要）
+      enum: [resource, demand]
+
+    PostStatusEnum:
+      type: string
+      description: |
+        帖子状态。`active` 在架 / `offline` 已下架 / `expired` 已过期 / `archived` 已归档。
+        有效天数与自动归档天数见 `NfrPostLifecycle`。
+      enum: [active, offline, expired, archived]
+
+    RadiusEnum:
+      type: string
+      description: 检索半径档位（公里，`city` 为全城）。对应 `user.default_radius` 列
+      enum: ['1', '3', '5', '10', city]
+
+    RealnameStatusEnum:
+      type: string
+      description: 实名状态。对应 `user.realname_status` 列
+      enum: [none, pending, passed, rejected]
+
+    AuditStatusEnum:
+      type: string
+      description: |
+        媒体审核状态。三态双视角规则见 `/media/{media_id}/commit`。
+        硬规则：`audit_status != pass` 的媒体不得出现在任何**非本人**可见的响应中。
+      enum: [pending, pass, reject]
+
+    CompletenessLevelEnum:
+      type: integer
+      format: int32
+      description: |
+        信息完整度等级，`post.completeness_level` **STORED 生成列**（不可写，
+        写入报 `ERROR 3105`）。由 `required_full` / `address_precise` / `leaf_matched`
+        三条件达成数映射：3→2、2→1、其他→0。
+      enum: [0, 1, 2]
+
+    CategoryVersion:
+      type: string
+      description: |
+        分类树全局版本号。格式 `YYYY-MM-DD.N` **字符串**，
+        同日再改递增 `N`、跨日重置为当日日期 `.1`；字符串比较即可判新旧。
+        真源为 `system_config.category_tree_version`。
+      pattern: '^\d{4}-\d{2}-\d{2}\.\d+$'
+      example: '2026-08-31.1'
+
+    GridId:
+      type: string
+      description: |
+        约 500m 坐标网格标识，编码 `"{gx}_{gy}"`，存储类型 `varchar(24)`。
+        算法与 10 条测试向量见 `/map/pins` 描述。不符正则回 `40001`。
+      pattern: '^-?\d+_-?\d+$'
+      example: 26700_6728
+
+    # ---------- 鉴权与账号 ----------
+
+    LoginResult:
+      type: object
+      required: [token, expire_at, is_new_user, user]
+      properties:
+        token:
+          type: string
+          description: JWT，有效期 30 天。客户端不做本地过期判断
+        expire_at:
+          type: string
+          format: date-time
+          description: 到期时间（服务端为准，仅供展示）
+        is_new_user:
+          type: boolean
+          description: true 表示本次登录同时完成了注册，客户端应引导完善资料
+        user:
+          $ref: '#/components/schemas/MyProfile'
+
+    MyProfile:
+      type: object
+      description: |
+        本人资料。基于 `user` 表**对外视图白名单**
+        （`id`/`nickname`/`avatar_url`/`realname_status`/`qualification_badges[]`）
+        额外附本人可见的 `default_radius` 与 `phone_mask`。
+
+        **`real_name_enc`、`id_card_hash` 禁止出现在任何 API 响应中。**
+      required: [id, nickname, realname_status]
+      properties:
+        id: { type: integer, format: int64, example: 10086 }
+        nickname: { type: string, maxLength: 20, example: 老王建材 }
+        avatar_url:
+          type: string
+          nullable: true
+          description: OSS 带签名的临时访问地址
+        realname_status: { $ref: '#/components/schemas/RealnameStatusEnum' }
+        qualification_badges:
+          type: array
+          description: 已通过的资质徽章标识列表
+          items: { type: string }
+        default_radius: { $ref: '#/components/schemas/RadiusEnum' }
+        phone_mask:
+          type: string
+          description: 脱敏手机号（仅本人视角可见，他人视角不下发）
+          example: 138****8000
+
+    # ---------- 分类与模板 ----------
+
+    CategoryTree:
+      type: object
+      description: 分类树全量数据。三级结构 L1 → L2 → L3（叶子）
+      required: [version, categories]
+      properties:
+        version: { $ref: '#/components/schemas/CategoryVersion' }
+        categories:
+          type: array
+          items: { $ref: '#/components/schemas/CategoryNode' }
+
+    CategoryNode:
+      type: object
+      required: [id, name, level]
+      properties:
+        id:
+          type: integer
+          format: int32
+          description: 类目 ID。L3 与 L2 满足 `l2_id = l3_id DIV 100`
+          example: 10101
+        name: { type: string, example: 水泥 }
+        level:
+          type: integer
+          format: int32
+          enum: [1, 2, 3]
+          description: 层级。硬过滤层级见 NfrMatch.hardFilterCategoryLevel
+        icon: { type: string, nullable: true }
+        sensitive:
+          type: boolean
+          description: true 表示高敏类目，发布需先通过资质认证，否则回 40302
+        banned:
+          type: boolean
+          description: true 表示当前禁止发布，发布回 40303
+        children:
+          type: array
+          description: 子节点。L3 无 children
+          items: { $ref: '#/components/schemas/CategoryNode' }
+
+    Template:
+      type: object
+      description: 叶子类目发布模板，驱动客户端动态表单渲染
+      required: [leaf_category_id, fields]
+      properties:
+        leaf_category_id: { type: integer, format: int32, example: 10101 }
+        fields:
+          type: array
+          items: { $ref: '#/components/schemas/TemplateField'}
+
+    TemplateField:
+      type: object
+      required: [key, label, type, required]
+      properties:
+        key:
+          type: string
+          description: 字段键，落 `post.attributes` JSON 的一级键
+          example: brand
+        label: { type: string, example: 品牌 }
+        type:
+          type: string
+          enum: [text, number, select, multi_select, date]
+        required:
+          type: boolean
+          description: |
+            是否必填。**全部 required 字段填齐**即 `required_full=true`，
+            是 `completeness_level` 三条件之一
+        options:
+          type: array
+          description: 仅 select / multi_select 有值
+          items: { type: string }
+        unit: { type: string, nullable: true, example: 吨 }
+        placeholder: { type: string, nullable: true }
+
+    # ---------- 媒体 ----------
+
+    UploadTicket:
+      type: object
+      description: OSS 直传票据。客户端拿到后直传 OSS，不经过应用服务器
+      required: [media_id, upload_url, expire_at]
+      properties:
+        media_id:
+          type: string
+          description: 媒体 ID，**由服务端生成**，客户端不可指定
+          example: mda_9c1f4e7b2a
+        upload_url:
+          type: string
+          description: 带签名的短时效直传地址。客户端不持有任何长期密钥
+        expire_at:
+          type: string
+          format: date-time
+          description: 票据到期时间。24h 未 commit 的 pending 记录由定时任务清理
+
+    MediaCommitResult:
+      type: object
+      required: [media_id, url, audit_status]
+      properties:
+        media_id: { type: string, example: mda_9c1f4e7b2a }
+        url:
+          type: string
+          description: 带签名的临时访问地址（桶不开公共读）
+        audit_status: { $ref: '#/components/schemas/AuditStatusEnum' }
+        reject_reason:
+          type: string
+          nullable: true
+          maxLength: 64
+          description: 仅 audit_status=reject 且本人视角时下发
+
+    MediaItem:
+      type: object
+      description: |
+        帖子内的媒体项。他人视角只会出现 `audit_status=pass` 的项；
+        本人视角可出现三态并携带 `reject_reason`。
+      required: [media_id, url, audit_status]
+      properties:
+        media_id: { type: string }
+        url: { type: string }
+        audit_status: { $ref: '#/components/schemas/AuditStatusEnum' }
+        reject_reason: { type: string, nullable: true }
+
+    # ---------- 发布 ----------
+
+    PostDraft:
+      type: object
+      description: |
+        发布草稿载荷，用于 `/posts/precheck`。
+        与 `PostCreateRequest` 字段一致但全部非必填（允许对半成品做预校验）。
+      properties:
+        type: { $ref: '#/components/schemas/PostTypeEnum' }
+        leaf_category_id: { type: integer, format: int32 }
+        title: { type: string, maxLength: 40 }
+        description: { type: string, maxLength: 500 }
+        attributes:
+          type: object
+          additionalProperties: true
+          description: 动态属性，键取自模板 fields[].key，落 `post.attributes` JSON 列
+        lng: { type: number, format: double }
+        lat: { type: number, format: double }
+        address: { type: string, maxLength: 120 }
+        address_precise:
+          type: boolean
+          description: 地址是否精确到门牌，`completeness_level` 三条件之一
+        media_ids:
+          type: array
+          maxItems: 9
+          items: { type: string }
+        contact_type:
+          type: string
+          enum: [phone, wechat]
+        contact_value: { type: string, maxLength: 64 }
+
+    PostCreateRequest:
+      allOf:
+        - $ref: '#/components/schemas/PostDraft'
+        - type: object
+          required: [type, leaf_category_id, title, lng, lat, contact_type, contact_value]
+          description: |
+            正式发布载荷。派生字段
+            （`l2_category_id` / `completeness_level` / `grid_id` / `expire_at` / `version`）
+            **由服务端生成，客户端传了也被忽略**。
+
+    PrecheckResult:
+      type: object
+      required: [passed, blocks]
+      properties:
+        passed:
+          type: boolean
+          description: true 表示无阻断项，可直接提交发布
+        blocks:
+          type: array
+          description: 全部阻断项一次性给全（不逐条打断用户）
+          items:
+            type: object
+            required: [code, message]
+            properties:
+              code:
+                type: integer
+                format: int32
+                description: 对应的错误码（40901/40902/40303/40302/40304）
+              message: { type: string, description: 可直接呈现的中文提示 }
+              field:
+                type: string
+                nullable: true
+                description: 关联字段名，供客户端定位到具体表单项
+        completeness_level:
+          $ref: '#/components/schemas/CompletenessLevelEnum'
+        derived:
+          type: object
+          description: 服务端预演算的派生值，供客户端提前展示完整度提示
+          properties:
+            required_full: { type: boolean }
+            address_precise: { type: boolean }
+            leaf_matched: { type: boolean }
+
+    PostDetail:
+      type: object
+      description: |
+        帖子详情。**出参必带 `version`**（供 `PATCH /posts/{id}/status` 乐观锁入参）。
+        **不含完整联系方式**，仅 `contact_mask`；完整值只由
+        `GET /posts/{id}/contact` 返回。
+      required: [id, type, leaf_category_id, l2_category_id, title, status, version, completeness_level]
+      properties:
+        id: { type: integer, format: int64, example: 1001 }
+        type: { $ref: '#/components/schemas/PostTypeEnum' }
+        leaf_category_id: { type: integer, format: int32, example: 10101 }
+        l2_category_id:
+          type: integer
+          format: int32
+          description: STORED 生成列 `leaf_category_id DIV 100`，不可写
+          example: 101
+        category_path:
+          type: array
+          description: 类目面包屑名称，L1 → L2 → L3
+          items: { type: string }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        attributes:
+          type: object
+          additionalProperties: true
+          description: 动态属性，来自 `post.attributes` JSON 列
+        lng: { type: number, format: double, description: GCJ-02，5 位小数 }
+        lat: { type: number, format: double, description: GCJ-02，5 位小数 }
+        address: { type: string, nullable: true }
+        distance_m:
+          type: integer
+          format: int32
+          nullable: true
+          description: 与请求方视野中心的距离（米）
+        media:
+          type: array
+          description: 他人视角仅含 audit_status=pass 的项
+          items: { $ref: '#/components/schemas/MediaItem' }
+        contact_mask:
+          type: string
+          description: 脱敏联系方式。完整值只由 /posts/{id}/contact 返回
+          example: 138****8000
+        completeness_level: { $ref: '#/components/schemas/CompletenessLevelEnum' }
+        status: { $ref: '#/components/schemas/PostStatusEnum' }
+        publish_at: { type: string, format: date-time }
+        expire_at:
+          type: string
+          format: date-time
+          description: 到期时间。倒计时文案允许用本地时间计算
+        version:
+          type: integer
+          format: int64
+          description: 乐观锁版本号。**PATCH status 时必须原样回传**
+        author:
+          $ref: '#/components/schemas/AuthorBrief'
+
+    AuthorBrief:
+      type: object
+      description: |
+        作者摘要，严格遵循 `user` 对外视图白名单。
+        `phone_mask` / `real_name_enc` / `id_card_hash` **不出现**。
+      required: [id, nickname, realname_status]
+      properties:
+        id: { type: integer, format: int64 }
+        nickname: { type: string }
+        avatar_url: { type: string, nullable: true }
+        realname_status: { $ref: '#/components/schemas/RealnameStatusEnum' }
+        qualification_badges:
+          type: array
+          items: { type: string }
+
+    MyPostItem:
+      type: object
+      description: 我的帖子列表项。**必带 `version`**；本人视角下发媒体三态
+      required: [id, type, title, status, version, completeness_level]
+      properties:
+        id: { type: integer, format: int64 }
+        type: { $ref: '#/components/schemas/PostTypeEnum' }
+        leaf_category_id: { type: integer, format: int32 }
+        title: { type: string }
+        cover_media:
+          $ref: '#/components/schemas/MediaItem'
+        completeness_level: { $ref: '#/components/schemas/CompletenessLevelEnum' }
+        status: { $ref: '#/components/schemas/PostStatusEnum' }
+        publish_at: { type: string, format: date-time }
+        expire_at: { type: string, format: date-time }
+        view_count: { type: integer, format: int32 }
+        contact_count:
+          type: integer
+          format: int32
+          description: 被查看联系方式的次数，来自 contact_event 聚合
+        version: { type: integer, format: int64 }
+
+    PostCard:
+      type: object
+      description: 列表卡片项（`/posts/search`）。不含完整联系方式
+      required: [id, type, title, completeness_level]
+      properties:
+        id: { type: integer, format: int64 }
+        type: { $ref: '#/components/schemas/PostTypeEnum' }
+        leaf_category_id: { type: integer, format: int32 }
+        l2_category_id: { type: integer, format: int32 }
+        title: { type: string }
+        summary: { type: string, nullable: true, description: 描述摘要 }
+        cover_url: { type: string, nullable: true, description: 仅 audit_status=pass 的封面 }
+        lng: { type: number, format: double }
+        lat: { type: number, format: double }
+        distance_m: { type: integer, format: int32, nullable: true }
+        completeness_level: { $ref: '#/components/schemas/CompletenessLevelEnum' }
+        publish_at: { type: string, format: date-time }
+        author: { $ref: '#/components/schemas/AuthorBrief' }
+
+    # ---------- 地图（紧凑格式） ----------
+
+    PinsCompactResponse:
+      type: object
+      description: |
+        地图图钉响应。为压体积采用 **schema + 二维数组** 的紧凑格式，
+        而非常规对象数组。客户端按 `schema` 声明的列序解析 `pins`。
+
+        `pins` 每行列序**固定**为：
+        `["id", "lng", "lat", "category_id", "type", "completeness_level"]`
+
+        - `type`：`0` = resource（资源），`1` = demand（需求）
+        - `completeness_level`：`0` / `1` / `2`
+        - 坐标位数见 `NfrPerf.mapPinCoordDecimals`
+        - `pins` 条数上限见 `NfrPerf.renderMaxPins`
+      required: [mode, total]
+      properties:
+        mode:
+          type: string
+          enum: [pin, cluster]
+          description: |
+            聚合模式，按 zoom 换算的 metersPerPixel 决定（**不按点数**），
+            阈值见 `NfrPerf.clusterModeSwitchMetersPerPixel`。
+            `pin` 时 `pins` 有值、`cluster` 时 `clusters` 有值。
+        schema:
+          type: array
+          description: pins 的列序声明，固定 6 列
+          items: { type: string }
+          example: [id, lng, lat, category_id, type, completeness_level]
+        pins:
+          type: array
+          description: 紧凑二维数组，仅 mode=pin 时有值
+          items:
+            type: array
+            minItems: 6
+            maxItems: 6
+            items:
+              oneOf:
+                - type: integer
+                - type: number
+          example:
+            - [1001, 120.15012, 30.28034, 10101, 0, 2]
+            - [1002, 120.14887, 30.27991, 10102, 1, 1]
+        clusters:
+          type: array
+          description: 服务端预聚合结果，仅 mode=cluster 时有值
+          items:
+            type: object
+            required: [lng, lat, count]
+            properties:
+              lng: { type: number, format: double }
+              lat: { type: number, format: double }
+              count: { type: integer, format: int32, description: 该聚合点包含的帖子数 }
+              category_id:
+                type: integer
+                format: int32
+                nullable: true
+                description: 聚合内主导类目，用于图标着色
+        total:
+          type: integer
+          format: int32
+          description: 命中总数（可能大于返回条数上限）
+        category_version_stale:
+          type: boolean
+          description: |
+            true 表示客户端 `category_version` 已过期。
+            客户端须**异步**拉 `/categories/tree` 并清空全部本地 Pin 缓存。
+            **不阻塞本次渲染、不强升、不回 40001。**
+
+    # ---------- 联系 ----------
+
+    ContactInfo:
+      type: object
+      description: |
+        完整联系方式。**全系统唯一出口**。
+        解密由 `common` 域统一入口执行（AAD 绑定 `post_id`）。
+        返回成功即已写 `contact_event`（北极星辅助指标唯一统计点）与 `audit_log`。
+      required: [contact_type, contact_value, remaining_today]
+      properties:
+        contact_type:
+          type: string
+          enum: [phone, wechat]
+        contact_value:
+          type: string
+          description: 解密后的完整联系方式
+          example: '13800138000'
+        remaining_today:
+          type: integer
+          format: int32
+          description: |
+            今日剩余可查看次数，**仅账号维度**，用于前置提示。
+
+            ### 客户端不得把它当成承诺
+
+            服务端限频有**四个维度**（账号 / 设备 / IP / 熔断），本字段只反映其中一个。
+            因此下面这个场景是**正常且必然会发生**的：
+
+            ```
+            本字段返回 3，UI 显示「今日还可查看 3 次」
+            用户点第 2 次 → 服务端因【设备维度】超限返 42902
+            UI 只能说「已达上限」→ 应用当场自我否定
+            ```
+
+            **UI 文案规则：**
+
+            - 用「今日剩余 N 次（以实际请求结果为准）」，**不用**「今日还可查看 N 次」；
+            - 收到 `42902` 后**立即把本地显示的剩余次数刷成 0**，否则「还剩 3 次」与
+              「已达上限」会同时出现在屏幕上；
+            - 提示文案**不解释是哪个维度超限**（服务端刻意不区分，风控信息不外泄），
+              只按 `Retry-After` 展示倒计时。
+
+            **服务端不改为四维最小值**：那会把设备维度的限额直接暴露给客户端，
+            可被反推出风控阈值，得不偿失。正确解法是客户端不把它当承诺。
+        post_id: { type: integer, format: int64 }
+
+    # ---------- 通知 ----------
+
+    Notification:
+      type: object
+      required: [id, type, title, is_read, created_at]
+      properties:
+        id: { type: integer, format: int64 }
+        type:
+          type: string
+          enum: [system, interaction, cert]
+          description: 与 `notification.type` 列枚举严格一致
+        title: { type: string }
+        content: { type: string, nullable: true }
+        is_read: { type: boolean }
+        created_at: { type: string, format: date-time }
+        target:
+          type: object
+          nullable: true
+          description: 跳转目标，供客户端路由
+          properties:
+            kind:
+              type: string
+              enum: [post, cert, none]
+            post_id: { type: integer, format: int64, nullable: true }
+
+    # ---------- 埋点 ----------
+
+    TrackEvent:
+      type: object
+      description: |
+        埋点事件。四必埋事件：
+        `layer_switch`（Batch1）、`post_published`（Batch1）、`contact_event`（Batch1）、
+        `demand_push_sent` + `resource_detail_click`（Batch2）。
+
+        `ts` 取**客户端采集时刻**；服务端按 `ts` 归入 `track_event_YYYYMM` 月表。
+
+        **`interaction_id` + `event` + `ts` 三者同时是去重键成员**
+        （连同登录态推出的 `user_id`，构成埋点库唯一索引 `uk_event_dedup`）。
+        因此这三个字段在同一事件的重传中必须**逐字不变** —— 客户端一旦对已入队
+        事件做任何"补全"或重新取值，重传就会被判为新事件而重复落库。
+      required: [event, ts, interaction_id]
+      properties:
+        event:
+          type: string
+          enum: [layer_switch, post_published, contact_event, demand_push_sent, resource_detail_click]
+        ts:
+          type: string
+          format: date-time
+          description: |
+            客户端采集时刻（不是上报时刻），决定月表归属。
+
+            **必须带毫秒精度**：去重键 `uk_event_dedup` 的时间列是 `DATETIME(3)`，
+            若只到秒，同一交互内 1 秒中的多次同名事件会被误判为重复而丢弃。
+        interaction_id:
+          type: string
+          description: |
+            与请求头 `X-Interaction-Id` 对应，用于串联同一次交互。
+
+            **本接口是唯一「请求体该字段与请求头不同值」的场景**：请求头是批次级的
+            「这次传输动作」，本字段是事件所属的原始交互，两者互不覆盖。
+
+            去重键成员，重传时必须逐字不变。
+        request_id:
+          type: string
+          nullable: true
+          description: |
+            服务端请求标识。**缓存命中时不存在**，属预期行为，
+            不得因缺失判为异常。
+        props:
+          oneOf:
+            - $ref: '#/components/schemas/LayerSwitchProps'
+          description: 事件属性。layer_switch 使用 LayerSwitchProps，其余事件属性 Batch2 补充
+          additionalProperties: true
+
+    LayerSwitchProps:
+      type: object
+      description: |
+        `layer_switch` 事件的 12 个属性（可观测性架构方案 §4.1.1）。
+
+        **四段耗时纪律**：`t_cache_ms + t_net_ms + t_agg_ms + t_render_ms == duration_ms`
+        （容差 ±1ms）。四段必须**各自独立打点计时**，
+        **禁止用总时长减法**倒推任何一段。
+      required: [duration_ms, t_cache_ms, t_net_ms, t_agg_ms, t_render_ms, result, cache_hit]
+      properties:
+        duration_ms:
+          type: integer
+          format: int32
+          description: 图层切换总耗时。目标见 NfrPerf.layerSwitchP95Ms
+        t_cache_ms: { type: integer, format: int32, description: 缓存读取段耗时（独立计时） }
+        t_net_ms: { type: integer, format: int32, description: 网络请求段耗时（独立计时） }
+        t_agg_ms: { type: integer, format: int32, description: 聚合计算段耗时（独立计时） }
+        t_render_ms: { type: integer, format: int32, description: 渲染段耗时（独立计时） }
+        result:
+          type: string
+          enum: [success, fail]
+        fail_reason:
+          type: string
+          nullable: true
+          enum: [timeout, network, server_error, render_error, cancelled]
+          description: 仅 result=fail 时有值
+        err_code:
+          type: integer
+          format: int32
+          nullable: true
+          description: 失败时的业务 code（见错误码表）
+        cache_hit:
+          type: boolean
+          description: 是否命中本地 Pin 缓存。命中时 request_id 不存在
+        fps: { type: number, format: float, nullable: true, description: 该次交互期间平均帧率 }
+        mem_peak_mb:
+          type: number
+          format: float
+          nullable: true
+          description: |
+            峰值内存（MB）。Android 走平台通道采集，
+            **iOS 上报空值**（不为此引入第三方库）。
+        network_type:
+          type: string
+          enum: [wifi, 5g, 4g, 3g, 2g, none, unknown]
+
