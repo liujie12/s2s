@@ -1,8 +1,9 @@
 # ── Python 依赖与缓存 ──
-# .pylibs / .pptx_lib 是脚本运行时就地安装的第三方库（python-pptx、lxml、Pillow 等），
-# 数千个文件且可随时重装，不入库
+# .pylibs / .pptx_lib / .pydeps 是脚本运行时就地安装的第三方库（python-pptx、lxml、Pillow、
+# opencv、numpy 等），数千个文件且可随时重装，不入库
 .pylibs/
 .pptx_lib/
+.pydeps/
 __pycache__/
 *.py[cod]
 
