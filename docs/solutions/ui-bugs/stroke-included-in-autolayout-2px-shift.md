@@ -152,4 +152,4 @@ c.strokesIncludedInLayout = node.strokesIncludedInLayout;
 
 - [visual-feedback-loop-latency.md](file:///d:/developer/code/aicoding/s2s/docs/solutions/workflow-issues/visual-feedback-loop-latency.md) —— 本缺陷是「越晚出图越贵」的实例；其中第五条讲离线 mock 与实机的数字不可互换
 - [design-parameter-review-and-gating.md](file:///d:/developer/code/aicoding/s2s/docs/solutions/workflow-issues/design-parameter-review-and-gating.md) —— 「守门人没守住真正的约束」，与本文 Prevention 第二、四条同源
-- [CONCEPTS.md](file:///d:/developer/code/aicoding/s2s/CONCEPTS.md) —— 「实机核验」「守门型探针」的定义
+- [CONCEPTS.md](file:///d:/developer/code/aicoding/s2s/CONCEPTS.md) —— 「实机核验」「守门型探针」「测量型探针」的定义

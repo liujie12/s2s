@@ -1,7 +1,7 @@
 ---
 title: 多格式交付件一致性同步：内容源不对称与几何溢出审计
 date: 2026-08-23
-last_updated: 2026-08-24
+last_updated: 2026-09-09
 category: workflow-issues
 module: docs
 problem_type: workflow_issue
@@ -87,7 +87,7 @@ Move-Item -Force "docs\找鸭找-产品需求文档-v2.1_tmp.docx" "docs\找鸭�
 
 顺带纠正一处仓库既存口径：该脚本实际是**五段**校验，不是流传的「四段」—— [L29](file:///d:/developer/code/aicoding/s2s/docs/verify_prd_docx.py#L29) 核心规格关键词 34 项、[L55](file:///d:/developer/code/aicoding/s2s/docs/verify_prd_docx.py#L55) Scope 红线 7 项、[L65](file:///d:/developer/code/aicoding/s2s/docs/verify_prd_docx.py#L65) 统一口径 6 项、[L75](file:///d:/developer/code/aicoding/s2s/docs/verify_prd_docx.py#L75) 一级章节 12 项、[L98](file:///d:/developer/code/aicoding/s2s/docs/verify_prd_docx.py#L98) 版本演进痕迹 18 项。「四段」这个说法在 `说明文档.md` 与本篇早期版本里都出现过 —— **闸门段数这类可数事实也要回代码点，不要沿用留档里的转述**。
 
-顺带一个已确认的反向问题：该脚本 [L101-L106](file:///d:/developer/code/aicoding/s2s/docs/verify_prd_docx.py#L101-L106) 把「替换」「替代」列为必须 0 次的版本痕迹禁用词，而 `PRD.md` 现有 2 处正常动词用法（[L857-L858](file:///d:/developer/code/aicoding/s2s/docs/PRD.md#L857-L858)，§6 地图底图口径段的「每次都要替换」与换底图流程），MD 驱动型脚本会原样渲染进 docx。所以当前 docx 跑闸门时唯一会亮红的 FAIL 恰恰与新增章节无关，来自这条自伤式误报 —— 反过来更说明闸门的红灯与真实风险已经脱钩。「替代」在 `PRD.md` 实际 0 次，只有「替换」构成自伤。该禁用规则过宽，需从整词黑名单收窄为带上下文的精确模式。
+顺带一个已确认的反向问题：该脚本曾把「替换」「替代」列为必须 0 次的版本痕迹禁用词，而 `PRD.md` 有多处正常动词用法（换底图流程「替换配置」、Logo「转曲后替换」等），MD 驱动型脚本会原样渲染进 docx，会让闸门产生与新增章节无关的自伤式误报。**该问题已于 2026-09-02 按本篇建议收窄落地**：[verify_prd_docx.py L110-L118](file:///d:/developer/code/aicoding/s2s/docs/verify_prd_docx.py#L110-L118) 现把裸词黑名单改为带版本语境的组合（「替代 v2」「替换为 v」「替换旧」等），注释明确「不拦替换配置/不可替代的优势」；当前 PRD.md 的 4 处「替换」命中（L409 转曲后替换 / L1081、L1082 换底图 / L1298 替换配置）均属正常动词、不再误报。
 
 ### 二、定位硬编码槽位用关键词而非逐行读
 
@@ -172,7 +172,7 @@ for k in ["第十部分：工程契约", "12. 接口需求", "completeness_condi
 
 **特征句要用改写后的原句片段，不要用通用词表。** 我中途试过用 `["POC", "Flutter", "基线", "举报率"]` 这类通用词表跨三份文档扫描，结论不可用：MRD 是市场文档，本就不该出现 `Flutter`，报 MISS 是正常的；PRD 里的「举报率」实际出现在「不使用举报率作为信誉信号」这句正向红线里，报 BAD 是误判。通用词表无法区分「该出现」与「不该出现」，只有原句片段可以。
 
-**「用原句」还要再收紧一层：原句必须逐字复制，含行内 Markdown 标记。** 8/24 那次 13/14 命中，唯一 FAIL 是我把特征句写成剥离星号的 `本部分不新增任何产品需求`，而权威源 [PRD.md L1613](file:///d:/developer/code/aicoding/s2s/docs/PRD.md#L1613) 实际是 `本部分**不新增任何产品需求**`，MD 驱动型脚本原样渲染进 docx，字符串比对当然不命中。逐段打印 `doc.paragraphs` 后确认内容其实完整落盘 —— 这是**探针缺陷而非文档缺陷**。
+**「用原句」还要再收紧一层：原句必须逐字复制，含行内 Markdown 标记。** 8/24 那次 13/14 命中，唯一 FAIL 是我把特征句写成剥离星号的 `本部分不新增任何产品需求`，而权威源 [PRD.md L2035](file:///d:/developer/code/aicoding/s2s/docs/PRD.md#L2035) 实际是 `本部分**不新增任何产品需求**`，MD 驱动型脚本原样渲染进 docx，字符串比对当然不命中。逐段打印 `doc.paragraphs` 后确认内容其实完整落盘 —— 这是**探针缺陷而非文档缺陷**。
 
 **探针 FAIL 时先怀疑探针。** 一次假 FAIL 会让人开始忽略整份报告；把「文档缺陷」与「探针缺陷」明确区分并写清结论，报告才有长期可用性。辨别方式就是逐段打印实际落盘文本，而不是继续调整探针直到变绿。
 
@@ -251,5 +251,5 @@ for k in ["第十部分：工程契约", "12. 接口需求", "completeness_condi
 - 溢出审计工具：[check_fit.py](file:///d:/developer/code/aicoding/s2s/docs/check_fit.py)
 - 落盘验证工具：[verify_pptx_edits.py](file:///d:/developer/code/aicoding/s2s/docs/verify_pptx_edits.py)（PPTX 侧已固化；docx 侧尚无等价工具，目前用临时探针）
 - 本篇的下游产物：[verify_brd_v22.py](file:///d:/developer/code/aicoding/s2s/docs/verify_brd_v22.py) 的文件头写明「设计依据」是本篇，并同时校验 pptx 与 md 两侧 —— 可作为把本篇原则固化成脚本的参考样式
-- PRD 闸门校验：[verify_prd_docx.py](file:///d:/developer/code/aicoding/s2s/docs/verify_prd_docx.py) —— **待扩容**：章节清单止于 §11，不含 §12–§14；「替换/替代」禁用词过宽
+- PRD 闸门校验：[verify_prd_docx.py](file:///d:/developer/code/aicoding/s2s/docs/verify_prd_docx.py) —— **待扩容**：章节清单止于 §11，不含 §12–§14（「替换/替代」禁用词过宽一项已于 2026-09-02 收窄为带版本语境组合，见正文「一之二」）
 - 被替代的长度比工具：[cmp_len.py](file:///d:/developer/code/aicoding/s2s/docs/cmp_len.py)（仅覆盖 MRD，规则对模板失真）
