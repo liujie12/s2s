@@ -103,6 +103,11 @@ class NfrPerf {
   /// ⚠️ **待 §6.10.1 Batch1 POC 实测确定**。此处暂填 30，依据是初始缩放为
   /// 12 m/px（map_screen.dart）、约 2.5 倍缩出后单点已难分辨。
   /// POC 出结论后回改本行并同步 PRD §12.3。
+  ///
+  /// POC 证据（2026-09-10）：POC-A 复跑复现 4.73ms 基线（5 万点聚合 5.51ms，
+  /// 两档线性 PASS），POC-B 开发机 CPU 基准未见超线性回潮——客户端算力不是
+  /// 阈值约束，建议校准区间 10–30 m/px，推导见
+  /// docs/poc/2026-09-10-cluster-poc-conclusion.md；终值真机校准见 [126]。
   static const double clusterModeSwitchMetersPerPixel = 30;
 
 
