@@ -1,0 +1,71 @@
+# 代码面 CI（GitHub Actions）
+#
+# 裁决依据：条目 [108] S6 —— GitHub Actions = Trial，但 CI 只承载「代码面判据」。
+#   部署面门禁（docker / 域名 / IAM 权限 / G1–G11，见 deploy/scripts/gate-check.sh）
+#   的判定对象在 CI runner 上根本不存在，进 CI 只会全部 SKIP，
+#   制造「绿勾但内容为空」的假象——比没有门禁更糟（失效的门禁默认落点是「通过」）。
+#   故部署门禁留在发版机本地，由 deploy.sh 在步骤 4 强制消费其退出码（条目 [111]）。
+#
+# 本流水线三道判据全部只依赖代码与 git 索引，在 runner 上可真实判定：
+#   1. flutter analyze —— 0 error（DevSecOps §7.2）
+#   2. flutter test —— 全量测试全绿，其中包含两组「守门测试」：
+#        test/gates/openapi_contract_gate_test.dart  契约静态守门（14 项）
+#        test/gates/quality_gate_test.dart           代码质量门禁（10 项：
+#          G-Q1 后门码 888888 登记册 / G-Q2 密钥泄露扫描 / G-Q3 .sh 执行位）
+#   3. 版本锁定 —— Flutter 3.41.9（Dart 3.11.5），与 pubspec 的 sdk 约束一致，
+#      禁用 3.44.x+（本机实测锁定版本，版本漂移导致的测试差异不可接受）。
+#
+# 四态诚实性：守门测试中无法判定的情形一律 markTestSkipped（如非 git 环境下
+#   的 G-Q2/G-Q3），在 Actions 日志中显式显示为 skipped，而非静默通过。
+name: ci
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+# 同一分支新推送时取消尚未完成的旧运行，省 runner 分钟。
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  code-gate:
+    name: 代码面门禁（analyze + 契约/质量守门 + 全量测试）
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Flutter 3.41.9（版本锁定，勿擅自升级）
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.41.9
+          channel: stable
+          cache: true
+
+      - name: 核对 Flutter / Dart 版本
+        run: |
+          flutter --version
+          dart --version
+
+      - name: 拉取依赖
+        run: flutter pub get
+
+      # 判据 1：静态分析 0 error（warning/info 不阻断，但 error 必须为零）。
+      - name: flutter analyze（0 error，DevSecOps §7.2）
+        run: flutter analyze
+
+      # 判据 2：全量测试。契约守门（openapi_contract_gate_test）与
+      # 代码质量门禁（quality_gate_test）是其中普通测试文件——
+      # 它们 FAIL 时整条流水线即红，无需额外接线。
+      # 先单独跑一遍守门测试并让其 [INFO] 留证（豁免列名）出现在日志中，
+      # 再跑全量，便于在 CI 日志里直接看到「豁免了什么、占位了什么」。
+      - name: 守门测试（API 契约 + 代码质量门禁）
+        run: flutter test test/gates/
+
+      - name: 全量测试（既有套件 + test/gates 守门 + test/contract 契约样例）
+        run: flutter test
