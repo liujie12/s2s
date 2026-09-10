@@ -60,9 +60,53 @@ dependencies:
   # 走不到，等于该分支从未被验证过。
   url_launcher: ^6.3.2
 
+  # ---- 以下六项为对接后端所需（详细设计 §10.4 / 技术栈选型说明 §12）----
+
+  # HTTP 客户端（详细设计 §11 五个拦截器链的载体）。
+  #
+  # 选 dio 而非 package:http：§11 要求的能力里有三项 http 做不到 ——
+  # 拦截器链（错误码统一映射、Idempotency-Key 注入、鉴权刷新）、
+  # 请求取消（§6 地图视口连续拖动要丢弃过期请求）、
+  # 以及 §11.4 的重试退避需要在拦截器里改写请求后重发。
+  dio: ^5.9.0
+
+  # UUID v4 生成（埋点 interaction_id 与 Idempotency-Key）。
+  #
+  # 必须用标准实现而不是自拼随机串：`interaction_id` 是服务端去重唯一索引
+  # `uk_event_dedup` 的最左列（数据库设计文档 §3.16.1），碰撞会导致
+  # **合法事件被当成重复丢弃**，而丢弃不产生任何错误信号。
+  uuid: ^4.5.1
+
+  # 网络可达性变化监听（§17.3 埋点本地队列的补报触发条件）。
+  #
+  # 只用它做「从断网恢复到有网」的信号，不用它判断「当前是否能连通服务端」——
+  # 后者是它给不了的保证（连上 WiFi 不等于能出公网），把它当连通性判据会让
+  # 补报在弱网下疯狂重试。
+  connectivity_plus: ^7.0.0
+
+  # 图片选取（§5.3 发布页图片上传，相册 + 拍照）。
+  image_picker: ^1.2.0
+
+  # 网络图片加载与磁盘缓存（§6.4.3 列表卡片缩略图 / §7.4.1 详情图集）。
+  #
+  # 列表滚动会反复进出同一批图片，无磁盘缓存则每次回滚都重新下载 ——
+  # 表现是流量异常与滚动卡顿，而不是任何形式的报错。
+  cached_network_image: ^3.4.1
+
+  # 应用目录定位（§17.3 埋点本地队列落盘 / 图片压缩临时文件）。
+  #
+  # 埋点队列必须落盘而非只存内存：§17.3 的补报前提是「进程被杀后事件不丢」，
+  # 只存内存的队列在冷启动后为空，那条补报路径等于从未存在。
+  path_provider: ^2.1.5
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
+
+  # YAML 解析：契约守门测试（test/gates/openapi_contract_gate_test.dart）
+  # 需要把 docs/api/openapi.yaml 载入为 Map 做静态校验。
+  # 仅测试期使用，不进运行时依赖。
+  yaml: ^3.1.2
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
