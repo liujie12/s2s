@@ -180,6 +180,52 @@ class NfrApi {
   static const int trackBatchMaxEvents = 50;
 }
 
+/// §14.1 网络层超时 / 重试 / 退避参数（详设:1384-1391）。
+///
+/// **为什么单建这个类（2026-09-10，计划 KTD6）**：这些参数此前只存在于详设
+/// §14.1 的文字表格里，没有常量承载 —— 按「不复制字面量」硬纪律（详设 §0.1），
+/// 网络层（dio BaseOptions、RetryInterceptor 退避表）一旦开写就会各敲一遍。
+/// 消费方一律引用本类常量名，不得复制字面量。
+///
+/// **改动纪律**：任一本类常量改动，必须同时改详设 §14.1 对应行（同步方向与
+/// 本文件头部纪律一致，只是本类口径源是详设而非 PRD）。
+class NfrNetwork {
+  const NfrNetwork._();
+
+  /// 连接超时（秒）。详设 §14.1（详设:1388）。
+  static const int connectTimeoutSec = 5;
+
+  /// 读取超时（秒）。详设 §14.1（详设:1389）。
+  static const int readTimeoutSec = 10;
+
+  /// `/map/pins` 读取超时（秒，收紧档）。详设 §14.1（详设:1390）。
+  ///
+  /// 收紧理由（详设原文）：`/map/pins` 承诺 P95 ≤ [NfrPerf.layerSwitchP95Ms]，
+  /// 10s 才超时时用户早已离开页面。按请求 Options 覆盖，不改全局读取超时。
+  static const int mapPinsReadTimeoutSec = 3;
+
+  /// 全链路重试总次数（首发之外）。详设 §14.1（详设:1386）。
+  ///
+  /// 是**全链路总数**，不是每层 2 次 —— 网络层与业务层双重试会把次数放大成
+  /// 4–9 次（详设 §14.2 禁止事项第 1 条）。`RetryInterceptor` 是全局唯一
+  /// 重试点，本值只被它引用。
+  static const int retryMaxCount = 2;
+
+  /// 第 1 次重试的退避基数（秒）。详设 §14.1（详设:1387）。
+  ///
+  /// 服务端 `Retry-After` 响应头（整数秒）**优先级高于本退避表**
+  /// （详设 §14.1 末行）：服务端给了秒数就用服务端的。
+  static const int backoffFirstSec = 1;
+
+  /// 第 2 次重试的退避基数（秒）。详设 §14.1（详设:1387）。
+  static const int backoffSecondSec = 2;
+
+  /// 退避抖动幅度（±百分比）。详设 §14.1（详设:1387）。
+  ///
+  /// 抖动防止大量客户端同时重试形成第二波冲击（详设原文）。
+  static const int retryJitterPercent = 20;
+}
+
 /// §0.2 北极星三轴 + 2026-09-02 阶梯定案。
 class NorthStar {
   const NorthStar._();
