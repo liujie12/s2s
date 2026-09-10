@@ -1,8 +1,8 @@
 /// 契约测试示范：脚手架用法样例（后端开工后按此模式逐接口复制）。
 ///
 /// 本文件用内存 Mock 服务演示「契约测试长什么样」。后端就绪后，
-/// 把 [MockApiServer] 换成真实基址（如 http://localhost:8080/api/v1 或
-/// 测试环境域名），断言一行不用改——这正是契约测试的价值：
+/// 以 `--dart-define=S2S_API_BASE_URL=<真实基址>`（如 http://localhost:8080/api/v1
+/// 或测试环境域名）直指真实服务，断言一行不用改——这正是契约测试的价值：
 /// 同一份断言对 mock 与真实服务都成立。
 ///
 /// 演示的三类契约校验：
@@ -25,7 +25,12 @@ void main() {
 
   setUp(() async {
     server = MockApiServer();
-    baseUrl = await server.start();
+    final mockBaseUrl = await server.start();
+    // baseUrl 环境开关（详设 §9 AE1）：`--dart-define=S2S_API_BASE_URL=<基址>`
+    // 非空时直指真实服务，缺省或空串回退内存 mock；断言与桩登记两模式逐字一致。
+    // mock 始终启动：桩登记行不因模式切换而改动，未用时不产生任何请求。
+    const injectedBaseUrl = String.fromEnvironment('S2S_API_BASE_URL');
+    baseUrl = injectedBaseUrl.isNotEmpty ? injectedBaseUrl : mockBaseUrl;
     dio = Dio(BaseOptions(
       baseUrl: baseUrl,
       // 契约错误码用非 2xx 承载，dio 默认会抛 DioException；
