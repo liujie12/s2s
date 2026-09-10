@@ -45,18 +45,20 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(BizException.class)
     public ResponseEntity<ApiResponse<Void>> handleBizException(BizException exception) {
         ErrorCode errorCode = exception.getErrorCode();
-        HttpHeaders headers = new HttpHeaders();
         Long retryAfterSeconds = exception.getRetryAfterSeconds();
-        if (retryAfterSeconds != null) {
-            headers.set(HttpHeaders.RETRY_AFTER, String.valueOf(retryAfterSeconds));
-        } else if (errorCode.isNeedRetryAfter()) {
-            log.warn("ErrorCode {} needRetryAfter=true 但 BizException 未携带 retryAfterSeconds，属实现缺陷（编码规范 §3.2）",
-                    errorCode.getCode());
+        // 无剩余秒数时不构造 HttpHeaders：空头对象与无头响应线上输出完全一致
+        if (retryAfterSeconds == null) {
+            if (errorCode.isNeedRetryAfter()) {
+                log.warn("ErrorCode {} needRetryAfter=true 但 BizException 未携带 retryAfterSeconds，属实现缺陷（编码规范 §3.2）",
+                        errorCode.getCode());
+            }
+            return ResponseEntity.status(errorCode.getHttpStatus()).body(errorBody(errorCode));
         }
+        HttpHeaders headers = new HttpHeaders();
+        headers.set(HttpHeaders.RETRY_AFTER, String.valueOf(retryAfterSeconds));
         return ResponseEntity.status(errorCode.getHttpStatus())
                 .headers(headers)
-                .body(new ApiResponse<>(errorCode.getCode(), errorCode.getMessage(), null,
-                        ResponseBodyWrapper.resolveOrCreateRequestId()));
+                .body(errorBody(errorCode));
     }
 
     /**
@@ -70,8 +72,20 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleUnexpected(Exception exception) {
         log.error("未捕获异常，兜底映射 50001", exception);
         return ResponseEntity.status(ErrorCode.INTERNAL_ERROR.getHttpStatus())
-                .body(new ApiResponse<>(ErrorCode.INTERNAL_ERROR.getCode(),
-                        ErrorCode.INTERNAL_ERROR.getMessage(), null,
-                        ResponseBodyWrapper.resolveOrCreateRequestId()));
+                .body(errorBody(ErrorCode.INTERNAL_ERROR));
+    }
+
+    /**
+     * 构造错误响应体 {@code ApiResponse(code, message, data=null, requestId)}。
+     * 提取原因：该构造表达式在本类两个 handler 中出现第 2 次，按编码规范 §1.1
+     * 「同一逻辑出现第 2 次前必须提取为共享实现」收敛为唯一实现处。
+     *
+     * @param errorCode 业务错误码，取其 code 与 message 填入响应体
+     * @return {@link ApiResponse}：data 恒 null（失败响应口径，详设 §2.1），
+     *         requestId 经 {@link ResponseBodyWrapper#resolveOrCreateRequestId()} 解析注入
+     */
+    private static ApiResponse<Void> errorBody(ErrorCode errorCode) {
+        return new ApiResponse<>(errorCode.getCode(), errorCode.getMessage(), null,
+                ResponseBodyWrapper.resolveOrCreateRequestId());
     }
 }

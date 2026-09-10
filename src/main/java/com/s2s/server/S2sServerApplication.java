@@ -35,7 +35,6 @@ public class S2sServerApplication {
      * 应用入口：启动 Spring Boot 上下文并随 JVM 常驻。
      *
      * @param args 命令行参数，原样透传 {@link SpringApplication#run(Class, String...)}，不做自定义解析
-     * @return 无返回值（void）；进程生命周期由 Spring Boot 托管
      */
     public static void main(String[] args) {
         SpringApplication.run(S2sServerApplication.class, args);

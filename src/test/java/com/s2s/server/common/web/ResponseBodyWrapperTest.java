@@ -1,12 +1,9 @@
 package com.s2s.server.common.web;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.lang.reflect.Method;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -19,8 +16,6 @@ import org.springframework.http.server.ServletServerHttpRequest;
 import org.springframework.http.server.ServletServerHttpResponse;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
-import org.springframework.web.context.request.RequestContextHolder;
-import org.springframework.web.context.request.ServletRequestAttributes;
 
 /**
  * {@link ResponseBodyWrapper} 套壳行为测试。
@@ -39,39 +34,33 @@ class ResponseBodyWrapperTest {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private ResponseBodyWrapper wrapper;
-    private MockHttpServletRequest contextRequest;
 
     /**
-     * 每测前置：构造 wrapper，并把带预置 {@code X_REQUEST_ID} 属性的 Mock 请求放入
-     * {@link RequestContextHolder}，模拟请求线程上下文（正式生成方 [124] RequestIdFilter 落地前的最小实现路径）。
+     * 每测前置：构造 wrapper，并经 {@link RequestContextFixtures} 安装带预置 request_id 的
+     * 请求线程上下文（正式生成方 [124] RequestIdFilter 落地前的最小实现路径）。
      *
-     * @param 无入参
      * @return void
      */
     @BeforeEach
     void setUp() {
         wrapper = new ResponseBodyWrapper(objectMapper);
-        contextRequest = new MockHttpServletRequest();
-        contextRequest.setAttribute(ResponseBodyWrapper.REQUEST_ID_ATTRIBUTE, "req-pre-set-1");
-        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(contextRequest));
+        RequestContextFixtures.install("req-pre-set-1");
     }
 
     /**
-     * 每测后置：清空线程本地请求上下文，避免测试间串扰。
+     * 每测后置：经 {@link RequestContextFixtures} 清空线程本地请求上下文，避免测试间串扰。
      *
-     * @param 无入参
      * @return void
      */
     @AfterEach
     void tearDown() {
-        RequestContextHolder.resetRequestAttributes();
+        RequestContextFixtures.clear();
     }
 
     /**
      * 场景一：record DTO 返回值被统一套壳——code=0、data 为原对象、request_id 逐字沿用请求属性中的值。
      * 依据：详设 §2.1「controller 直接返回业务 DTO，包装器统一套壳，注入当前请求的 request_id」。
      *
-     * @param 无入参
      * @return void；断言失败即套壳结构或 request_id 注入逻辑错误
      * @throws NoSuchMethodException 反射取占位方法句柄失败时抛出（测试固有问题，非被测行为）
      */
@@ -96,7 +85,6 @@ class ResponseBodyWrapperTest {
      * 场景二：String 返回值套壳后仍输出合法 JSON 字符串（Spring 对 String 走
      * {@link StringHttpMessageConverter}，wrapper 必须手动序列化，详设 §2.1 包装器职责）。
      *
-     * @param 无入参
      * @return void；断言失败即 String 分支未序列化为 JSON
      * @throws Exception Jackson 解析失败时抛出（断言的一部分：非法 JSON 即测试失败）
      */
@@ -120,7 +108,6 @@ class ResponseBodyWrapperTest {
      * 场景三：controller 声明返回类型已是 {@link ApiResponse} 时 {@code supports()} 返回 false，
      * 不二次套壳（详设 §2.1：唯一套壳处，重复套壳会破坏信封结构）。
      *
-     * @param 无入参
      * @return void；断言失败即二次套壳防线失效
      * @throws NoSuchMethodException 反射取占位方法句柄失败时抛出（测试固有问题，非被测行为）
      */
@@ -134,7 +121,6 @@ class ResponseBodyWrapperTest {
      * 场景四：{@code /actuator/**} 运维端点返回值原样放行不套壳（compose healthcheck 依赖原生格式，
      * 部署架构设计文档；U-3 任务书明列排除路径）。
      *
-     * @param 无入参
      * @return void；断言失败即 actuator 排除失效
      * @throws NoSuchMethodException 反射取占位方法句柄失败时抛出（测试固有问题，非被测行为）
      */
@@ -164,34 +150,16 @@ class ResponseBodyWrapperTest {
     }
 
     /**
-     * 测试辅助：构造指向占位方法的 {@link MethodParameter}，其声明返回类型即 supports() 判定输入。
+     * 测试辅助：构造指向占位方法返回值的 {@link MethodParameter}（parameterIndex = -1 是
+     * Spring 公开语义「方法返回值」，{@code getParameterType()} 原生返回声明返回类型）。
+     * 被测 {@code supports()} 只消费 {@code getParameterType()}，与改写前的 mock 打桩行为等价。
      *
      * @param methodName 占位方法名（须存在于 {@link StubEndpoints}）
-     * @return mock 的 {@link MethodParameter}，{@code getParameterType()} 返回占位方法声明返回类型
+     * @return 指向占位方法返回值的 {@link MethodParameter}
      * @throws NoSuchMethodException 占位方法不存在时抛出
      */
-    @SuppressWarnings({"unchecked", "rawtypes"})
     private MethodParameter stubMethodParameter(String methodName) throws NoSuchMethodException {
-        Method method = findStubMethod(methodName);
-        MethodParameter parameter = mock(MethodParameter.class);
-        when(parameter.getParameterType()).thenReturn((Class) method.getReturnType());
-        return parameter;
-    }
-
-    /**
-     * 测试辅助：按名字在 {@link StubEndpoints} 中查找占位方法。
-     *
-     * @param methodName 占位方法名
-     * @return 反射 {@link Method} 句柄
-     * @throws NoSuchMethodException 方法不存在时抛出
-     */
-    private Method findStubMethod(String methodName) throws NoSuchMethodException {
-        for (Method method : StubEndpoints.class.getDeclaredMethods()) {
-            if (method.getName().equals(methodName)) {
-                return method;
-            }
-        }
-        throw new NoSuchMethodException(methodName);
+        return new MethodParameter(StubEndpoints.class.getDeclaredMethod(methodName), -1);
     }
 
     /**
@@ -203,7 +171,6 @@ class ResponseBodyWrapperTest {
         /**
          * 占位：声明返回 record DTO 的端点。
          *
-         * @param 无入参
          * @return 恒 null（仅供反射取返回类型，从不调用）
          */
         SampleDto recordEndpoint() {
@@ -213,7 +180,6 @@ class ResponseBodyWrapperTest {
         /**
          * 占位：声明返回 String 的端点。
          *
-         * @param 无入参
          * @return 恒 null（仅供反射取返回类型，从不调用）
          */
         String stringEndpoint() {
@@ -223,7 +189,6 @@ class ResponseBodyWrapperTest {
         /**
          * 占位：声明返回 {@link ApiResponse} 的端点。
          *
-         * @param 无入参
          * @return 恒 null（仅供反射取返回类型，从不调用）
          */
         ApiResponse<SampleDto> apiResponseEndpoint() {

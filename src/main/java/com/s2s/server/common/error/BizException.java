@@ -19,7 +19,6 @@ public class BizException extends RuntimeException {
      *
      * @param errorCode         业务错误码，异常 message 逐字取其 message（父类 {@link RuntimeException#getMessage()}）
      * @param retryAfterSeconds 剩余秒数（可空）；非空时由 handler 写入整数秒 {@code Retry-After} 响应头
-     * @return 无返回值（构造器）
      */
     private BizException(ErrorCode errorCode, Long retryAfterSeconds) {
         super(errorCode.getMessage());
@@ -52,7 +51,6 @@ public class BizException extends RuntimeException {
     /**
      * 取业务错误码。
      *
-     * @param 无入参
      * @return {@link ErrorCode}，handler 取其 code/message/httpStatus 构造响应
      */
     public ErrorCode getErrorCode() {
@@ -62,7 +60,6 @@ public class BizException extends RuntimeException {
     /**
      * 取剩余秒数。
      *
-     * @param 无入参
      * @return {@link Long} 剩余秒数；{@code null} 表示本异常不写 {@code Retry-After} 头
      */
     public Long getRetryAfterSeconds() {

@@ -100,7 +100,6 @@ public enum ErrorCode {
      * @param httpStatus     HTTP 状态码，与 {@code code} 同时使用（HTTP 表达传输层，code 表达业务语义）
      * @param message        中文文案，非 0 时可直接呈现给用户（{@code 42906} 例外：不向用户呈现）
      * @param needRetryAfter 抛出该码异常时是否必须携带剩余秒数（供 {@code Retry-After} 响应头使用）
-     * @return 无返回值（枚举构造器）
      */
     ErrorCode(int code, int httpStatus, String message, boolean needRetryAfter) {
         this.code = code;
@@ -112,7 +111,6 @@ public enum ErrorCode {
     /**
      * 取业务码。
      *
-     * @param 无入参
      * @return int 业务码，写入 {@code ApiResponse.code} 字段
      */
     public int getCode() {
@@ -122,7 +120,6 @@ public enum ErrorCode {
     /**
      * 取 HTTP 状态码。
      *
-     * @param 无入参
      * @return int HTTP 状态码，供 {@code GlobalExceptionHandler} 构造 {@code ResponseEntity} 使用
      */
     public int getHttpStatus() {
@@ -132,7 +129,6 @@ public enum ErrorCode {
     /**
      * 取中文文案。
      *
-     * @param 无入参
      * @return {@link String} 用户可读文案，写入 {@code ApiResponse.message} 字段
      */
     public String getMessage() {
@@ -142,7 +138,6 @@ public enum ErrorCode {
     /**
      * 取该码是否要求携带剩余秒数。
      *
-     * @param 无入参
      * @return boolean；{@code true} 表示抛异常必须带剩余秒数（{@code Retry-After}），缺即实现缺陷
      */
     public boolean isNeedRetryAfter() {

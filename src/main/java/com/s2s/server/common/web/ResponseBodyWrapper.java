@@ -49,7 +49,6 @@ public class ResponseBodyWrapper implements ResponseBodyAdvice<Object> {
      * 仅用于 String 返回值分支的手动序列化）。
      *
      * @param objectMapper Spring 容器中的 Jackson 序列化器
-     * @return 无返回值（构造器）
      */
     public ResponseBodyWrapper(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
@@ -105,12 +104,12 @@ public class ResponseBodyWrapper implements ResponseBodyAdvice<Object> {
     }
 
     /**
-     * 解析当前请求的 {@code request_id}：优先读请求属性 {@link #REQUEST_ID_ATTRIBUTE}
+     * 解析当前请求的 {@code request_id}（从 {@link RequestContextHolder} 线程本地取当前请求）：
+     * 优先读请求属性 {@link #REQUEST_ID_ATTRIBUTE}
      * （[124] {@code RequestIdFilter} 的正式写入点）；缺失时生成 UUID 并回写属性，
      * 保证同一请求内 wrapper 与 handler 取到同一值；非请求线程兜底直接生成。
      * 本方法是该逻辑的<b>唯一实现处</b>（编码规范 §1.1 反冗余），{@code GlobalExceptionHandler} 复用。
      *
-     * @param 无入参（从 {@link RequestContextHolder} 线程本地取当前请求）
      * @return {@link String} 当前请求的 {@code request_id}，非空
      */
     public static String resolveOrCreateRequestId() {

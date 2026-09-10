@@ -21,7 +21,6 @@ class ApplicationYamlTest {
     /**
      * 加载 jar 内 application.yml 为 Properties（不展开占位）。
      *
-     * @param 无入参
      * @return 扁平键属性集；${} 占位保持字面量
      */
     private static Properties loadApplicationYaml() {
@@ -35,7 +34,6 @@ class ApplicationYamlTest {
      * 依据：编码规范 §4.3「日志打全栈、响应体无堆栈」+ 详设 §2.2；
      * 本项是 GlobalExceptionHandler 之外对 /error 路径的配置层双保险。
      *
-     * @param 无入参
      * @return void；断言失败即有人改动了无堆栈口径
      */
     @Test
@@ -49,7 +47,6 @@ class ApplicationYamlTest {
      * 依据：编码规范 §3.3 六类凭证清单；安全 §4 key_version 列表结构。
      * 变量名与仓库根 .env.example 逐一对应，任一侧改名都会打破本断言或 grep 核对。
      *
-     * @param 无入参
      * @return void；断言失败即凭证占位变量名漂移或引入了默认值
      */
     @Test

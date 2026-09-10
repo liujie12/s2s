@@ -7,6 +7,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.context.properties.bind.BindResult;
 import org.springframework.boot.context.properties.bind.Bindable;
 import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.boot.context.properties.source.MapConfigurationPropertySource;
@@ -31,7 +32,6 @@ class SecretsPropertiesTest {
     /**
      * 构造全量假值属性源：八个键逐一对应编码规范 §3.3 六类凭证。
      *
-     * @param 无入参
      * @return 键为 s2s.secrets.*  relaxed 绑定名、值为假值的属性 Map
      */
     private static Map<String, String> fullProperties() {
@@ -53,7 +53,7 @@ class SecretsPropertiesTest {
      * @param properties 属性 Map（键为 s2s.secrets.* 形式）
      * @return 绑定结果；守卫抛出的异常经 Binder 包装向上传播
      */
-    private static org.springframework.boot.context.properties.bind.BindResult<SecretsProperties> bind(
+    private static BindResult<SecretsProperties> bind(
             Map<String, String> properties) {
         return new Binder(new MapConfigurationPropertySource(properties))
                 .bind("s2s.secrets", Bindable.of(SecretsProperties.class));
@@ -64,7 +64,6 @@ class SecretsPropertiesTest {
      * 依据：编码规范 §3.3 六类凭证（DB/Redis 口令、HMAC pepper 列表、AEAD 主密钥列表、
      * OSS AK/SK、短信/高德 Key）缺一不可的反面——齐备必须能绑。
      *
-     * @param 无入参
      * @return void；断言失败即 record 构造绑定或 relaxed 命名失配
      */
     @Test
@@ -85,7 +84,6 @@ class SecretsPropertiesTest {
      * 场景二：缺键（字段为 null）时绑定失败且报错点名环境变量。
      * 依据：record 构造绑定无隐式默认值，缺键即 null，被构造器守卫拒收。
      *
-     * @param 无入参
      * @return void；断言失败即缺键路径存在「缺了也能跑」的隐式默认值
      */
     @Test
@@ -103,7 +101,6 @@ class SecretsPropertiesTest {
      * 而是原样绑进字段（U-5 N2 首跑实测：缺 HMAC_PEPPERS_JSON 应用居然 Started）；
      * 这正是构造器守卫必须识别 "${...}" 整体形态的原因——本测试锁住该行为，防回归。
      *
-     * @param 无入参
      * @return void；断言失败即守卫对未解析占位字面量放行，快速失败形同虚设
      */
     @Test
@@ -120,7 +117,6 @@ class SecretsPropertiesTest {
      * 对应 compose 插值缺省落成空串的场景（D8 叠加路径）：光「变量存在」不算数，
      * 空白等同缺失，必须启动失败。
      *
-     * @param 无入参
      * @return void；断言失败即空白注入路径被放行
      */
     @Test

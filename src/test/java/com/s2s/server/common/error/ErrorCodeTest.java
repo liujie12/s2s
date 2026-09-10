@@ -3,6 +3,7 @@ package com.s2s.server.common.error;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.Arrays;
+import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
@@ -21,7 +22,6 @@ class ErrorCodeTest {
     /**
      * 断言枚举总数恰为 25（24 业务码 + {@code OK(0)}，编码规范 §0.2「不新增错误码」）。
      *
-     * @param 无入参
      * @return void；断言失败即枚举被增删，违反「唯一口径源 PRD §12.5」纪律
      */
     @Test
@@ -30,24 +30,23 @@ class ErrorCodeTest {
     }
 
     /**
-     * 断言全部 {@code code} 无重复（详设 §2.3：新增前必须确认 code 未被占用）。
+     * 断言全部 {@code code} 无重复（详设 §2.3：新增前必须确认 code 未被占用）；
+     * {@code doesNotHaveDuplicates} 失败信息自带点名重复码。
      *
-     * @param 无入参
      * @return void；断言失败即出现重复 code 占号
      */
     @Test
     void codesAreUnique() {
-        Set<Integer> distinctCodes = Arrays.stream(ErrorCode.values())
+        List<Integer> codeList = Arrays.stream(ErrorCode.values())
                 .map(ErrorCode::getCode)
-                .collect(Collectors.toSet());
-        assertThat(distinctCodes).hasSize(ErrorCode.values().length);
+                .toList();
+        assertThat(codeList).doesNotHaveDuplicates();
     }
 
     /**
      * 断言 {@code code / 100 == httpStatus}（PRD §12.5 分段规则：前 3 位对齐 HTTP 状态码语义）；
      * {@code OK(0, 200)} 为规则豁免项（R-4 明列）。
      *
-     * @param 无入参
      * @return void；断言失败即某枚举的 code 段与 httpStatus 失配
      */
     @Test
@@ -68,7 +67,6 @@ class ErrorCodeTest {
      * {@code 40105, 42901, 42902, 42903, 42904, 42905, 42906, 42907}
      * （编码规范 §3.2；PRD §12.5「Retry-After 响应头」补充条款）。
      *
-     * @param 无入参
      * @return void；断言失败即 Retry-After 码集合漂移（抛此类异常必须带剩余秒数，缺即实现缺陷）
      */
     @Test

@@ -11,9 +11,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
-import org.springframework.mock.web.MockHttpServletRequest;
-import org.springframework.web.context.request.RequestContextHolder;
-import org.springframework.web.context.request.ServletRequestAttributes;
 
 /**
  * {@link GlobalExceptionHandler} 异常映射测试。
@@ -32,28 +29,24 @@ class GlobalExceptionHandlerTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
-     * 每测前置：把带预置 {@code X_REQUEST_ID} 属性的 Mock 请求放入 {@link RequestContextHolder}，
+     * 每测前置：经 {@link RequestContextFixtures} 安装带预置 request_id 的请求上下文，
      * 验证 handler 注入的 request_id 逐字沿用请求属性（与 wrapper 同一最小实现路径，[124] 衔接）。
      *
-     * @param 无入参
      * @return void
      */
     @BeforeEach
     void setUp() {
-        MockHttpServletRequest contextRequest = new MockHttpServletRequest();
-        contextRequest.setAttribute(ResponseBodyWrapper.REQUEST_ID_ATTRIBUTE, "req-handler-1");
-        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(contextRequest));
+        RequestContextFixtures.install("req-handler-1");
     }
 
     /**
-     * 每测后置：清空线程本地请求上下文，避免测试间串扰。
+     * 每测后置：经 {@link RequestContextFixtures} 清空线程本地请求上下文，避免测试间串扰。
      *
-     * @param 无入参
      * @return void
      */
     @AfterEach
     void tearDown() {
-        RequestContextHolder.resetRequestAttributes();
+        RequestContextFixtures.clear();
     }
 
     /**
@@ -62,7 +55,6 @@ class GlobalExceptionHandlerTest {
      * 依据：详设 §2.2 映射表「BizException → 取其 ErrorCode；retryAfterSec != null 则写 Retry-After 头」；
      * PRD §12.5「所有 429 段错误码与 40105 必须同时返回 Retry-After 响应头，值为剩余秒数（整数）」。
      *
-     * @param 无入参
      * @return void；断言失败即 BizException 映射或 Retry-After 写入逻辑错误
      */
     @Test
@@ -86,7 +78,6 @@ class GlobalExceptionHandlerTest {
      * 响应体序列化后仅含 code/message/data/request_id 四键、无任何堆栈字段
      * （详设 §2.2「日志打全栈，响应体不含堆栈信息」；安全口径：禁止把服务端堆栈透传到 UI，PRD §12.5）。
      *
-     * @param 无入参
      * @return void；断言失败即兜底映射错误或堆栈泄漏
      */
     @Test
