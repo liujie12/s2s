@@ -11,7 +11,7 @@ library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/api_exception.dart';
+import '../../core/network/api_exception.dart';
 import '../../domain/listing_category.dart';
 
 /// 可选范围档位（PRD §6.4.1 ASCII 图：范围 1 3 [5] 10 全城）。

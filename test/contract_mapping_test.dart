@@ -20,7 +20,8 @@
 library;
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:zhaoyazhao/core/api_exception.dart';
+import 'package:zhaoyazhao/core/network/api_error_code.dart';
+import 'package:zhaoyazhao/core/network/api_exception.dart';
 import 'package:zhaoyazhao/domain/category_tree.dart';
 import 'package:zhaoyazhao/domain/listing_category.dart';
 import 'package:zhaoyazhao/features/discovery/discovery_filter.dart';
@@ -44,9 +45,9 @@ void main() {
         () => supplyDemandFromApi('supply'),
         throwsA(
           isA<ApiException>().having(
-            (e) => e.failure,
-            'failure',
-            ApiFailure.parseError,
+            (e) => e.code,
+            'code',
+            ApiErrorCode.parseError,
           ),
         ),
       );
