@@ -1,20 +1,42 @@
 # ─────────────────────────────────────────────────────────────────
-# 找鸭找（s2s）后端 · 应用配置（条目[121] U-1 建立最小占位；U-4 补双库数据源与 Flyway 迁移）
+# 找鸭找（s2s）后端 · 应用配置（条目[121] U-1 建立最小占位；U-4 补双库数据源与 Flyway 迁移；
+# U-5 完成配置外部化与启动快速失败：server.error 双保险、Redis 接入、s2s.secrets 六类凭证硬占位）
 #
-# U-4 起的变化：
-#   1. 双库数据源（KTD-7）：业务库 spring.datasource 走本文件 ${VAR:?} 占位
-#      （编码规范 §3.3：yml 只允许占位、缺变量启动快速失败——未注入时占位解析为非法值 "?"，
-#      HikariCP 初始化即失败，达成快速失败）；埋点库 TRACK_DATASOURCE_URL 由
-#      config/FlywayTrackConfig 以 @Value 硬注入（无默认值，缺失同样启动失败）。
-#      变量名与 deploy/docker-compose.yml app 服务 environment 逐字一致。
-#   2. Flyway 管 schema（编码规范 §4.9）：业务库由 spring.flyway 默认自动装配迁移
-#      db/migration；埋点库由 FlywayTrackConfig 手动 Bean 迁移 db/migration_track。
-#   3. Redis 仍未配置（U-5 才接入）：spring-boot-starter-data-redis 的自动装配
-#      只建连接工厂不建连接，启动不阻塞；访问 /actuator/health 时 redis 组件
-#      报 DOWN 属 U-4 阶段预期。
-#   4. KTD-3：Java 21 不开虚拟线程，全文件不出现 spring.threads.virtual.enabled
+# U-5 起的变化：
+#   1. 两种占位形式与快速失败的真实机制（编码规范 §3.3；U-5 实测修正，勿凭直觉改回）：
+#      （注释中占位示例以全角＄书写，避免污染 .env.example 双向核对正则的匹配集合）
+#      - ＄{VAR:?}（compose 风格非法默认值）：仅用于业务库 datasource 三项。未注入时占位解析为
+#        非法值 "?"，HikariCP 初始化即失败——但其报错（如 Access denied）不含变量名，不易定位；
+#      - ＄{VAR}（无默认值硬占位）：用于 s2s.secrets.* 与 spring.data.redis.password。
+#        注意（U-5 N2 实测踩坑）：@ConfigurationProperties 绑定走非严格占位解析，
+#        未注入时【不抛异常】而是绑进字面量 "＄{VAR}"——因此 s2s.secrets 的快速失败闸门
+#        不在占位本身，而在 SecretsProperties 紧凑构造器的 requireResolved 守卫
+#        （null/空白/"＄{...}" 字面量三种形态一律拒收并点名变量名）。
+#        严格解析（未注入即抛 Could not resolve placeholder 'VAR'）只存在于 @Value
+#        硬注入路径（config/FlywayTrackConfig 的 TRACK_DATASOURCE_URL 等三变量）。
+#      s2s.secrets.db-password 与 datasource.password 引用同一变量是刻意的双保险，
+#      不是字面量复制（引用的是同一常量名，不违反编码规范 §0.2「不复制字面量」）。
+#   2. Redis 已接入（原 U-4 注释「Redis 仍未配置」作废）：spring-boot-starter-data-redis 的
+#      自动装配只建连接工厂不建连接（Lettuce 首次使用时才连），Redis 未启动不阻塞应用启动，
+#      /actuator/health 的 redis 组件报 DOWN 属预期；password 属六类凭证走硬占位
+#      （快速失败由 SecretsProperties 守卫兜底，同变量），
+#      host/port 非密钥，带本地开发默认值（带默认值形式不匹配 .env.example 核对正则，不进模板）。
+#   3. s2s.secrets.* 六类凭证（编码规范 §3.3：不入仓库、不入镜像、只占位）：
+#      DB 口令 / Redis 口令 / HMAC pepper 列表 / AEAD 主密钥列表 / OSS AK/SK / 短信与高德 Key；
+#      其中两个密钥列表按 key_version 列表结构承载 JSON（安全 §4），Batch1 只绑定不解析，
+#      解析随条目[124] crypto 组件落地。变量名与仓库根 .env.example 逐一对应（双向核对零差异）。
+#   4. server.error.include-stacktrace: never —— 「日志打全栈、响应体无堆栈」的配置层双保险
+#      （编码规范 §4.3；详设 §2.2），兜住未被 GlobalExceptionHandler 接住的 /error 路径。
+#   5. KTD-3：Java 21 不开虚拟线程，全文件不出现 spring.threads.virtual.enabled
 #     （退出条件：Java 24 或压测证明 I/O 阻塞）。
 # ─────────────────────────────────────────────────────────────────
+
+server:
+  error:
+    # 响应体永不携带堆栈（编码规范 §4.3「日志打全栈、响应体无堆栈」+ 详设 §2.2）：
+    # GlobalExceptionHandler 已保证业务异常路径无堆栈，本项兜住容器/BasicErrorController
+    # 直接渲染的 /error 路径（如 404、过滤器链内抛出的未映射异常），属双保险
+    include-stacktrace: never
 
 spring:
   application:
@@ -32,6 +54,17 @@ spring:
     enabled: true
     locations: classpath:db/migration
 
+  # --- Redis（技术栈 §6：会话/Token/幂等键/限频计数载体，显式 TTL、不当唯一存储）---
+  data:
+    redis:
+      # host/port 非密钥：带本地开发默认值；compose 侧以 SPRING_DATA_REDIS_HOST=redis 等覆盖
+      host: ${SPRING_DATA_REDIS_HOST:127.0.0.1}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+      # 口令属六类凭证（编码规范 §3.3）：无默认值硬占位，未注入时绑定即抛
+      # "Could not resolve placeholder 'SPRING_DATA_REDIS_PASSWORD'"，报错点名变量；
+      # Redis 必 requirepass（编码规范 §3.3），故不提供空口令默认值
+      password: ${SPRING_DATA_REDIS_PASSWORD}
+
 management:
   endpoints:
     web:
@@ -39,3 +72,25 @@ management:
         # 仅暴露 health：compose healthcheck 与 caddy depends_on: service_healthy 依赖
         # /actuator/health（部署架构设计文档）；其余端点默认不暴露以收敛攻击面（安全 §10）
         include: health
+
+# --- 六类凭证硬占位（编码规范 §3.3；安全 §4）-----------------------------------
+# 全部无默认值。快速失败闸门在 SecretsProperties 紧凑构造器守卫（@ConfigurationProperties
+# 绑定对未解析占位不抛异常、只留字面量，故必须有显式守卫，见该类 Javadoc）。
+# 值一律 String：Batch1 只完成「绑定 + 非空/已解析校验」，JSON 内容解析随条目[124] crypto 组件落地。
+s2s:
+  secrets:
+    # ① DB 口令：与 spring.datasource.password 同一变量二次引用（双保险，理由见文件头注释 1）
+    db-password: ${SPRING_DATASOURCE_PASSWORD}
+    # ② Redis 口令：与 spring.data.redis.password 同一变量二次引用（同上）
+    redis-password: ${SPRING_DATA_REDIS_PASSWORD}
+    # ③ HMAC pepper 列表（盲索引 xxx_hash 的 HMAC-SHA256 密钥，安全 §4；按 key_version 列表结构）
+    hmac-peppers-json: ${HMAC_PEPPERS_JSON}
+    # ④ AEAD 主密钥列表（AES-GCM-256 加解密原语密钥，安全 §4；按 key_version 列表结构）
+    aead-master-keys-json: ${AEAD_MASTER_KEYS_JSON}
+    # ⑤ 阿里云 OSS AccessKey 对（媒体文件对象存储凭证，编码规范 §3.3 六类凭证之五）
+    oss-access-key-id: ${OSS_ACCESS_KEY_ID}
+    oss-access-key-secret: ${OSS_ACCESS_KEY_SECRET}
+    # ⑥a 短信服务 Key（登录验证码渠道凭证，编码规范 §3.3 六类凭证之六）
+    sms-key: ${SMS_KEY}
+    # ⑥b 高德地图 Key（逆地理/POI 服务凭证，编码规范 §3.3 六类凭证之六）
+    amap-key: ${AMAP_KEY}

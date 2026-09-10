@@ -10,22 +10,12 @@
 #   1. 本文件【入 git】，禁止出现任何密钥/口令/AT。
 #   2. 日志级别 WARN（仅生产错误告警，INFO 级别的日志量在 2G 机器上
 #      会显著挤占磁盘预算，且日志轮转的 I/O 也会增加 CPU 开销）。
-#   3. ddl-auto: validate（禁止 update/create。DDL 变更必须走脚本手动执行，
-#      不能由 Hibernate 自动改表，否则发版时表结构变更不可控）。
+#   3. schema 变更纪律：本项目【禁用 JPA】（KTD-2 定案，曾有的 spring.jpa.* 块已删除），
+#      表结构只能由应用内 Flyway migration 变更（编码规范 §4.9），
+#      变更随发版受控执行，杜绝任何 ORM 自动改表路径。
 # ============================================================================
 
 spring:
-  jpa:
-    hibernate:
-      # validate：启动时检查 Entity 与表结构是否一致，不一致则启动失败。
-      # 生产环境【禁止】使用 update/create/drop。
-      # 修改表结构必须在发版前准备好 DDL 脚本，手动执行后再发版。
-      ddl-auto: validate
-    show-sql: false
-    properties:
-      hibernate:
-        format_sql: false
-
   datasource:
     hikari:
       # 2G 物理机、750MB JVM 下，10 个连接是合理上限。

@@ -8,22 +8,15 @@
 #
 # 纪律：
 #   1. 本文件【入 git】，禁止出现任何密钥/口令/AT。
-#   2. DDL 验证与 prod 一致（ddl-auto: validate），确保表结构不出偏差。
-#      若 staging 验证通过而 prod 失败，说明 DDL 脚本在 staging 和 prod 之间
-#      未同步 —— 这是 CI/CD 流程缺陷，不是配置问题。
+#   2. schema 一致性口径与 prod 一致：本项目【禁用 JPA】（KTD-2 定案），
+#      唯一管理者是应用内 Flyway migration（编码规范 §4.9），应用启动即校验并迁移。
+#      若 staging 迁移通过而 prod 失败，说明 Flyway 脚本在两环境之间未同步
+#      —— 这是 CI/CD 流程缺陷，不是配置问题。
 #   3. 日志级别与 prod 一致（WARN），确保「staging 验过 = prod 能过」。
 #      若 staging 开 DEBUG 而 prod 关，则 staging 通过不能代表 prod 行。
 # ============================================================================
 
 spring:
-  jpa:
-    hibernate:
-      ddl-auto: validate
-    show-sql: false
-    properties:
-      hibernate:
-        format_sql: false
-
   datasource:
     hikari:
       # 与 prod 相同的池大小，模拟生产并发
