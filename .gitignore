@@ -68,3 +68,14 @@ deploy/.current-env
 # 本地备份文件
 /var/backups/
 /swapfile
+
+# ── Java / Maven（后端工程，条目[121] U-1）──
+# Maven 构建输出与字节码，均可由 pom.xml 重新生成，不入库
+target/
+*.class
+# 打包产物：正式出包走 deploy 流水线，不经仓库
+*.jar
+*.war
+# JVM 崩溃日志，排障一次性产物
+hs_err_pid*.log
+replay_pid*.log
