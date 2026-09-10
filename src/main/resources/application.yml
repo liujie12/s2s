@@ -1,12 +1,18 @@
 # ─────────────────────────────────────────────────────────────────
-# 找鸭找（s2s）后端 · 最小占位配置（条目[121] U-1 建立，U-5 将按编码规范 §3.3 全面改写）
+# 找鸭找（s2s）后端 · 应用配置（条目[121] U-1 建立最小占位；U-4 补双库数据源与 Flyway 迁移）
 #
-# 当前仅为工程骨架占位，明确两件事：
-#   1. 数据源（业务库 s2s / 埋点库 s2s_track）与 Redis 在 U-5 才配置——
-#      届时 jar 内 yml 只允许 ${VAR:?} 占位、缺变量启动快速失败（编码规范 §3.3；R-6）。
-#      因此 U-1 阶段应用尚不能启动（Flyway 在 classpath 且无可达数据库时启动失败），
-#      本单元验收仅要求 mvn compile / mvn test 通过。
-#   2. KTD-3：Java 21 不开虚拟线程，故全文件不出现 spring.threads.virtual.enabled
+# U-4 起的变化：
+#   1. 双库数据源（KTD-7）：业务库 spring.datasource 走本文件 ${VAR:?} 占位
+#      （编码规范 §3.3：yml 只允许占位、缺变量启动快速失败——未注入时占位解析为非法值 "?"，
+#      HikariCP 初始化即失败，达成快速失败）；埋点库 TRACK_DATASOURCE_URL 由
+#      config/FlywayTrackConfig 以 @Value 硬注入（无默认值，缺失同样启动失败）。
+#      变量名与 deploy/docker-compose.yml app 服务 environment 逐字一致。
+#   2. Flyway 管 schema（编码规范 §4.9）：业务库由 spring.flyway 默认自动装配迁移
+#      db/migration；埋点库由 FlywayTrackConfig 手动 Bean 迁移 db/migration_track。
+#   3. Redis 仍未配置（U-5 才接入）：spring-boot-starter-data-redis 的自动装配
+#      只建连接工厂不建连接，启动不阻塞；访问 /actuator/health 时 redis 组件
+#      报 DOWN 属 U-4 阶段预期。
+#   4. KTD-3：Java 21 不开虚拟线程，全文件不出现 spring.threads.virtual.enabled
 #     （退出条件：Java 24 或压测证明 I/O 阻塞）。
 # ─────────────────────────────────────────────────────────────────
 
@@ -14,6 +20,17 @@ spring:
   application:
     # 服务名：与 deploy/compose 服务名及应用日志标识一致（编码规范 §4.1 单体单进程单模块）
     name: s2s-server
+
+  # --- 业务库数据源（KTD-7：@Primary 消费方；埋点库数据源见 config/FlywayTrackConfig）---
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:?}
+    username: ${SPRING_DATASOURCE_USERNAME:?}
+    password: ${SPRING_DATASOURCE_PASSWORD:?}
+
+  # --- 业务库 Flyway（编码规范 §4.9：schema 唯一管理者；埋点库迁移由 FlywayTrackConfig 承担）---
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
 
 management:
   endpoints:
