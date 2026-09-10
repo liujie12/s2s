@@ -139,8 +139,10 @@ if (idempotencyExempt.containsKey(key)) {
 ### 例 2：弱判据三分支与判据自检（本仓库实证，精简）
 
 ```dart
-// 扫描处置（quality_gate_test.dart:273-290）
-if (line.contains('PRIVATE KEY' '-----')) findings.add('$loc 强判据，不可豁免'); // 强判据无豁免口（字面量拆写防自扫描）
+// 扫描处置（quality_gate_test.dart:360-371）
+const pemPrefix = 'PRIVATE KEY';
+final pemMarker = '$pemPrefix-----'; // 插值拼装防自扫描（相邻字面量会被坍缩通道还原，评审 #5）
+if (line.contains(pemMarker)) findings.add('$loc 强判据，不可豁免'); // 强判据无豁免口
 if (looksLikeEmbeddedSecret(line)) {
   final hex = RegExp(r'\b[0-9a-f]{32}\b').firstMatch(line)!.group(0)!;
   if (isRepeatedCharPlaceholder(hex)) continue;              // ① 模板假值（概率特征）

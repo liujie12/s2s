@@ -15,24 +15,51 @@ import 'package:yaml/yaml.dart';
 
 import '../support/test_support.dart';
 
-/// 递归收集一个 YAML 节点下所有形如 `code: <int>` 的业务码。
+/// 深度优先遍历 YAML 节点树，对每个映射节点回调 [visit]。
 ///
-/// 功能：复用响应的错误码藏在 examples.*.value.code 与 example.code 里，
-/// 层级不固定，递归遍历最稳。
-/// 参数：[node] 任意 YAML 节点；[sink] 收集结果的集合。
-/// 返回：void，结果写入 [sink]。
-void collectCodes(Object? node, Set<int> sink) {
+/// 功能：YAML 递归骨架的唯一实现处（评审 #9：collectCodes 与 scanFormats
+/// 曾各写一套同构递归，骨架抄第 2 份即须收编，防遍历口径漂移）。
+/// 参数：[node] 任意 YAML 节点；[visit] 对每个 [YamlMap] 的回调。
+/// 返回：void（遍历副作用由回调承载）。
+void walkYaml(Object? node, void Function(YamlMap map) visit) {
   if (node is YamlMap) {
-    final code = node['code'];
-    if (code is int) sink.add(code);
+    visit(node);
     for (final v in node.nodes.entries) {
-      collectCodes(v.value, sink);
+      walkYaml(v.value, visit);
     }
   } else if (node is YamlList) {
     for (final v in node) {
-      collectCodes(v, sink);
+      walkYaml(v, visit);
     }
   }
+}
+
+/// 递归收集一个 YAML 节点下所有形如 `code: <int>` 的业务码。
+///
+/// 功能：复用响应的错误码藏在 examples.*.value.code 与 example.code 里，
+/// 层级不固定，遍历骨架委托 [walkYaml]。
+/// 参数：[node] 任意 YAML 节点；[sink] 收集结果的集合。
+/// 返回：void，结果写入 [sink]。
+void collectCodes(Object? node, Set<int> sink) {
+  walkYaml(node, (map) {
+    final code = map['code'];
+    if (code is int) sink.add(code);
+  });
+}
+
+/// 解析操作级响应定义：`$ref` 到 components/responses 的取组件本体，
+/// 内联定义的返回自身。
+///
+/// 参数：[node] 操作 responses 下的响应定义节点；
+///       [components] components/responses 表（[OpenApiSpec.responses]）。
+/// 返回：[YamlMap?] 解析后的响应定义；非映射或指向外部的 `$ref` 返回 null。
+YamlMap? resolveResponse(Object? node, YamlMap? components) {
+  if (node is! YamlMap) return null;
+  final ref = node[r'$ref']?.toString();
+  if (ref == null) return node;
+  const prefix = '#/components/responses/';
+  if (!ref.startsWith(prefix)) return null;
+  return components?[ref.substring(prefix.length)] as YamlMap?;
 }
 
 void main() {
@@ -84,11 +111,43 @@ void main() {
           reason: '40305 必须标注为后台专用，防止 App 端实现误返回该码');
     });
 
-    test('每个业务码前三位与其 HTTP 状态码对齐', () {
+    test('fixture 码表内部自洽：每个业务码前三位与其登记的 HTTP 状态一致', () {
+      // 本条只防 fixture 表自身抄错——表的两端都来自同一份硬编码，
+      // 自证循环不构成契约约束（评审 #3）；契约侧的真实约束由下一条
+      // 「契约绑定」断言承载。
       TestFixtures.codeToHttpStatus.forEach((code, http) {
         expect(code ~/ 100, http,
             reason: '业务码 $code 应对齐 HTTP $http（code 前 3 位即 HTTP 码）');
       });
+    });
+
+    test('每个操作响应示例的错误码与其 HTTP 状态键对齐（契约绑定，评审 #3）', () {
+      // 从契约出发：操作响应里实际承载的每个错误码，其前三位必须等于
+      // 该响应的数字状态键——fixture 表只经「示例承载集合」断言间接绑定契约，
+      // 本条是直接绑定。code=0 是成功通用码（200/201 均 code=0），不参与对齐。
+      final bad = <String>[];
+      for (final op in spec.operations()) {
+        final responses = op.responses;
+        if (responses == null) continue;
+        for (final entry in responses.nodes.entries) {
+          final statusCode = int.tryParse(entry.key.toString());
+          if (statusCode == null) continue; // default 等非数字状态键
+          final resolved = resolveResponse(entry.value, spec.responses);
+          if (resolved == null) continue;
+          final codes = <int>{};
+          collectCodes(resolved, codes);
+          for (final code in codes) {
+            if (code == 0) continue;
+            if (code ~/ 100 != statusCode) {
+              bad.add('${op.method.toUpperCase()} ${op.path} 响应 $statusCode '
+                  '示例承载 code=$code（前 3 位 ${code ~/ 100} ≠ $statusCode）');
+            }
+          }
+        }
+      }
+      expect(bad, isEmpty,
+          reason: '操作响应示例中的错误码必须与其 HTTP 状态键对齐（code 前 3 位即 HTTP 码）：\n'
+              '${bad.join('\n')}');
     });
   });
 
@@ -189,6 +248,39 @@ void main() {
       expect(schema?['type'], 'integer');
       expect((schema?['minimum'] as int?) ?? 0, greaterThanOrEqualTo(1));
     });
+
+    test('携带 429xx/40105 的操作响应必须声明 Retry-After（评审 #8：内联不得绕过）', () {
+      // 组件级断言（上两条）只保证 TooManyRequests/Unauthorized 本体带头；
+      // 操作可以内联一个 429/401 响应绕过复用组件——本条按操作逐个判定：
+      // 状态键为 429（429xx 全段必带），或解析后示例码命中 retryAfterCodes
+      // （含 40105）的响应，其 headers 必须声明 Retry-After。
+      // 401 不按状态键一刀切：40101 令牌过期无需 Retry-After。
+      final bad = <String>[];
+      for (final op in spec.operations()) {
+        final responses = op.responses;
+        if (responses == null) continue;
+        for (final entry in responses.nodes.entries) {
+          final status = entry.key.toString();
+          final resolved = resolveResponse(entry.value, spec.responses);
+          if (resolved == null) continue;
+          final codes = <int>{};
+          collectCodes(resolved, codes);
+          final needByCode =
+              codes.intersection(TestFixtures.retryAfterCodes).isNotEmpty;
+          final needByStatus = status == '429'; // 429xx 全段必带；401 仅 40105
+          if (!needByStatus && !needByCode) continue;
+          final headers = resolved['headers'] as YamlMap?;
+          if (headers?['Retry-After'] == null) {
+            bad.add('${op.method.toUpperCase()} ${op.path} 响应 $status '
+                '${needByCode ? '示例码命中 retryAfterCodes' : '429 全段必带'}'
+                '但未声明 Retry-After');
+          }
+        }
+      }
+      expect(bad, isEmpty,
+          reason: '携带 429xx/40105 的响应必须回 Retry-After 整数秒（详设 §2.3）：\n'
+              '${bad.join('\n')}');
+    });
   });
 
   group('全局纪律 1/2：统一响应包', () {
@@ -236,19 +328,9 @@ void main() {
     test('契约中 date-time 字段使用 RFC3339（format: date-time）', () {
       // expire_at / created_at 等时间字段应通过 format: date-time 声明。
       final formats = <String>[];
-      void scanFormats(Object? node) {
-        if (node is YamlMap) {
-          if (node['format'] == 'date-time') formats.add(node.toString());
-          for (final v in node.nodes.entries) {
-            scanFormats(v.value);
-          }
-        } else if (node is YamlList) {
-          for (final v in node) {
-            scanFormats(v);
-          }
-        }
-      }
-      scanFormats(spec.schemas);
+      walkYaml(spec.schemas, (map) {
+        if (map['format'] == 'date-time') formats.add(map.toString());
+      });
       expect(formats, isNotEmpty,
           reason: '契约中没有任何 date-time 字段，时间纪律（RFC3339 UTC）无承载');
     });

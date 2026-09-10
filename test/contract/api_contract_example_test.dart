@@ -2,8 +2,17 @@
 ///
 /// 本文件用内存 Mock 服务演示「契约测试长什么样」。后端就绪后，
 /// 以 `--dart-define=S2S_API_BASE_URL=<真实基址>`（如 http://localhost:8080/api/v1
-/// 或测试环境域名）直指真实服务，断言一行不用改——这正是契约测试的价值：
-/// 同一份断言对 mock 与真实服务都成立。
+/// 或测试环境域名）直指真实服务。
+///
+/// 断言分两层（评审 #2：mock 桩字面值与 mock 专属场景在真服务模式下
+/// 必红，必须分层，不得伪装通过）：
+///   - 两模式共用：不依赖业务前提的形态校验（如契约负载 JSON 编解码
+///     冒烟）——真实服务对未登记路径回 404 信封同样是合法 JSON；
+///   - mock 专属场景（任意验证码登录成功、限额触发、免登录态幂等头
+///     校验）与桩字面值（token='jwt-xxx'、post_id=2001）仅 mock 模式
+///     成立：真服务模式以 markTestSkipped 记 N/A，不伪装通过。
+/// 后端开工复制本模式时：凡服务端可复现的契约行为（带登录态的缺幂等
+/// 键必拒 40001 等）应写成两模式共用断言，勿一概 mock-only。
 ///
 /// 演示的三类契约校验：
 ///   1. 成功响应必须是统一包形态（code/message/data/request_id）；
@@ -22,15 +31,18 @@ void main() {
   late MockApiServer server;
   late Dio dio;
   late String baseUrl;
+  late bool isRealMode;
 
   setUp(() async {
     server = MockApiServer();
     final mockBaseUrl = await server.start();
     // baseUrl 环境开关（详设 §9 AE1）：`--dart-define=S2S_API_BASE_URL=<基址>`
-    // 非空时直指真实服务，缺省或空串回退内存 mock；断言与桩登记两模式逐字一致。
+    // 非空时直指真实服务，缺省或空串回退内存 mock；桩登记两模式逐字一致。
     // mock 始终启动：桩登记行不因模式切换而改动，未用时不产生任何请求。
+    // 评审 #2：模式判定收敛为 isRealMode，mock 专属场景与值级断言据此分层。
     const injectedBaseUrl = String.fromEnvironment('S2S_API_BASE_URL');
-    baseUrl = injectedBaseUrl.isNotEmpty ? injectedBaseUrl : mockBaseUrl;
+    isRealMode = injectedBaseUrl.isNotEmpty;
+    baseUrl = isRealMode ? injectedBaseUrl : mockBaseUrl;
     dio = Dio(BaseOptions(
       baseUrl: baseUrl,
       // 契约错误码用非 2xx 承载，dio 默认会抛 DioException；
@@ -46,6 +58,13 @@ void main() {
   tearDown(() => server.stop());
 
   test('成功响应为统一包形态（code=0 且四字段齐全）', () async {
+    // mock 专属场景（评审 #2）：mock 接受任意验证码即登录成功，真实服务
+    // 不可复现——真服务模式记 N/A，不伪装通过。
+    if (isRealMode) {
+      markTestSkipped('任意验证码登录成功是 mock 专属场景，真实服务模式不适用'
+          '（N/A）——本条仅 mock 模式判定。');
+      return;
+    }
     // 样例：POST /auth/login 成功。
     server.stub('POST', '/api/v1/auth/login', (req) async {
       return MockResponse(
@@ -72,6 +91,13 @@ void main() {
   });
 
   test('42902 失败响应：data=null 且携带 Retry-After 剩余秒数', () async {
+    // 触发依赖服务端当日限额状态，真实服务模式不可复现（评审 #2：记 N/A，
+    // 不伪装通过）；本条仅 mock 模式判定。
+    if (isRealMode) {
+      markTestSkipped('42902 触发依赖服务端当日限额状态，真实服务模式不适用'
+          '（N/A）——本条仅 mock 模式判定。');
+      return;
+    }
     // 样例：GET /posts/{id}/contact 触发每日联系限额。
     server.stub('GET', '/api/v1/posts/1001/contact', (req) async {
       return MockResponse(
@@ -95,6 +121,14 @@ void main() {
   });
 
   test('写接口缺 Idempotency-Key 回 40001，带键放行', () async {
+    // mock 专属场景（评审 #2）：本用例不带登录态，真实服务端鉴权链先于
+    // 幂等拦截（缺 Token 回 40101 而非 40001），两个分支的响应都是 mock
+    // 桩值——真服务模式记 N/A，不伪装通过。
+    if (isRealMode) {
+      markTestSkipped('缺/带幂等键的响应码依赖 mock 桩与免登录前提，真实服务'
+          '模式不适用（N/A）——本条仅 mock 模式判定。');
+      return;
+    }
     // 样例：POST /posts 发布。mock 模拟服务端幂等头校验。
     server.stub('POST', '/api/v1/posts', (req) async {
       final key = req.header('idempotency-key');
