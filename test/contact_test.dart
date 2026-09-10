@@ -21,7 +21,8 @@ ListingDetail _detail({
 }) {
   return ListingDetail(
     listing: Listing(
-      id: 'l1',
+      // id 为 int（详细设计 §10.4.3）。
+      id: 1,
       title: '专业家庭日常保洁',
       category: ListingCategory.service,
       supplyDemand: SupplyDemand.supply,
@@ -75,7 +76,7 @@ void main() {
     test('未填联系方式时抛 noContact，而不是返回空串', () async {
       expect(
         () => const ContactRepository().fetchFullContact(
-          postId: 'l1',
+          postId: 1,
           detail: _detail(masked: null),
         ),
         throwsA(
@@ -91,13 +92,13 @@ void main() {
     test('手机号渠道 callable 为真，微信为假 —— 决定按钮是拨号还是复制', () async {
       final repo = const ContactRepository();
       final phone = await repo.fetchFullContact(
-        postId: 'l1',
+        postId: 1,
         detail: _detail(),
       );
       expect(phone.callable, isTrue);
 
       final wechat = await repo.fetchFullContact(
-        postId: 'l1',
+        postId: 1,
         detail: _detail(channel: ContactChannel.wechat, masked: 'wx_h***12'),
       );
       expect(wechat.callable, isFalse);

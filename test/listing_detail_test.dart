@@ -19,7 +19,8 @@ Listing _listing({
   SupplyDemand sd = SupplyDemand.supply,
 }) {
   return Listing(
-    id: 'l1',
+    // id 为 int（详细设计 §10.4.3）。
+    id: 1,
     title: '专业家庭日常保洁',
     category: category,
     supplyDemand: sd,

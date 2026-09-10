@@ -11,13 +11,16 @@ import 'package:zhaoyazhao/features/discovery/listing_sort.dart';
 
 /// 构造一条测试用信息。
 ///
-/// [id] 用于断言顺序，[minutesAgo] 相对 [_now] 倒推，[price] 为 null 表示无价格，
-/// [meters] 通过 distanceOf 注入而非真实坐标 —— 用坐标就得先算一遍 haversine
+/// [label] 是可读标签，写进 `title` 并用于断言顺序与查距离表 —— `Listing.id`
+/// 已改为 `int`（详细设计 §10.4.3），不能再拿中文标签当 ID。仍用标签而不是
+/// 数字断言：`['中而新', '近而旧']` 一眼能看懂，`[2, 1]` 则要回头数构造顺序。
+/// [minutesAgo] 相对 [_now] 倒推，[price] 为 null 表示无价格。
+/// 距离通过 `distanceOf` 注入而非真实坐标 —— 用坐标就得先算一遍 haversine
 /// 才能知道期望顺序，测试会变成在验证「我算对了没有」。
-Listing _listing(String id, {int minutesAgo = 0, double? price}) {
+Listing _listing(String label, {int minutesAgo = 0, double? price}) {
   return Listing(
-    id: id,
-    title: id,
+    id: _nextId++,
+    title: label,
     category: ListingCategory.work,
     supplyDemand: SupplyDemand.supply,
     latitude: 30.0,
@@ -27,10 +30,13 @@ Listing _listing(String id, {int minutesAgo = 0, double? price}) {
   );
 }
 
+/// 自增 ID 发号器。取值本身无意义，只需在单个用例内互不相同。
+int _nextId = 1;
+
 final DateTime _now = DateTime(2026, 8, 28, 12);
 
-/// 取排序结果的 id 序列，断言时比对它而非整个对象。
-List<String> _ids(List<Listing> list) => list.map((l) => l.id).toList();
+/// 取排序结果的标签序列，断言时比对它而非整个对象。
+List<String> _ids(List<Listing> list) => list.map((l) => l.title).toList();
 
 void main() {
   group('距离排序', () {
@@ -42,7 +48,7 @@ void main() {
         list,
         sort: ListingSort.distance,
         now: _now,
-        distanceOf: (l) => distances[l.id]!,
+        distanceOf: (l) => distances[l.title]!,
       );
 
       expect(_ids(sorted), ['近', '中', '远']);
@@ -139,7 +145,7 @@ void main() {
         list,
         sort: ListingSort.composite,
         now: _now,
-        distanceOf: (l) => distances[l.id]!,
+        distanceOf: (l) => distances[l.title]!,
       );
 
       expect(_ids(sorted), ['中而新', '近而旧']);
@@ -157,7 +163,7 @@ void main() {
         list,
         sort: ListingSort.composite,
         now: _now,
-        distanceOf: (l) => distances[l.id]!,
+        distanceOf: (l) => distances[l.title]!,
       );
 
       expect(_ids(sorted), [

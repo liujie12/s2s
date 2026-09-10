@@ -127,8 +127,14 @@ final List<RouteBase> _routes = [
   ),
   GoRoute(
     path: AppRoutes.detail,
-    builder: (context, state) =>
-        DetailScreen(listingId: state.pathParameters['id']!),
+    // 路径参数是 URL 字符串，帖子 ID 的域内类型为 int（契约 PostIdPath 为
+    // int64，详细设计 §10.4.3），故解析收敛在路由这一处。
+    // 解析失败取 -1 而不是抛异常：非法深链（如 /detail/abc）在语义上等于
+    // 「这条信息不存在」，走 provider 返回 null → 页面显示「信息不存在」，
+    // 与「已下架」是同一种用户可理解的结果；抛异常只会白屏。
+    builder: (context, state) => DetailScreen(
+      listingId: int.tryParse(state.pathParameters['id'] ?? '') ?? -1,
+    ),
   ),
   GoRoute(
     path: AppRoutes.publish,
@@ -150,8 +156,10 @@ final List<RouteBase> _routes = [
   ),
   GoRoute(
     path: AppRoutes.contact,
-    builder: (context, state) =>
-        ContactScreen(listingId: state.pathParameters['id']!),
+    // 解析口径同 detail 路由（详细设计 §10.4.3）。
+    builder: (context, state) => ContactScreen(
+      listingId: int.tryParse(state.pathParameters['id'] ?? '') ?? -1,
+    ),
   ),
   GoRoute(
     path: AppRoutes.profile,

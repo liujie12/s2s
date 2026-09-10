@@ -83,7 +83,10 @@ List<Listing> _buildSampleListings() {
           : null;
       listings.add(
         Listing(
-          id: 'sample-${seq++}',
+          // id 为 int（详细设计 §10.4.3）。样例段从 1 起编，与压测段
+          // （见 stress_data.dart，从 1000000 起）刻意不重叠：两批数据若同时
+          // 进入同一个 Map 键空间会静默互相覆盖，而表现只是「少了几条」。
+          id: ++seq,
           title: titles[random.nextInt(titles.length)],
           category: category,
           supplyDemand: random.nextDouble() < 0.65

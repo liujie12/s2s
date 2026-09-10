@@ -19,6 +19,7 @@
 
 import 'dart:math';
 
+import 'package:zhaoyazhao/domain/listing_category.dart';
 import 'package:zhaoyazhao/features/map/clustering/grid_cluster.dart';
 
 /// 生成均匀随机分布的测试点。
@@ -38,7 +39,11 @@ List<ClusterPoint> _generateUniformPoints(int count, double canvasSize) {
       id: 'p$i',
       x: rng.nextDouble() * canvasSize,
       y: rng.nextDouble() * canvasSize,
-      categoryId: i % 5,
+      // 叶子类目 ID 与一级大类分开给（详细设计 §10.4.1）。基准只关心分桶键
+      // 里的大类维度，叶子 ID 取 0 表示「本地构造、无真实叶子」。
+      leafCategoryId: 0,
+      topCategory:
+          ListingCategory.values[i % ListingCategory.values.length],
     ),
     growable: false,
   );
@@ -76,7 +81,10 @@ List<ClusterPoint> _generateClusteredPoints(
       id: 'p$i',
       x: (h[0] + mag * cos(2 * pi * u2)).clamp(0.0, canvasSize),
       y: (h[1] + mag * sin(2 * pi * u2)).clamp(0.0, canvasSize),
-      categoryId: i % 5,
+      // 口径同上（详细设计 §10.4.1）。
+      leafCategoryId: 0,
+      topCategory:
+          ListingCategory.values[i % ListingCategory.values.length],
     );
   }, growable: false);
 }

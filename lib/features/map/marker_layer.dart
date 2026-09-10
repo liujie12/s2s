@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 
 import '../../design_tokens.dart';
 import '../../domain/listing_category.dart';
+import '../../domain/listing_category_style.dart';
 import 'clustering/marker_builder.dart';
 
 /// Marker 图层。
@@ -193,7 +194,11 @@ class _MarkerPainter extends CustomPainter {
 
   /// 聚合 Marker：白底 + 分类色描边 + 居中数字。
   void _paintCluster(Canvas canvas, ClusterMarker marker) {
-    final category = listingCategoryFromId(marker.categoryId);
+    // 大类可空（分类树版本落后于服务端数据时查不到，§16.4 属预期内状态），
+    // 此时用中性配色而**不是丢弃这个聚合圈** —— 丢弃会让用户觉得东西不见了。
+    final category = marker.topCategory;
+    final Color strokeColor = category?.color ?? neutralCategoryColor;
+    final Color textColor = category?.deepColor ?? neutralCategoryColor;
     final center = Offset(marker.x, marker.y);
     final double radius = marker.diameter / 2;
 
@@ -206,7 +211,7 @@ class _MarkerPainter extends CustomPainter {
       center,
       radius - 1,
       Paint()
-        ..color = category.color
+        ..color = strokeColor
         ..style = PaintingStyle.stroke
         ..strokeWidth = 2,
     );
@@ -216,7 +221,7 @@ class _MarkerPainter extends CustomPainter {
       canvas,
       center,
       text: marker.count > 999 ? '999+' : '${marker.count}',
-      color: category.deepColor,
+      color: textColor,
       fontSize: marker.diameter >= 48 ? 16 : 13,
       fontWeight: FontWeight.w600,
     );
@@ -224,7 +229,10 @@ class _MarkerPainter extends CustomPainter {
 
   /// 单点 Marker：资源＝分类色实心 + 白图标；需求＝白底 + 分类色描边 + 分类色图标 + ? 角标。
   void _paintSinglePoint(Canvas canvas, SinglePointMarker marker) {
-    final category = listingCategoryFromId(marker.categoryId);
+    final category = marker.topCategory;
+    // 同 _paintCluster：查不到大类时降级为中性配色，Pin 仍然画出来。
+    final Color pinColor = category?.color ?? neutralCategoryColor;
+    final IconData pinIcon = category?.icon ?? neutralCategoryIcon;
     final isSelected = marker.listingId == selectedListingId;
     final double diameter = isSelected
         ? kSelectedMarkerDiameter
@@ -251,7 +259,7 @@ class _MarkerPainter extends CustomPainter {
     }
 
     if (isSupply) {
-      canvas.drawCircle(center, radius, Paint()..color = category.color);
+      canvas.drawCircle(center, radius, Paint()..color = pinColor);
     } else {
       canvas.drawCircle(
         center,
@@ -262,7 +270,7 @@ class _MarkerPainter extends CustomPainter {
         center,
         radius - 1,
         Paint()
-          ..color = category.color
+          ..color = pinColor
           ..style = PaintingStyle.stroke
           ..strokeWidth = 2,
       );
@@ -272,15 +280,15 @@ class _MarkerPainter extends CustomPainter {
     _paintIcon(
       canvas,
       center,
-      icon: category.icon,
+      icon: pinIcon,
       size: diameter * 0.5,
-      color: isSupply ? Color(AppColors.surface) : category.color,
+      color: isSupply ? Color(AppColors.surface) : pinColor,
     );
 
     if (!isSupply) {
       // 需求态 ? 角标在右上，不占圆心 —— 圆心已被分类图标占用（PRD §6.4.2）。
       final badgeCenter = center.translate(radius * 0.7, -radius * 0.7);
-      canvas.drawCircle(badgeCenter, 8, Paint()..color = category.color);
+      canvas.drawCircle(badgeCenter, 8, Paint()..color = pinColor);
       canvas.drawCircle(
         badgeCenter,
         8,

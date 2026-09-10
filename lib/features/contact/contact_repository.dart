@@ -86,7 +86,7 @@ class ContactRepository {
   /// 真实实现须调服务端接口 —— 客户端永远无法自行「解密」联系方式，
   /// 若能，就说明完整值本来就在客户端，反爬形同虚设。
   Future<FullContact> fetchFullContact({
-    required String postId,
+    required int postId,
     required ListingDetail detail,
   }) async {
     if (!detail.hasContact) {

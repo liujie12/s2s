@@ -39,21 +39,28 @@ _buildMarkers(int count) {
     // 铺满一个 390×780 的视口。取模而非随机：基准要可复现。
     final double x = (i * 37 % 390).toDouble();
     final double y = (i * 53 % 780).toDouble();
-    final int categoryId = i % ListingCategory.values.length;
+    // 大类改为直接持枚举（详细设计 §10.4.1），不再用 int 下标传分类。
+    final ListingCategory topCategory =
+        ListingCategory.values[i % ListingCategory.values.length];
     if (i % 10 < 3) {
       markers.add(
         ClusterMarker(
           x: x,
           y: y,
           count: 2 + (i % 300),
-          categoryId: categoryId,
+          topCategory: topCategory,
           memberIds: const [],
         ),
       );
     } else {
       final String id = 'p$i';
       markers.add(
-        SinglePointMarker(x: x, y: y, categoryId: categoryId, listingId: id),
+        SinglePointMarker(
+          x: x,
+          y: y,
+          topCategory: topCategory,
+          listingId: id,
+        ),
       );
       // 三成需求：需求态多画一个 ? 角标，是更贵的那条路径。
       supplyDemand[id] = i % 10 < 6 ? SupplyDemand.supply : SupplyDemand.demand;

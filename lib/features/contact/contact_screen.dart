@@ -36,7 +36,8 @@ import 'contact_repository.dart';
 class ContactScreen extends ConsumerStatefulWidget {
   const ContactScreen({super.key, required this.listingId});
 
-  final String listingId;
+  /// 帖子 ID（`int`，契约 `PostIdPath` 为 `int64`，详细设计 §10.4.3）。
+  final int listingId;
 
   @override
   ConsumerState<ContactScreen> createState() => _ContactScreenState();

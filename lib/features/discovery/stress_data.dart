@@ -46,6 +46,12 @@ class StressLevelNotifier extends Notifier<StressLevel> {
   void set(StressLevel level) => state = level;
 }
 
+/// 压测数据 ID 起始值。
+///
+/// 与样例数据（`listing_repository.dart`，从 1 起、量级为数十）刻意留出
+/// 足够间隔，避免两批数据同时存在时 ID 相撞。
+const int _kStressIdBase = 1000000;
+
 /// 按档位生成压测数据。
 ///
 /// **分布用聚集而非均匀**：POC-A 已证明聚集分布才是聚合算法的最坏情况
@@ -77,7 +83,9 @@ List<Listing> buildStressListings(int count) {
     // 才能真正形成深桶。扩散过大就退化成均匀分布，压不到最坏情况。
     const double spreadDeg = 0.0045;
     return Listing(
-      id: 'stress-$i',
+      // id 为 int（详细设计 §10.4.3）。压测段从 1000000 起编，与样例段
+      // （listing_repository.dart，从 1 起）刻意不重叠，理由见那一处注释。
+      id: _kStressIdBase + i,
       title: '压测数据 $i',
       category:
           ListingCategory.values[random.nextInt(ListingCategory.values.length)],

@@ -80,16 +80,75 @@ class CategoryNode {
 
   /// 所属一级大类 —— 决定大类色（§2 末条「1 个大类色」）。
   ///
-  /// 由 id 首位推导而非另存字段：另存等于同一事实有两份记录，
+  /// 由 id 首位取一级编号而非另存字段：另存等于同一事实有两份记录，
   /// 挪动节点时漏改一处就会出现「在房屋分支下显示蓝色」这类错。
-  ListingCategory get topCategory {
-    final top = id >= 10000
+  ///
+  /// **一级编号到枚举的那一步用显式 switch，不用 `values[top - 1]`。**
+  /// 下标写法在一级编号超出 1..5 时抛 `RangeError`，而 Dart 的 `assert`
+  /// 在 release 不参与编译（详细设计 §10.4.1），于是「树里多了一个一级类目」
+  /// 这种数据问题会以内测包崩溃的形式暴露。switch + 返回 null 让它退化为
+  /// 「该节点没有大类色」，页面用中性配色即可。
+  ///
+  /// 返回：对应的一级大类；一级编号不在 1..5 时返回 null。
+  ListingCategory? get topCategory => _topCategoryOfTopId(
+    id >= 10000
         ? id ~/ 10000
         : id >= 100
         ? id ~/ 100
-        : id;
-    return ListingCategory.values[top - 1];
+        : id,
+  );
+}
+
+/// 一级类目编号（1..5）→ 本地渲染枚举。
+///
+/// 这层映射是**本地枚举与分类树树根的绑定**，唯此一处，故显式写死。
+/// 不用 `ListingCategory.values[topId - 1]`：那样枚举顺序与树根编号就成了
+/// 隐式耦合，调整枚举顺序不会有任何编译错误，只会让配色整体串一位。
+///
+/// [topId] 一级类目编号，取自 §2.4（工作 1 / 房屋 2 / 车辆 3 / 生活 4 / 服务 5）
+///
+/// 返回：对应枚举；编号不在 1..5 时返回 null（不抛异常，理由见 [topCategoryOf]）
+ListingCategory? _topCategoryOfTopId(int topId) => switch (topId) {
+  1 => ListingCategory.work,
+  2 => ListingCategory.house,
+  3 => ListingCategory.vehicle,
+  4 => ListingCategory.life,
+  5 => ListingCategory.service,
+  _ => null,
+};
+
+/// 由**叶子类目 ID** 反查一级大类（详细设计 §10.4.1 第 2、3 步）。
+///
+/// 这是 `listingCategoryFromId` 的替代品。后者把服务端下发的叶子类目 ID
+/// （如 `10101`）当成本地枚举下标用，debug 下被 `assert` 拦住、release 下
+/// 直接 `values[10101]` 抛 `RangeError` —— 那个函数已删除。
+///
+/// **实现刻意遍历分类树，而不是按编码规则取前几位。** `10101` 的前两位是 `10`，
+/// 看起来能映射，但那依赖服务端类目编码规则永不变；而分类树带版本号
+/// （[categoryTreeVersion]）且会演进。遍历 48 个叶子的成本可忽略，换来的是
+/// 「编码规则改了也不会静默错」。
+///
+/// [leafCategoryId] 服务端下发的叶子类目 ID（如 `10101`）
+/// [tree] 当前生效的分类树，默认取内置 [categoryTree]（版本协商见 §16.4）
+///
+/// 返回：对应的一级大类；树中查不到该叶子时返回 null
+///
+/// **返回 null 而不抛异常**：本地分类树版本落后于服务端数据时，新增类目查不到
+/// 是 §16.4 明确规定的**预期内状态**（版本不一致不报错）。调用方应降级为
+/// 「中性配色（`neutralCategoryColor`）+ 触发异步拉树」，**不要丢弃该条数据** ——
+/// 丢弃会让用户觉得「东西不见了」，比配色不对严重得多。
+ListingCategory? topCategoryOf(
+  int leafCategoryId, {
+  List<CategoryNode> tree = categoryTree,
+}) {
+  for (final top in tree) {
+    for (final mid in top.children) {
+      for (final leaf in mid.children) {
+        if (leaf.id == leafCategoryId) return top.topCategory;
+      }
+    }
   }
+  return null;
 }
 
 /// 全量分类树（§2.4 逐字建模，5 一级 / 21 二级 / 48 叶子）。

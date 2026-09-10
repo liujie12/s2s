@@ -19,6 +19,8 @@ import 'package:go_router/go_router.dart';
 import '../../design_tokens.dart';
 import '../../domain/listing.dart';
 import '../../domain/listing_category.dart';
+// 色与图标已迁至 style 扩展（详细设计 §10.4.1）。
+import '../../domain/listing_category_style.dart';
 import '../../router/app_router.dart';
 import 'discovery_filter.dart';
 import 'filter_panel.dart';

@@ -17,9 +17,11 @@ import '../discovery/listing_repository.dart';
 
 /// 按 id 取详情。
 ///
+/// [id] 帖子 ID（`int`，契约 `PostIdPath` 为 `int64`，详细设计 §10.4.3）。
+///
 /// 返回 null 表示信息不存在（已下架或 id 非法）—— 由页面显示「信息不存在」，
 /// 而不是在这里抛异常。用户点开一条刚被删除的信息属正常场景，不是错误。
-final listingDetailProvider = Provider.family<ListingDetail?, String>((
+final listingDetailProvider = Provider.family<ListingDetail?, int>((
   ref,
   id,
 ) {
@@ -35,8 +37,10 @@ final listingDetailProvider = Provider.family<ListingDetail?, String>((
 ///
 /// 参数 [listing] 为列表已有的共有字段，其余字段按 id 稳定派生。
 ListingDetail _deriveDetail(Listing listing) {
-  // id 的哈希做种子：同一条信息任何时候派生出的内容都一致。
-  final seed = listing.id.hashCode.abs();
+  // id 做种子：同一条信息任何时候派生出的内容都一致。
+  // 取 abs 而非 hashCode.abs()：id 已是 int，再哈希一次只是多绕一层，
+  // 且 int 的 hashCode 在不同 Dart 版本上不保证稳定，会让样例内容跨版本变化。
+  final seed = listing.id.abs();
 
   return ListingDetail(
     listing: listing,

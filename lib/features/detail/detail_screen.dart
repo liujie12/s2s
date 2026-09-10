@@ -19,13 +19,18 @@ import 'package:go_router/go_router.dart';
 
 import '../../design_tokens.dart';
 import '../../domain/listing_category.dart';
+// 色与图标已迁至 style 扩展（详细设计 §10.4.1）：枚举本体须保持纯 Dart，
+// 否则聚合模块（features/map/clustering/）无法持有它，就得退回用 int 传分类。
+import '../../domain/listing_category_style.dart';
 import '../../domain/listing_detail.dart';
 import 'listing_detail_repository.dart';
 
 class DetailScreen extends ConsumerWidget {
   const DetailScreen({super.key, required this.listingId});
 
-  final String listingId;
+  /// 帖子 ID（`int`，契约 `PostIdPath` 为 `int64`，详细设计 §10.4.3）。
+  /// 由路由把 URL 字符串解析后传入，非法值传 -1 → 走「信息不存在」。
+  final int listingId;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

@@ -1,4 +1,4 @@
-﻿/// 分类级联选择器（PRD §5.4.2 全屏模态 / §10.1 `category-selector`）。
+/// 分类级联选择器（PRD §5.4.2 全屏模态 / §10.1 `category-selector`）。
 ///
 /// **为什么是全屏模态而不是三个下拉**：§5.4.2 定的是「三列滚动：大类 5 列横向卡片
 /// → 中类左侧 List → 小类右侧 List」。下拉在 48 个叶子的规模下要点三次、
@@ -16,7 +16,8 @@ import 'package:flutter/material.dart';
 
 import '../../design_tokens.dart';
 import '../../domain/category_tree.dart';
-import '../../domain/listing_category.dart';
+// 只用到色与图标，故只 import style 扩展（详细设计 §10.4.1）。
+import '../../domain/listing_category_style.dart';
 
 /// 级联选择结果。
 ///
@@ -190,7 +191,13 @@ class _TopCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // 一级节点的 topCategory 由 id 推出（category_tree.dart），故这里直接取大类色。
+    // 该 getter 现为可空（详细设计 §10.4.1：一级编号超出 1..5 时用显式 switch
+    // 返回 null，而不是 values[top-1] 抛 RangeError）。本页的数据源是本地
+    // 常量树，理论上取不到 null，但仍按中性配色降级 —— 断言崩掉整页
+    // 比一个灰色卡片糟糕得多。
     final category = node.topCategory;
+    final Color activeBg = category?.deepColor ?? neutralCategoryColor;
+    final Color iconColor = category?.color ?? neutralCategoryColor;
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -199,16 +206,16 @@ class _TopCard extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 8),
         decoration: BoxDecoration(
           // 选中用大类深色实底 + 白字：原色底白字五类全部不过 WCAG AA
-          //（listing_category.dart:50 已实算），故承载文字一律用 deepColor。
-          color: active ? category.deepColor : Color(AppColors.background),
+          //（listing_category_style.dart 已实算），故承载文字一律用 deepColor。
+          color: active ? activeBg : Color(AppColors.background),
           borderRadius: BorderRadius.circular(AppRadius.md),
         ),
         child: Column(
           children: [
             Icon(
-              category.icon,
+              category?.icon ?? neutralCategoryIcon,
               size: 20,
-              color: active ? Colors.white : category.color,
+              color: active ? Colors.white : iconColor,
             ),
             const SizedBox(height: 4),
             Text(

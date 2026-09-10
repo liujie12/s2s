@@ -11,6 +11,7 @@ library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/api_exception.dart';
 import '../../domain/listing_category.dart';
 
 /// 可选范围档位（PRD §6.4.1 ASCII 图：范围 1 3 [5] 10 全城）。
@@ -34,6 +35,41 @@ enum SearchRadius {
   /// 摘要胶囊与范围条的显示文案。
   String get label => km == null ? '全城' : '${km}km';
 }
+
+/// 搜索半径：本地枚举 → 契约字符串（详细设计 §10.4.3）。
+///
+/// 契约 `RadiusEnum` 是**字符串**枚举 `['1','3','5','10','city']`，不是整数 ——
+/// 因为它要容纳 `'city'` 这个非数值档。本地则用 `int?` 表示，`null` 代表全城
+/// （不做距离过滤）。两侧对「全城」的编码方式不同，必须显式映射。
+///
+/// **`km?.toString() ?? 'city'` 这一行是整个映射的要点。** 若写成
+/// `km.toString()`，全城档会得到字面量 `"null"`：服务端按 §16.2 的规则回
+/// `40001`（缓存键五要素不允许兜底），而客户端报错文案只会说「参数错误」，
+/// 不会告诉你是哪个参数 —— 排查成本极高。
+///
+/// [r] 本地半径档位
+///
+/// 返回：契约要求的 `radius` 参数值
+String toApiRadius(SearchRadius r) => r.km?.toString() ?? 'city';
+
+/// 搜索半径：契约字符串 → 本地枚举（详细设计 §10.4.3）。
+///
+/// 显式 switch 而非按 `km` 反查：`'city'` 在本地对应的是 `km == null`，
+/// 按值反查要为它单开一条分支，写出来的代码比直接 switch 更长也更绕。
+///
+/// [raw] 契约 `radius` 值，取值 `'1'` / `'3'` / `'5'` / `'10'` / `'city'`
+///
+/// 返回：对应的本地档位
+///
+/// 抛出：[ApiException] —— 出现契约外的值
+SearchRadius searchRadiusFromApi(String raw) => switch (raw) {
+  '1' => SearchRadius.km1,
+  '3' => SearchRadius.km3,
+  '5' => SearchRadius.km5,
+  '10' => SearchRadius.km10,
+  'city' => SearchRadius.city,
+  _ => throw ApiException.parse('未知 radius: $raw'),
+};
 
 /// 发现页筛选条件。
 ///

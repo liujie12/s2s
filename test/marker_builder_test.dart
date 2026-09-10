@@ -23,7 +23,10 @@ List<ClusterPoint> _samePointsInOneCell(int count, ListingCategory category) {
       // 刻意让每个点 x 不同：验证拆回单点时用的是原坐标而非簇中心。
       x: i.toDouble(),
       y: 0,
-      categoryId: category.id,
+      // 大类直接持枚举、叶子 ID 单独给（详细设计 §10.4.1）。
+      // 本用例只关心阈值判定，叶子 ID 取 0 表示「本地构造、无真实叶子」。
+      leafCategoryId: 0,
+      topCategory: category,
     ),
   );
 }
@@ -33,7 +36,9 @@ List<MapMarker> _build(List<ClusterPoint> points) {
   return buildMarkers(
     points,
     clusters,
-    thresholdOf: (id) => listingCategoryFromId(id).clusterThreshold,
+    // 大类可空时取最保守的阈值 3（口径与 map_screen 一致）。
+    thresholdOf: (topCategory) =>
+        topCategory?.clusterThreshold ?? ListingCategory.work.clusterThreshold,
   );
 }
 

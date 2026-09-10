@@ -22,7 +22,17 @@ class Listing {
     this.priceUnit,
   });
 
-  final String id;
+  /// 帖子 ID（服务端口径 `int64`，契约 `PostIdPath`）。
+  ///
+  /// 用 `int` 而不是 `String`（详细设计 §10.4.3），三条理由：
+  /// 1. **相等性陷阱**：`"1001"`、`"1001 "`、`"01001"` 在 Dart 里是三个不同的
+  ///    String，对服务端却是同一个（或非法）ID。用它作 Map 键、去重键、`==`
+  ///    判断时，任何一次多余的格式化都会静默产生重复项。
+  /// 2. **int64 精度**：若中途经过 `dynamic` → `double` 的转换（JSON 解析在
+  ///    某些路径上会），大于 2^53 的 ID 会丢精度。用 `int` 直接消除，代价为零。
+  /// 3. **校验点收敛**：`String` 转数字要校验，`int` 转字符串永不失败。
+  ///    选 `int` 是把校验点收敛到唯一入口（`fromJson`）。
+  final int id;
   final String title;
   final ListingCategory category;
   final SupplyDemand supplyDemand;

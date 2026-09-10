@@ -308,5 +308,8 @@ String? demandPrefixFor(PublishKind kind, int? leafCategoryId) {
     ListingCategory.vehicle => '【求搭】',
     ListingCategory.life => '【求购】',
     ListingCategory.work || ListingCategory.service => '【求助】',
+    // topCategory 现为可空（详细设计 §10.4.1）。查不到大类时不加前缀，
+    // 而不是兜一个「【求助】」—— 前缀会进标题落库，猜错等于替用户改文案。
+    null => null,
   };
 }

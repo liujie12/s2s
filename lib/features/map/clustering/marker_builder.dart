@@ -4,14 +4,19 @@
 /// 要能在 Dart VM 里跑 POC-A 基准；而阈值与尺寸是产品规格，会随 PRD 改。
 /// 混在一起会让每次调阈值都要重跑一遍性能基准去确认没拖慢算法。
 ///
-/// 本文件同样不 import Flutter —— 尺寸是数字，配色由渲染层按 categoryId 自取。
+/// 本文件同样不 import Flutter —— 尺寸是数字，配色由渲染层按 [MapMarker.topCategory] 自取。
 library;
 
+import '../../../domain/listing_category.dart';
 import 'grid_cluster.dart';
 
 /// 一个待渲染的地图标记。
 sealed class MapMarker {
-  const MapMarker({required this.x, required this.y, required this.categoryId});
+  const MapMarker({
+    required this.x,
+    required this.y,
+    required this.topCategory,
+  });
 
   /// 屏幕横坐标（逻辑像素，Marker 中心）。
   final double x;
@@ -19,7 +24,11 @@ sealed class MapMarker {
   /// 屏幕纵坐标（逻辑像素，Marker 中心）。
   final double y;
 
-  final int categoryId;
+  /// 一级大类，渲染层据此取配色与图标。
+  ///
+  /// 可空：本地分类树版本落后时查不到大类是预期内状态（§16.4），
+  /// 渲染层应改用中性配色（`neutralCategoryColor`）而**不是丢弃该 Marker**。
+  final ListingCategory? topCategory;
 }
 
 /// 单点 Marker，对应一条具体信息。
@@ -27,10 +36,11 @@ class SinglePointMarker extends MapMarker {
   const SinglePointMarker({
     required super.x,
     required super.y,
-    required super.categoryId,
+    required super.topCategory,
     required this.listingId,
   });
 
+  /// 本地帖子标识。回传服务端前须转 `int`（详细设计 §10.4.3）。
   final String listingId;
 }
 
@@ -39,7 +49,7 @@ class ClusterMarker extends MapMarker {
   const ClusterMarker({
     required super.x,
     required super.y,
-    required super.categoryId,
+    required super.topCategory,
     required this.count,
     required this.memberIds,
   });
@@ -74,8 +84,10 @@ const double kSelectedMarkerDiameter = 48;
 /// [Cluster] 只保留了成员 ID 与中心平均值，原坐标只能从 [points] 查回。
 /// 若图省事用簇中心当单点位置，同格两条信息会精确重叠，第二个 Pin 永远点不到。
 ///
-/// [thresholdOf] 给出某分类的聚合阈值（注入而非直接读枚举，是为了让本文件
-/// 保持无 Flutter 依赖、可在纯 Dart 下跑测试）。
+/// [thresholdOf] 给出某大类的聚合阈值。仍保持注入而不直接读
+/// `ListingCategory.clusterThreshold`，原因已从「避免 Flutter 依赖」变为：
+/// **大类可空时该用什么阈值是产品规则，不是算法细节**。把这个决定留在调用方，
+/// 本层就不必对「分类树没查到」这件事表态。
 ///
 /// 规则：簇内条数 **达到或超过**该分类阈值才聚合；否则拆回单点。
 /// 「达到即聚」而非「超过才聚」—— PRD §6.15 写的是「工作 3 条聚」，即 3 条就聚。
@@ -84,18 +96,18 @@ const double kSelectedMarkerDiameter = 48;
 List<MapMarker> buildMarkers(
   List<ClusterPoint> points,
   List<Cluster> clusters, {
-  required int Function(int categoryId) thresholdOf,
+  required int Function(ListingCategory? topCategory) thresholdOf,
 }) {
   final Map<String, ClusterPoint> pointById = {for (final p in points) p.id: p};
   final List<MapMarker> markers = [];
 
   for (final cluster in clusters) {
-    if (cluster.count >= thresholdOf(cluster.categoryId)) {
+    if (cluster.count >= thresholdOf(cluster.topCategory)) {
       markers.add(
         ClusterMarker(
           x: cluster.x,
           y: cluster.y,
-          categoryId: cluster.categoryId,
+          topCategory: cluster.topCategory,
           count: cluster.count,
           memberIds: cluster.memberIds,
         ),
@@ -114,7 +126,7 @@ List<MapMarker> buildMarkers(
         SinglePointMarker(
           x: p.x,
           y: p.y,
-          categoryId: p.categoryId,
+          topCategory: p.topCategory,
           listingId: id,
         ),
       );

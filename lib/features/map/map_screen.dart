@@ -19,6 +19,9 @@ import 'package:go_router/go_router.dart';
 import '../../design_tokens.dart';
 import '../../domain/listing.dart';
 import '../../domain/listing_category.dart';
+// 色与图标已迁至 style 扩展（详细设计 §10.4.1）。
+import '../../domain/listing_category_style.dart';
+import '../../nfr_constants.dart';
 import '../../router/app_router.dart';
 import '../discovery/discovery_filter.dart';
 import '../discovery/filter_panel.dart';
@@ -34,10 +37,12 @@ import 'marker_layer.dart';
 
 /// 聚合网格边长（逻辑像素）。
 ///
-/// 60px 略大于单点 Marker 直径 40px：小于直径会让「聚不起来的两个点」在视觉上
-/// 依然重叠，聚合等于没做；过大则相隔很远的点也被聚成一簇，用户点开发现它们
-/// 分散在屏幕各处。
-const double _kClusterGridSize = 60;
+/// 值转引 [NfrPerf.clusterGridSizePx]（`lib/nfr_constants.dart` 为 NFR 数字唯一真源）。
+/// 该值原先只存在于本文件、PRD 无对应条目；2026-09-02 缺陷评审已补入 PRD §6.15，
+/// 理由同下：60px 略大于单点 Marker 直径 40px —— 小于直径会让「聚不起来的两个点」
+/// 在视觉上依然重叠，聚合等于没做；过大则相隔很远的点也被聚成一簇，
+/// 用户点开发现它们分散在屏幕各处。
+const double _kClusterGridSize = NfrPerf.clusterGridSizePx;
 
 /// 初始缩放：一像素代表多少米。
 ///
@@ -62,6 +67,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   /// 缩放手势开始时的基准，用于把相对缩放比换算成绝对值。
   double _scaleStartMetersPerPixel = _kInitialMetersPerPixel;
 
+  /// 当前选中的帖子**本地标识**（`String`，与 Marker 层同口径）。
+  ///
+  /// 类型刻意跟 [SinglePointMarker.listingId] 保持一致而不用 `int`：选中态是由
+  /// 点击 Marker 产生的，而 Marker 的 id 来自 `ClusterPoint.id`（聚合层只用
+  /// 基础类型，详细设计 §10.4.3）。若这里改 `int`，每次点击都要解析一次字符串，
+  /// 且解析失败时没有合理的退路。跨到域模型时用 `Listing.id.toString()` 对齐。
   String? _selectedListingId;
 
   @override
@@ -87,8 +98,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           // 供需查表在此建一次，而不是让 MarkerLayer 每画一个 Marker 就
           // firstWhere 一遍 —— 后者是 O(n²)，5 万点档位下会被真机测成
           // 「CustomPaint 画不动」，从而把优化引向完全错误的方向。
+          // 键用 l.id.toString()：Marker 层的标识是 String（§10.4.3），
+          // 而 Listing.id 是 int，键类型必须与查表方 marker.listingId 一致，
+          // 否则 containsKey 永远为 false —— 而那是个 info 级提示，不报错。
           final supplyDemandById = {
-            for (final l in listings) l.id: l.supplyDemand,
+            for (final l in listings) l.id.toString(): l.supplyDemand,
           };
 
           return Stack(
@@ -126,7 +140,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   bottom: AppSpacing.md,
                   child: _ListingInfoCard(
                     listing: listings.firstWhere(
-                      (l) => l.id == _selectedListingId,
+                      (l) => l.id.toString() == _selectedListingId,
                     ),
                     onClose: () => setState(() => _selectedListingId = null),
                   ),
@@ -239,10 +253,16 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         .map((l) {
           final p = projection.toPixel(l.latitude, l.longitude);
           return ClusterPoint(
-            id: l.id,
+            // ClusterPoint.id 是本地分桶标识（String），Listing.id 为服务端 int64，
+            // 故此处显式转字符串；反向回传时须转回 int（详细设计 §10.4.3）。
+            id: l.id.toString(),
             x: p.x,
             y: p.y,
-            categoryId: l.category.id,
+            // 样例数据只有大类没有叶子类目，故叶子 ID 记 0 表示「本地样例、无叶子」。
+            // 接入 /map/pins 后此处改为服务端下发的 category_id，
+            // topCategory 则改为 topCategoryOf(category_id)。
+            leafCategoryId: 0,
+            topCategory: l.category,
           );
         })
         .toList(growable: false);
@@ -251,7 +271,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     return buildMarkers(
       points,
       clusters,
-      thresholdOf: (id) => listingCategoryFromId(id).clusterThreshold,
+      // 大类为 null（分类树查不到）时取最保守的阈值 3：宁可多聚也不要在
+      // 密集区散成一片点。阈值该取几由产品决定，故留在调用方而非算法层。
+      thresholdOf: (topCategory) =>
+          topCategory?.clusterThreshold ?? ListingCategory.work.clusterThreshold,
     );
   }
 

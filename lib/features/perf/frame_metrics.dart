@@ -18,8 +18,14 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 
-/// 单帧耗时的判据线（毫秒）。PRD §14.6：帧渲染 ≤16ms（60fps）。
-const double kFrameBudgetMs = 16.0;
+import '../../nfr_constants.dart';
+
+/// 单帧耗时的判据线（毫秒）。PRD §14.1：帧渲染 ≤16ms（60fps）。
+///
+/// 值转引 [NfrPerf.frameBudgetMs]（`lib/nfr_constants.dart` 为 NFR 数字唯一真源）。
+/// 本别名保留是因为已有 3 处消费方按此名引用，且它是本文件的核心语义；
+/// 但**不再在此处写字面量** —— 避免同一个 16 出现在两个"看起来都权威"的地方。
+const double kFrameBudgetMs = NfrPerf.frameBudgetMs;
 
 /// 帧耗时采样器。
 ///
