@@ -19,10 +19,12 @@ import org.springframework.boot.context.properties.source.MapConfigurationProper
  * {@link MapConfigurationPropertySource} 绑定，既不需要环境变量也不触达数据库，
  * 与现有 10 个纯单测同范式（互不干扰）。
  *
- * <p>四个断言面：六类凭证八字段齐备时绑定成功；缺键（null）、占位字面量未解析
+ * <p>断言面：六个硬依赖凭证齐备时绑定成功；硬依赖缺键（null）、占位字面量未解析
  * （{@code "${VAR}"} 原样绑入——@ConfigurationProperties 非严格占位解析的真实行为，
  * U-5 N2 首跑实测复现）、空白串（compose 插值缺省落空串的 D8 叠加路径）三种
  * 「未真实注入」形态均被紧凑构造器守卫拒收，且报错点名环境变量名。
+ * 短信/高德 Key 本条目为可选绑定（计划 OQ-3，评审 finding #1）：三种未注入形态
+ * 归一为 null、真实值原样保留，保证 compose 模板不注入这两个变量时整栈可启动。
  */
 class SecretsPropertiesTest {
 
@@ -81,22 +83,24 @@ class SecretsPropertiesTest {
     }
 
     /**
-     * 场景二：缺键（字段为 null）时绑定失败且报错点名环境变量。
+     * 场景二：硬依赖缺键（字段为 null）时绑定失败且报错点名环境变量。
      * 依据：record 构造绑定无隐式默认值，缺键即 null，被构造器守卫拒收。
+     * （用 OSS_ACCESS_KEY_ID 硬依赖键；短信/高德 Key 已降级可选，见场景五。）
      *
      * @return void；断言失败即缺键路径存在「缺了也能跑」的隐式默认值
      */
     @Test
     void missingKeyFailsBindingWithEnvVarNamed() {
         Map<String, String> incomplete = new LinkedHashMap<>(FULL_PROPERTIES);
-        incomplete.remove("s2s.secrets.amap-key");
+        incomplete.remove("s2s.secrets.oss-access-key-id");
 
         assertThatThrownBy(() -> bind(incomplete).get())
-                .hasStackTraceContaining("AMAP_KEY");
+                .hasStackTraceContaining("OSS_ACCESS_KEY_ID");
     }
 
     /**
-     * 场景三（生产关键）：值是未解析占位字面量 {@code "${AMAP_KEY}"} 时绑定失败且点名变量。
+     * 场景三（生产关键）：硬依赖值是未解析占位字面量 {@code "${HMAC_PEPPERS_JSON}"}
+     * 时绑定失败且点名变量。
      * 依据：@ConfigurationProperties 绑定走非严格占位解析，环境变量缺失时占位符【不抛异常】
      * 而是原样绑进字段（U-5 N2 首跑实测：缺 HMAC_PEPPERS_JSON 应用居然 Started）；
      * 这正是构造器守卫必须识别 "${...}" 整体形态的原因——本测试锁住该行为，防回归。
@@ -106,10 +110,10 @@ class SecretsPropertiesTest {
     @Test
     void unresolvedPlaceholderLiteralFailsBindingWithEnvVarNamed() {
         Map<String, String> unresolved = new LinkedHashMap<>(FULL_PROPERTIES);
-        unresolved.put("s2s.secrets.amap-key", "${AMAP_KEY}");
+        unresolved.put("s2s.secrets.hmac-peppers-json", "${HMAC_PEPPERS_JSON}");
 
         assertThatThrownBy(() -> bind(unresolved).get())
-                .hasStackTraceContaining("AMAP_KEY");
+                .hasStackTraceContaining("HMAC_PEPPERS_JSON");
     }
 
     /**
@@ -126,5 +130,37 @@ class SecretsPropertiesTest {
 
         assertThatThrownBy(() -> bind(blanked).get())
                 .hasStackTraceContaining("HMAC_PEPPERS_JSON");
+    }
+
+    /**
+     * 场景五（评审 finding #1 / 计划 OQ-3）：短信/高德 Key 本条目为可选绑定。
+     * 依据：Batch1 后端无短信/地图消费方，compose 叠加路径不注入 SMS_KEY/AMAP_KEY，
+     * 三种「未真实注入」形态（缺键 null、未解析占位字面量、空白）必须归一为 null
+     * 而非启动失败，保证按 deploy 模板起整栈可成功；真实注入值必须原样保留。
+     *
+     * @return void；断言失败即可选键要么误阻断启动、要么吞掉真实配置
+     */
+    @Test
+    void optionalSmsAndAmapKeysNormalizeAbsentShapesToNullAndKeepRealValue() {
+        // 缺键：compose 模板根本不注入这两个变量（finding #1 的部署路径）
+        Map<String, String> withoutOptional = new LinkedHashMap<>(FULL_PROPERTIES);
+        withoutOptional.remove("s2s.secrets.sms-key");
+        withoutOptional.remove("s2s.secrets.amap-key");
+        SecretsProperties absent = bind(withoutOptional).get();
+        assertThat(absent.smsKey()).isNull();
+        assertThat(absent.amapKey()).isNull();
+
+        // 未解析占位字面量与夹带空白：同样归一为 null，不把 "${...}" 当假凭证放出
+        Map<String, String> unresolvedOptional = new LinkedHashMap<>(FULL_PROPERTIES);
+        unresolvedOptional.put("s2s.secrets.sms-key", "${SMS_KEY}");
+        unresolvedOptional.put("s2s.secrets.amap-key", "   ");
+        SecretsProperties normalized = bind(unresolvedOptional).get();
+        assertThat(normalized.smsKey()).isNull();
+        assertThat(normalized.amapKey()).isNull();
+
+        // 真实注入原样保留（[123]/[126] 收紧前的本机直跑/已配置环境）
+        SecretsProperties configured = bind(FULL_PROPERTIES).get();
+        assertThat(configured.smsKey()).isEqualTo("fake-sms-key");
+        assertThat(configured.amapKey()).isEqualTo("fake-amap-key");
     }
 }

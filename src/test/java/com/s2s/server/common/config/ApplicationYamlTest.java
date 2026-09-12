@@ -44,8 +44,11 @@ class ApplicationYamlTest {
 
     /**
      * 断言 {@code s2s.secrets.*} 八键逐一引用预期环境变量、且全部为无默认值硬占位。
-     * 依据：编码规范 §3.3 六类凭证清单；安全 §4 key_version 列表结构。
+     * 依据：编码规范 §3.3 凭证清单；安全 §4 key_version 列表结构。
      * 变量名与仓库根 .env.example 逐一对应，任一侧改名都会打破本断言或 grep 核对。
+     * 注意：占位「无默认值」指 yml 层不写兜底值；启动期硬守卫仅覆盖前六个硬依赖，
+     * SMS_KEY/AMAP_KEY 本条目为可选绑定（计划 OQ-3，评审 finding #1），其未注入时
+     * 由 SecretsProperties 构造器归一为 null，不阻断 compose 整栈启动。
      *
      * @return void；断言失败即凭证占位变量名漂移或引入了默认值
      */

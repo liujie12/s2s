@@ -23,9 +23,14 @@ import org.springframework.validation.annotation.Validated;
  * {@code @Value} 硬注入路径（如 config/FlywayTrackConfig），{@code @ConfigurationProperties}
  * 路径不可依赖。
  *
- * <p>六类凭证清单（编码规范 §3.3，逐字对应）：DB 口令、Redis 口令、HMAC pepper 列表、
- * AEAD 主密钥列表、OSS AK/SK、短信/高德 Key。其中两个密钥列表按 {@code key_version}
- * 列表结构承载 JSON 串（安全 §4：轮换时新旧版本并存于列表）。
+ * <p>凭证清单：DB 口令、Redis 口令、HMAC pepper 列表、AEAD 主密钥列表、OSS AK/SK
+ * 为本条目启动硬依赖（缺失即快速失败）；短信/高德 Key 按计划 OQ-3 在本条目为
+ * <b>可选绑定</b>——Batch1 后端无短信/地图消费方，compose 叠加路径也不注入这两个变量，
+ * 若做硬守卫会让按部署模板起整栈必然启动失败（评审 finding #1）。收紧时点：
+ * SMS_KEY 随条目 [123]（短信登录验证码渠道）、AMAP_KEY 随条目 [126]（逆地理/POI 服务）
+ * 落地时改回 {@code @NotBlank} + {@link #requireResolved(String, String)} 硬守卫，
+ * 并同步在 deploy/env 三份模板补占位。两个密钥列表按 {@code key_version} 列表结构
+ * 承载 JSON 串（安全 §4：轮换时新旧版本并存于列表）。
  *
  * <p>设计取舍：
  * <ul>
@@ -48,8 +53,10 @@ import org.springframework.validation.annotation.Validated;
  *                           按 key_version 列表结构，安全 §4）
  * @param ossAccessKeyId     阿里云 OSS AccessKey ID（媒体对象存储凭证）
  * @param ossAccessKeySecret 阿里云 OSS AccessKey Secret（媒体对象存储凭证）
- * @param smsKey             短信服务 Key（登录验证码渠道凭证）
- * @param amapKey            高德地图 Key（逆地理/POI 服务凭证）
+ * @param smsKey             短信服务 Key（登录验证码渠道凭证）；本条目可选绑定（OQ-3），
+ *                           未注入/占位未解析/空白统一归一为 null，[123] 落地时收紧为硬守卫
+ * @param amapKey            高德地图 Key（逆地理/POI 服务凭证）；本条目可选绑定（OQ-3），
+ *                           未注入/占位未解析/空白统一归一为 null，[126] 落地时收紧为硬守卫
  */
 @Validated
 @ConfigurationProperties(prefix = "s2s.secrets")
@@ -60,12 +67,13 @@ public record SecretsProperties(
         @NotBlank String aeadMasterKeysJson,
         @NotBlank String ossAccessKeyId,
         @NotBlank String ossAccessKeySecret,
-        @NotBlank String smsKey,
-        @NotBlank String amapKey) {
+        String smsKey,
+        String amapKey) {
 
     /**
-     * 紧凑构造器：逐字段执行 {@link #requireResolved(String, String)} 守卫，
-     * 任一凭证未真实注入即让绑定失败（启动快速失败，编码规范 §3.3）。
+     * 紧凑构造器：六个硬依赖凭证逐字段执行 {@link #requireResolved(String, String)} 守卫，
+     * 任一未真实注入即让绑定失败（启动快速失败，编码规范 §3.3）；短信/高德 Key 走
+     * {@link #normalizeOptional(String)} 归一为可选绑定（计划 OQ-3，评审 finding #1）。
      */
     public SecretsProperties {
         requireResolved(dbPassword, "SPRING_DATASOURCE_PASSWORD");
@@ -74,8 +82,8 @@ public record SecretsProperties(
         requireResolved(aeadMasterKeysJson, "AEAD_MASTER_KEYS_JSON");
         requireResolved(ossAccessKeyId, "OSS_ACCESS_KEY_ID");
         requireResolved(ossAccessKeySecret, "OSS_ACCESS_KEY_SECRET");
-        requireResolved(smsKey, "SMS_KEY");
-        requireResolved(amapKey, "AMAP_KEY");
+        smsKey = normalizeOptional(smsKey);
+        amapKey = normalizeOptional(amapKey);
     }
 
     /**
@@ -91,5 +99,22 @@ public record SecretsProperties(
             throw new IllegalArgumentException(
                     "凭证未注入或占位未解析，启动快速失败（编码规范 §3.3）：请检查环境变量 " + envVar);
         }
+    }
+
+    /**
+     * 可选凭证归一：本条目 Batch1 无消费方的短信/高德 Key（计划 OQ-3），三种「未真实注入」
+     * 形态——null（键缺失）、空白（compose 插值缺省落空串）、整体形如 {@code "${...}"}
+     * （非严格占位解析把字面量原样绑入）——统一归一为 {@code null}，消费方据此判定「未配置」；
+     * 真实注入则原样保留。条目 [123]/[126] 落地消费方时，本方法应换回
+     * {@link #requireResolved(String, String)} 硬守卫并恢复 {@code @NotBlank}。
+     *
+     * @param value 绑定到的可选字段值（可能为 null、空白、未解析占位字面量或真实 Key）
+     * @return 真实注入时原值；三种未注入形态归一为 {@code null}
+     */
+    private static String normalizeOptional(String value) {
+        if (value == null || value.isBlank() || (value.startsWith("${") && value.endsWith("}"))) {
+            return null;
+        }
+        return value;
     }
 }
