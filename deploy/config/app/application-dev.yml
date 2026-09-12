@@ -65,9 +65,10 @@ management:
 
 # --- 业务开关 ---------------------------------------------------------------
 s2s:
-  # dev 关闭真实 OSS 上传，走本地临时目录，避免污染线上桶且省流量
+  # dev 打开真实 OSS 上传（2026-09-09 起，直传到 s2s-bucket 真测媒体链路）；
+  # 凭证走 deploy/env/.env.dev（不入 git）。如需回退本地临时目录，改回 false 即可
   oss:
-    enabled: false
+    enabled: true
   # dev 关闭 LLM 真实调用，走桩数据，避免消耗 Token 配额
   llm:
     enabled: false
