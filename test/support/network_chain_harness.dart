@@ -94,6 +94,20 @@ class NetworkChainHarness {
     await server.stop();
   }
 
+  /// 暴露当前可变状态装配的 [NetworkHooks]（U4 实测二：探针链需要与
+  /// harness.dio 不同的 dio 实例，但回调缝必须同源——token/同意态/设备 ID
+  /// 的在用例内赋值对探针链同样生效）。
+  ///
+  /// 返回：[NetworkHooks] 与 [start] 装配生产 dio 时所用的同一套状态回调。
+  NetworkHooks hooksForProbe() => _stateBackedHooks();
+
+  /// 当前 mock 服务基址（U4 实测二：探针链手动构造 dio 时需要与
+  /// harness.dio 相同的 baseUrl，但不能复用 dio 实例——探针只挂探针链）。
+  ///
+  /// 返回：[Future<String>] mock 基址（须在 [start] 之后调用）。
+  Future<String> serverBaseUrl() async =>
+      'http://${server.address.host}:${server.port}/api/v1';
+
   /// 登记路由（转发到 [MockApiServer.stub]，测试侧少一次内部对象访问）。
   ///
   /// 参数：

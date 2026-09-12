@@ -22,9 +22,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../nfr_constants.dart';
 import 'device_id_provider.dart';
 import 'interceptors/envelope_interceptor.dart';
+import 'interceptors/gzip_interceptor.dart';
 import 'interceptors/header_interceptor.dart';
 
 export 'interceptors/envelope_interceptor.dart' show EnvelopeInterceptor;
+export 'interceptors/gzip_interceptor.dart' show GzipInterceptor;
 export 'interceptors/header_interceptor.dart' show HeaderInterceptor;
 
 /// 网络配置（KTD8：baseUrl 与 release 判定的运行时注入缝）。
@@ -205,9 +207,11 @@ Dio buildNetworkDio({
   // dio 的 Interceptors.add 顺序即发出向执行序（计划 Assumptions，
   // U4 第一天实测三方向执行序并回写 §11.1 图注）。
   dio.interceptors.add(HeaderInterceptor(hooks));
-  // 装配位 2（U4 落地）：GzipInterceptor。默认不注入 Accept-Encoding
-  // （§11.5 待实测，默认依赖 HttpClient 自动协商/解压），只承担压缩前后
-  // 体积统计；U3 不得提前实现压缩逻辑（计划单元边界）。
+  // 装配位 2（U4 已落地）：GzipInterceptor。第一天双实测结论已回写
+  // §11.5/§11.1（2026-09-10）：dart:io HttpClient 默认自动协商 gzip 并
+  // 自动解压，故拦截器不写 Accept-Encoding，只承担压缩前后体积统计
+  // （R13）；禁止在此压缩请求体。
+  dio.interceptors.add(const GzipInterceptor());
   dio.interceptors.add(const EnvelopeInterceptor());
   // 装配位 4（U5 落地）：AuthRefreshInterceptor。40101 单飞续期，
   // refresh 独立 dio 仅挂 Header+Envelope（KTD3）。
