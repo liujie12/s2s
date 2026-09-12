@@ -1,11 +1,19 @@
 /// KTD5 焊接点：features → core 单向依赖的网络回调接线。
 ///
-/// 职责边界（计划 KTD5 / U3）：
+/// 职责边界（计划 KTD5 / U3 / U5）：
 ///   core 的 `networkHooksProvider` 默认抛 [StateError]，强制会话态到
-///   [NetworkHooks] 四回调的映射必须落在 features 侧。本文件是唯一焊接
+///   [NetworkHooks] 七回调的映射必须落在 features 侧。本文件是唯一焊接
 ///   处：read [authSessionProvider] 与 [privacyConsentProvider]，
 ///   映射为不感知 Riverpod 的纯回调。`lib/core/` 永远不 import 本文件，
 ///   依赖方向保持 features → core 单向。
+///
+/// U5 新增的三个会话回调：
+///   - writeToken → [AuthSessionNotifier.updateToken]（续期写回，不推进
+///     代次；notifier 内部拒绝「已登出」写回，是代次校验外的第二道防线）；
+///   - onSessionCleared → [AuthSessionNotifier.signOut]（认证类续期失败
+///     清会话，跳登录由 UI watch 会话态完成）；
+///   - readSessionEpoch → [AuthSessionNotifier.sessionEpoch]（续期发起
+///     取样、写回前比对，R10 代次变更场景）。
 ///
 /// 落点选择（计划允许 features/auth/ 或 main.dart，实现期定）：
 ///   落在本文件而非 main.dart —— U3 尚无 dio 消费方，main.dart 组装无
@@ -51,5 +59,18 @@ final Provider<NetworkHooks> wiredNetworkHooksProvider =
         // 显式闭包而非 tear-off：v4 带可选命名参数，封成零参函数与
         // NetworkHooks.newUuidV4 签名严格一致。
         newUuidV4: () => _uuid.v4(),
+        // U5：续期成功写回（不推进代次；无会话时 notifier 内部拒绝写回）。
+        writeToken: (token, expireAt) async {
+          ref
+              .read(authSessionProvider.notifier)
+              .updateToken(token: token, expireAt: expireAt);
+        },
+        // U5：认证类续期失败（refresh 自身 40101/403xx）清会话。
+        onSessionCleared: () async {
+          ref.read(authSessionProvider.notifier).signOut();
+        },
+        // U5：续期发起取样、写回前比对；在途登出/换号则丢弃续期结果。
+        readSessionEpoch: () async =>
+            ref.read(authSessionProvider.notifier).sessionEpoch,
       );
     });

@@ -20,11 +20,15 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../nfr_constants.dart';
+import 'api_exception.dart';
 import 'device_id_provider.dart';
+import 'interceptors/auth_refresh_interceptor.dart';
 import 'interceptors/envelope_interceptor.dart';
 import 'interceptors/gzip_interceptor.dart';
 import 'interceptors/header_interceptor.dart';
 
+export 'interceptors/auth_refresh_interceptor.dart'
+    show AuthRefreshInterceptor, RefreshTokenExecutor, RefreshResult;
 export 'interceptors/envelope_interceptor.dart' show EnvelopeInterceptor;
 export 'interceptors/gzip_interceptor.dart' show GzipInterceptor;
 export 'interceptors/header_interceptor.dart' show HeaderInterceptor;
@@ -126,24 +130,33 @@ class _ProductionNetworkConfig implements NetworkConfig {
 ///   - [newUuidV4]：UUID v4 生成器，做成可注入是为了让 §11.1.1
 ///     第 3 条断言（重试全链路 uuid.v4 只调 1 次）可机器计数。
 ///
-/// U5 单飞续期需要的 writeToken/onSessionCleared/readSessionEpoch
-/// （KTD5 四回调的另三个缝）在 U5 扩展本类，届时 AuthSessionNotifier
-/// 同步补会话代次字段；U3 不预留未被消费的回调（不预建占位，
-/// 计划 Scope Boundaries）。
+/// U5 单飞续期需要的三个回调（KTD5 四回调的另三个缝）已在本类落地：
+/// [writeToken] / [onSessionCleared] / [readSessionEpoch]。
+/// 契约（`docs/api/openapi.yaml` `/auth/token/refresh`）为**单 Token 模型**
+/// （架构 §6.5）：续期请求体无 refresh_token、旧 Token 经 Authorization
+/// 头携带，故续期读取复用 [readToken]，不另设 readRefreshToken 缝。
 class NetworkHooks {
   /// 构造回调缝。
   ///
   /// 参数：
-  ///   [readToken]            异步读当前 Token；
+  ///   [readToken]            异步读当前 Token（请求头注入与续期请求复用）；
   ///   [readPrivacyConsented] 异步读隐私同意态；
   ///   [readDeviceId]         异步读设备标识；
   ///   [newUuidV4]            同步产出新 UUID v4（生成频率需计数，
-  ///                          保持同步以避免调用点误做缓存）。
+  ///                          保持同步以避免调用点误做缓存）；
+  ///   [writeToken]           续期成功后写回新 Token（含新到期时刻）；
+  ///   [onSessionCleared]     认证类续期失败时清空会话（跳登录由 UI 侧
+  ///                          watch 会话态完成，core 不感知导航）；
+  ///   [readSessionEpoch]     读会话代次（单调递增），续期发起时取样、
+  ///                          写回前比对，不一致则丢弃续期结果（R10）。
   const NetworkHooks({
     required this.readToken,
     required this.readPrivacyConsented,
     required this.readDeviceId,
     required this.newUuidV4,
+    required this.writeToken,
+    required this.onSessionCleared,
+    required this.readSessionEpoch,
   });
 
   /// 读当前会话 Token；未登录返回 null。
@@ -157,6 +170,26 @@ class NetworkHooks {
 
   /// 产出一个新的 UUID v4（交互 ID/幂等键兜底生成）。
   final String Function() newUuidV4;
+
+  /// 续期成功后写回新 Token。
+  ///
+  /// 参数：
+  ///   [token]    续期响应的新 JWT（契约 `/auth/token/refresh` 的
+  ///              `data.token`，单 Token 模型）；
+  ///   [expireAt] 续期响应的新到期时刻（`data.expire_at`，RFC3339 UTC，
+  ///              仅供展示，过期判定仍以服务端 `40101` 为唯一触发源）。
+  /// 实现侧须在写回前自行拒绝「会话已不存在」的写回（代次校验的
+  /// 第二道防线），避免登出后会话被旧续期结果复活。
+  final Future<void> Function(String token, DateTime expireAt) writeToken;
+
+  /// 认证类续期失败（refresh 自身返 40101/403xx）时清空会话。
+  final Future<void> Function() onSessionCleared;
+
+  /// 读当前会话代次。
+  ///
+  /// 代次为单调递增整数：每次登录/登出递增，续期写回**不**递增
+  /// （续期是同一会话的 Token 轮换，不是新会话）。
+  final Future<int> Function() readSessionEpoch;
 }
 
 /// 构造 `/map/pins` 的按请求选项（R12 / §14.1：读超时收紧为 3s）。
@@ -213,12 +246,145 @@ Dio buildNetworkDio({
   // （R13）；禁止在此压缩请求体。
   dio.interceptors.add(const GzipInterceptor());
   dio.interceptors.add(const EnvelopeInterceptor());
-  // 装配位 4（U5 落地）：AuthRefreshInterceptor。40101 单飞续期，
-  // refresh 独立 dio 仅挂 Header+Envelope（KTD3）。
-  // 装配位 5（U6 落地）：RetryInterceptor。全链路唯一重试点，
+  // 装配位 4（U5 落地）：AuthRefreshInterceptor。40101 单飞续期。
+  // 续期请求走 [buildRefreshDio] 构造的独立 dio（KTD3），与本实例
+  // 形成物理隔离：即便装配顺序出错也不可能在 refresh 栈里递归续期。
+  dio.interceptors.add(
+    AuthRefreshInterceptor(
+      networkDio: dio,
+      refreshExecutor: buildDefaultRefreshTokenExecutor(
+        config: config,
+        hooks: hooks,
+      ),
+      clearSession: hooks.onSessionCleared,
+    ),
+  );
+  // 装配位 5（U6 待落地）：RetryInterceptor。全链路唯一重试点，
   // dio.fetch 重走全链（KTD4），传输层 DioException→networkFailure
-  // 的唯一归一也在其 onError（KTD10），本单元不提前映射。
+  // 的唯一归一也在其 onError（KTD10）。U5 不含任何重试/退避/计时逻辑，
+  // 该位置继续保留占位，不得提前实现（计划执行序 U5 → U6）。
   return dio;
+}
+
+/// 续期专用接口路径（契约 `POST /auth/token/refresh`，不含 `/api/v1`
+/// 前缀，前缀在 [NetworkConfig.baseUrl] 内）。
+const String refreshTokenPath = '/auth/token/refresh';
+
+/// 构造续期专用 dio（KTD3：独立网络栈，**只挂** Header + Envelope）。
+///
+/// 为什么独立实例而非复用 [buildNetworkDio] 的实例：
+///   - 必须**不挂 AuthRefreshInterceptor**——否则 refresh 自身再吃
+///     `40101` 会递归续期；
+///   - 必须**不挂 RetryInterceptor（U6）**——refresh 挂重试会形成嵌套
+///     重试，放大详设 §14.1 的全链路 2 次预算（KTD3 的排除理由）；
+///   - 不挂 GzipInterceptor——续期响应仅一个 token，无体积统计需要。
+///
+/// 契约 `/auth/token/refresh`（架构 §6.5 单 Token 模型）：旧 Token
+/// 经 `Authorization` 头携带（由 [HeaderInterceptor] 按「每次重写」
+/// 规则注入），**无请求体**。
+///
+/// 参数：
+///   [config] 网络配置（与业务 dio 同一基址/release 态）；
+///   [hooks]  同一套回调缝（readToken 提供旧 Token）。
+/// 返回：[Dio] 仅装配 [HeaderInterceptor] 与 [EnvelopeInterceptor]、
+///   [BaseOptions.validateStatus] 恒 true 的续期专用实例。
+Dio buildRefreshDio({
+  required NetworkConfig config,
+  required NetworkHooks hooks,
+}) {
+  NetworkConfig.assertReleaseHttps(
+    baseUrl: config.baseUrl,
+    isRelease: config.isRelease,
+  );
+  final dio = Dio(
+    BaseOptions(
+      baseUrl: config.baseUrl,
+      validateStatus: (_) => true,
+      connectTimeout: Duration(seconds: NfrNetwork.connectTimeoutSec),
+      receiveTimeout: Duration(seconds: NfrNetwork.readTimeoutSec),
+      responseType: ResponseType.json,
+    ),
+  );
+  // 共享同一组拦截器实现处：HeaderInterceptor 注入旧 Token 与三头，
+  // EnvelopeInterceptor 先拆信封再判 code（refresh 失败同样以信封
+  // ApiException 抛出，由 AuthRefreshInterceptor 三分流，R10）。
+  dio.interceptors.add(HeaderInterceptor(hooks));
+  dio.interceptors.add(const EnvelopeInterceptor());
+  return dio;
+}
+
+/// 构造默认续期执行器（KTD3：读旧 Token → 独立 dio 续期 →
+/// 代次校验 → 写回新 Token，全部经 [NetworkHooks]，core 不感知
+/// Riverpod / AuthSessionNotifier）。
+///
+/// 参数：
+///   [config] 网络配置；
+///   [hooks]  回调缝（[buildRefreshDio] 与写回/代次共用）。
+/// 返回：[RefreshTokenExecutor] 供 [AuthRefreshInterceptor] 构造注入；
+///   测试可直接注入自定义执行器而不经真实 HTTP（harness 的单飞计数
+///   场景仍走真实 MockApiServer，R9）。
+RefreshTokenExecutor buildDefaultRefreshTokenExecutor({
+  required NetworkConfig config,
+  required NetworkHooks hooks,
+}) {
+  final refreshDio = buildRefreshDio(config: config, hooks: hooks);
+  return () async {
+    // ① 续期发起时取样会话代次；旧 Token 同时是续期凭证（契约单
+    //   Token 模型，无独立 refresh_token）。
+    final epochAtStart = await hooks.readSessionEpoch();
+    final oldToken = await hooks.readToken();
+    if (oldToken == null || oldToken.isEmpty) {
+      // 竞态防御：触发 40101 与执行续期之间会话已被清空。
+      return const RefreshResult.stale();
+    }
+    // ② 无请求体（契约：旧 Token 在 Authorization 头，由
+    //   HeaderInterceptor 注入）；EnvelopeInterceptor 已拆信封，
+    //   成功时 response.data 即信封 data 对象。
+    final Response<Object?> response = await refreshDio.post<Object?>(
+      refreshTokenPath,
+    );
+    final refreshedToken = _parseRefreshedToken(response.data);
+
+    // ③ 写回前二次取样代次：续期在途期间用户登出/换号则丢弃结果，
+    //   既不写回也不让挂起请求重放（R10 代次变更场景）。
+    if (await hooks.readSessionEpoch() != epochAtStart) {
+      return const RefreshResult.stale();
+    }
+    await hooks.writeToken(refreshedToken.token, refreshedToken.expireAt);
+    return RefreshResult.success(refreshedToken);
+  };
+}
+
+/// 解析续期响应 data（契约 data：`{token, expire_at}`，snake_case 手写
+/// 映射，不引 json_serializable，详设 §10.3）。
+///
+/// 参数：[data] EnvelopeInterceptor 拆出的信封 data。
+/// 返回：[RefreshedToken] 新 Token 与到期时刻。
+/// 抛出：[ApiException.parse] 字段缺失/类型不符时（不静默吞，§10.3；
+///   该异常经执行器抛入 AuthRefreshInterceptor 的「透传不分流」分支）。
+RefreshedToken _parseRefreshedToken(Object? data) {
+  if (data is! Map) {
+    throw ApiException.parse(
+      '续期响应 data 应为 Map，实际类型: ${data.runtimeType}',
+    );
+  }
+  final token = data['token'];
+  if (token is! String || token.isEmpty) {
+    throw ApiException.parse('续期响应 data.token 缺失或非 String: $token');
+  }
+  final expireAtRaw = data['expire_at'];
+  if (expireAtRaw is! String) {
+    throw ApiException.parse(
+      '续期响应 data.expire_at 缺失或非 String: $expireAtRaw',
+    );
+  }
+  final expireAt = DateTime.tryParse(expireAtRaw);
+  if (expireAt == null) {
+    throw ApiException.parse(
+      '续期响应 data.expire_at 非 RFC3339 时间: $expireAtRaw',
+    );
+  }
+  return RefreshedToken(token: token, expireAt: expireAt.toUtc());
 }
 
 /// 设备标识 Provider（惰性单例；core 侧不感知持久化细节之外的状态）。

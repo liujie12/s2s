@@ -57,6 +57,9 @@ class NetworkChainHarness {
   late final Dio dio;
 
   /// 当前登录 Token（null = 未登录，请求头不得出现 Authorization）。
+  ///
+  /// 单 Token 模型（契约 `/auth/token/refresh`，架构 §6.5）：续期请求
+  /// 复用同一 Token 作为 Authorization 凭证，harness 不另设 refreshToken。
   String? token;
 
   /// 当前隐私同意态（false 时请求头不得出现 X-Device-Id，R7）。
@@ -64,6 +67,40 @@ class NetworkChainHarness {
 
   /// 当前设备 ID（null 时回调也返回 null；与同意态联动由拦截器负责）。
   String? deviceId;
+
+  /// 当前会话代次（U5：续期发起取样、写回前比对；用例可在续期在途
+  /// 期间调 [bumpSessionEpoch] 模拟登出/换号）。
+  int sessionEpoch = 0;
+
+  /// writeToken 回调被调用的次数（U5 场景断言：认证类失败/代次变更
+  /// 时必须为 0；受控 Completer 场景用它确认写回发生时点）。
+  int writeTokenCallCount = 0;
+
+  /// 最近一次 writeToken 写入的新 Token（null = 从未写回）。
+  String? lastWrittenToken;
+
+  /// 最近一次 writeToken 写入的到期时刻。
+  DateTime? lastWrittenExpireAt;
+
+  /// onSessionCleared 回调被调用的次数（U5：并发挂起下必须恰好 1 次）。
+  int clearSessionCallCount = 0;
+
+  /// writeToken 受控闸门（U5 场景 11）：非 null 时 writeToken 回调
+  /// 会先等待该 Future 完成再返回——用 Completer 控制写回完成时点，
+  /// 证明挂起请求在写回完成前不会提前重放。
+  Future<void>? writeTokenGate;
+
+  /// readSessionEpoch 受控覆盖（U5 场景 9）：非 null 时回调返回此函数
+  /// 的结果而非 [sessionEpoch]，用于模拟「发起后代次已变」而不依赖
+  /// 真实时序（真实链路则直接改 [sessionEpoch]）。
+  Future<int> Function()? epochReaderOverride;
+
+  /// writeToken 受控覆盖（U5 场景 9 配合用）：非 null 时替代 harness
+  /// 默认写回行为（默认行为会更新 [token]，使重放带新 Authorization）。
+  Future<void> Function(String token, DateTime expireAt)? writeTokenOverride;
+
+  /// onSessionCleared 受控覆盖：非 null 时在默认计数之外额外执行。
+  Future<void> Function()? clearSessionOverride;
 
   /// UUID v4 生成调用计数（详设 §11.1.1 第 3 断言：重试链路只生成一次；
   /// 收口在 U6，U3 先提供计数通道）。
@@ -107,6 +144,66 @@ class NetworkChainHarness {
   /// 返回：[Future<String>] mock 基址（须在 [start] 之后调用）。
   Future<String> serverBaseUrl() async =>
       'http://${server.address.host}:${server.port}/api/v1';
+
+  /// 推进会话代次（U5 场景 9：模拟续期在途期间用户登出/换号）。
+  ///
+  /// 参数：[clearToken] true 时同时把 [token] 置 null（模拟登出）；
+  ///   false 仅换代次（模拟换号但拦截器读态时点不确定的竞态）。
+  /// 返回：void；续期执行器写回前比对代次不一致即丢弃结果。
+  void bumpSessionEpoch({bool clearToken = false}) {
+    sessionEpoch += 1;
+    if (clearToken) token = null;
+  }
+
+  /// 登记续期成功 fixture（U5 单飞场景复用）。
+  ///
+  /// 参数：
+  ///   [newToken]  续期响应的新 JWT（默认确定性假值，禁真实凭据）；
+  ///   [expireAt]  新到期时刻（默认 2099 年，RFC3339 UTC 形态）；
+  ///   [requestId] 信封 request_id。
+  /// 返回：void；路由为 `POST /api/v1/auth/token/refresh`，无请求体
+  ///   要求（契约：旧 Token 在 Authorization 头）。
+  void stubRefreshSuccess({
+    String newToken = 'jwt-refreshed-fake',
+    String expireAt = '2099-01-01T00:00:00Z',
+    String requestId = 'req_test_refresh_ok',
+  }) {
+    server.stub('POST', '/api/v1/auth/token/refresh', (req) async {
+      return MockResponse(
+        status: 200,
+        body: ApiEnvelope.success(
+          data: {'token': newToken, 'expire_at': expireAt},
+          requestId: requestId,
+        ),
+      );
+    });
+  }
+
+  /// 登记续期失败 fixture（U5 失败三分流）。
+  ///
+  /// 参数：
+  ///   [code]       续期响应业务码（40101/403xx/429xx/5xx 等）；
+  ///   [retryAfter] Retry-After 整数秒字符串，null 不带头（429 段测试
+  ///                用它验证挂起请求异常携带 retryAfterSec）；
+  ///   [requestId]  信封 request_id。
+  /// 返回：void。
+  void stubRefreshFailure(
+    int code, {
+    String? retryAfter,
+    String requestId = 'req_test_refresh_fail',
+  }) {
+    server.stub('POST', '/api/v1/auth/token/refresh', (req) async {
+      return MockResponse(
+        status: code ~/ 100,
+        headers: retryAfter == null ? const {} : {'Retry-After': retryAfter},
+        body: ApiEnvelope.failure(
+          code,
+          '续期失败（测试 fixture code=$code）',
+          requestId: requestId,
+        ),
+      );
+    });
+  }
 
   /// 登记路由（转发到 [MockApiServer.stub]，测试侧少一次内部对象访问）。
   ///
@@ -211,6 +308,28 @@ class NetworkChainHarness {
         generatedUuids.add(value);
         return value;
       },
+      // U5：写回默认同步更新 harness.token，重放请求经 HeaderInterceptor
+      // 重写 Authorization 后即携带新 Token（场景 3 据此逐字比对）。
+      writeToken: (newToken, expireAt) async {
+        // 受控闸门（场景 11）：闸门未完成前执行器不返回，挂起请求不得重放。
+        final gate = writeTokenGate;
+        if (gate != null) await gate;
+        final override = writeTokenOverride;
+        if (override != null) {
+          await override(newToken, expireAt);
+        } else {
+          token = newToken;
+        }
+        writeTokenCallCount++;
+        lastWrittenToken = newToken;
+        lastWrittenExpireAt = expireAt;
+      },
+      onSessionCleared: () async {
+        clearSessionCallCount++;
+        final override = clearSessionOverride;
+        if (override != null) await override();
+      },
+      readSessionEpoch: epochReaderOverride ?? () async => sessionEpoch,
     );
   }
 
