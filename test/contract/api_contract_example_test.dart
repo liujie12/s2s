@@ -7,9 +7,10 @@
 /// 断言分两层（评审 #2：mock 桩字面值与 mock 专属场景在真服务模式下
 /// 必红，必须分层，不得伪装通过；复审 #5：信封形态断言下沉为两模式共用，
 /// 真服务模式下它不是「是 JSON 即过」的同义反复）：
-///   - 两模式共用：契约内真实只读端点（GET /categories）必须回统一信封
-///     （成功或失败信封至少其一）——未登录拿到 40101 失败信封同样是合法
-///     契约行为；非信封的框架默认错误体（如 Spring 默认 404 JSON）不允许。
+///   - 两模式共用：契约内真实公开只读端点（GET /categories/tree，
+///     security: []）必须回统一信封（成功或失败信封至少其一）——未登录拿到
+///     失败信封同样是合法契约行为；非信封的框架默认错误体（如 Spring 默认
+///     404 JSON）不允许。
 ///   - mock 专属场景（任意验证码登录成功、限额触发、免登录态幂等头
 ///     校验）与桩字面值（token='jwt-xxx'、post_id=2001）仅 mock 模式
 ///     成立：真服务模式以 markTestSkipped 记 N/A，不伪装通过。
@@ -170,21 +171,22 @@ void main() {
   });
 
   test('契约内真实只读端点回统一信封（两模式共用，复审 #5 裁决 a）', () async {
-    // 两模式共用的最低断言面：打契约中真实存在的只读端点 GET /categories，
-    // 响应必须是统一信封（成功或失败信封至少其一；未登录拿到 40101 失败
-    // 信封同样是合法契约行为）。非信封的框架默认错误体（如 Spring 默认
-    // 404 JSON）不允许——真服务模式下本条是对真实服务的实质契约断言，
-    // 取代原「是 JSON 即过」的同义反复冒烟（复审 #5）。
+    // 两模式共用的最低断言面：打契约中真实存在的公开只读端点
+    // GET /categories/tree（openapi.yaml 中 security: [] 免登录，复审三 #1：
+    // 原误打 /categories——契约 38 个路径中无此项，切真服务必 404，
+    // 「断言一行不改」承诺不成立）。响应必须是统一信封（成功或失败信封
+    // 至少其一；未登录/网关异常拿到失败信封也是可判定的契约行为）。
+    // 非信封的框架默认错误体（如 Spring 默认 404 JSON）不允许。
     if (!isRealMode) {
-      server.stub('GET', '/api/v1/categories', (req) async {
+      server.stub('GET', '/api/v1/categories/tree', (req) async {
         return MockResponse(
-          body: ApiEnvelope.success(data: {'items': <Object?>[]}),
+          body: ApiEnvelope.success(data: {'version': null, 'items': <Object?>[]}),
         );
       });
     }
     // 以 String 接收再手动解码：真服务返回非 JSON（网关 HTML 错误页等）时
     // 给出可读失败，而不是 dio 解码异常。
-    final resp = await dio.get<String>('/categories');
+    final resp = await dio.get<String>('/categories/tree');
     Object? decoded;
     try {
       decoded = jsonDecode(resp.data ?? '');
@@ -192,7 +194,7 @@ void main() {
       decoded = null; // 非 JSON 响应体：下方信封断言给出可读失败
     }
     expect(decoded, anyOf(isSuccessEnvelope, isFailureEnvelope()),
-        reason: 'GET /categories 的响应必须是统一信封（成功或失败信封其一）：\n'
+        reason: 'GET /categories/tree 的响应必须是统一信封（成功或失败信封其一）：\n'
             '实际响应（HTTP ${resp.statusCode}）：${resp.data}');
   });
 }

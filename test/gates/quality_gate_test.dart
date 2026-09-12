@@ -148,9 +148,13 @@ const List<RegisteredSecretFinding> registeredSecretFindings = [
 /// 不参与密钥扫描的路径后缀/目录（依赖锁、生成物、第三方资产、二进制文档）。
 bool isScanExcluded(String path) {
   final p = path.replaceAll('\\', '/');
+  // 根级锚定（复审三 #3）：contains('/build/') 会连坐排除任意层级的
+  // build/ 跟踪目录（如 lib/build/secrets.dart），静默缩水扫描面。
+  // 单包仓库的构建产物只在根 build/；嵌套 build 源目录必须受扫。
+  final isRootBuildDir = p == 'build' || p.startsWith('build/');
   return p.contains('.pydeps/') ||
       p.contains('/.dart_tool/') ||
-      p.contains('/build/') ||
+      isRootBuildDir ||
       p.contains('pubspec.lock') ||
       p.contains('.agents/') ||
       p.contains('agent/skills/') ||
@@ -255,8 +259,10 @@ String collapseAdjacentLiterals(String line) =>
 ///
 /// 参数：[prevLine] 上一行原文（文件首行传 null）；[line] 当前行原文。
 /// 返回：`String?` 可拼接时返回拼接候选，否则 null。
-/// 已知盲区（固化登记，复审 #3）：3 行及以上拆分（11/11/10）与块注释
-/// 夹隔不覆盖——判据自检以负向用例把该盲区固化为可见已知限制。
+/// 已知盲区（固化登记，复审 #3、复审三 #2）：3 行及以上拆分（11/11/10）、
+/// 块注释夹隔（'a' /* x */ + 'b'）、行尾 `//` 行注释夹隔
+/// （'a' // x\n'b'——词法上注释等价空白，仍为合法相邻字面量）不覆盖；
+/// 判据自检以负向用例把盲区固化为可见已知限制。
 String? crossLineCandidate(String? prevLine, String line) {
   if (prevLine == null) return null;
   var prev = prevLine.trimRight();
@@ -333,38 +339,55 @@ void main() {
   setUpAll(assertRepoLayout);
 
   group('G-Q1 后门码 888888 登记册（DevSecOps §4.1 源码层）', () {
-    /// 扫描 lib/ 下所有 .dart 文件，返回命中 888888 的 `文件:行号:行内容`。
-    List<String> scanHits() {
-      final hits = <String>[];
+    /// 收集 lib/ 下所有 .dart 文件中含 888888 的行（逐行，含出现次数）。
+    /// 返回：(相对路径, 行号, 行内 888888 出现次数, 行原文) 列表。
+    List<({String file, int lineNo, int count, String line})>
+        collectBackdoorLines() {
+      final hits = <({String file, int lineNo, int count, String line})>[];
       for (final entity in libDir.listSync(recursive: true)) {
         if (entity is! File || !entity.path.endsWith('.dart')) continue;
+        final rel =
+            'lib/${entity.path.replaceAll('\\', '/').split('/lib/').last}';
         final lines = entity.readAsLinesSync();
         for (var i = 0; i < lines.length; i++) {
-          if (lines[i].contains('888888')) {
-            final rel = entity.path
-                .replaceAll('\\', '/')
-                .split('/lib/')
-                .last;
-            hits.add('lib/$rel:${i + 1}: ${lines[i].trim()}');
+          final count = RegExp('888888').allMatches(lines[i]).length;
+          if (count > 0) {
+            hits.add((file: rel, lineNo: i + 1, count: count, line: lines[i]));
           }
         }
       }
       return hits;
     }
 
+    /// 判定一行内登记条目覆盖了几个 888888（复审三 #5）。
+    ///
+    /// 对命中本行的每个登记条目，从行文本中剥除一次其定位串后再数剩余
+    /// 888888——剥除法让「同一登记串被多个条目重复登记」不会重复抵扣，
+    /// 也让同行追加的第二个字面量在剥除后仍被数出。
+    /// 参数：[file] 相对路径；[line] 行原文。
+    /// 返回：`int` 未被登记覆盖的 888888 个数（0 表示全部已登记）。
+    int uncoveredInLine(String file, String line) {
+      var remaining = line;
+      for (final b in registeredBackdoors) {
+        if (b.file == file && remaining.contains(b.lineContains)) {
+          remaining = remaining.replaceFirst(b.lineContains, '');
+        }
+      }
+      return RegExp('888888').allMatches(remaining).length;
+    }
+
     test('lib/ 中每个 888888 字面量都在登记册中有对应条目', () {
-      final hits = scanHits();
       final unregistered = <String>[];
-      for (final hit in hits) {
-        final file = hit.split(':').first;
-        final matched = registeredBackdoors.any((b) {
-          final lineText = hit.substring(hit.indexOf(': ') + 2);
-          return b.file == file && lineText.contains(b.lineContains);
-        });
-        if (!matched) unregistered.add(hit);
+      for (final hit in collectBackdoorLines()) {
+        final uncovered = uncoveredInLine(hit.file, hit.line);
+        if (uncovered > 0) {
+          unregistered.add('${hit.file}:${hit.lineNo}: '
+              '${hit.line.trim()}（该行 $uncovered/${hit.count} 处 888888 未登记）');
+        }
       }
       expect(unregistered, isEmpty,
-          reason: '发现未登记的 888888 后门码（DevSecOps §4.1：无法逐处确认即失败）：\n'
+          reason: '发现未登记的 888888 后门码（DevSecOps §4.1：无法逐处确认即失败；'
+              '同一登记行追加新字面量不得连坐豁免，复审三 #5）：\n'
               '${unregistered.join('\n')}\n'
               '若为正当联调用途，在 registeredBackdoors 登记并写明理由与删除条件；\n'
               '否则必须删除。产物层（release APK strings）另有出包门禁兜底。');
@@ -381,6 +404,19 @@ void main() {
         }
       }
       expect(stale, isEmpty, reason: stale.join('\n'));
+    });
+
+    test('uncoveredInLine 剥除判定：登记位抵扣一次，同行追加不连坐（复审三 #5）', () {
+      const f = 'lib/features/auth/auth_repository.dart';
+      // 仅登记位一处 → 0 未覆盖
+      expect(uncoveredInLine(f, "  String _debugCode = '888888';"), 0);
+      // 同行追加第二个 888888 → 剥除登记串后仍剩 1 处，必须被数出
+      expect(
+          uncoveredInLine(f,
+              "  String _debugCode = '888888'; const backup = '888888';"),
+          1);
+      // 不同文件不抵扣
+      expect(uncoveredInLine('lib/other.dart', "_debugCode = '888888'"), 1);
     });
   });
 
@@ -471,7 +507,14 @@ void main() {
       for (final rel in files) {
         if (isScanExcluded(rel)) continue;
         final f = repoFile(rel);
-        if (!f.existsSync()) continue;
+        if (!f.existsSync()) {
+          // 已跟踪但工作区缺失（删除未提交/sparse 未展开）：该文件在 HEAD
+          // 中仍可能携带密钥，静默 continue 即漏扫（复审三 #4，与解码失败
+          // 同口径 fail-closed）——记入缺口迫使显式处置。
+          scanGaps.add('$rel: git 已跟踪但工作区缺失（未提交删除或 sparse-checkout），'
+              'HEAD 内容未扫描');
+          continue;
+        }
         // 流式逐行扫描（评审 #1）：原 512KB 上限把大文件整体静默跳扫——
         // prototype/index.html（>1MB）内未登记的高德 Key 因此漏网。
         // 取消体积上限，改逐行流式读，内存占用与文件大小解耦。
@@ -661,7 +704,7 @@ void main() {
       expect(plusHead, contains(_gaodeSample));
     });
 
-    test('盲区固化：3 行及以上拆分与块注释夹隔不覆盖（复审 #3 已知限制）', () {
+    test('盲区固化：3 行拆分/块注释/行尾 // 注释不覆盖（复审 #3、复审三 #2）', () {
       // 负向自检把盲区固化为可见已知限制：若日后通道扩展到覆盖这些形态，
       // 本用例变红提醒同步更新函数注释的「已知盲区」登记。
       // 3 行拆分 11/11/10：任意两行候选凑不出 32 位连续 hex。
@@ -677,6 +720,16 @@ void main() {
           "'${_gaodeSample.substring(16)}',";
       expect(collapseAdjacentLiterals(commentForm),
           isNot(contains(_gaodeSample)));
+      // 行尾 // 行注释夹隔（复审三 #2）：词法上注释等价空白，仍是合法相邻
+      // 字面量，但当前通道不还原——固化为可见盲区，含/不含行尾 + 两态。
+      final lineCommentForm =
+          crossLineCandidate("    key: '${_gaodeSample.substring(0, 16)}' // 注释",
+              "'${_gaodeSample.substring(16)}',");
+      expect(lineCommentForm, isNull);
+      final lineCommentPlusForm = crossLineCandidate(
+          "    key: '${_gaodeSample.substring(0, 16)}' // 注释 +",
+          "'${_gaodeSample.substring(16)}',");
+      expect(lineCommentPlusForm, isNull);
     });
 
     test('isCi 谓词覆盖平台写法差异（复审 #11 纯函数自检）', () {

@@ -186,12 +186,21 @@ void main() {
     /// 占位接口的 responses 形如 `{'200': {description: 占位...}}`，
     /// 不承载真实契约，故不参与「写接口必带幂等头」判定——
     /// 对未展开的接口要求参数声明，会把「还没写」误判为「写错了」。
-    /// 判据：x-batch 非 Batch1 且 200 响应无 content（未展开响应体）。
+    /// 判据：x-batch 非 Batch1 且【无任何 2xx 响应带 content】（未展开响应体）。
     bool isPlaceholder(PathOperation op) {
       final batch = op.raw['x-batch']?.toString() ?? '';
-      final ok = op.responses?['200'];
-      final hasContent = ok is YamlMap && ok['content'] != null;
-      return batch != 'Batch1' && !hasContent;
+      // 复审三 #6：只看 '200' 会把「已展开但以 201/204 承载成功」的写接口
+      // 误判为占位而 fail-open 跳过幂等头检查；204 本身无 content，但只要
+      // 任一 2xx（200/201）带 content 即视为已展开。
+      final responses = op.responses;
+      var has2xxContent = false;
+      responses?.nodes.forEach((key, value) {
+        final status = int.tryParse(key.toString());
+        if (status != null && status >= 200 && status < 300 && value is YamlMap) {
+          if (value['content'] != null) has2xxContent = true;
+        }
+      });
+      return batch != 'Batch1' && !has2xxContent;
     }
 
     // 幂等头豁免登记：只允许「无写入副作用」的 POST 登记于此。
