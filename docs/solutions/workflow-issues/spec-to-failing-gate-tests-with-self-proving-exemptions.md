@@ -38,7 +38,7 @@ tags: [gate-check, verification-gate, openapi, contract-testing, false-negative,
 - **纪律引用**：宣称"所有写接口必带某头/某参数"时，遍历全部写操作，检查是否真的引用了该参数定义；再对参数定义本身断言其格式约束（如版本位正则、required）。
 - **条款承载**：方案要求"某错误必须回某响应头"时，断言对应复用响应声明了该头，且头定义含类型与最小值约束。
 
-**本仓库实证：** 契约静态守门共 14 项（[openapi_contract_gate_test.dart](file:///d:/developer/code/aicoding/s2s/test/gates/openapi_contract_gate_test.dart)）。集合完整性见 openapi_contract_gate_test.dart:62-76（递归收集示例中业务码的 `collectCodes` 见 :24-36，与"24 个错误码 − 后台专用码"集合相等，reason 明确写出多了/少了的含义）；码↔HTTP 逐条对齐见 :87-92；幂等头引用遍历见 :118-153，参数自身的 UUID v4 正则断言见 :155-165；Retry-After 头声明与定义（integer/minimum 1）见 :168-191。
+**本仓库实证：** 契约静态守门共 14 项（[openapi_contract_gate_test.dart](file:///d:/developer/code/aicoding/s2s/test/gates/openapi_contract_gate_test.dart)）。集合完整性见「错误码表」组（递归收集示例中业务码的 `collectCodes`，与"24 个错误码 − 后台专用码"集合相等，reason 明确写出多了/少了的含义）；码↔HTTP 逐条对齐见该组「每个操作响应示例的错误码与其 HTTP 状态键对齐」用例；幂等头引用遍历见「全局纪律 4」组，参数自身的 UUID v4 正则断言见同组；Retry-After 头声明与定义（integer/minimum 1）见「全局纪律：Retry-After 强制响应头」组。
 
 ### 2. 零实现期的双轨：静态守门现在判，契约测试用内存 mock 固定范式
 
@@ -47,7 +47,7 @@ tags: [gate-check, verification-gate, openapi, contract-testing, false-negative,
 - **静态轨**：解析规格文件本身（只依赖文件与解析库），与实现就绪与否无关，CI 立刻可跑。
 - **行为轨**：用语言自带 HTTP 栈在 localhost 起最小内存服务（真实状态码、真实响应头、真实 JSON 编解码——不用拦截器层 mock），按"方法+路径"登记处理器；客户端用生产同款 HTTP 库对它发真实请求。**断言只针对协议形态，不针对实现**，实现就绪后仅替换 baseUrl，断言一行不改。判据对象（规格文件）缺失时应直接 FAIL（抛异常），不得 skip——否则规格被删光时门禁反而全绿。
 
-**本仓库实证：** 加载器对文件缺失抛 FormatException（[openapi_loader.dart:24-37](file:///d:/developer/code/aicoding/s2s/test/support/openapi_loader.dart#L24-L37)），setUpAll 直接加载、失败即整组红（openapi_contract_gate_test.dart:42-45）。内存服务走 dart:io 真实 HTTP 栈、绑 loopback 随机端口（[mock_api_server.dart](file:///d:/developer/code/aicoding/s2s/test/support/mock_api_server.dart)）；4 个示范（统一成功包/429+Retry-After/缺幂等键 40001/合法 JSON）见 [api_contract_example_test.dart:43-136](file:///d:/developer/code/aicoding/s2s/test/contract/api_contract_example_test.dart#L43-L136)，文件头注释即"换成真实基址，断言一行不用改"。
+**本仓库实证：** 加载器对文件缺失抛 FormatException（[openapi_loader.dart](file:///d:/developer/code/aicoding/s2s/test/support/openapi_loader.dart) 的 `OpenApiSpec.load`），setUpAll 直接加载、失败即整组红（openapi_contract_gate_test.dart 的 setUpAll）。内存服务走 dart:io 真实 HTTP 栈、绑 loopback 随机端口（[mock_api_server.dart](file:///d:/developer/code/aicoding/s2s/test/support/mock_api_server.dart)）；4 个示范（统一成功包/429+Retry-After/缺幂等键 40001/两模式共用信封形态）见 [api_contract_example_test.dart](file:///d:/developer/code/aicoding/s2s/test/contract/api_contract_example_test.dart)，文件头注释即"换成真实基址，断言一行不用改"。
 
 ### 3. 三种必备构造，让例外通道不掏空判据
 
@@ -59,13 +59,13 @@ tags: [gate-check, verification-gate, openapi, contract-testing, false-negative,
 
 所有豁免/占位命中都要打印列名（SKIP/豁免必须可见）。
 
-**本仓库实证：** 占位判定（x-batch 非首批且 200 响应无 content）openapi_contract_gate_test.dart:102-107，占位与豁免打印于 :146-148；豁免表仅一条且带佐证词"不写库" :112-116，反向断言 :129-138。后门码登记册双向核对见 quality_gate_test.dart:207-223（未登记 FAIL）与 :225-236（过期登记 FAIL），登记条目结构含存在理由与删除条件 :26-61。密钥豁免登记同构 :64-128、其双向核对 :305-315。
+**本仓库实证：** 占位判定（x-batch 非首批且 200 响应无 content）见 openapi_contract_gate_test.dart「全局纪律 4：写接口必带 Idempotency-Key」组内的 `isPlaceholder`，占位与豁免命中均打印操作名；豁免表 `idempotencyExempt` 仅一条（`POST /posts/precheck`）且带佐证词"不写库"，同组用例对该词做反向断言。后门码登记册双向核对见 quality_gate_test.dart「G-Q1 后门码 888888 登记册」组两条用例（未登记命中 FAIL、过期登记 FAIL），登记条目 `RegisteredBackdoor` 结构含存在理由与删除条件。密钥豁免登记同构于 `RegisteredSecretFinding` 与 `registeredSecretFindings`，其双向核对在「G-Q2 密钥泄露扫描」组。
 
 ### 4. 判据自身先过变异测试：正向跑通不构成证据
 
 **准则：** 弱判据（基于形态+上下文、存在误报空间）必须抽成**纯函数**，配独立单测同时证明两件事：(a) 对应当失败的真实违规形态**返回命中**（漏报测试）；(b) 对已知合法噪声**不命中**（误报测试），典型噪声包括：标准格式 ID（如带连字符的 UUID）、注释行、无密钥语义上下文的等长串、模板占位假值。只写"扫描器跑通且当前树干净"等于零证据——当前树可能恰好没有违规形态。判据是否真有检出力，只能由针对判据函数本身的测试证明。
 
-**本仓库实证：** 弱判据纯函数 `looksLikeEmbeddedSecret`（32 位 hex ∧ 密钥语义上下文 ∧ 非注释）quality_gate_test.dart:156-166；占位形态纯函数 :172-173；登记匹配纯函数 :179-181。4 组自检（真实形态必须命中/噪声必须不命中/全同字符识别/跨文件不可冒名）:329-359。最强证据不是自检本身，而是判据首轮运行即真实拦到问题（见 Why 第 3 点）。
+**本仓库实证：** 弱判据纯函数 `looksLikeEmbeddedSecret`（32 位 hex ∧ 密钥语义上下文 ∧ 非注释）；占位形态纯函数 `isRepeatedCharPlaceholder`；登记匹配纯函数 `isRegisteredSecretHex`，逐命中分类收口于 `classifySecretHex`（`SecretHitVerdict` 三分支）。「G-Q2 判据自检」组覆盖：真实形态必须命中、噪声必须不命中、全同字符占位识别、跨文件/同行不可冒名、密钥拆写通道（同行坍缩/跨行拼接）与已知盲区负向固化。最强证据不是自检本身，而是判据首轮运行即真实拦到问题（见 Why 第 3 点）。
 
 ### 5. 强判据不给豁免通道；弱判据才配"占位/豁免/FAIL"三分支
 
@@ -74,7 +74,7 @@ tags: [gate-check, verification-gate, openapi, contract-testing, false-negative,
 - **强判据**（固定形态、误报率近零，如标准私钥头、云厂商固定前缀的访问密钥 ID）：命中即 FAIL，代码中不提供豁免分支。给强判据开豁免口，等于为真实事故留门。
 - **弱判据**（形态宽松、需语义上下文辅助，如"N 位 hex + 密钥命名上下文"）：命中后三分支——① 按概率特征可判定为模板假值（32 位全同字符，真实随机串中出现概率可忽略）→ 排除；② 命中登记册且佐证有效 → 列名豁免；③ 否则 FAIL。模板假值的排除依据应是可论证的概率特征，而非"看起来像假的"。
 
-**本仓库实证：** 私钥 PEM 头、云 AK 正则命中直接进 findings 不可豁免 quality_gate_test.dart:273-278；弱判据三分支 :280-290；全同字符占位 :282-284 与纯函数 :172-173。
+**本仓库实证：** 「G-Q2 密钥泄露扫描」组中私钥 PEM 头、云 AK 正则命中直接进 findings 不可豁免；弱判据 32 位 hex 命中走 `classifySecretHex` 三分支（占位排除 `isRepeatedCharPlaceholder` / 登记豁免 `isRegisteredSecretHex` / FAIL）。
 
 ### 6. 扫描面为空 / 环境不可判定：FAIL 与 SKIP 各归其位，绝不报 PASS
 
@@ -84,15 +84,15 @@ tags: [gate-check, verification-gate, openapi, contract-testing, false-negative,
 - **环境不具备判定条件**（如非版本库环境无法读索引）：用测试框架的 skip 原语显式 SKIP，并在原因中写明"没扫过不等于干净"。
 - **CI 只放代码面可真实判定的判据**：判据对象在 CI 运行环境中不存在的检查（部署环境、域名、IAM、运行中容器），放进 CI 只会全部 SKIP，制造"绿勾但内容为空"——失效门禁的默认落点是"通过"，比没有门禁更差。这类判据留在对象真实存在的环境（发版机/部署机）执行，并强制消费其退出码。
 
-**本仓库实证：** 扫描前先断言关键路径存在（[repo_paths.dart:47-59](file:///d:/developer/code/aicoding/s2s/test/support/repo_paths.dart#L47-L59)，quality_gate_test.dart:185）；非 git 环境 markTestSkipped 见 :257-260 与 :369-372；CI 只承载 analyze 0 error、守门测试、全量测试三道代码面判据（[ci.yml](file:///d:/developer/code/aicoding/s2s/.github/workflows/ci.yml)），部署面判据刻意排除的论证见该文件头部注释与《DevSecOps 接入方案》§8 末（部署检查为何不进 CI）、§9 落地清单第 11 项。
+**本仓库实证：** 扫描前先断言关键路径存在（[repo_paths.dart](file:///d:/developer/code/aicoding/s2s/test/support/repo_paths.dart) 的 `assertRepoLayout`，由 quality_gate_test.dart 扫描用例起始调用）；非 git 等环境不可判定时统一走 `skipOrFailOnCi`（CI 上 FAIL、本地显式 SKIP 并注明"没扫过不等于干净"），`isCi` 是 CI 判定唯一承载处；CI 只承载 analyze 0 error、守门测试、全量测试三道代码面判据（[ci.yml](file:///d:/developer/code/aicoding/s2s/.github/workflows/ci.yml)），部署面判据刻意排除的论证见该文件头部注释与《DevSecOps 接入方案》§8 末（部署检查为何不进 CI）、§9 落地清单第 11 项。
 
 ## Why This Matters
 
 1. **错误会沿规格向所有实现复制。** 后端/客户端以契约为准生成与校验，契约自身错一个码、漏一个头，错误会被复制进每一处实现；静态守门在零代码阶段就切断这个复制源。
 2. **跨条目不一致是人肉 review 的盲区，且漏了没有任何报错。** "枚举表 25 个码、示例只承载了 23 个"这类问题不存在编译期信号；集合相等断言让它第一次具备失败能力。
 3. **判据首轮运行即真实拦到问题，证明模式有效而非仪式：**
-   - 7 个部署脚本在 git 索引中的模式位错误（100644，应为 100755）被执行位判据首轮拦出并修复——含门禁脚本自身，quality_gate_test.dart:362-389。
-   - 早期交互原型中 4 处硬编码的真实形态密钥（2 把不同的 key：1 个地图 Web Key、1 个大模型 API Key 出现在 3 个文件）被弱判据首轮命中，现全部在豁免登记册中留证，并如实标注"进 git 历史即视为泄露，唯一处置是控制台作废更换"（quality_gate_test.dart:95-128；实际命中位于 prototype/pathDetail.html:1315、prototype/search.js:59、prototype/semanticProcessingSystem.js:16、prototype/smartParse.js:17）。
+   - 7 个部署脚本在 git 索引中的模式位错误（100644，应为 100755）被执行位判据首轮拦出并修复——含门禁脚本自身，见「G-Q3 部署脚本 git 执行位」组用例。
+   - 早期交互原型中 4 处硬编码的真实形态密钥（2 把不同的 key：1 个地图 Web Key、1 个大模型 API Key 出现在 3 个文件）被弱判据首轮命中，现全部在 `registeredSecretFindings` 豁免登记册中留证，并如实标注"进 git 历史即视为泄露，唯一处置是控制台作废更换"（实际命中位于 prototype/pathDetail.html、prototype/search.js、prototype/semanticProcessingSystem.js、prototype/smartParse.js 中的地图/模型 Key 行）。
 4. **豁免通道是判据最容易腐烂的位置。** 一句话声明式豁免会随迭代被滥用；佐证词反向断言与双向核对把每条豁免绑定到一个可验证事实和一个删除条件，使登记表无法悄悄膨胀。
 5. **四态诚实性（PASS/FAIL/SKIP/豁免列名）决定门禁可信度。** 自动化不是重新立法，而是把书面裁决（"命中行人工逐处确认，无法确认即失败"、"lint 0 error"、"密钥命中即拒绝"）变成机器可执行的 FAIL。
 
@@ -118,7 +118,7 @@ const idempotencyExempt = {'POST /posts/precheck'};
 if (idempotencyExempt.containsKey(key)) continue; // 静默放过，无留痕
 ```
 
-after——本仓库实证（openapi_contract_gate_test.dart:112-138），豁免值是必须在规格描述中真实出现的佐证词：
+after——本仓库实证（openapi_contract_gate_test.dart「全局纪律 4：写接口必带 Idempotency-Key」组），豁免值是必须在规格描述中真实出现的佐证词：
 
 ```dart
 // key: METHOD path；value: 规格中证明其无副作用的佐证词
@@ -133,25 +133,31 @@ if (idempotencyExempt.containsKey(key)) {
   exempted.add('$key（佐证：$witness）');
   continue;
 }
-// 豁免清单随后 print 列名，不静默（:146-148）
+// 豁免清单随后 print 列名，不静默（见同组测试末尾的 [INFO] 输出）
 ```
 
 ### 例 2：弱判据三分支与判据自检（本仓库实证，精简）
 
 ```dart
-// 扫描处置（quality_gate_test.dart:360-371）
-const pemPrefix = 'PRIVATE KEY';
-final pemMarker = '$pemPrefix-----'; // 插值拼装防自扫描（相邻字面量会被坍缩通道还原，评审 #5）
-if (line.contains(pemMarker)) findings.add('$loc 强判据，不可豁免'); // 强判据无豁免口
+// 扫描处置（quality_gate_test.dart「G-Q2 密钥泄露扫描」组；判据正则唯一承载处
+// 为文件顶部 hex32Pattern，示例中不得复制字面量正则）
 if (looksLikeEmbeddedSecret(line)) {
-  final hex = RegExp(r'\b[0-9a-f]{32}\b').firstMatch(line)!.group(0)!;
-  if (isRepeatedCharPlaceholder(hex)) continue;              // ① 模板假值（概率特征）
-  if (isRegisteredFinding(rel, line)) exempted.add('$loc');  // ② 登记豁免（列名留证）
-  else findings.add('$loc 未登记豁免');                        // ③ FAIL
+  // 逐命中处置（不是取行内首个——占位/登记串在前时同行真密钥会被掩蔽）
+  for (final match in hex32Pattern.allMatches(line)) {
+    final hex = match.group(0)!;
+    switch (classifySecretHex(rel, hex)) { // 纯函数：占位/已登记/未登记三分支
+      case SecretHitVerdict.placeholder:
+        continue;                          // ① 模板假值（概率特征）
+      case SecretHitVerdict.exempted:
+        exempted.add('$loc');              // ② 登记豁免（列名留证）
+      case SecretHitVerdict.unregistered:
+        findings.add('$loc 未登记豁免');    // ③ FAIL
+    }
+  }
 }
 ```
 
-判据必须同时证明有检出力与不误杀（quality_gate_test.dart:330-342；下例载荷以占位符示意，逐字用例见该测试文件）：
+判据必须同时证明有检出力与不误杀（quality_gate_test.dart「G-Q2 判据自检」组；下例载荷以占位符示意，逐字用例见该测试文件）：
 
 ```dart
 expect(looksLikeEmbeddedSecret("apiKey: 'sk-<32 位随机 hex 载荷>'"), isTrue);  // 真实形态必命中
@@ -163,7 +169,7 @@ expect(looksLikeEmbeddedSecret('const padding = "abcdefghijklmnopqrstuvwxyz01234
 ### 例 3：环境不可判定时 SKIP，绝不 PASS（本仓库实证）
 
 ```dart
-// quality_gate_test.dart:253-260
+// quality_gate_test.dart「G-Q2 密钥泄露扫描」组：trackedFiles() 返回 null 分支
 final files = trackedFiles(); // git ls-files；非版本库环境返回 null
 if (files == null) {
   markTestSkipped('扫描面不可得——记 SKIP 而非 PASS：没扫过不等于干净。');
@@ -171,7 +177,7 @@ if (files == null) {
 }
 ```
 
-对照：关键路径（契约文件、lib/、部署脚本目录）缺失时是直接抛异常 FAIL 而非 SKIP（repo_paths.dart:47-59）——"判不了"要区分"环境不具备"（SKIP）与"判据对象被删光"（FAIL）。
+对照：关键路径（契约文件、lib/、部署脚本目录）缺失时是直接抛异常 FAIL 而非 SKIP（`assertRepoLayout`）——"判不了"要区分"环境不具备"（SKIP）与"判据对象被删光"（FAIL）。
 
 ## Related
 

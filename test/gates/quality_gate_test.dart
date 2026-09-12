@@ -171,6 +171,34 @@ bool isScanExcluded(String path) {
       p.endsWith('.zip');
 }
 
+/// CI 环境判定（复审 #11：全文件唯一承载处，调用点不得再手写字面量比较）。
+///
+/// 谓词刻意放宽：`CI` 变量非空且非 'false' 即视为 CI——CI=1/TRUE/yes 等
+/// 平台写法差异一并覆盖；字面值 == 'true' 会让非 'true' 写法在 git 失败时
+/// 退回 markTestSkipped，而 SKIP 在 CI 报告里与绿勾同形，门禁静默落空。
+/// 参数：[env] 环境变量表，缺省读取进程环境（注入点供判据自检测用）。
+/// 返回：`bool`，判定为 CI 环境返回 true。
+bool isCi([Map<String, String>? env]) {
+  final ci = (env ?? Platform.environment)['CI'];
+  return ci != null && ci.isNotEmpty && ci.toLowerCase() != 'false';
+}
+
+/// 「判不了」分支的唯一处置处（复审 #11）：CI 上必须红、本地记 SKIP。
+///
+/// CI 上判据对象不可得（如 git 失败）时 SKIP 与绿勾同形，必须 fail；
+/// 本地非 git 环境允许 SKIP，但不许静默 PASS。
+/// 覆盖登记：fail 分支在能跑起测试套的环境（必然有 git）自动化不可达，
+/// 其正确性靠评审保证（复审 #11 裁决：登记于此，不伪造覆盖）。
+/// 参数：[ciFailReason] CI 环境的失败原因；[localSkipReason] 本地 SKIP 原因。
+/// 返回：void；CI 环境经 [fail] 抛 [TestFailure]，本地经 markTestSkipped 中止用例。
+void skipOrFailOnCi({
+  required String ciFailReason,
+  required String localSkipReason,
+}) {
+  if (isCi()) fail(ciFailReason);
+  markTestSkipped(localSkipReason);
+}
+
 /// 32 位 hex 串判据（大小写均命中：真实密钥不保证小写——评审 #10）。
 ///
 /// 判据正则的唯一承载处，扫描主流程与判据自检共用，
@@ -203,43 +231,88 @@ bool looksLikeEmbeddedSecret(String line) {
 bool isRepeatedCharPlaceholder(String hex) =>
     hex.length == 32 && hex.split('').toSet().length == 1;
 
-/// 同行相邻字符串字面量坍缩：把 `'abc' 'def'` / `"abc" "def"` 形式的
-/// 编译期拼接还原成单串，作为密钥扫描的附加候选行。
+/// 同行相邻字符串字面量坍缩：把 `'abc' 'def'` / `"abc" "def"` / `'abc' + 'def'`
+/// 形式的编译期拼接还原成单串，作为密钥扫描的附加候选行。
 ///
 /// 背景（评审 #5，KTD6 绕过）：把 32 位 hex 拆成两段相邻字面量即可躲过
 /// 逐行正则判据；坍缩通道让这种拆写在扫描视角下重新拼回完整串。
+/// 文法放宽（复审 #3）：`+` 显式拼接是最常见的拆写形态，正则放行可选加号。
 ///
 /// 参数：[line] 原始行文本。
 /// 返回：`String` 坍缩后的候选行；无相邻字面量时与原行相等。
 /// 注意：空字符串 `''` 也会被吃掉，故本函数产物只作附加扫描候选，
 /// 原行仍是第一通道，两者互补。
+/// 已知盲区（固化登记，复审 #3）：块注释夹隔（'a' /* x */ + 'b'）不还原。
 String collapseAdjacentLiterals(String line) =>
-    line.replaceAll(RegExp(r'''['"][ \t]*['"]'''), '');
+    line.replaceAll(RegExp(r'''['"][ \t]*\+?[ \t]*['"]'''), '');
 
-/// 跨行相邻字面量候选：上行以引号收尾、下行以同种引号开头时，
+/// 跨行相邻字面量候选：上行以引号收尾、下行以引号开头时，
 /// 去掉边界引号拼接两行内容（覆盖 KTD6 的跨行拆写形态，评审 #5）。
+///
+/// 文法放宽（复审 #3）：
+///   - 不再要求同种引号——Dart 相邻字面量允许混用单双引号；
+///   - 允许行尾/行首 `+` 显式拼接符（'abc' +\n'def' 与 'abc'\n+ 'def'）。
 ///
 /// 参数：[prevLine] 上一行原文（文件首行传 null）；[line] 当前行原文。
 /// 返回：`String?` 可拼接时返回拼接候选，否则 null。
+/// 已知盲区（固化登记，复审 #3）：3 行及以上拆分（11/11/10）与块注释
+/// 夹隔不覆盖——判据自检以负向用例把该盲区固化为可见已知限制。
 String? crossLineCandidate(String? prevLine, String line) {
   if (prevLine == null) return null;
-  final prev = prevLine.trimRight();
-  final cur = line.trimLeft();
+  var prev = prevLine.trimRight();
+  // 行尾 `+` 显式拼接：'abc' +\n'def'。
+  if (prev.endsWith('+')) {
+    prev = prev.substring(0, prev.length - 1).trimRight();
+  }
+  var cur = line.trimLeft();
+  // 行首 `+` 显式拼接：'abc'\n+ 'def'。
+  if (cur.startsWith('+')) {
+    cur = cur.substring(1).trimLeft();
+  }
   if (prev.isEmpty || cur.isEmpty) return null;
-  final quote = prev[prev.length - 1];
-  if ((quote == "'" || quote == '"') && cur.startsWith(quote)) {
+  final prevQuote = prev[prev.length - 1];
+  final curQuote = cur[0];
+  // 混引号合法（Dart 相邻字面量不限同种引号，复审 #3）。
+  if ((prevQuote == "'" || prevQuote == '"') &&
+      (curQuote == "'" || curQuote == '"')) {
     return '${prev.substring(0, prev.length - 1)}${cur.substring(1)}';
   }
   return null;
 }
 
-/// 判断某个「文件:行号:行内容」命中是否已在豁免登记册中。
+/// 单个 32 位 hex 命中的三分支处置结论（复审 #4：处置粒度为「命中」而非「行」）。
+enum SecretHitVerdict {
+  /// 模板占位假值（aaaa.../cccc...），非真实密钥，跳过。
+  placeholder,
+
+  /// 已登记豁免（列名留证，不静默）。
+  exempted,
+
+  /// 未登记豁免的疑似密钥，记入 findings（FAIL）。
+  unregistered,
+}
+
+/// 判断某个 32 位 hex 命中是否已被豁免登记册覆盖。
 ///
-/// 参数：[relPath] 相对仓库根的文件路径；[lineText] 命中行原文（已 trim 与否均可）。
-/// 返回：`bool`，命中某条登记（文件且行内含定位子串）返回 true。
-bool isRegisteredFinding(String relPath, String lineText) =>
+/// 收紧历史（复审 #4）：旧口径「行 contains 登记串」会把同行的新密钥连带
+/// 豁免——同一已登记文件内与泄露串同行写 `BACKUP: '<新32hex>'` 直接变绿；
+/// 现按「登记定位串 contains 当前命中 hex」逐命中判定，同行其余命中不受连带。
+/// 参数：[relPath] 相对仓库根的文件路径；[hex] 本次命中的 32 位 hex 串。
+/// 返回：`bool`，该命中被登记覆盖返回 true。
+bool isRegisteredSecretHex(String relPath, String hex) =>
     registeredSecretFindings
-        .any((r) => r.file == relPath && lineText.contains(r.lineContains));
+        .any((r) => r.file == relPath && r.lineContains.contains(hex));
+
+/// 对单个 32 位 hex 命中做三分支判定（占位 / 已登记豁免 / 未登记）。
+///
+/// 纯函数，判据自检可直接对每种分支做变异断言（复审 #4）。
+/// 参数：[relPath] 相对仓库根的文件路径；[hex] 本次命中的 32 位 hex 串。
+/// 返回：[SecretHitVerdict] 该命中的处置结论。
+SecretHitVerdict classifySecretHex(String relPath, String hex) {
+  if (isRepeatedCharPlaceholder(hex)) return SecretHitVerdict.placeholder;
+  if (isRegisteredSecretHex(relPath, hex)) return SecretHitVerdict.exempted;
+  return SecretHitVerdict.unregistered;
+}
 
 /// 判据自检样例串（统一承载，防各用例重复字面量）。
 ///
@@ -248,6 +321,10 @@ bool isRegisteredFinding(String relPath, String lineText) =>
 /// 相邻字面量拆串，会被坍缩/跨行通道（评审 #5）把本文件自身判为命中。
 const String _gaodeSample = 'aa6ff0d9da3a35cd35b8d192a00d1d85';
 const String _skSample = 'sk-f2885e8725e04ec690db459cea8bcc57';
+
+/// sk 样例的 32 位 hex 本体（剥离 sk- 前缀——hex32Pattern 实际命中的形态，
+/// classifySecretHex/isRegisteredSecretHex 自检测用）。
+const String _skHex32 = 'f2885e8725e04ec690db459cea8bcc57';
 const String _hex16 = '0123456789abcdef';
 const String _upperHexSample = '9C4AF3B304F2138FF4A7E55C470F69D3';
 
@@ -334,14 +411,12 @@ void main() {
       if (files == null) {
         // CI 上判不了必须红（评审 #11）：SKIP 在 CI 报告里与绿勾同形，
         // 等于静默放过整道门；仅本地非 git 环境允许记 SKIP。
-        if (Platform.environment['CI'] == 'true') {
-          fail('CI 环境 git ls-files 失败：密钥扫描面不可得，'
-              '按四态诚实性记 FAIL 而非 SKIP（门禁在 CI 上必须可判定）。');
-        }
-        // flutter_test 的跳过原语：标记本测试为 SKIP（对应门禁四态之 SKIP），
-        // 而非静默 PASS——没扫过不等于干净。
-        markTestSkipped('非 git 环境（git ls-files 失败），密钥扫描面不可得——'
-            '按门禁四态记 SKIP 而非 PASS：没扫过不等于干净。');
+        skipOrFailOnCi(
+          ciFailReason: 'CI 环境 git ls-files 失败：密钥扫描面不可得，'
+              '按四态诚实性记 FAIL 而非 SKIP（门禁在 CI 上必须可判定）。',
+          localSkipReason: '非 git 环境（git ls-files 失败），密钥扫描面不可得——'
+              '按门禁四态记 SKIP 而非 PASS：没扫过不等于干净。',
+        );
         return;
       }
 
@@ -354,6 +429,10 @@ void main() {
 
       final findings = <String>[]; // 未豁免的硬命中（强判据直接 FAIL）
       final exempted = <String>[]; // 已登记豁免的弱命中（列名留证，不静默）
+      // 未能完整扫描的文件（fail-closed，复审 #1）：解码失败/疑似 UTF-16
+      // 的文件实际脱离扫描面，WARN+PASS 等于把「没扫」报成「干净」——
+      // 与上方「扫描面缩水不得报通过」同口径，此处必须 FAIL。
+      final scanGaps = <String>[];
 
       // 强判据标记用变量插值拼装：源码行直接写相邻字面量 'A' 'B' 会被
       // 本文件的坍缩通道（评审 #5）还原命中强判据且不可豁免。
@@ -370,17 +449,21 @@ void main() {
         if (RegExp(r'\bLTAI[A-Za-z0-9]{12,}\b').hasMatch(text)) {
           findings.add('$loc 疑似阿里云 AccessKey ID（强判据，不可豁免）');
         }
-        // 弱判据：32 位 hex + 密钥语义上下文。命中后三分支处置。
+        // 弱判据：32 位 hex + 密钥语义上下文。命中后逐命中三分支处置
+        // （复审 #4）：firstMatch 只判行内首个 hex——占位/登记串在前的
+        // 同行真密钥会被掩蔽；处置粒度必须是「每个 hex 命中」而非「行」。
         if (looksLikeEmbeddedSecret(text)) {
-          final hex = hex32Pattern.firstMatch(text)!.group(0)!;
-          if (isRepeatedCharPlaceholder(hex)) {
-            return; // 模板占位假值（aaaa.../cccc...），非真实密钥
-          }
-          if (isRegisteredFinding(rel, text)) {
-            exempted.add('$loc（已登记豁免）');
-          } else {
-            findings.add(
-                '$loc 疑似密钥（32 位 hex + 密钥上下文，未登记豁免）：${text.trim()}');
+          for (final match in hex32Pattern.allMatches(text)) {
+            final hex = match.group(0)!;
+            switch (classifySecretHex(rel, hex)) {
+              case SecretHitVerdict.placeholder:
+                continue; // 模板占位假值（aaaa.../cccc...），非真实密钥
+              case SecretHitVerdict.exempted:
+                exempted.add('$loc（已登记豁免）');
+              case SecretHitVerdict.unregistered:
+                findings.add(
+                    '$loc 疑似密钥（32 位 hex + 密钥上下文，未登记豁免）：${text.trim()}');
+            }
           }
         }
       }
@@ -394,12 +477,21 @@ void main() {
         // 取消体积上限，改逐行流式读，内存占用与文件大小解耦。
         String? prevLine;
         var lineNo = 0;
+        var gapRecorded = false; // 每文件只记一次缺口，不刷屏
         try {
           await for (final line in f
               .openRead()
               .transform(utf8.decoder)
               .transform(const LineSplitter())) {
             lineNo++;
+            // UTF-16 特征检测（复审 #1）：0x00 是合法 UTF-8 不抛解码异常，
+            // 但 hex32 与上下文词正则被 NUL 逐字符打断——该文件实际未受
+            // 扫描且无 WARN，必须 fail-closed 记入缺口。
+            if (!gapRecorded && line.contains('\x00')) {
+              scanGaps.add('$rel: 行内含 NUL 字节（疑似 UTF-16/二进制，'
+                  '扫描判据逐字符失声）');
+              gapRecorded = true;
+            }
             // 三通道（评审 #5）：原行 / 同行相邻字面量坍缩 / 跨行相邻拼接。
             checkLine(rel, lineNo, line, '');
             final collapsed = collapseAdjacentLiterals(line);
@@ -413,10 +505,9 @@ void main() {
             prevLine = line;
           }
         } catch (e) {
-          // 单文件读取/解码失败不得让整道门失声，但必须显式留证
-          // （四态诚实性：不静默跳过）。
-          // ignore: avoid_print
-          print('[WARN] $rel 读取或 UTF-8 解码失败，本文件未完整扫描：$e');
+          // 单文件读取/解码失败不得让整道门失声，但也绝不 WARN+PASS
+          // （复审 #1）：该文件未完整扫描即脱离扫描面，必须 fail-closed。
+          scanGaps.add('$rel: 读取或 UTF-8 解码失败（本文件未完整扫描）：$e');
         }
       }
       // 豁免列名打印——四态原则：豁免必须显式留证，不允许静默放过。
@@ -425,6 +516,14 @@ void main() {
         print('[INFO] 密钥扫描豁免命中 ${exempted.length} 处（登记册见 registeredSecretFindings，'
             '各条均须按 remediation 到云控制台作废更换）：\n  ${exempted.join('\n  ')}');
       }
+      // fail-closed（复审 #1）：任何未完整扫描的文件都让本门 FAIL。
+      // 合法二进制/UTF-16 资产的正确出口是在 isScanExcluded 显式登记排除
+      // （评审可见），而不是 WARN 放过。
+      expect(scanGaps, isEmpty,
+          reason: '以下文件未能完整扫描（扫描面缩水不得报通过）：\n'
+              '${scanGaps.join('\n')}\n'
+              '若是合法二进制/UTF-16 资产，在 isScanExcluded 显式登记排除；'
+              '若是文本文件，转为 UTF-8 编码。');
       expect(findings, isEmpty,
           reason: '跟踪文件中发现未豁免的疑似密钥（§7.3：命中即拒绝；'
               '已泄露的唯一处置是作废更换；正当例外须登记 registeredSecretFindings）：\n'
@@ -481,14 +580,28 @@ void main() {
       expect(isRepeatedCharPlaceholder(_gaodeSample), isFalse);
     });
 
-    test('isRegisteredFinding 按文件+行内子串精确匹配（防跨文件冒名）', () {
-      expect(isRegisteredFinding('prototype/search.js',
-          "    API_KEY: '$_skSample', // 注释"), isTrue);
+    test('isRegisteredSecretHex 按文件+命中串精确匹配（防跨文件/同行冒名，复审 #4）', () {
+      // 登记的泄露串本人在登记文件中 → 豁免
+      expect(isRegisteredSecretHex('prototype/search.js', _skHex32), isTrue);
       // 同样的 key 出现在未登记文件不得豁免
-      expect(isRegisteredFinding('lib/leaked.dart',
-          "const k='$_skSample';"), isFalse);
-      // 登记了别的文件但本行没有对应 key 串
-      expect(isRegisteredFinding('prototype/search.js', 'API_KEY: placeholder'), isFalse);
+      expect(isRegisteredSecretHex('lib/leaked.dart', _skHex32), isFalse);
+      // 同行冒名（复审 #4）：同一已登记文件内的【新】32hex 不得连带豁免
+      expect(isRegisteredSecretHex('prototype/search.js', _gaodeSample), isFalse);
+    });
+
+    test('classifySecretHex 逐命中三分支：占位+真密钥同行只跳占位（复审 #4）', () {
+      // 占位假值 → placeholder（firstMatch 时代会 return 丢弃整行其余命中）
+      expect(classifySecretHex('.env.example', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'),
+          SecretHitVerdict.placeholder);
+      // 登记串本人 → exempted
+      expect(classifySecretHex('prototype/search.js', _skHex32),
+          SecretHitVerdict.exempted);
+      // 与登记串同行的真密钥 → unregistered（不得被登记位掩蔽）
+      expect(classifySecretHex('prototype/search.js', _gaodeSample),
+          SecretHitVerdict.unregistered);
+      // 未登记文件的真密钥 → unregistered
+      expect(classifySecretHex('lib/leaked.dart', _skHex32),
+          SecretHitVerdict.unregistered);
     });
 
     test('collapseAdjacentLiterals 还原同行相邻字面量（评审 #5 检出通道）', () {
@@ -502,6 +615,19 @@ void main() {
       expect(collapseAdjacentLiterals('normal line'), 'normal line');
     });
 
+    test('collapseAdjacentLiterals 还原 `+` 显式拼接（复审 #3 文法放宽）', () {
+      // 'a' + 'b' 加号拼接是最常见的拆写形态，原窄文法不匹配加号。
+      final plusForm = "    key: '${_gaodeSample.substring(0, 16)}' + "
+          "'${_gaodeSample.substring(16)}',";
+      final collapsed = collapseAdjacentLiterals(plusForm);
+      expect(collapsed, contains(_gaodeSample));
+      expect(looksLikeEmbeddedSecret(collapsed), isTrue);
+      // 混引号 + 加号
+      final mixedForm = "    key: '${_gaodeSample.substring(0, 16)}' + "
+          '"${_gaodeSample.substring(16)}",';
+      expect(collapseAdjacentLiterals(mixedForm), contains(_gaodeSample));
+    });
+
     test('crossLineCandidate 识别跨行相邻字面量（评审 #5 检出通道）', () {
       final prev = "    key: '${_gaodeSample.substring(0, 16)}'";
       final cur = "'${_gaodeSample.substring(16)}',";
@@ -512,6 +638,56 @@ void main() {
       // 非相邻引号边界返回 null
       expect(crossLineCandidate('normal line', 'another line'), isNull);
       expect(crossLineCandidate(null, 'first line'), isNull);
+    });
+
+    test('crossLineCandidate 识别混引号与 `+` 拼接跨行（复审 #3 文法放宽）', () {
+      // 上双引号收尾、下单引号开头（Dart 合法相邻字面量）
+      final mixed = crossLineCandidate(
+          '    key: "${_gaodeSample.substring(0, 16)}"',
+          "'${_gaodeSample.substring(16)}',");
+      expect(mixed, isNotNull);
+      expect(mixed, contains(_gaodeSample));
+      // 行尾 + 拼接：'abc' +\n'def'
+      final plusTail = crossLineCandidate(
+          "    key: '${_gaodeSample.substring(0, 16)}' +",
+          "'${_gaodeSample.substring(16)}',");
+      expect(plusTail, isNotNull);
+      expect(plusTail, contains(_gaodeSample));
+      // 行首 + 拼接：'abc'\n+ 'def'
+      final plusHead = crossLineCandidate(
+          "    key: '${_gaodeSample.substring(0, 16)}'",
+          "+ '${_gaodeSample.substring(16)}',");
+      expect(plusHead, isNotNull);
+      expect(plusHead, contains(_gaodeSample));
+    });
+
+    test('盲区固化：3 行及以上拆分与块注释夹隔不覆盖（复审 #3 已知限制）', () {
+      // 负向自检把盲区固化为可见已知限制：若日后通道扩展到覆盖这些形态，
+      // 本用例变红提醒同步更新函数注释的「已知盲区」登记。
+      // 3 行拆分 11/11/10：任意两行候选凑不出 32 位连续 hex。
+      final l1 = "    key: '${_gaodeSample.substring(0, 11)}'";
+      final l2 = "'${_gaodeSample.substring(11, 22)}'";
+      final l3 = "'${_gaodeSample.substring(22)}',";
+      final pair12 = crossLineCandidate(l1, l2)!;
+      final pair23 = crossLineCandidate(l2, l3)!;
+      expect(pair12, isNot(contains(_gaodeSample)));
+      expect(pair23, isNot(contains(_gaodeSample)));
+      // 块注释夹隔：'a' /* x */ + 'b' 不还原。
+      final commentForm = "    key: '${_gaodeSample.substring(0, 16)}' /* x */ + "
+          "'${_gaodeSample.substring(16)}',";
+      expect(collapseAdjacentLiterals(commentForm),
+          isNot(contains(_gaodeSample)));
+    });
+
+    test('isCi 谓词覆盖平台写法差异（复审 #11 纯函数自检）', () {
+      expect(isCi({'CI': 'true'}), isTrue);
+      expect(isCi({'CI': 'TRUE'}), isTrue);
+      expect(isCi({'CI': '1'}), isTrue);
+      expect(isCi({'CI': 'yes'}), isTrue);
+      expect(isCi({'CI': 'false'}), isFalse);
+      expect(isCi({'CI': 'FALSE'}), isFalse);
+      expect(isCi({'CI': ''}), isFalse);
+      expect(isCi(const {}), isFalse);
     });
   });
 
@@ -524,10 +700,11 @@ void main() {
       );
       if (result.exitCode != 0) {
         // CI 上判不了必须红（评审 #11）：SKIP 在 CI 报告里与绿勾同形。
-        if (Platform.environment['CI'] == 'true') {
-          fail('CI 环境 git ls-files -s 失败：执行位扫描面不可得，记 FAIL 而非 SKIP。');
-        }
-        markTestSkipped('非 git 环境，无法读取索引模式位——记 SKIP 而非 PASS。');
+        skipOrFailOnCi(
+          ciFailReason: 'CI 环境 git ls-files -s 失败：执行位扫描面不可得，'
+              '记 FAIL 而非 SKIP。',
+          localSkipReason: '非 git 环境，无法读取索引模式位——记 SKIP 而非 PASS。',
+        );
         return;
       }
       final bad = <String>[];
