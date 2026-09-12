@@ -168,8 +168,12 @@ services:
     volumes:
       - mysql_data:/var/lib/mysql
       - ./config/my.cnf:/etc/mysql/conf.d/my.cnf:ro
-      # 首次启动自动执行：业务库 DDL + 埋点库 DDL（按文件名顺序）
-      - ../docs/database/ddl:/docker-entrypoint-initdb.d:ro
+      # 首次启动自动执行：deploy/initdb.d/ 下的 .sh 脚本（按文件名顺序）。
+      # KTD-4：initdb 只建库授权、不建表——MySQL initdb 对 .sql 不做变量展开，
+      # 故改写为 .sh 按 $MYSQL_DATABASE/$MYSQL_TRACK_DATABASE/$MYSQL_USER 幂等执行；
+      # 表结构一律由应用内 Flyway 迁移管理（编码规范 §4.9），DDL 真源已按 KTD-5
+      # 复制进 src/main/resources/db/migration{,_track}/，docs/database/ddl/ 仅存档快照。
+      - ./initdb.d:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p$$MYSQL_ROOT_PASSWORD --silent"]
       interval: 30s
