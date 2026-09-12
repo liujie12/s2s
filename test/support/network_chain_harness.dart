@@ -37,18 +37,36 @@ class NetworkChainHarness {
   /// 构造一个 harness。
   ///
   /// 参数：
-  ///   [config] 覆盖网络配置（如模拟 release 态）；null 时用 mock 基址 +
-  ///            非 release 配置（允许 http localhost）；
-  ///   [hooks]  完全自定义回调集；null 时用本 harness 的可变状态装配一套。
-  NetworkChainHarness({NetworkConfig? config, NetworkHooks? hooks})
-      : _configOverride = config,
-        _hooksOverride = hooks;
+  ///   [config]         覆盖网络配置（如模拟 release 态）；null 时用 mock
+  ///                    基址 + 非 release 配置（允许 http localhost）；
+  ///   [hooks]          完全自定义回调集；null 时用本 harness 的可变状态
+  ///                    装配一套；
+  ///   [retrySleeper]   U6 RetryInterceptor 退避等待缝：null 时用真实
+  ///                    [Future.delayed]（会真睡，仅不涉重试的旧用例可
+  ///                    默认）；重试用例必须注入即时记录型等待（禁真睡）；
+  ///   [retryRandomRatio] U6 抖动比例缝：null 时生产默认 Random 抖动；
+  ///                    退避时长需确定断言的用例注入固定比例。
+  NetworkChainHarness({
+    NetworkConfig? config,
+    NetworkHooks? hooks,
+    Future<void> Function(Duration duration)? retrySleeper,
+    double Function()? retryRandomRatio,
+  })  : _configOverride = config,
+        _hooksOverride = hooks,
+        _retrySleeper = retrySleeper,
+        _retryRandomRatio = retryRandomRatio;
 
   /// 测试侧覆盖配置（null 则按 mock 端口构造）。
   final NetworkConfig? _configOverride;
 
   /// 测试侧完全自定义回调（null 则用 harness 状态回调）。
   final NetworkHooks? _hooksOverride;
+
+  /// U6 退避等待缝覆盖（null 透传 null，由生产装配给 Future.delayed）。
+  final Future<void> Function(Duration duration)? _retrySleeper;
+
+  /// U6 抖动比例缝覆盖（null 透传 null，由生产装配给 Random）。
+  final double Function()? _retryRandomRatio;
 
   /// 内存 mock 服务（真实 HTTP 栈）。
   late final MockApiServer server;
@@ -119,6 +137,8 @@ class NetworkChainHarness {
       config: _configOverride ??
           NetworkConfig(baseUrl: mockBaseUrl, isRelease: false),
       hooks: _hooksOverride ?? _stateBackedHooks(),
+      retrySleeper: _retrySleeper,
+      retryRandomRatio: _retryRandomRatio,
     );
     return mockBaseUrl;
   }

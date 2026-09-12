@@ -9,12 +9,15 @@
 ///     import lib/features，焊接在 `lib/features/auth/auth_network_wiring.dart`；
 ///   - [buildNetworkDio]：生产同款 dio 唯一构造函数，harness 与
 ///     [dioProvider] 共用，切真服务断言一行不改（R9）；
-///   - 五拦截器按 §11.1 定死顺序装配，U3 仅安装 Header/Envelope，
-///     Gzip/AuthRefresh/Retry 三位置以显式占位注释保留；
+///   - 五拦截器按 §11.1 定死顺序全部装配（U3 Header/Envelope、U4 Gzip、
+///     U5 AuthRefresh、U6 Retry），Retry 的等待/抖动两缝可经
+///     [buildNetworkDio] 可选参数注入（测试禁真睡，生产走真实默认）；
 ///   - 超时只引 [NfrNetwork] 常量（R12，不复制字面量）；
 ///     `validateStatus: (_) => true`（KTD2），所有 HTTP 状态进
 ///     EnvelopeInterceptor 统一拆信封。
 library;
+
+import 'dart:math' show Random;
 
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -26,12 +29,14 @@ import 'interceptors/auth_refresh_interceptor.dart';
 import 'interceptors/envelope_interceptor.dart';
 import 'interceptors/gzip_interceptor.dart';
 import 'interceptors/header_interceptor.dart';
+import 'interceptors/retry_interceptor.dart';
 
 export 'interceptors/auth_refresh_interceptor.dart'
     show AuthRefreshInterceptor, RefreshTokenExecutor, RefreshResult;
 export 'interceptors/envelope_interceptor.dart' show EnvelopeInterceptor;
 export 'interceptors/gzip_interceptor.dart' show GzipInterceptor;
 export 'interceptors/header_interceptor.dart' show HeaderInterceptor;
+export 'interceptors/retry_interceptor.dart' show RetryInterceptor;
 
 /// 网络配置（KTD8：baseUrl 与 release 判定的运行时注入缝）。
 ///
@@ -207,12 +212,18 @@ Options mapPinsOptions() => Options(
 /// 生产同款 dio 唯一装配函数（harness 与 [dioProvider] 共用，R9）。
 ///
 /// 参数：
-///   [config] 网络配置（基址 + release 态）；
-///   [hooks]  请求头注入所需回调缝。
-/// 返回：[Dio] 已按 §11.1 顺序装配 U3 两个拦截器的实例。
+///   [config]           网络配置（基址 + release 态）；
+///   [hooks]            请求头注入所需回调缝；
+///   [retrySleeper]     U6 RetryInterceptor 退避等待缝：null 时生产默认
+///                      [Future.delayed]，测试注入即时记录型等待（禁真睡）；
+///   [retryRandomRatio] U6 抖动比例缝：null 时生产默认
+///                      `Random().nextDouble`，测试注入固定比例。
+/// 返回：[Dio] 已按 §11.1 顺序装配五个拦截器的实例。
 Dio buildNetworkDio({
   required NetworkConfig config,
   required NetworkHooks hooks,
+  Future<void> Function(Duration duration)? retrySleeper,
+  double Function()? retryRandomRatio,
 }) {
   // const 生产配置的构造期无法做运行时守卫，装配期补做（KTD8）。
   NetworkConfig.assertReleaseHttps(
@@ -259,12 +270,34 @@ Dio buildNetworkDio({
       clearSession: hooks.onSessionCleared,
     ),
   );
-  // 装配位 5（U6 待落地）：RetryInterceptor。全链路唯一重试点，
-  // dio.fetch 重走全链（KTD4），传输层 DioException→networkFailure
-  // 的唯一归一也在其 onError（KTD10）。U5 不含任何重试/退避/计时逻辑，
-  // 该位置继续保留占位，不得提前实现（计划执行序 U5 → U6）。
+  // 装配位 5（U6 落地）：RetryInterceptor。全链路唯一重试点
+  // （编码规范 §1.2/§5.5），注入 dio 自引用使重放走 dio.fetch 重走全链
+  // （KTD4：两键由 HeaderInterceptor containsKey 才写逐字沿用）；
+  // 传输层 DioException→networkFailure 的链尾唯一归一也在其 onError
+  // （KTD10）。等待/抖动两缝生产给真实实现，测试注入即时缝（禁真睡）。
+  // 必须最后 add：error 向上它是链尾收口点（详设 §11.1 顺序定死）。
+  dio.interceptors.add(
+    RetryInterceptor(
+      networkDio: dio,
+      newUuidV4: hooks.newUuidV4,
+      sleeper: retrySleeper ?? _defaultRetrySleeper,
+      randomRatio: retryRandomRatio ?? _defaultRetryRandomRatio,
+    ),
+  );
   return dio;
 }
+
+/// RetryInterceptor 生产默认退避等待：真实 [Future.delayed]。
+///
+/// 参数：[duration] 退避时长（Retry-After 整数秒或抖动后的退避表值）。
+/// 返回：[Future<void>] 等待完成。
+Future<void> _defaultRetrySleeper(Duration duration) =>
+    Future<void>.delayed(duration);
+
+/// RetryInterceptor 生产默认抖动比例：每次重取 [Random.nextDouble]（[0,1)）。
+///
+/// 返回：[double] [0,1) 区间的随机比例（±20% 抖动在拦截器内换算）。
+double _defaultRetryRandomRatio() => Random().nextDouble();
 
 /// 续期专用接口路径（契约 `POST /auth/token/refresh`，不含 `/api/v1`
 /// 前缀，前缀在 [NetworkConfig.baseUrl] 内）。

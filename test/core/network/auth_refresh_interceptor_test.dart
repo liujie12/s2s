@@ -278,7 +278,13 @@ void main() {
   }
 
   setUp(() async {
-    harness = NetworkChainHarness();
+    // 注入即时等待：U6 位 5 真实化后，refresh 瞬时失败（5xx/传输）会归一
+    // 为 networkFailure 并触发全链路重试，生产默认退避会真睡 0.8–2.4s
+    // （flaky 风险，flaky 零容忍）；固定 0.0 抖动使退避时长确定。
+    harness = NetworkChainHarness(
+      retrySleeper: (duration) async {},
+      retryRandomRatio: () => 0,
+    );
     await harness.start();
     // 显式登录态与非零代次：续期发起取样、写回前比对都依赖非默认值。
     harness.token = _oldToken;
@@ -584,7 +590,9 @@ void main() {
   });
 
   group('网络失败/5xx 不清会话（计划场景 7，R10 分流③）', () {
-    test('refresh 信封 50001：不清会话，归一为 networkFailure', () async {
+    test('refresh 信封 50001：不清会话，归一为 networkFailure；U6 位 5 '
+        '真实化后重试预算花在原业务请求上（业务 3 / refresh 3 连锁）',
+        () async {
       stubBusinessAlwaysUnauthorized();
       harness.stubRefreshFailure(
         ApiErrorCode.internalError.code,
@@ -596,14 +604,24 @@ void main() {
       );
 
       expect(apiError.code, ApiErrorCode.networkFailure,
-          reason: '5xx 归一为 networkFailure，重试留给 U6');
+          reason: '5xx 归一为 networkFailure，由链尾 RetryInterceptor 按'
+              'autoRetry 重试（详设 §13/§14.1 连锁，U6 场景 9 同源固化）');
       expect(harness.clearSessionCallCount, 0, reason: '瞬时失败不踢登录态');
       expect(harness.writeTokenCallCount, 0);
-      expect(businessRequests().length, 1, reason: '不重放');
+      // 连锁推演（重放不带 auth_retried 键，每轮再吃 40101 时 U5 单飞
+      // 字段已结论落定复位，故每个业务尝试各续期一次）：
+      //   业务 #1 → 40101 → refresh #1 → 50001 归一 networkFailure
+      //   → Retry 重放业务 #2 → 40101 → refresh #2 → networkFailure
+      //   → Retry 重放业务 #3 → 40101 → refresh #3 → 计数到顶终局。
+      expect(businessRequests().length, 3,
+          reason: '首发 + 全链路 2 次重试，重试的是原业务请求而非 refresh');
+      expect(refreshCallCount(), 3,
+          reason: '每次业务重试重新吃 40101，单飞字段复位后重新续期；'
+              'refresh 自身走独立 dio（KTD3），不经 RetryInterceptor');
     });
 
-    test('refresh 网关直出 HTML 502（非信封）：networkFailure、不清会话',
-        () async {
+    test('refresh 网关直出 HTML 502（非信封）：networkFailure、不清会话，'
+        '同样触发业务 3 / refresh 3 连锁', () async {
       stubBusinessAlwaysUnauthorized();
       harness.stub(
         'POST',
@@ -619,9 +637,12 @@ void main() {
       );
 
       expect(apiError.code, ApiErrorCode.networkFailure,
-          reason: '非信封 5xx 经信封拦截器分流为 networkFailure');
+          reason: '非信封 5xx 经信封拦截器分流为 networkFailure，再由链尾'
+              'RetryInterceptor 按 autoRetry 重试原业务请求');
       expect(harness.clearSessionCallCount, 0);
-      expect(businessRequests().length, 1);
+      expect(businessRequests().length, 3,
+          reason: '首发 + 2 次重试，预算全花在原业务请求上（§14.1）');
+      expect(refreshCallCount(), 3, reason: '每轮业务 40101 各重新单飞续期一次');
     });
 
     test('refresh 传输层连接拒绝：leader 收敛 networkFailure、不清会话、'

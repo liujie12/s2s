@@ -13,6 +13,7 @@ library;
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zhaoyazhao/core/network/api_client.dart';
+import 'package:zhaoyazhao/core/network/api_error_code.dart';
 import 'package:zhaoyazhao/nfr_constants.dart';
 
 import '../../support/api_envelope.dart';
@@ -23,7 +24,13 @@ void main() {
   late NetworkChainHarness harness;
 
   setUp(() async {
-    harness = NetworkChainHarness();
+    // 注入即时等待：超时错误经链尾归一点包装为 networkFailure（autoRetry），
+    // 位 5 真实化后会重试 2 次，生产默认退避会真睡 0.8–2.4s（本用例单次
+    // 尝试就要墙钟等满 3s 读超时，再叠加真睡会逼近用例 15s 上限，flaky）。
+    harness = NetworkChainHarness(
+      retrySleeper: (duration) async {},
+      retryRandomRatio: () => 0,
+    );
     await harness.start();
   });
 
@@ -52,9 +59,12 @@ void main() {
     });
   });
 
-  group('/map/pins 读超时 3s 行为（R12，真实延迟触发）', () {
-    test('mock 延迟超过 3s → receiveTimeout；快速响应不受影响', () async {
-      // 桩按请求 path 是否要求延迟分流：慢请求挂起 >3s，快请求立即回。
+  group('/map/pins 读超时 3s 行为（R12，真实延迟触发；U6 位 5 真实化）',
+      () {
+    test('mock 延迟超过 3s → receiveTimeout 被链尾归一为 networkFailure 并'
+        '重试 2 次；墙钟 ~9s 证明生效的是 3s 收紧档而非全局 10s', () async {
+      // 桩按请求 path 是否要求延迟分流：慢请求挂起 5s（>3s 收紧档、
+      // <10s 全局档），快请求立即回。
       harness.stub('GET', '/api/v1/map/pins', (req) async {
         final slow = req.path.contains('slow=1');
         if (slow) {
@@ -63,16 +73,43 @@ void main() {
         return MockResponse(body: ApiEnvelope.success(data: {'pins': const []}));
       });
 
-      // 慢请求：3s 覆盖档生效（而非全局 10s），抛 DioExceptionType.receiveTimeout。
-      // KTD10：传输层归一在 U6 RetryInterceptor，本单元只见裸 DioException。
-      await expectLater(
-        harness.dio.get<Object?>('/map/pins?slow=1', options: mapPinsOptions()),
-        throwsA(isA<DioException>().having(
-          (e) => e.type,
-          'type',
-          DioExceptionType.receiveTimeout,
-        )),
-      );
+      // 慢请求：每次尝试都在 3s 覆盖档触发 receiveTimeout。dio 传输层错误
+      // 不是信封错误，经链尾 RetryInterceptor 唯一归一点（KTD10）包装为
+      // networkFailure（autoRetry），首发 + 2 次重试后耗尽；落调用方的
+      // DioException 已归一为 unknown/ApiException(networkFailure)。
+      final startedAt = DateTime.now();
+      Object? captured;
+      try {
+        await harness.dio.get<Object?>('/map/pins?slow=1',
+            options: mapPinsOptions());
+        fail('3s 读超时必须失败');
+      } on Object catch (error) {
+        captured = error;
+      }
+      final elapsed = DateTime.now().difference(startedAt);
+
+      final terminalDioError = captured as DioException;
+      expect(terminalDioError.type, DioExceptionType.unknown,
+          reason: 'receiveTimeout 在链尾唯一归一点已穿 ApiException 外衣'
+              '（KTD10），调用方不再见裸 receiveTimeout 形态');
+      final apiError = harness.apiErrorOf(captured);
+      expect(apiError.code, ApiErrorCode.networkFailure);
+      expect(apiError.message, contains('receiveTimeout'),
+          reason: '耗尽终局文案逐字保留末次传输诊断，须能区分接收超时/'
+              '连接超时/连接拒绝');
+      final slowRequests = harness.server.received
+          .where((request) => request.path.contains('slow=1'))
+          .length;
+      expect(slowRequests, 3, reason: '首发 + 全链路 2 次重试（§14.1）');
+
+      // 墙钟是 3s 收紧档的唯一可观测证据：3 次尝试 × 3s ≈ 9s。
+      // 下界 7s 与「3 次全局 10s（≈30s）」和「1 次 10s」都拉开 2.8s+
+      // 余量（fakeAsync 无法驱动真实 HttpClient 的 IO 超时，只能真等）。
+      expect(elapsed.inMilliseconds, greaterThanOrEqualTo(7000),
+          reason: '3 次尝试各等满 3s 读超时，墙钟应 ≈9s；明显偏小说明'
+              '超时未触发或重试次数不足');
+      expect(elapsed.inMilliseconds, lessThan(14000),
+          reason: '用例超时 15s 内留 1s 收尾余量');
 
       // 快请求：同一端点带 3s 覆盖选项时正常成功。
       final ok = await harness.dio.get<Object?>('/map/pins',

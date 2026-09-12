@@ -28,7 +28,12 @@ void main() {
   late NetworkChainHarness harness;
 
   setUp(() async {
-    harness = NetworkChainHarness();
+    // 注入即时等待：非信封 5xx 属 autoRetry，位 5 真实化后会重试 2 次，
+    // 生产默认退避会真睡 0.8–2.4s（flaky 风险，flaky 零容忍）。
+    harness = NetworkChainHarness(
+      retrySleeper: (duration) async {},
+      retryRandomRatio: () => 0,
+    );
     await harness.start();
   });
 
@@ -138,7 +143,15 @@ void main() {
         expect(apiError.code, ApiErrorCode.networkFailure,
             reason: '非 Map body 且 5xx：网关直出 HTML，按可重试网络失败处理（R8）');
         expect(apiError.message, contains('502'),
-            reason: 'message 必须含 HTTP 状态码，否则无法区分 502/503/504');
+            reason: 'U6 位 5 真实化后自动重试 2 次仍为同一非信封 502，'
+                '耗尽终局文案必须逐字保留末次诊断，message 仍须含 HTTP '
+                '状态码，否则无法区分 502/503/504');
+        final attempts = harness.server.received
+            .where((request) => request.path == '/api/v1/pins-proxy')
+            .length;
+        expect(attempts, 3,
+            reason: 'networkFailure 属 autoRetry：首发 + 全链路 2 次重试'
+                '（§14.1），本用例经生产同款五拦截器链固化重试交互面');
       }
     });
 
