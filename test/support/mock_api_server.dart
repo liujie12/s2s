@@ -41,21 +41,41 @@ class MockRequest {
 }
 
 /// 一次 mock 响应。
+///
+/// 两种响应体形态互斥：
+///   - 默认 [body]：JSON 信封/任意 JSON 值，服务统一 `application/json`
+///     （契约测试的唯一形态）；
+///   - [rawBytes]：网关/反代类场景的原始字节（HTML 502、非信封 200 等，
+///     网络层 §11.3 分流测试需要），服务不再 JSON 编码，content-type 用
+///     [contentType] 覆盖，缺省 `text/html`。
+/// gzip 字节响应能力不在本批：随 U4 GzipInterceptor 实测一并扩展。
 class MockResponse {
   const MockResponse({
     this.status = 200,
     required this.body,
     this.headers = const {},
+    this.rawBytes,
+    this.contentType,
   });
 
   /// HTTP 状态码。
   final int status;
 
-  /// 响应体（将 JSON 编码）。
+  /// 响应体（将 JSON 编码）；[rawBytes] 非空时本字段被忽略。
   final Object? body;
 
-  /// 附加响应头（content-type 与 content-encoding 由服务统一处理）。
+  /// 附加响应头。
+  ///
+  /// JSON 响应的 content-type 由服务统一处理；raw 响应可用 [contentType]
+  /// 覆盖，或直接在本映射写 `content-type`（[contentType] 优先）。
   final Map<String, String> headers;
+
+  /// 原始响应字节（不经 JSON 编码）；非空时走 raw 写出分支。
+  final List<int>? rawBytes;
+
+  /// raw 响应的 Content-Type 覆盖值（如 `text/html; charset=utf-8`）；
+  /// null 时 raw 响应默认 `text/html`，JSON 响应恒为 application/json。
+  final String? contentType;
 
   /// 快速构造一个失败响应：[body] 建议用 ApiEnvelope.failure 生成。
   factory MockResponse.failure(
@@ -64,6 +84,28 @@ class MockResponse {
     Map<String, String> headers = const {},
   }) =>
       MockResponse(status: status, body: body, headers: headers);
+
+  /// 构造一个 raw 字节响应（HTML/字符串/非信封 body 的 §11.3 分流测试）。
+  ///
+  /// 参数：
+  ///   [status]      HTTP 状态码；
+  ///   [rawBytes]    原始字节（调用方自行 utf8/gzip 编码）；
+  ///   [contentType] Content-Type 覆盖，缺省 `text/html; charset=utf-8`；
+  ///   [headers]     附加响应头。
+  /// 返回：[MockResponse]，其 [body] 恒为 null（raw 分支忽略该字段）。
+  factory MockResponse.raw(
+    int status,
+    List<int> rawBytes, {
+    String contentType = 'text/html; charset=utf-8',
+    Map<String, String> headers = const {},
+  }) =>
+      MockResponse(
+        status: status,
+        body: null,
+        rawBytes: rawBytes,
+        contentType: contentType,
+        headers: headers,
+      );
 }
 
 /// 路由处理器：拿到请求，返回响应（同步或异步均可）。
@@ -152,7 +194,20 @@ class MockApiServer {
     }
     try {
       final resp = await handler(req);
-      _writeJson(httpReq, resp.status, resp.body, extraHeaders: resp.headers);
+      final rawBytes = resp.rawBytes;
+      if (rawBytes != null) {
+        // raw 分支：不经 JSON 编码、不强制 application/json ——
+        // §11.3 分流测试要复现网关直出 HTML/非信封 body 的真实形态。
+        _writeRaw(
+          httpReq,
+          resp.status,
+          rawBytes,
+          contentType: resp.contentType,
+          extraHeaders: resp.headers,
+        );
+      } else {
+        _writeJson(httpReq, resp.status, resp.body, extraHeaders: resp.headers);
+      }
     } catch (e) {
       _writeJson(
         httpReq,
@@ -173,6 +228,30 @@ class MockApiServer {
     httpReq.response.headers.contentType = ContentType.json;
     extraHeaders.forEach(httpReq.response.headers.set);
     httpReq.response.write(jsonEncode(body));
+    httpReq.response.close();
+  }
+
+  /// 写出原始字节响应（content-type 可覆盖，默认 text/html）。
+  ///
+  /// 参数：
+  ///   [httpReq]      底层请求；
+  ///   [status]       HTTP 状态码；
+  ///   [rawBytes]     调用方已编码的响应字节；
+  ///   [contentType]  Content-Type 覆盖值，null 用 text/html；
+  ///   [extraHeaders] 附加响应头。
+  /// 返回：void；写出后关闭响应。
+  void _writeRaw(
+    HttpRequest httpReq,
+    int status,
+    List<int> rawBytes, {
+    String? contentType,
+    Map<String, String> extraHeaders = const {},
+  }) {
+    httpReq.response.statusCode = status;
+    httpReq.response.headers
+        .set(HttpHeaders.contentTypeHeader, contentType ?? 'text/html');
+    extraHeaders.forEach(httpReq.response.headers.set);
+    httpReq.response.add(rawBytes);
     httpReq.response.close();
   }
 }

@@ -35,6 +35,16 @@ class TestFixtures {
   /// 合法的 X-Device-Id（UUID v4）。
   static const String deviceId = '3f2504e0-4f89-41d3-9a0c-0305e82c3301';
 
+  /// UUID v4 形态正则（幂等键 / 交互 ID 兜底 / 设备 ID 共用唯一真源）。
+  ///
+  /// 形态口径同源契约 components/parameters/IdempotencyKey：
+  /// `^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`
+  /// （小写、带连字符、版本位 4、变体位 8/9/a/b）。测试侧需要校验生成值
+  /// 形态处一律引用本常量，禁止各抄一份正则字面量。
+  static final RegExp uuidV4Pattern = RegExp(
+    r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+  );
+
   /// 非法幂等键：大写 UUID（契约要求小写，服务端应回 40001）。
   static const String idempotencyKeyUppercase =
       '9B1DEB4D-3B7D-4BAD-9BDD-2B0D7B3DCB6D';
