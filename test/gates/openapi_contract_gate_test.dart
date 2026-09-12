@@ -15,22 +15,71 @@ import 'package:yaml/yaml.dart';
 
 import '../support/test_support.dart';
 
-/// 递归收集一个 YAML 节点下所有形如 `code: <int>` 的业务码。
+/// 深度优先遍历 YAML 节点树，对每个映射节点回调 [visit]。
 ///
-/// 功能：复用响应的错误码藏在 examples.*.value.code 与 example.code 里，
-/// 层级不固定，递归遍历最稳。
-/// 参数：[node] 任意 YAML 节点；[sink] 收集结果的集合。
-/// 返回：void，结果写入 [sink]。
-void collectCodes(Object? node, Set<int> sink) {
+/// 功能：YAML 递归骨架的唯一实现处（评审 #9：collectCodes 与 scanFormats
+/// 曾各写一套同构递归，骨架抄第 2 份即须收编，防遍历口径漂移）。
+/// 参数：[node] 任意 YAML 节点；[visit] 对每个 [YamlMap] 的回调。
+/// 返回：void（遍历副作用由回调承载）。
+void walkYaml(Object? node, void Function(YamlMap map) visit) {
   if (node is YamlMap) {
-    final code = node['code'];
-    if (code is int) sink.add(code);
+    visit(node);
     for (final v in node.nodes.entries) {
-      collectCodes(v.value, sink);
+      walkYaml(v.value, visit);
     }
   } else if (node is YamlList) {
     for (final v in node) {
-      collectCodes(v, sink);
+      walkYaml(v, visit);
+    }
+  }
+}
+
+/// 递归收集一个 YAML 节点下所有形如 `code: <int>` 的业务码。
+///
+/// 功能：复用响应的错误码藏在 examples.*.value.code 与 example.code 里，
+/// 层级不固定，遍历骨架委托 [walkYaml]。
+/// 参数：[node] 任意 YAML 节点；[sink] 收集结果的集合。
+/// 返回：void，结果写入 [sink]。
+void collectCodes(Object? node, Set<int> sink) {
+  walkYaml(node, (map) {
+    final code = map['code'];
+    if (code is int) sink.add(code);
+  });
+}
+
+/// 遍历所有操作的响应条目：解析 `$ref`、收集业务码，不可解析条目 fail-closed。
+///
+/// 唯一迭代骨架（复审 #8）：码对齐与 Retry-After 两条契约绑定断言共用；
+/// 第三条按操作判定的断言出现时不得再抄骨架（§1.1：骨架抄第 2 份即须收编）。
+/// fail-closed（复审 #2）：`$ref` 外部引用/错误前缀/组件键不存在时不得
+/// 静默 continue——记录到 [unresolvable] 由调用方 FAIL（与 OpenApiSpec.load
+/// 「判据对象不存在即失败」同口径）。
+///
+/// 参数：[spec] 已加载契约；[visit] 对每个成功解析的条目回调
+///       （操作、状态键原文、解析后的响应定义、承载的业务码集合）；
+///       [unresolvable] 输出参数，收集不可解析条目的可读描述。
+/// 返回：void。
+void forEachResolvedOperationResponse(
+  OpenApiSpec spec,
+  void Function(PathOperation op, String statusKey, YamlMap resolved,
+      Set<int> codes) visit,
+  List<String> unresolvable,
+) {
+  for (final op in spec.operations()) {
+    final responses = op.responses;
+    if (responses == null) continue;
+    for (final entry in responses.nodes.entries) {
+      final statusKey = entry.key.toString();
+      final resolved = resolveResponse(entry.value, spec.responses);
+      if (resolved == null) {
+        unresolvable.add('${op.method.toUpperCase()} ${op.path} 响应 $statusKey '
+            '不可解析（外部 \$ref / 错误前缀 / 组件键不存在）：'
+            '${entry.value}');
+        continue;
+      }
+      final codes = <int>{};
+      collectCodes(resolved, codes);
+      visit(op, statusKey, resolved, codes);
     }
   }
 }
@@ -84,11 +133,50 @@ void main() {
           reason: '40305 必须标注为后台专用，防止 App 端实现误返回该码');
     });
 
-    test('每个业务码前三位与其 HTTP 状态码对齐', () {
+    test('fixture 码表内部自洽：每个业务码前三位与其登记的 HTTP 状态一致', () {
+      // 本条只防 fixture 表自身抄错——表的两端都来自同一份硬编码，
+      // 自证循环不构成契约约束（评审 #3）；契约侧的真实约束由下一条
+      // 「契约绑定」断言承载。
       TestFixtures.codeToHttpStatus.forEach((code, http) {
         expect(code ~/ 100, http,
             reason: '业务码 $code 应对齐 HTTP $http（code 前 3 位即 HTTP 码）');
       });
+    });
+
+    test('每个操作响应示例的错误码与其 HTTP 状态键对齐（契约绑定，评审 #3）', () {
+      // 从契约出发：操作响应里实际承载的每个错误码，其前三位必须等于
+      // 该响应的数字状态键——fixture 表只经「示例承载集合」断言间接绑定契约，
+      // 本条是直接绑定。code=0 是成功通用码，仅在 2xx 状态键下合法（复审 #7：
+      // 非 2xx 响应承载 code=0 是「错误状态配成功码」的契约自相矛盾，记 bad）。
+      final bad = <String>[];
+      final unresolvable = <String>[];
+      var inspected = 0; // 实际检视的响应数（复审 #2：候选面为 0 时恒绿无信号）
+      forEachResolvedOperationResponse(spec, (op, statusKey, resolved, codes) {
+        final statusCode = int.tryParse(statusKey);
+        if (statusCode == null) return; // default 等非数字状态键不参与对齐
+        inspected++;
+        for (final code in codes) {
+          if (code == 0) {
+            if (statusCode >= 300) {
+              bad.add('${op.method.toUpperCase()} ${op.path} 响应 $statusCode '
+                  '示例承载 code=0（成功码不得出现在非 2xx 响应，复审 #7）');
+            }
+            continue;
+          }
+          if (code ~/ 100 != statusCode) {
+            bad.add('${op.method.toUpperCase()} ${op.path} 响应 $statusCode '
+                '示例承载 code=$code（前 3 位 ${code ~/ 100} ≠ $statusCode）');
+          }
+        }
+      }, unresolvable);
+      bad.addAll(unresolvable);
+      expect(inspected, greaterThan(0),
+          reason: '码对齐断言未检视任何响应（遍历失效或 \$ref 全不可解析）——'
+              '候选面为 0 时 PASS 是假阴性（复审 #2，同 G-Q3 seen>0 句式）。');
+      expect(bad, isEmpty,
+          reason: '操作响应示例中的错误码必须与其 HTTP 状态键对齐（code 前 3 位即 HTTP 码），'
+              '且每个 \$ref 必须可解析（复审 #2 fail-closed）：\n'
+              '${bad.join('\n')}');
     });
   });
 
@@ -98,12 +186,21 @@ void main() {
     /// 占位接口的 responses 形如 `{'200': {description: 占位...}}`，
     /// 不承载真实契约，故不参与「写接口必带幂等头」判定——
     /// 对未展开的接口要求参数声明，会把「还没写」误判为「写错了」。
-    /// 判据：x-batch 非 Batch1 且 200 响应无 content（未展开响应体）。
+    /// 判据：x-batch 非 Batch1 且【无任何 2xx 响应带 content】（未展开响应体）。
     bool isPlaceholder(PathOperation op) {
       final batch = op.raw['x-batch']?.toString() ?? '';
-      final ok = op.responses?['200'];
-      final hasContent = ok is YamlMap && ok['content'] != null;
-      return batch != 'Batch1' && !hasContent;
+      // 复审三 #6：只看 '200' 会把「已展开但以 201/204 承载成功」的写接口
+      // 误判为占位而 fail-open 跳过幂等头检查；204 本身无 content，但只要
+      // 任一 2xx（200/201）带 content 即视为已展开。
+      final responses = op.responses;
+      var has2xxContent = false;
+      responses?.nodes.forEach((key, value) {
+        final status = int.tryParse(key.toString());
+        if (status != null && status >= 200 && status < 300 && value is YamlMap) {
+          if (value['content'] != null) has2xxContent = true;
+        }
+      });
+      return batch != 'Batch1' && !has2xxContent;
     }
 
     // 幂等头豁免登记：只允许「无写入副作用」的 POST 登记于此。
@@ -189,6 +286,38 @@ void main() {
       expect(schema?['type'], 'integer');
       expect((schema?['minimum'] as int?) ?? 0, greaterThanOrEqualTo(1));
     });
+
+    test('携带 429xx/40105 的操作响应必须声明 Retry-After（评审 #8：内联不得绕过）', () {
+      // 组件级断言（上两条）只保证 TooManyRequests/Unauthorized 本体带头；
+      // 操作可以内联一个 429/401 响应绕过复用组件——本条按操作逐个判定：
+      // 状态键为 429（429xx 全段必带），或解析后示例码命中 retryAfterCodes
+      // （含 40105）的响应，其 headers 必须声明 Retry-After。
+      // 401 不按状态键一刀切：40101 令牌过期无需 Retry-After。
+      final bad = <String>[];
+      final unresolvable = <String>[];
+      var candidates = 0; // 实际判定的候选数（复审 #2：候选面为 0 时恒绿无信号）
+      forEachResolvedOperationResponse(spec, (op, statusKey, resolved, codes) {
+        final needByCode =
+            codes.intersection(TestFixtures.retryAfterCodes).isNotEmpty;
+        final needByStatus = statusKey == '429'; // 429xx 全段必带；401 仅 40105
+        if (!needByStatus && !needByCode) return;
+        candidates++;
+        final headers = resolved['headers'] as YamlMap?;
+        if (headers?['Retry-After'] == null) {
+          bad.add('${op.method.toUpperCase()} ${op.path} 响应 $statusKey '
+              '${needByCode ? '示例码命中 retryAfterCodes' : '429 全段必带'}'
+              '但未声明 Retry-After');
+        }
+      }, unresolvable);
+      bad.addAll(unresolvable);
+      expect(candidates, greaterThan(0),
+          reason: 'Retry-After 断言未判定任何候选（遍历失效或契约已无任何 '
+              '429xx/40105 承载）——候选面为 0 时 PASS 是假阴性（复审 #2）。');
+      expect(bad, isEmpty,
+          reason: '携带 429xx/40105 的响应必须回 Retry-After 整数秒（详设 §2.3），'
+              '且每个 \$ref 必须可解析（复审 #2 fail-closed）：\n'
+              '${bad.join('\n')}');
+    });
   });
 
   group('全局纪律 1/2：统一响应包', () {
@@ -236,21 +365,52 @@ void main() {
     test('契约中 date-time 字段使用 RFC3339（format: date-time）', () {
       // expire_at / created_at 等时间字段应通过 format: date-time 声明。
       final formats = <String>[];
-      void scanFormats(Object? node) {
-        if (node is YamlMap) {
-          if (node['format'] == 'date-time') formats.add(node.toString());
-          for (final v in node.nodes.entries) {
-            scanFormats(v.value);
-          }
-        } else if (node is YamlList) {
-          for (final v in node) {
-            scanFormats(v);
-          }
-        }
-      }
-      scanFormats(spec.schemas);
+      walkYaml(spec.schemas, (map) {
+        if (map['format'] == 'date-time') formats.add(map.toString());
+      });
       expect(formats, isNotEmpty,
           reason: '契约中没有任何 date-time 字段，时间纪律（RFC3339 UTC）无承载');
+    });
+  });
+
+  // 判据自检：resolveResponse 是两条契约绑定断言的检出链第一环，
+  // 其失声会让整道门恒绿（复审 #2），必须有独立单测。
+  group('resolveResponse 判据自检（复审 #2）', () {
+    test('内联响应定义原样返回', () {
+      final inline = loadYaml('{description: 直接定义}') as YamlMap;
+      expect(resolveResponse(inline, null), same(inline));
+    });
+
+    test('合法 \$ref 解析到 components/responses 本体', () {
+      final node = loadYaml(r"{$ref: '#/components/responses/NotFound'}")
+          as YamlMap;
+      final components =
+          loadYaml('{NotFound: {description: 组件本体}}') as YamlMap;
+      final resolved = resolveResponse(node, components);
+      expect(resolved, isNotNull);
+      expect(resolved!['description'], '组件本体');
+    });
+
+    test('链式 \$ref 逐层解析；外部/错误前缀/缺键/非映射返 null（fail-closed 由调用方判定）', () {
+      final components = loadYaml(
+          r'{Alias: {$ref: "#/components/responses/Real"}, Real: {description: 链式终点}}') as YamlMap;
+      final chained = loadYaml(r"{$ref: '#/components/responses/Alias'}")
+          as YamlMap;
+      expect(resolveResponse(chained, components)!['description'], '链式终点');
+      // 外部文件引用 → null
+      final external = loadYaml(r"{$ref: 'common.yaml#/components/responses/X'}")
+          as YamlMap;
+      expect(resolveResponse(external, components), isNull);
+      // 错误前缀（responses 少个 s）→ null
+      final typo = loadYaml(r"{$ref: '#/components/response/NotFound'}")
+          as YamlMap;
+      expect(resolveResponse(typo, components), isNull);
+      // 组件键不存在 → null
+      final missing = loadYaml(r"{$ref: '#/components/responses/Ghost'}")
+          as YamlMap;
+      expect(resolveResponse(missing, components), isNull);
+      // 非映射节点 → null
+      expect(resolveResponse('纯字符串', components), isNull);
     });
   });
 }

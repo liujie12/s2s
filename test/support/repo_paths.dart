@@ -35,6 +35,19 @@ final Directory deployScriptsDir = Directory(
   '${Platform.pathSeparator}scripts',
 );
 
+/// 取仓库内任意相对路径对应的 [File]。
+///
+/// 功能：路径拼接的唯一实现处——各测试不得再手写
+/// `'${repoRoot.path}${Platform.pathSeparator}...'`（评审 #12：
+/// 同一拼接逻辑出现 4 处即须收编，防分隔符处理漂移）。
+///
+/// 参数：[relPath] 相对仓库根的路径（`/` 分隔，内部归一化为平台分隔符）。
+/// 返回：[File] 指向该路径的文件对象（不保证存在，调用方自行判断）。
+File repoFile(String relPath) => File(
+      '${repoRoot.path}${Platform.pathSeparator}'
+      '${relPath.replaceAll('/', Platform.pathSeparator)}',
+    );
+
 /// 断言仓库关键文件存在。
 ///
 /// 功能：门禁测试在做任何扫描前先确认待判对象存在——

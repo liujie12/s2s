@@ -20,18 +20,11 @@
 # ============================================================================
 
 spring:
-  # --- JPA / Hibernate -------------------------------------------------------
-  jpa:
-    # dev 用 validate 而非 update：DDL 的唯一来源是 docs/database/ddl/ 下的
-    # 脚本（MySQL 容器首启自动执行）。让 Hibernate 自行改表会导致本地表结构
-    # 与 DDL 脚本悄悄分叉，到 staging 才暴露。validate 会在不一致时直接启动失败。
-    hibernate:
-      ddl-auto: validate
-    # dev 打开 SQL 打印便于排查慢查询与 N+1
-    show-sql: true
-    properties:
-      hibernate:
-        format_sql: true
+  # --- 持久层口径（KTD-2 + 编码规范 §4.9）--------------------------------------
+  # 本项目【禁用 JPA】：持久层为 MyBatis-Plus（KTD-2 定案，pom 不含 data-jpa/hibernate），
+  # 此处曾有的 spring.jpa.* 块已全部删除，不再残留任何 Hibernate 生效配置。
+  # schema 唯一管理者是应用内 Flyway migration（src/main/resources/db/migration{,_track}），
+  # 应用启动即自动校验并迁移，替代原 ddl-auto: validate 的一致性守门职责。
 
   # --- 连接池 ---------------------------------------------------------------
   datasource:
@@ -47,9 +40,9 @@ logging:
     root: INFO
     # 业务包开 DEBUG，便于本地跟踪调用链
     com.s2s: DEBUG
-    # 打印绑定参数（仅 dev；staging/prod 绝不可开 —— 参数里含手机号等
-    # 个人信息，开了等于把明文个信写进日志，直接违反门禁 G9）
-    org.hibernate.orm.jdbc.bind: TRACE
+    # 原 org.hibernate.orm.jdbc.bind: TRACE 已随 JPA 一并删除（KTD-2 禁 JPA）；
+    # 纪律保留：SQL 参数日志 staging/prod 绝不可开 —— 参数里含手机号等个人信息，
+    # 开了等于把明文个信写进日志，直接违反门禁 G9
 
 # --- Actuator ---------------------------------------------------------------
 management:
@@ -65,9 +58,10 @@ management:
 
 # --- 业务开关 ---------------------------------------------------------------
 s2s:
-  # dev 关闭真实 OSS 上传，走本地临时目录，避免污染线上桶且省流量
+  # dev 打开真实 OSS 上传（2026-09-09 起，直传到 s2s-bucket 真测媒体链路）；
+  # 凭证走 deploy/env/.env.dev（不入 git）。如需回退本地临时目录，改回 false 即可
   oss:
-    enabled: false
+    enabled: true
   # dev 关闭 LLM 真实调用，走桩数据，避免消耗 Token 配额
   llm:
     enabled: false

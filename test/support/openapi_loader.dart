@@ -126,3 +126,28 @@ class PathOperation {
     return parameters.any((p) => p[r'$ref'] == needle);
   }
 }
+
+/// 解析操作级响应定义：`$ref` 到 components/responses 的取组件本体，
+/// 内联定义的返回自身。
+///
+/// 与 [PathOperation.referencesParameter] 同层归拢（复审 #8）。
+/// 链式 `$ref` 循环解析（复审 #2）：组件响应自身仍是 `$ref` 时逐层跟进，
+/// 深度上限 8 防环；外部引用/错误前缀/查不到的组件键/超深一律返回
+/// null——调用方不得静默 continue，必须把不可解析条目记入失败集合
+/// （与 [OpenApiSpec.load]「判据对象不存在即失败」同口径）。
+///
+/// 参数：[node] 操作 responses 下的响应定义节点；
+///       [components] components/responses 表（[OpenApiSpec.responses]）。
+/// 返回：[YamlMap?] 解析后的响应定义；不可解析返回 null。
+YamlMap? resolveResponse(Object? node, YamlMap? components) {
+  var current = node;
+  for (var depth = 0; depth < 8; depth++) {
+    if (current is! YamlMap) return null;
+    final ref = current[r'$ref']?.toString();
+    if (ref == null) return current;
+    const prefix = '#/components/responses/';
+    if (!ref.startsWith(prefix)) return null;
+    current = components?[ref.substring(prefix.length)];
+  }
+  return null; // 超深（疑似成环）视为不可解析
+}

@@ -3,8 +3,13 @@
 /// 后端开工前，契约测试没有真实服务可打；本类用 [HttpServer] 在
 /// localhost 起一个最小服务，按「方法 + 路径」路由到测试登记的处理器，
 /// 让契约测试（统一包形态、错误码对齐、Retry-After、幂等头校验）
-/// 现在就能写、就能跑，后端就绪后把 baseUrl 换成真实地址即可，
-/// 断言一行不用改。
+/// 现在就能写、就能跑。后端就绪后以 `--dart-define=S2S_API_BASE_URL=<基址>`
+/// 直指真实服务；断言分两层——形态断言两模式共用，
+/// 值级断言（mock 桩字面值）仅 mock 模式成立（评审 #2）。
+///
+/// 诚实性红线（评审 #13）：mock 自身出错（路由未登记 / handler 异常）
+/// 必须返回**非信封体**——若伪装成合法 ApiError 信封，契约断言会把
+/// 「测试写错了」当「服务端契约行为」放过，测试失去自证能力。
 ///
 /// 设计取舍：不引入 dio_adapter / mockito。本服务只依赖 dart:io，
 /// 走的是真实 HTTP 栈（真实状态码、真实响应头、真实 gzip 协商），
@@ -171,8 +176,8 @@ typedef MockRouteHandler = FutureOr<MockResponse> Function(MockRequest req);
 /// ```dart
 /// final server = MockApiServer();
 /// server.stub('POST', '/api/v1/auth/login', (req) async { ... });
-/// await server.start();
-/// // 用 server.baseUrl 发真实 HTTP 请求
+/// final baseUrl = await server.start();
+/// // 用 start() 返回的基址发真实 HTTP 请求（本类无 baseUrl getter——评审 #15）
 /// await server.stop();
 /// ```
 class MockApiServer {
@@ -245,11 +250,10 @@ class MockApiServer {
 
     final handler = _routes[routeKey];
     if (handler == null) {
-      _writeJson(
-        httpReq,
-        501,
-        {'code': 50001, 'message': 'mock 未登记路由：$routeKey', 'data': null},
-      );
+      // 非信封体（评审 #13）：未登记路由是测试缺陷，不是服务端契约行为，
+      // 返回合法信封会让信封断言把测试错误当成契约行为放过。
+      _writePlain(httpReq, 501,
+          'MOCK ERROR: 未登记路由 $routeKey（测试缺陷：请先 stub()，非契约行为）');
       return;
     }
     try {
@@ -281,12 +285,22 @@ class MockApiServer {
         _writeJson(httpReq, resp.status, resp.body, extraHeaders: resp.headers);
       }
     } catch (e) {
-      _writeJson(
-        httpReq,
-        500,
-        {'code': 50001, 'message': 'mock handler 异常：$e', 'data': null},
-      );
+      // 非信封体（评审 #13）：handler 抛异常同样是测试缺陷。
+      _writePlain(
+          httpReq, 500, 'MOCK ERROR: handler 异常：$e（测试缺陷，非契约行为）');
     }
+  }
+
+  /// 写出纯文本响应（mock 自身错误专用，刻意不是统一信封——评审 #13）。
+  ///
+  /// 参数：[httpReq] 原始请求；[status] HTTP 状态码；[text] 错误说明。
+  /// 返回：void；dio 收到 text/plain 后无法按 Map 解码，
+  /// 任何信封形态断言会立即失败——测试缺陷当场暴露，不被放过。
+  void _writePlain(HttpRequest httpReq, int status, String text) {
+    httpReq.response.statusCode = status;
+    httpReq.response.headers.contentType = ContentType.text;
+    httpReq.response.write(text);
+    httpReq.response.close();
   }
 
   /// 写出 JSON 响应（统一 content-type）。
