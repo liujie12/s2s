@@ -225,26 +225,9 @@ Dio buildNetworkDio({
   Future<void> Function(Duration duration)? retrySleeper,
   double Function()? retryRandomRatio,
 }) {
-  // const 生产配置的构造期无法做运行时守卫，装配期补做（KTD8）。
-  NetworkConfig.assertReleaseHttps(
-    baseUrl: config.baseUrl,
-    isRelease: config.isRelease,
-  );
+  _assertConfig(config);
 
-  final dio = Dio(
-    BaseOptions(
-      baseUrl: config.baseUrl,
-      // KTD2：任何 HTTP 状态都不交给 dio 自动抛 badResponse，统一进
-      // EnvelopeInterceptor.onResponse 先拆信封再分流（R8）。
-      validateStatus: (_) => true,
-      // R12：超时只引常量真源 NfrNetwork，不复制字面量（详设 §0.1）。
-      connectTimeout: Duration(seconds: NfrNetwork.connectTimeoutSec),
-      receiveTimeout: Duration(seconds: NfrNetwork.readTimeoutSec),
-      // 请求/响应均按 JSON 处理；非 JSON（网关 HTML）由 dio 原样返回
-      // String，EnvelopeInterceptor 的非 Map 分流负责（R8）。
-      responseType: ResponseType.json,
-    ),
-  );
+  final dio = Dio(_networkBaseOptions(config));
 
   // 拦截器顺序按详设 §11.1 定死（发出向）：
   //   1. Header → 2. Gzip → 3. Envelope → 4. AuthRefresh → 5. Retry。
@@ -287,6 +270,40 @@ Dio buildNetworkDio({
   return dio;
 }
 
+/// 装配期配置守卫（评审 #3：业务 dio 与续期 dio 共用唯一一处）。
+///
+/// const 生产配置的构造期无法做运行时守卫（KTD8），两个装配函数都必须
+/// 在构造 dio 前补做；集中一处避免守卫漂移（如 release-https 开关
+/// 将来加分支时漏改续期 dio）。
+///
+/// 参数：[config] 网络配置（基址 + release 态）。
+/// 返回：void；守卫不通过时由 [NetworkConfig.assertReleaseHttps] 抛错。
+void _assertConfig(NetworkConfig config) {
+  NetworkConfig.assertReleaseHttps(
+    baseUrl: config.baseUrl,
+    isRelease: config.isRelease,
+  );
+}
+
+/// 业务 dio 与续期 dio 共用的基础选项（评审 #3：唯一字面量处）。
+///
+/// 两栈的超时/信封/JSON 口径必须逐字一致（KTD2：任何 HTTP 状态都不交给
+/// dio 自动抛 badResponse，统一进 EnvelopeInterceptor 先拆信封再分流；
+/// R8：非 JSON 网关 HTML 由 dio 原样返回 String 走非 Map 分流），
+/// 复制两份会让续期请求与业务请求的传输行为悄悄漂移。
+///
+/// 参数：[config] 网络配置。
+/// 返回：[BaseOptions] 超时只引 [NfrNetwork] 常量真源（详设 §0.1）。
+BaseOptions _networkBaseOptions(NetworkConfig config) {
+  return BaseOptions(
+    baseUrl: config.baseUrl,
+    validateStatus: (_) => true,
+    connectTimeout: Duration(seconds: NfrNetwork.connectTimeoutSec),
+    receiveTimeout: Duration(seconds: NfrNetwork.readTimeoutSec),
+    responseType: ResponseType.json,
+  );
+}
+
 /// RetryInterceptor 生产默认退避等待：真实 [Future.delayed]。
 ///
 /// 参数：[duration] 退避时长（Retry-After 整数秒或抖动后的退避表值）。
@@ -325,19 +342,8 @@ Dio buildRefreshDio({
   required NetworkConfig config,
   required NetworkHooks hooks,
 }) {
-  NetworkConfig.assertReleaseHttps(
-    baseUrl: config.baseUrl,
-    isRelease: config.isRelease,
-  );
-  final dio = Dio(
-    BaseOptions(
-      baseUrl: config.baseUrl,
-      validateStatus: (_) => true,
-      connectTimeout: Duration(seconds: NfrNetwork.connectTimeoutSec),
-      receiveTimeout: Duration(seconds: NfrNetwork.readTimeoutSec),
-      responseType: ResponseType.json,
-    ),
-  );
+  _assertConfig(config);
+  final dio = Dio(_networkBaseOptions(config));
   // 共享同一组拦截器实现处：HeaderInterceptor 注入旧 Token 与三头，
   // EnvelopeInterceptor 先拆信封再判 code（refresh 失败同样以信封
   // ApiException 抛出，由 AuthRefreshInterceptor 三分流，R10）。
