@@ -22,10 +22,13 @@
 ///         不复制 1/2/20 字面量）；
 ///   场景 8  嵌套终止证明：持续失败 3 请求 + 调用方恰好一次终局错误 +
 ///         终局错误 extra 计数 == retryMaxCount + 无 unhandled exception；
-///   场景 9  与 AuthRefresh 同链共存：40101→refresh 成功→重放成功时
+///   场景 9  与 AuthRefresh 同链共存：40101 -> refresh 成功 -> 重放成功时
 ///         RetryInterceptor 零介入（业务 2/refresh 1/0 sleep）；refresh
 ///         瞬时失败（50001）时重试的是**原业务请求**（每轮再吃 40101
-///         后单飞字段已复位会再续期），固化实际连锁行为。
+///         后单飞字段已复位会再续期），固化实际连锁行为；refresh 成功
+///         但重放持续 50001 时，重放链不得自开重试预算，错误交回首发
+///         链外层唯一循环（GET/POST 各一：业务恰 4 请求、sleep 恰 2 次、
+///         两键全程逐字沿用，详设 §14.1 全链路 2 次硬口径，评审 #1）。
 ///
 /// 全部走 MockApiServer 真实 HTTP 栈（R9：不用假 dio httpAdapter），
 /// 等待经注入 sleeper 记录（测试禁止真睡 1–2 秒，flaky 零容忍）。
@@ -689,6 +692,105 @@ void main() {
         expectedJitteredBackoff(1, 0),
         expectedJitteredBackoff(2, 0),
       ]);
+    });
+
+    test('GET：refresh 成功但重放持续 50001 —— 重放链不自开预算，'
+        '错误交回首发链外层唯一循环（业务恰 4 请求、sleep 恰 2 次）',
+        () async {
+      harness.token = 'jwt-old-fake';
+      harness.sessionEpoch = 1;
+      harness.stubRefreshSuccess();
+      // 仅首发（携带旧 Token）返 40101；续期成功后的全部重放（携带新
+      // Token）恒定返信封 50001，命中 autoRetry 但必须只花首发链预算。
+      harness.stub('GET', '$_apiPrefix$_readPath', (request) async {
+        if (request.header('authorization') == 'Bearer jwt-old-fake') {
+          return MockResponse(
+            status: 401,
+            body: ApiEnvelope.failure(
+              ApiErrorCode.unauthorized.code,
+              '登录已失效，请重新登录',
+              requestId: 'req_401_once_get',
+            ),
+          );
+        }
+        return MockResponse(
+          status: 500,
+          body: ApiEnvelope.failure(
+            ApiErrorCode.internalError.code,
+            '服务繁忙，请稍后重试',
+            requestId: 'req_500_replay_get',
+          ),
+        );
+      });
+
+      final raw = await captureRawError(getEcho);
+
+      expect(asApiError(raw).code, ApiErrorCode.networkFailure,
+          reason: '首发链外层循环耗尽后按 §12.2 归一为 networkFailure');
+      expect(readRequests().length, 4,
+          reason: '1 首发（40101）+ 1 续期重放 + 外层仅 2 次重试；'
+              '续期重放链不得自开内层重试预算（评审 #1，最坏不得放大）');
+      final refreshCount = harness.server.received
+          .where((request) =>
+              request.method == 'POST' &&
+              request.path.startsWith('$_apiPrefix/auth/token/refresh'))
+          .length;
+      expect(refreshCount, 1, reason: '仅首发触发一次单飞续期，重放 50001 不续期');
+      expect(recordedSleeps.length, NfrNetwork.retryMaxCount,
+          reason: '退避只由首发链外层唯一循环发出（恰 2 次），重放链零 sleep');
+      // 让出事件轮排空，确认没有迟到的放大请求（评审 #1 最坏 10 请求）。
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(readRequests().length, 4, reason: '终止后不得再有迟到的第 5 请求');
+    });
+
+    test('POST：refresh 成功但重放持续 50001 —— 业务恰 4 请求、sleep 恰 2 次、'
+        'Idempotency-Key 与 X-Interaction-Id 全程逐字沿用', () async {
+      harness.token = 'jwt-old-fake';
+      harness.sessionEpoch = 1;
+      harness.stubRefreshSuccess();
+      harness.stub('POST', '$_apiPrefix$_writePath', (request) async {
+        if (request.header('authorization') == 'Bearer jwt-old-fake') {
+          return MockResponse(
+            status: 401,
+            body: ApiEnvelope.failure(
+              ApiErrorCode.unauthorized.code,
+              '登录已失效，请重新登录',
+              requestId: 'req_401_once_post',
+            ),
+          );
+        }
+        return MockResponse(
+          status: 500,
+          body: ApiEnvelope.failure(
+            ApiErrorCode.internalError.code,
+            '服务繁忙，请稍后重试',
+            requestId: 'req_500_replay_post',
+          ),
+        );
+      });
+
+      final raw = await captureRawError(
+        () => postWrite(idempotencyKey: TestFixtures.idempotencyKey),
+      );
+
+      expect(asApiError(raw).code, ApiErrorCode.networkFailure);
+      final requests = writeRequests();
+      expect(requests.length, 4,
+          reason: '1 首发（40101）+ 1 续期重放 + 外层 2 次重试，无链式放大');
+      final interactionHeaders = requests
+          .map((request) => request.header('x-interaction-id'))
+          .toSet();
+      expect(interactionHeaders, {_interactionId},
+          reason: 'X-Interaction-Id 四个请求逐字相同（含续期重放与外层重试）');
+      final idempotencyKeys = requests
+          .map((request) => request.header('idempotency-key'))
+          .toSet();
+      expect(idempotencyKeys, {TestFixtures.idempotencyKey},
+          reason: 'Idempotency-Key 四个请求逐字相同，重放/重试不得换新');
+      expect(recordedSleeps.length, NfrNetwork.retryMaxCount,
+          reason: '退避只由首发链外层循环发出，重放链不重复 sleep');
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(writeRequests().length, 4, reason: '无迟到放大请求');
     });
   });
 

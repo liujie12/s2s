@@ -45,8 +45,24 @@
 ///     被外层循环的 catch 捕获，内层**绝不 sleep、绝不二次 fetch**；
 ///   - 外层循环以 `attempt`（1..retryMaxCount）为硬上界：sleep→fetch→
 ///     catch→再判定，attempt 到顶后构造终局错误一次性拒绝，不再有调度；
-///   - 故全链路请求数恒为 1 + retryMaxCount（持续失败恰 3 次），嵌套
-///     栈深有界（最深 = retryMaxCount 层），无第四次请求、无无限递归。
+///   - 故无续期重放时全链路请求数恒为 1 + retryMaxCount（持续失败恰 3
+///     次），嵌套栈深有界（最深 = retryMaxCount 层），无第四次请求、无
+///     无限递归。
+///
+/// 续期重放为何是第三种标记（评审 #1，§14.1 全链路 2 次硬口径）：
+/// AuthRefreshInterceptor 续期成功后也用 `dio.fetch` 重放原始请求，那是
+/// 又一条全新拦截器链；其末端本类的 onError 是**同拦截器的另一次调用**，
+/// 局部 attempt 从 0 起，且重放 options 不带本类 [retryInnerDispatchExtraKey]
+/// （那是 Retry 自己 fetch 才置的标记）。若不加区分地自开外层循环，重放
+/// 失败先花一份预算、错误冒泡回首发链 onError 再开一份，最坏放大为
+/// 1 + 1 + 2 + 2×3 = 10 个业务请求。故约定：
+///   - 重放 options 置 [AuthRefreshInterceptor.authReplayDispatchExtraKey]；
+///   - 重放链上的本次 onError 见该标记**不自开循环**，直接 next 把错误
+///     抛回 AuthRefresh 的 `await fetch`；
+///   - AuthRefresh catch 剥离该标记后 reject 回**首发链**，首发链本次
+///     onError 见不到标记，按唯一外层循环计数。
+/// 故「refresh 成功 + 重放持续失败」时请求数恒为 1 首发 + 1 重放 +
+/// retryMaxCount 次外层重试（恰 4 次），sleep 仅由首发链外层发出 2 次。
 ///
 /// R16 日志白名单：本文件不产生任何日志输出（无标准/调试打印、无 dio
 /// 日志拦截器、无 developer 日志调用）；不读取请求头与请求（响应）体
@@ -59,6 +75,7 @@ import 'package:dio/dio.dart';
 import '../../../nfr_constants.dart';
 import '../api_error_code.dart';
 import '../api_exception.dart';
+import 'auth_refresh_interceptor.dart';
 
 /// 全链路唯一自动重试拦截器（链序第 5 位）。
 class RetryInterceptor extends Interceptor {
@@ -140,14 +157,27 @@ class RetryInterceptor extends Interceptor {
       return;
     }
 
+    // ②b 续期重放不自开预算（评审 #1）：本错误来自 AuthRefreshInterceptor
+    //    续期成功后经 dio.fetch 发起的重放（见其 authReplayDispatchExtraKey
+    //    注释：dio.fetch 重走全链，本次 onError 是同拦截器的另一次调用，
+    //    局部计数从 0 起）。此处若自开 _runOuterRetryLoop，会与首发链外层
+    //    循环形成嵌套预算，最坏放大为 10 个请求（§14.1 全链路 2 次被击穿）。
+    //    故重放链不 sleep、不 fetch，直接把错误沿 error 链抛出——本类是
+    //    重放链最后一个 error 拦截器，错误在 AuthRefreshInterceptor._replay
+    //    的 await fetch 处被接住，其 catch 剥离 auth_replay_dispatch 标记后
+    //    reject 回**首发链**；首发链本次 onError 见不到该标记，按下方 ④
+    //    正常进入唯一外层循环计数。
+    if (options.extra[AuthRefreshInterceptor.authReplayDispatchExtraKey] ==
+        true) {
+      handler.next(err);
+      return;
+    }
+
     // ③ 链尾唯一归一点（KTD10）：非 ApiException 的纯传输层 DioException
     //    （超时/连接拒绝/connectionError 等）包装为 networkFailure；
     //    已是 ApiException 的（信封业务错误、U5 归一后的 refresh 瞬时
     //    失败）原样取，绝不二次包装、不丢 requestId/retryAfterSec。
-    final Object? carrier = err.error;
-    final ApiException apiError = carrier is ApiException
-        ? carrier
-        : _wrapTransportError(err);
+    final ApiException apiError = _apiErrorFrom(err);
 
     // ④ 行为表驱动：仅 autoRetry 才重试；其余（限流提示/强制重取/
     //    确定性失败/续期分流等）一律原样放行，本拦截器零介入。
@@ -198,10 +228,7 @@ class RetryInterceptor extends Interceptor {
           handler.reject(_asOuterError(replayError), true);
           return;
         }
-        final Object? innerCarrier = replayError.error;
-        final normalized = innerCarrier is ApiException
-            ? innerCarrier
-            : _wrapTransportError(replayError);
+        final normalized = _apiErrorFrom(replayError);
         // 非可重试行为（如重放收到 429/40903/parseError）：立即以该
         // 错误落调用方，不花完剩余预算——重试只会复现确定性失败。
         if (normalized.code.behavior != ErrBehavior.autoRetry) {
@@ -334,6 +361,20 @@ class RetryInterceptor extends Interceptor {
     final outerExtra = Map<String, dynamic>.of(options.extra)
       ..remove(retryInnerDispatchExtraKey);
     return options.copyWith(extra: outerExtra);
+  }
+
+  /// 从 [DioException.error] 载体取出业务异常；非 [ApiException] 载体
+  /// （纯传输层超时/连接拒绝等）归一为 networkFailure（KTD10）。
+  ///
+  /// 已是 ApiException 的（信封业务错误、U5 归一后的 refresh 瞬时失败）
+  /// 原样返回，绝不二次包装、不丢 requestId/retryAfterSec。onError 与
+  /// 外层循环 catch 共用本方法（评审 #6：carrier 归一只此一处）。
+  ///
+  /// 参数：[err] 上游或重放 fetch 抛出的 DioException。
+  /// 返回：[ApiException] 原样业务异常或 networkFailure 形态异常。
+  ApiException _apiErrorFrom(DioException err) {
+    final Object? carrier = err.error;
+    return carrier is ApiException ? carrier : _wrapTransportError(err);
   }
 
   /// 纯传输层错误归一为 networkFailure（KTD10 链尾唯一归一点）。

@@ -137,6 +137,21 @@ class AuthRefreshInterceptor extends Interceptor {
   /// 40101（新 Token 也无效），不再二次续期，原样失败（防循环，场景 4）。
   static const String authRetriedExtraKey = 'auth_refresh_retried';
 
+  /// RequestOptions.extra 中「本错误来自续期成功后的重放 fetch」标记键
+  /// （评审 #1：防重试预算链式放大）。
+  ///
+  /// 为什么需要它：[_replay] 经 `dio.fetch` 重走全链，重放链末端的
+  /// RetryInterceptor 是同拦截器的**另一次** onError 调用，局部重试计数
+  /// 从 0 起；若不区分，重放遇 5xx/传输失败时重放链会自开一份重试预算，
+  /// 错误冒泡回首发起后外层循环再开一份，单次业务请求最坏放大为 10 个
+  /// 请求（详设 §14.1「全链路总共 2 次」被击穿）。RetryInterceptor 见此
+  /// 标记必须不自起外层循环，直接把错误交回**首发链**外层唯一循环。
+  ///
+  /// 该标记仅存活于重放 fetch 链路；[_replay] 的 catch 在把错误交还链尾
+  /// 前必剥离它（与 RetryInterceptor 剥离自身 inner 标记同构），使落
+  /// 首发链外层循环的错误形态是「普通已续期重放失败」，可正常计数重试。
+  static const String authReplayDispatchExtraKey = 'auth_replay_dispatch';
+
   /// 错误方向：只处理「已拆信封的业务 40101」，其余错误原样透传。
   ///
   /// 参数：
@@ -359,8 +374,10 @@ class AuthRefreshInterceptor extends Interceptor {
   ///   - EnvelopeInterceptor/GzipInterceptor 同样重新生效，重放响应
   ///     与首发响应经过完全相同的解包路径，调用方拿到的形态一致。
   ///
-  /// 重放只在 extra 增加已续期标记（[authRetriedExtraKey]），不改写
-  /// headers map、不改 query/data/方法/路径（场景 2/3）。
+  /// 重放在 extra 增加两个标记：已续期（[authRetriedExtraKey]，防重放仍
+  /// 40101 时二次续期）与重放调度（[authReplayDispatchExtraKey]，告知
+  /// 重放链上的 RetryInterceptor「预算已由首发链外层持有，不得自开循环」，
+  /// 评审 #1）；不改写 headers map、不改 query/data/方法/路径（场景 2/3）。
   ///
   /// 参数：
   ///   [options] 原始请求配置（40101 错误携带的同一对象）；
@@ -371,7 +388,8 @@ class AuthRefreshInterceptor extends Interceptor {
     ErrorInterceptorHandler handler,
   ) async {
     final replayExtra = Map<String, dynamic>.of(options.extra)
-      ..[authRetriedExtraKey] = true;
+      ..[authRetriedExtraKey] = true
+      ..[authReplayDispatchExtraKey] = true;
     final replayOptions = options.copyWith(extra: replayExtra);
     try {
       // fetch 从链首重走全部拦截器（KTD4）；CancelToken 沿用原对象，
@@ -381,11 +399,36 @@ class AuthRefreshInterceptor extends Interceptor {
       // 重放响应完成原始请求，后续 error 拦截器（U6 Retry）自然不再介入。
       handler.resolve(response);
     } on DioException catch (replayError) {
-      // 重放失败（含重放仍 40101）：标记已在 extra 中，若错误再流到
-      // 本拦截器会走「已重放」分支直接失败，不二次续期；此处先把错误
-      // 交给链尾（U6 上线后由其按行为表决定重试与否）。
-      handler.reject(replayError, true);
+      // 重放失败（含重放仍 40101）：auth_retried 已在 extra 中，若错误再
+      // 流到本拦截器会走「已重放」分支直接失败，不二次续期。交还链尾前
+      // 必须剥离 auth_replay_dispatch 标记：该标记只用于抑制**重放链内**
+      // Retry 的自开循环；剥离后首发链 Retry 见到的是普通 autoRetry 失败，
+      // 由其外层唯一循环按全链路 2 次预算计数重试（评审 #1）。
+      handler.reject(_stripReplayDispatchMarker(replayError), true);
     }
+  }
+
+  /// 把重放链抛出的错误还原为「普通已续期重放失败」形态：保留
+  /// [authRetriedExtraKey]（防二次续期）与计数等其余 extra，仅剔除
+  /// [authReplayDispatchExtraKey]（评审 #1，与 RetryInterceptor 剥离自身
+  /// inner 标记同构）。
+  ///
+  /// 参数：[replayError] 重放 fetch 抛出（并经重放链拦截器 reject）的错误。
+  /// 返回：[DioException] 携带剥离后请求配置的同类错误；原本无标记则原样返回。
+  DioException _stripReplayDispatchMarker(DioException replayError) {
+    final replayOptions = replayError.requestOptions;
+    if (!replayOptions.extra.containsKey(authReplayDispatchExtraKey)) {
+      return replayError;
+    }
+    final outerExtra = Map<String, dynamic>.of(replayOptions.extra)
+      ..remove(authReplayDispatchExtraKey);
+    return DioException(
+      requestOptions: replayOptions.copyWith(extra: outerExtra),
+      response: replayError.response,
+      type: replayError.type,
+      error: replayError.error,
+      stackTrace: replayError.stackTrace,
+    );
   }
 
   /// 以 [ApiException] 构造 reject 用的 [DioException]（与
