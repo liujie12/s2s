@@ -537,7 +537,7 @@ void main() {
       }
     });
 
-    test('refresh 收 40303（403 段）：同属认证类，清会话、writeToken 0、不重放',
+    test('refresh 收 40303（403 段）：同属认证类，清会话 1 次、writeToken 0、不重放',
         () async {
       stubBusinessAlwaysUnauthorized();
       harness.stubRefreshFailure(40303, requestId: 'req_refresh_403');
@@ -552,6 +552,47 @@ void main() {
       expect(harness.writeTokenCallCount, 0);
       expect(businessRequests().length, 1, reason: '不重放');
       expect(refreshCallCount(), 1);
+    });
+
+    test('评审 #4：清会话回调抛错不击穿「leader Future 永不抛」红线，'
+        '认证裁决不变、无 unhandled、单飞字段照常复位', () async {
+      stubBusinessAlwaysUnauthorized();
+      harness.stubRefreshFailure(
+        ApiErrorCode.unauthorized.code,
+        requestId: 'req_refresh_auth_fail_throw',
+      );
+      // 注入可失败的清会话 I/O（模拟将来接 POST /auth/logout + 持久化清理）：
+      // 裁决在调用清会话前已定，回调失败必须被吞掉、不得改变分流结论。
+      harness.clearSessionOverride = () async {
+        throw StateError('模拟本地会话持久化清理失败');
+      };
+
+      final apiError = await captureApiError(
+        () => postBusiness('itx-u5-clear-throw', _idempotencyKeyFor(0)),
+      );
+
+      expect(apiError.code, ApiErrorCode.unauthorized,
+          reason: '挂起请求保留各自原始 40101，清会话失败不改认证裁决');
+      expect(apiError.requestId,
+          'req_401_${_idempotencyKeyFor(0)}',
+          reason: '不得因清会话抛错而替换成 refresh/清理异常');
+      expect(harness.clearSessionCallCount, 1, reason: '清会话确实被尝试 1 次');
+
+      // 让出事件轮：共享 Future 若以异常完成，flutter test 会在此期间以
+      // unhandled exception 直接判失败（235-251 行「leader Future 永不抛」）。
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+
+      // 单飞字段必须照常复位：清会话失败不应永久占用/毒化后续 40101 续期。
+      harness.clearSessionOverride = null;
+      harness.stubRefreshSuccess();
+      final replayOutcome = await captureApiError(
+        () => postBusiness('itx-u5-clear-recover', _idempotencyKeyFor(1)),
+      );
+      // 业务桩恒定 40101：续期成功后重放仍 40101（场景 4 形态），关键是
+      // 第二次 40101 确实重新发起了续期（refresh 计数 +1），证明字段复位。
+      expect(replayOutcome.code, ApiErrorCode.unauthorized);
+      expect(refreshCallCount(), 2,
+          reason: '首轮清会话抛错后单飞字段必须复位，允许下一轮重新续期');
     });
   });
 
@@ -643,6 +684,29 @@ void main() {
       expect(businessRequests().length, 3,
           reason: '首发 + 2 次重试，预算全花在原业务请求上（§14.1）');
       expect(refreshCallCount(), 3, reason: '每轮业务 40101 各重新单飞续期一次');
+    });
+
+    test('评审 #13：refresh 信封 50301（非 500 段）同样归一 networkFailure，'
+        '不回落「保留原码」兜底分支', () async {
+      stubBusinessAlwaysUnauthorized();
+      harness.stubRefreshFailure(
+        ApiErrorCode.aiUnavailable.code,
+        requestId: 'req_refresh_503',
+      );
+
+      final apiError = await captureApiError(
+        () => postBusiness('itx-u5-503', _idempotencyKeyFor(0)),
+      );
+
+      expect(apiError.code, ApiErrorCode.networkFailure,
+          reason: '50301 行为表为 autoRetry，必须与 50001 同走瞬时失败归一，'
+              '不得落兜底保留 50301 原码（与 Retry 唯一判定口径一致）');
+      expect(apiError.requestId, isNull,
+          reason: '归一为新构造的 networkFailure，不透 refresh fixture requestId');
+      expect(harness.clearSessionCallCount, 0, reason: '5xx 不清会话');
+      expect(harness.writeTokenCallCount, 0);
+      expect(businessRequests().length, 3, reason: '同 50001：首发 + 2 次业务重试');
+      expect(refreshCallCount(), 3);
     });
 
     test('refresh 传输层连接拒绝：leader 收敛 networkFailure、不清会话、'

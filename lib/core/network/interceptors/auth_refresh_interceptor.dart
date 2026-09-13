@@ -315,8 +315,18 @@ class AuthRefreshInterceptor extends Interceptor {
 
   /// 分类续期业务异常，并在认证类失败时由 leader 唯一一次清会话（R10）。
   ///
+  /// 清会话异常收敛（评审 #4）：[verdict] 在调用 [_clearSession] **之前**
+  /// 已分类落定，清会话是认证失败后的副作用而非判定输入；其回调将来要接
+  /// `POST /auth/logout` 与持久化清理（皆可失败 I/O）。一旦抛出，本方法
+  /// 运行在 [_runRefreshAsLeader] 的 `on ApiException` catch 中，async 下
+  /// `return` 一个会抛错的 Future 不会被同一 catch 再捕获，会击穿
+  /// [_joinOrStartRefresh]「leader Future 永不抛、无 unhandled」红线，还会
+  /// 把挂起请求的 40101 替换成清理异常。故清会话失败只吞错、不改判（会话
+  /// 是否真清干净由 UI watch / 下次请求的 40101 兜底），裁决与单飞复位
+  /// 都不受影响。
+  ///
   /// 参数：[apiError] 续期响应信封解析出的业务异常。
-  /// 返回：[RefreshVerdict] 分流结论。
+  /// 返回：[RefreshVerdict] 分流结论（与清会话成功与否无关）。
   Future<RefreshVerdict> _classifyAndClearOnAuthFailure(
     ApiException apiError,
   ) async {
@@ -325,19 +335,29 @@ class AuthRefreshInterceptor extends Interceptor {
       // 认证类失败（旧 Token 已不可续期）：清空本地会话，UI 侧 watch
       // 会话态跳登录。仅 leader 走到本方法（挂起方只 await 结论），
       // 故全客户端调用次数恒为 1（场景 5）。
-      await _clearSession();
+      try {
+        await _clearSession();
+      } on Object {
+        // 见方法注释（评审 #4）：清会话是失败后的副作用，抛错不改变认证
+        // 裁决，也不得逃逸为 leader 共享 Future 的异常（红线）。R16：此处
+        // 不落任何日志（错误对象可能含持久化实现细节），吞错即「按已尽力
+        // 清理」处理，后续 40101 会再次驱动收敛。
+      }
     }
     return verdict;
   }
 
   /// 按错误码把续期自身的 [ApiException] 归入三（四）分流（R10）。
   ///
-  /// 判定只引用 [ApiErrorCode] 既有枚举与「码对齐 HTTP（code ~/ 100）」
-  /// 不变量，禁止自造码表（编码规范 §3.2）：
+  /// 判定只引用 [ApiErrorCode] 既有枚举、其 [ApiErrorCode.behavior] 行为表
+  /// 与「码对齐 HTTP（code ~/ 100）」不变量，禁止自造码表（编码规范
+  /// §3.2）；与 RetryInterceptor 唯一重试判定同源（评审 #13，不再另写
+  /// `httpClass == 500` 段算术而漏掉 50301/50302/50303）：
   ///   - 401 段（含 40101）/403 段：认证类失败 → 清会话；
   ///   - 429 段：限流 → 不清会话，带 retryAfterSec 透传；
-  ///   - 5xx 与本地 networkFailure(-1)：瞬时失败 → 不清会话，归一为
-  ///     networkFailure 供 U6 行为表驱动重试；
+  ///   - 行为表 [ErrBehavior.autoRetry] 集合（50001/50301/50302/50303 与
+  ///     本地 networkFailure(-1)）：瞬时失败 → 不清会话，归一为
+  ///     networkFailure 供 RetryInterceptor 行为表驱动重试；
   ///   - 其余（40001/409xx/41001/parseError 等确定性失败）：不清会话，
   ///     原样透传 refresh 的异常。
   ///
@@ -352,7 +372,7 @@ class AuthRefreshInterceptor extends Interceptor {
     if (httpClass == 429) {
       return RefreshRateLimitedVerdict(refreshError: apiError);
     }
-    if (httpClass == 500 || code == ApiErrorCode.networkFailure.code) {
+    if (apiError.code.behavior == ErrBehavior.autoRetry) {
       return RefreshTransientVerdict(
         refreshError: ApiException(
           code: ApiErrorCode.networkFailure,
