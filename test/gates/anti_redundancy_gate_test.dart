@@ -510,7 +510,26 @@ void main() {
   });
 
   group('守护断言：真实 lib/ 零命中（编码规范 §1.3）', () {
+    /// 扫描面文件数基线（评审 #10：空目录/扫不到文件时 violations 恒空，
+    /// 只断 isEmpty 的守门是假阴性）。新增 Dart 文件只增不减，缩小即说明
+    /// 扫描根或枚举方式坏了，必须显式更新基线并说明原因。
+    const int featuresDartFileBaseline = 32;
+
+    /// lib/ 全部 Dart 文件数基线（同上，评审 #10）。
+    const int libDartFileBaseline = 54;
+
     test('lib/features/ 无 for/while 循环重试（详设 §14.2）', () {
+      // 先断言扫描面非空且不小于基线（部署 §14.5：先断言待判对象存在），
+      // 否则 glob 根写错/目录被清空时 violations 恒空，守门假绿。
+      final scanned = _dartFilesUnder(featuresDir);
+      expect(scanned, isNotEmpty,
+          reason: 'lib/features/ 下扫不到任何 .dart：扫描面为空，'
+              '零命中结论无效（评审 #10）');
+      expect(scanned.length, greaterThanOrEqualTo(featuresDartFileBaseline),
+          reason: 'features .dart 文件数少于基线 $featuresDartFileBaseline：'
+              '可能是扫描根/枚举方式被破坏导致漏扫（评审 #10）；'
+              '确属正常删文件时同步更新基线。');
+
       final violations = scanLoopRetryViolations(featuresDir);
       expect(violations, isEmpty,
           reason: 'features 域发现循环重试（详设 §14.2：RetryInterceptor 是全局唯一重试点，'
@@ -520,6 +539,15 @@ void main() {
     });
 
     test('lib/ 无 values.byName（详设 §10.3）', () {
+      final scanned = _dartFilesUnder(libDir);
+      expect(scanned, isNotEmpty,
+          reason: 'lib/ 下扫不到任何 .dart：扫描面为空，零命中结论无效'
+              '（评审 #10）');
+      expect(scanned.length, greaterThanOrEqualTo(libDartFileBaseline),
+          reason: 'lib .dart 文件数少于基线 $libDartFileBaseline：'
+              '可能是扫描根/枚举方式被破坏导致漏扫（评审 #10）；'
+              '确属正常删文件时同步更新基线。');
+
       final violations = scanValuesByNameViolations(libDir);
       expect(violations, isEmpty,
           reason: 'lib/ 发现 values.byName（详设 §10.3：枚举一律 switch 显式映射，'

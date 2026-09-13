@@ -105,18 +105,22 @@ void main() {
       // 墙钟是 3s 收紧档的唯一可观测证据：3 次尝试 × 3s ≈ 9s。
       // 下界 7s 与「3 次全局 10s（≈30s）」和「1 次 10s」都拉开 2.8s+
       // 余量（fakeAsync 无法驱动真实 HttpClient 的 IO 超时，只能真等）。
+      // 上界 28s（评审 #9）：真 IO 超时在慢机/CI 高负载下有调度漂移，
+      // 原 14s 上界距期望值仅 ~5s，慢机易假红；放宽到 28s 仍与 30s
+      // （误走全局 10s × 3）保持区分，timeout 相应放到 40s 留收尾余量。
       expect(elapsed.inMilliseconds, greaterThanOrEqualTo(7000),
           reason: '3 次尝试各等满 3s 读超时，墙钟应 ≈9s；明显偏小说明'
               '超时未触发或重试次数不足');
-      expect(elapsed.inMilliseconds, lessThan(14000),
-          reason: '用例超时 15s 内留 1s 收尾余量');
+      expect(elapsed.inMilliseconds, lessThan(28000),
+          reason: '上界 28s：防慢机/CI 调度漂移假红，同时排除误走全局 '
+              '10s 档（3 次 ≈30s）');
 
       // 快请求：同一端点带 3s 覆盖选项时正常成功。
       final ok = await harness.dio.get<Object?>('/map/pins',
           options: mapPinsOptions());
       expect(ok.statusCode, 200);
       expect(ok.data, isNotNull);
-    }, timeout: const Timeout(Duration(seconds: 15)));
+    }, timeout: const Timeout(Duration(seconds: 40)));
   });
 
   group('KTD8 release-https 快速失败注入缝（两态各一测）', () {
