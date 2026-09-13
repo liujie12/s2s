@@ -27,6 +27,7 @@ import 'package:dio/dio.dart';
 
 import '../api_error_code.dart';
 import '../api_exception.dart';
+import '../retry_after_header.dart';
 
 /// 统一信封解包拦截器。
 ///
@@ -170,7 +171,9 @@ EnvelopeResult unwrapEnvelope(Response<dynamic> response) {
         code: mapped,
         message: message ?? '',
         requestId: requestId,
-        retryAfterSec: _parseRetryAfterSeconds(response),
+        retryAfterSec: parseRetryAfterHeader(
+          response.headers.value(retryAfterHeaderName),
+        ),
       ),
     );
   }
@@ -197,28 +200,21 @@ ApiException _nonEnvelopeFailure(Response<dynamic> response, Object? body) {
   if (statusCode >= 500) {
     // 主构造而非 parse 工厂：networkFailure 的 message 含 HTTP 状态码，
     // 长度天然受限（不携带原始 body），无需 parse 截断路径。
+    // 评审 #7：网关/反代直出 5xx 也可能带 Retry-After（如维护中 503），
+    // 必须与信封失败分支同源透传，否则自动重试退回默认退避、丢失服务端
+    // 等待指令；解析与信封分支共用唯一纯函数。
     return ApiException(
       code: ApiErrorCode.networkFailure,
       message: '非信封响应（HTTP $statusCode，body 类型 $bodyKind），'
           '按上游不可用处理',
+      retryAfterSec: parseRetryAfterHeader(
+        response.headers.value(retryAfterHeaderName),
+      ),
     );
   }
   return ApiException.parse(
     '非信封响应（HTTP $statusCode，body 类型 $bodyKind），协议不符',
   );
-}
-
-/// 解析 `Retry-After` 响应头为整数秒（§11.3 第三条易错点）。
-///
-/// 服务端约定是整数秒而非 HTTP-date：按 [int.tryParse] 解析，失败回退
-/// null（调用方据此退回 §14 默认退避表），解析头本身**永不抛异常**。
-///
-/// 参数：[response] 原始响应。
-/// 返回：[int?] 整数秒；头缺失或非整数时为 null。
-int? _parseRetryAfterSeconds(Response<dynamic> response) {
-  final raw = response.headers.value('retry-after');
-  if (raw == null) return null;
-  return int.tryParse(raw.trim());
 }
 
 /// 把信封中可空的字符串字段安全取出，类型不符时抛 [ApiException.parse]。

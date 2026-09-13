@@ -424,6 +424,39 @@ void main() {
       expect(recordedSleeps.every((d) => d.inMilliseconds % 1000 == 0),
           isTrue);
     });
+
+    // 评审 #8：Retry-After 巨值/负值只在「自动重试 sleep」点钳制
+    // （解析纯函数与 429 段 UI 倒计时保持服务端原始值）。
+    test('Retry-After: 999999999 巨值 → 两次等待均钳到上界常量（不挂死 Timer）',
+        () async {
+      stubReadFlaky(retryAfter: '999999999');
+
+      final raw = await captureRawError(getEcho);
+      expect(asApiError(raw).code, ApiErrorCode.networkFailure);
+      expect(readRequests().length, 3);
+      expect(
+        recordedSleeps,
+        <Duration>[
+          Duration(seconds: NfrNetwork.retryAfterMaxSec),
+          Duration(seconds: NfrNetwork.retryAfterMaxSec),
+        ],
+        reason: '异常响应头不得把自动重试 Timer 挂起数年：sleep 点夹到 '
+            'NfrNetwork.retryAfterMaxSec（评审 #8）',
+      );
+    });
+
+    test('Retry-After: -5 负值 → 两次等待均夹为 0（立即重试，不依赖平台负 Duration 语义）',
+        () async {
+      stubReadFlaky(retryAfter: '-5');
+
+      final raw = await captureRawError(getEcho);
+      expect(asApiError(raw).code, ApiErrorCode.networkFailure);
+      expect(
+        recordedSleeps,
+        <Duration>[Duration.zero, Duration.zero],
+        reason: '负值不是「立即重试」的合法表达但不应产生负等待，夹 0（评审 #8）',
+      );
+    });
   });
 
   group('场景 4：429 段不自动重试（R14，promptWithRetryAfter 用户显式操作）',

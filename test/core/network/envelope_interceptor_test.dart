@@ -17,9 +17,9 @@ import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:zhaoyazhao/core/network/api_client.dart';
 import 'package:zhaoyazhao/core/network/api_error_code.dart';
 import 'package:zhaoyazhao/core/network/api_exception.dart';
+import 'package:zhaoyazhao/core/network/interceptors/envelope_interceptor.dart';
 
 import '../../support/network_chain_harness.dart';
 import '../../support/test_support.dart';
@@ -217,6 +217,65 @@ void main() {
       } on Object catch (error) {
         expect(harness.apiErrorOf(error).retryAfterSec, 90);
       }
+    });
+  });
+
+  // 评审 #7：非信封 5xx（网关直出 HTML）原先漏传 retryAfterSec，自动
+  // 重试因此丢失服务端等待指令。终局错误按设计不带 retryAfterSec（端到端
+  // 只断言得到 networkFailure），故在 unwrapEnvelope 纯函数层直接断言
+  // 首次分流的携带值。
+  group('非信封 5xx 也携带 Retry-After（评审 #7）', () {
+    /// 构造一个非信封原始响应并解包。
+    ///
+    /// 参数：
+    ///   [statusCode] HTTP 状态码；
+    ///   [retryAfter] Retry-After 头值，null 不带头；
+    ///   [data]       非 Map 的原始响应体。
+    /// 返回：[ApiException] 解包失败形态。
+    ApiException unwrapRaw(
+      int statusCode, {
+      String? retryAfter,
+      Object? data = '<html>upstream</html>',
+    }) {
+      final headers = <String, List<String>>{
+        if (retryAfter != null) 'retry-after': <String>[retryAfter],
+      };
+      final response = Response<dynamic>(
+        requestOptions: RequestOptions(path: '/raw'),
+        statusCode: statusCode,
+        data: data,
+        headers: Headers.fromMap(headers),
+      );
+      final result = unwrapEnvelope(response);
+      final error = result.apiError;
+      if (error == null) {
+        throw TestFailure('非信封响应必须解包为失败形态');
+      }
+      return error;
+    }
+
+    test('HTML 503 + Retry-After: 30 → networkFailure 且 retryAfterSec=30',
+        () {
+      final error = unwrapRaw(503, retryAfter: '30');
+      expect(error.code, ApiErrorCode.networkFailure);
+      expect(error.retryAfterSec, 30,
+          reason: '网关维护中 503 的等待指令必须透传，自动重试才能'
+              '优先于默认退避表遵守它（评审 #7）');
+      expect(error.message, contains('503'));
+    });
+
+    test('HTML 502 不带头 → networkFailure 且 retryAfterSec=null（退退避表）',
+        () {
+      final error = unwrapRaw(502);
+      expect(error.code, ApiErrorCode.networkFailure);
+      expect(error.retryAfterSec, isNull, reason: '无头是正常态，退回默认退避表');
+    });
+
+    test('HTML 503 + 非整数头 → retryAfterSec=null，解析不抛', () {
+      final error = unwrapRaw(503, retryAfter: 'soon');
+      expect(error.code, ApiErrorCode.networkFailure);
+      expect(error.retryAfterSec, isNull,
+          reason: '非信封路径与信封路径共用唯一解析纯函数（评审 #7）');
     });
   });
 }

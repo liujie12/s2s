@@ -261,9 +261,20 @@ class RetryInterceptor extends Interceptor {
   /// 返回：[Duration]：[retryAfterSecond] 非空（含 0 = 服务端要求立即
   ///   重试）时精确使用整数秒、不抖动；否则退避基数 × (1 ± 抖动比例)，
   ///   毫秒向下取整（详设 §14.1，公式与测试期望同源，不复制字面量）。
+  ///
+  /// Retry-After 夹取（评审 #8）：解析纯函数只忠实返回原始整数（429 段
+  /// UI 倒计时需要原始值，可能合法地大于自动等待上界）；**自动重试
+  /// sleep 是本类独有的「无人值守等待」语义**，在此夹到
+  /// [0, NfrNetwork.retryAfterMaxSec]：负值夹 0（不依赖「负 Duration
+  /// 视同 0」的平台行为），巨值夹上界（防异常响应头把 Timer 挂起数年）。
   Duration _delayBeforeAttempt(int attempt, int? retryAfterSecond) {
     if (retryAfterSecond != null) {
-      return Duration(seconds: retryAfterSecond);
+      final clamped = retryAfterSecond < 0
+          ? 0
+          : (retryAfterSecond > NfrNetwork.retryAfterMaxSec
+              ? NfrNetwork.retryAfterMaxSec
+              : retryAfterSecond);
+      return Duration(seconds: clamped);
     }
     final baseSec = attempt == 1
         ? NfrNetwork.backoffFirstSec
