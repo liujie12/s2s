@@ -7,11 +7,16 @@
 /// `{code, message, requestId?, retryAfterSec?}`
 /// 与 §11.3 `unwrap` 的构造形状逐字对齐。
 ///
-/// 保留 [ApiException.parse] 兼容构造的理由（KTD1）：§10.4 批次 3 处既有
-/// 调用点（`lib/domain/listing_category.dart` × 2、
-/// `lib/features/discovery/discovery_filter.dart` × 1）以
-/// `ApiException.parse(message)` 形态抛出，兼容构造保这些调用表达式零改动。
-/// 退役条件：auth 条目接线时迁移全部调用点并删除本构造，届时回写规范。
+/// [ApiException.parse] 是 [ApiErrorCode.parseError] 的**规范工厂构造**，
+/// 永久保留（评审 #12 订正：早期注释误标为「待退役的兼容构造」）。全部解析
+/// 失败抛出点只准走该工厂，禁止内联
+/// `ApiException(code: ApiErrorCode.parseError, ...)` —— 统一入口保证
+/// message 必经 [_truncateParseMessage] 截断、口径单一（编码规范 §1.1）。
+/// 现有 12 处生产调用点：`core/network` 9 处（`api_error_code.dart` ×1、
+/// `api_client.dart` ×4、`interceptors/auth_refresh_interceptor.dart` ×1、
+/// `interceptors/envelope_interceptor.dart` ×3）、
+/// `domain/listing_category.dart` ×2、
+/// `features/discovery/discovery_filter.dart` ×1；新增解析失败点同走本工厂。
 ///
 /// **循环 import 说明**：见 `api_error_code.dart` 文件头，同一份说明。
 library;

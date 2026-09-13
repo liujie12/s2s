@@ -38,7 +38,9 @@ const Uuid _uuid = Uuid();
 
 /// 把会话态/隐私同意态/设备标识/UUID 生成器焊接为 core [NetworkHooks]。
 ///
-/// 返回：[NetworkHooks] 四回调均在**调用时**经 `ref.read` 实时取值：
+/// 返回：[NetworkHooks] 七回调（U3 四：readToken/readPrivacyConsented/
+///   readDeviceId/newUuidV4；U5 三：writeToken/onSessionCleared/
+///   readSessionEpoch）均在**调用时**经 `ref.read` 实时取值：
 ///   登录态/同意态变化不需要重建 dio（HeaderInterceptor 每请求调回调），
 ///   故这里用 read 而非 watch——hooks 对象本身无状态，无需随态重建。
 final Provider<NetworkHooks> wiredNetworkHooksProvider =

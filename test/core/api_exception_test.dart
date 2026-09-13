@@ -6,10 +6,10 @@
 ///    `{code, message, requestId?, retryAfterSec?}` 四字段与 §11.3 构造
 ///    形状逐字对齐；旧失败分类枚举退役，`parseError` 语义由
 ///    `ApiErrorCode.parseError(-2)` 吸收（KTD1）。
-/// 2. `ApiException.parse` 兼容构造是 §10.4 批次 3 处既有调用点
-///    （`listing_category.dart` × 2、`discovery_filter.dart` × 1）零改动的
-///    唯一保障 —— 本组测试逐字复刻那 3 处调用表达式形态，签名一变这里
-///    立刻编译失败，比「跑一遍应用看看」可靠。
+/// 2. `ApiException.parse` 是 parseError 的规范工厂构造、永久保留
+///    （评审 #12 订正：非「待退役兼容构造」）；现有 12 处生产调用点
+///    （core/network 9、domain 2、features 1）统一经它抛出，签名一变
+///    这里立刻编译失败，比「跑一遍应用看看」可靠。
 /// 3. `parseError` 的 message 有定长上限（R5）：解析失败最常见于服务端
 ///    返了非契约 body，若 message 吞进原始 body 全文，日志与报错弹窗会
 ///    被大体积 body 灌爆（编码规范 §4.11 日志纪律的客户端落地）。
@@ -46,7 +46,7 @@ void main() {
     });
   });
 
-  group('ApiException.parse 兼容构造（KTD1）', () {
+  group('ApiException.parse 规范工厂（评审 #12）', () {
     test('产生 code=parseError，requestId/retryAfterSec 为 null', () {
       final exception = ApiException.parse('未知 post_type: supply');
       expect(exception.code, ApiErrorCode.parseError);
@@ -54,10 +54,10 @@ void main() {
       expect(exception.retryAfterSec, isNull);
     });
 
-    test('逐字复刻 §10.4 批次 3 处既有调用点表达式形态', () {
-      // listing_category.dart × 2 与 discovery_filter.dart × 1 的调用表达式。
-      // 签名若变（如改成命名参数或加必填参），本组立即编译失败 ——
-      // 这正是「lib 侧调用点零改动」的可执行断言。
+    test('12 处生产调用点共用的单参数 String 表达式形态保持稳定', () {
+      // 代表性复刻 domain ×2 与 features ×1 的调用表达式（另 9 处在
+      // core/network，同形态）。签名若变（如改成命名参数或加必填参），
+      // 本组立即编译失败 —— 这是「全部解析失败点单一入口」的可执行断言。
       final fromPostType = ApiException.parse('未知 post_type: supply');
       final fromCompactCode = ApiException.parse('未知 type 码: 2');
       final fromRadius = ApiException.parse('未知 radius: 20');
