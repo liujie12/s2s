@@ -302,6 +302,13 @@ paths:
         详见 info.description 第 5 节——refresh 自身 40101/403 段才清会话；429 段不清会话、
         透传 `Retry-After`；网络失败/5xx 不清会话、异常透传。本端点由独立 dio 调用，
         仅挂请求头注入与信封拆包两个拦截器，不挂续期/重试拦截器。
+
+        响应键语义子集（评审 #2，2026-09-14 补形式契约）：400 = 请求形态非法（如缺
+        Authorization 头，40001）；403 = 服务端按策略拒绝续期；429 = 触发频控/熔断，
+        复用 TooManyRequests 组件且必带 `Retry-After`，本端点不清会话。复用组件按全仓
+        惯例「组件列全部可能码、端点按语义子集实现」：Unauthorized 组件中的 40105、
+        Forbidden 组件中的 40301–40305 是组件全集，refresh 实际只返回其中语义子集，
+        不为此端点拆专用响应组件。
       parameters:
         - $ref: '#/components/parameters/XInteractionId'
         - $ref: '#/components/parameters/XDeviceId'
@@ -326,7 +333,10 @@ paths:
                             type: string
                             format: date-time
                             description: 新 Token 到期时间（服务端为准）
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   /auth/logout:
