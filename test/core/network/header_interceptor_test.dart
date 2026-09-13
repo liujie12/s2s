@@ -13,6 +13,7 @@
 library;
 
 import 'package:dio/dio.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../support/network_chain_harness.dart';
@@ -189,6 +190,50 @@ void main() {
       await harness.dio.get<Object?>('/echo');
       expect(harness.server.received[1].header('x-device-id'),
           TestFixtures.deviceId);
+    });
+  });
+
+  // 评审 #5：onRequest 注释承诺「任何注入失败不应阻断请求（按未取得处理，
+  // 宁可不注入）」，但四个注入步骤原为裸 await——本地存储/平台通道故障会
+  // 直接击穿请求链，被 Retry 当网络故障重试放大。以下两条用例经 harness
+  // override 缝注入故障，断言 fail-open：请求仍发出、缺失头按未取得处理、
+  // 无重试放大。
+  group('注入步骤 fail-open（评审 #5）', () {
+    test('readDeviceId 平台通道抛 PlatformException 时请求照常发出、'
+        '无 X-Device-Id、后续步骤与重试均不受影响（POST）', () async {
+      harness.privacyConsented = true;
+      harness.deviceId = TestFixtures.deviceId;
+      harness.readDeviceIdOverride = () async {
+        throw PlatformException(code: 'channel_invalid', message: 'test #5');
+      };
+
+      final req = await echoRequest('POST', '/echo');
+
+      expect(harness.server.received, hasLength(1),
+          reason: '注入失败按未取得处理，请求必须照常发出且不触发重试放大');
+      expect(req.headers.containsKey('x-device-id'), isFalse,
+          reason: '设备 ID 读取失败按未取得处理：键不存在，而非半写状态');
+      expect(req.header('idempotency-key'), isNotNull,
+          reason: '设备 ID 步骤失败不阻断后续幂等键注入步骤');
+      expect(req.header('x-interaction-id'), isNotNull,
+          reason: '设备 ID 步骤失败不影响其前已完成的交互 ID 兜底');
+    });
+
+    test('readToken 本地存储抛异常时请求照常发出且无 Authorization 键（GET）',
+        () async {
+      harness.token = 'token-A';
+      harness.readTokenOverride = () async {
+        throw StateError('token store unavailable (test #5)');
+      };
+
+      final req = await echoRequest('GET', '/echo');
+
+      expect(harness.server.received, hasLength(1),
+          reason: 'Authorization 读取失败按未登录处理，不阻断、不重试');
+      expect(req.headers.containsKey('authorization'), isFalse,
+          reason: 'token 未取得：Authorization 键不得出现（非空串、非旧值）');
+      expect(req.header('x-interaction-id'), isNotNull,
+          reason: '第一步失败不阻断其余注入步骤');
     });
   });
 }

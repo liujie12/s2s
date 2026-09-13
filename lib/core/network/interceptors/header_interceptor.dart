@@ -20,6 +20,8 @@
 /// TrackReporter 类注释中，不在本拦截器特判。
 library;
 
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 
 import '../api_client.dart';
@@ -56,18 +58,40 @@ class HeaderInterceptor extends Interceptor {
   /// 参数：
   ///   [options] 本次请求配置（headers 已含调用方透传值，拦截器只补缺）；
   ///   [handler] dio 拦截器处理器，注入完成后调用 `handler.next`。
-  /// 返回：[void]（异步）；不抛业务异常，任何注入失败不应阻断请求
-  ///   （token/设备 ID 读取异常按「未取得」处理，纪律上宁可不注入）。
+  /// 返回：[void]（异步）；**fail-open（评审 #5）**：四个注入步骤逐个
+  ///   经 [_failOpen] 隔离，任一步骤的本地存储/平台通道故障（如
+  ///   readDeviceId 的 PlatformException）只按「该头未取得」处理，
+  ///   绝不击穿请求链——否则异常会被 RetryInterceptor 误判为网络传输
+  ///   故障重试放大，且一个非网络头缺失不应阻止请求发出。故障不打日志
+  ///   （core 无日志缝，R16 同口径），靠「键不存在」的下游行为自证。
   @override
   Future<void> onRequest(
     RequestOptions options,
     RequestInterceptorHandler handler,
   ) async {
-    await _rewriteAuthorization(options);
-    _ensureInteractionId(options);
-    await _injectDeviceIdIfConsented(options);
-    _injectIdempotencyKeyForWrite(options);
+    await _failOpen(() => _rewriteAuthorization(options));
+    _failOpen(() => _ensureInteractionId(options));
+    await _failOpen(() => _injectDeviceIdIfConsented(options));
+    _failOpen(() => _injectIdempotencyKeyForWrite(options));
     handler.next(options);
+  }
+
+  /// 执行单个注入步骤并吞掉其全部异常（评审 #5 fail-open 唯一落点）。
+  ///
+  /// 为什么吞 `Object` 而非细分异常类型：注入步骤的故障源是本地存储与
+  /// 平台通道（shared_preferences/MethodChannel），故障形态不可枚举，
+  /// 且此处语义是「尽力注入、失败按未取得」——区分故障类型不改变处理
+  /// 动作，反而会漏掉未预料的故障形态让请求重新被击穿。
+  ///
+  /// 参数：[step] 单个注入步骤（同步或异步）。
+  /// 返回：[Future<void>] 正常完成；步骤抛错时以正常完成返回，
+  ///   已注入的头保留、失败步骤对应的头缺省。
+  Future<void> _failOpen(FutureOr<void> Function() step) async {
+    try {
+      await step();
+    } on Object {
+      // 按「未取得」继续：不打日志（无日志缝）、不重抛。
+    }
   }
 
   /// 每次重写 `Authorization`（§11.2 唯一例外项）。

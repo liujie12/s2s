@@ -120,6 +120,14 @@ class NetworkChainHarness {
   /// onSessionCleared 受控覆盖：非 null 时在默认计数之外额外执行。
   Future<void> Function()? clearSessionOverride;
 
+  /// readToken 受控覆盖（评审 #5：模拟 token 本地存储读取故障，
+  /// 非 null 时替代默认的「返回 [token]」）。
+  Future<String?> Function()? readTokenOverride;
+
+  /// readDeviceId 受控覆盖（评审 #5：模拟设备标识平台通道抛
+  /// PlatformException，非 null 时替代默认的「返回 [deviceId]」）。
+  Future<String?> Function()? readDeviceIdOverride;
+
   /// UUID v4 生成调用计数（详设 §11.1.1 第 3 断言：重试链路只生成一次；
   /// 收口在 U6，U3 先提供计数通道）。
   int uuidCallCount = 0;
@@ -319,9 +327,17 @@ class NetworkChainHarness {
   /// 返回：[NetworkHooks] 回调集。
   NetworkHooks _stateBackedHooks() {
     return NetworkHooks(
-      readToken: () async => token,
+      // override 在 start() 之后由用例赋值，故在闭包执行时读字段，
+      // 不做构造期固化（与 onSessionCleared 同模式）。
+      readToken: () async {
+        final override = readTokenOverride;
+        return override != null ? override() : token;
+      },
       readPrivacyConsented: () async => privacyConsented,
-      readDeviceId: () async => deviceId,
+      readDeviceId: () async {
+        final override = readDeviceIdOverride;
+        return override != null ? override() : deviceId;
+      },
       newUuidV4: () {
         final value = _fixedUuidForCall(uuidCallCount);
         uuidCallCount++;
