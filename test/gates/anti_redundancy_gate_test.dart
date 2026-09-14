@@ -51,7 +51,8 @@
 ///     `lib/core/network/api_exception.dart` 文件头登记的调用点清单）。
 ///     文件头人工清单会漂移，判据 C 用机器计数锁定：
 ///     - C1：剥离后的 `lib/` 全量文本中 `ApiException.parse(` 命中数恒为
-///       [parseFactoryTotalBaseline]（工厂定义自身 1 + 生产调用点 12 = 13）；
+///       [parseFactoryTotalBaseline]（工厂定义自身 1 + 生产调用点 23 = 24，
+///       23 含 category_dto.dart 11 处，[124] B1）；
 ///       新增/删除调用点必须同改基线与 api_exception.dart 文件头清单；
 ///     - C2：`ApiException(` 构造调用中出现 `ApiErrorCode.parseError` 实参
 ///       的内联构造，全 `lib/` 只允许 api_exception.dart 工厂定义体内 1 处，
@@ -772,15 +773,18 @@ void main() {
     /// 扫描面文件数基线（评审 #10：空目录/扫不到文件时 violations 恒空，
     /// 只断 isEmpty 的守门是假阴性）。新增 Dart 文件只增不减，缩小即说明
     /// 扫描根或枚举方式坏了，必须显式更新基线并说明原因。
-    const int featuresDartFileBaseline = 32;
+    const int featuresDartFileBaseline = 34;
 
     /// lib/ 全部 Dart 文件数基线（同上，评审 #10）。
-    /// 55 = 54 + dispatch_markers.dart（#1 反冗余重构新增共享文件）。
-    const int libDartFileBaseline = 55;
+    /// 57 = 55 + category_dto.dart + category_repository.dart（[124] B1
+    /// category 域接线新增两文件）。
+    const int libDartFileBaseline = 57;
 
-    /// `ApiException.parse(` 命中总数基线（判据 C1）：工厂定义 1 + 调用 12。
+    /// `ApiException.parse(` 命中总数基线（判据 C1）：工厂定义 1 + 调用 23。
+    /// 23 = 12（既有）+ 11（category_dto.dart：level 范围 1 + 解析助手 10，
+    /// 字段校验收敛在文件内私有助手，见该文件尾注释）。
     /// 新增/删除解析失败抛出点时，与 api_exception.dart 文件头清单同改。
-    const int parseFactoryTotalBaseline = 13;
+    const int parseFactoryTotalBaseline = 24;
 
     test('lib/features/ 无 for/while 循环重试（详设 §14.2，判据 A1）', () {
       // 先断言扫描面非空且不小于基线（部署 §14.5：先断言待判对象存在），
