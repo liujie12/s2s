@@ -4,26 +4,60 @@
 ///       详设 §10.3（枚举一律 `switch` 显式映射，禁 `values.byName`）、
 ///       编码规范 §1.3（反冗余验收口径：两处静态扫描零命中）。
 ///
-/// 两道判据的机器口径（唯一权威定义，与用例双向锁定）：
+/// 三道判据的机器口径（唯一权威定义，与用例双向锁定）：
 ///
-///   判据 A（features 循环重试，详设 §14.2）：
+///   判据 A1（features 循环重试，详设 §14.2）：
 ///     在词法剥离后的 `lib/features/` 代码上定位每个 `for`/`while` 语句，
 ///     循环头圆括号配对后提取循环体（`{...}` 块；无花括号时取至下一个 `;`
 ///     的单语句），循环体文本命中网络调用形态正则
-///     `\.(get|post|patch|put|delete|fetch)\s*\(` 即判违规。
+///     `\.(get|post|patch|put|delete|fetch|request)\s*\(` 即判违规。
 ///     为什么是这个口径（§14.2「不出现 retry 相关循环」的保守机器化）：
 ///     - features 域唯一需要在循环体内发网络请求的形态就是重试/重放——
 ///       正常批量请求走 forEach / Future.wait 或单发，不写 for 循环；
 ///     - 普通 for 循环（集合变换、字符串拼装）循环体无网络调用形态，天然不命中；
 ///     - do-while 的循环体在 `while` 关键字之前，本判据提取到的是空语句，
 ///       永不误报（代价：do-while 重试是已知漏报面，存量为零，漏报向由
-///       for/while 变异用例兜底）。
+///       for/while 变异用例兜底）；
+///     - `request` 是 dio 的泛型请求入口（`dio.request(...)`），与其余 HTTP
+///       动词同属网络调用，补入白名单（评审 #3）。
+///
+///   判据 A2（features 递归重试，详设 §14.2 的形态补漏，评审 #3）：
+///     循环不是重试的唯一写法——`Future.delayed` 后调用自身函数（递归重试）
+///     完全绕过 A1 的循环头检测。A2 在同一份剥离文本上按函数定义切分，
+///     一个函数体**同时**满足三条即判违规：
+///       (1) 函数体内含网络调用形态（同 A1 的 [_networkCallPattern]）；
+///       (2) 函数体内出现自身函数名的调用（排除 `class/method/if/for/...`
+///           控制关键字，且排除声明位置本身——靠闭括号后字符区分声明/调用）；
+///       (3) 函数体内出现重试驱动信号：[`Future.delayed`] / `catch (`
+///           子句 / `.catchError(` 链三者任一。
+///     三条件合取而非单看自调用的原因（保守不误报）：
+///     - 游标分页递归（`nextCursor -> fetchPage(next)`）有 (1)+(2) 但无
+///       (3)：走 `.then` 串联、无延迟无 catch，天然不命中；
+///     - 普通递归遍历有 (2) 但无网络调用，不命中；
+///     - 非递归函数里调别人的同名方法不可能（同名即自身或本类方法，后者的
+///       调用形态带选择子，裸名调用在函数体内指向自身声明）。
+///     已知漏报面（存量为零，变异用例兜底已覆盖形态）：表达式体函数
+///     （`=>`）的自调用检测覆盖（体取至下一分号），但跨表达式的复杂级联
+///     递归不做完整解析；`Future<T>.delayed` 带类型参数写法不命中
+///     （[Future.delayed] 为绝大多数用法）；terse tear-off 形态
+///     （`then(load)`）不计自调用。
 ///
 ///   判据 B（`values.byName`，详设 §10.3）：
 ///     同一份词法剥离文本上，正则 `\bvalues\.byName\b` 零命中。
 ///     `byName` 在服务端新增枚举值时抛异常，必须显式 `switch` + `default` 降级。
 ///
-///   词法剥离口径（两判据共用 [stripDartTrivia]）：
+///   判据 C（解析失败统一入口，编码规范 §1.1/§1.2，评审 #5）：
+///     `ApiException.parse(` 是 `parseError` 的唯一规范工厂（见
+///     `lib/core/network/api_exception.dart` 文件头登记的调用点清单）。
+///     文件头人工清单会漂移，判据 C 用机器计数锁定：
+///     - C1：剥离后的 `lib/` 全量文本中 `ApiException.parse(` 命中数恒为
+///       [parseFactoryTotalBaseline]（工厂定义自身 1 + 生产调用点 12 = 13）；
+///       新增/删除调用点必须同改基线与 api_exception.dart 文件头清单；
+///     - C2：`ApiException(` 构造调用中出现 `ApiErrorCode.parseError` 实参
+///       的内联构造，全 `lib/` 只允许 api_exception.dart 工厂定义体内 1 处，
+///       多一处理应失败（绕开工厂即绕开 message 截断统一口径）。
+///
+///   词法剥离口径（各判据共用 [stripDartTrivia]）：
 ///     输出与输入等长。`//` 行注释与 `/* */` 块注释（含嵌套）替换为空格——
 ///     注释中出现 `values.byName`、`dio.get(` 等字样不算违规；
 ///     字符串静态文本（单/双/三引号、raw 串）替换为空格——字符串内容不参与判定；
@@ -55,16 +89,58 @@ import '../support/repo_paths.dart';
 /// 关键字之前，提取到的是空语句，永不误报（见文件头判据口径）。
 final RegExp _loopHeadPattern = RegExp(r'\b(?:for|while)\s*\(');
 
-/// 网络调用形态正则（判据 A 循环体命中条件）：带点方法调用形态的 HTTP 动词。
+/// 网络调用形态正则（判据 A1/A2 命中条件）：带点方法调用形态的 HTTP 动词。
 ///
 /// 为什么只抓带点形态：dio 的全部请求入口是方法调用（`dio.get(...)`），
 /// 裸 `fetch(` 会误报普通函数名——保守不误报优先，漏报向由变异用例兜底。
 /// `.getString(` 等更长的方法名不匹配（`get` 后须紧跟 `(`）。
+/// `request` 是 dio 泛型请求入口（`dio.request(...)`），与命名动词等价
+/// （评审 #3）。
 final RegExp _networkCallPattern =
-    RegExp(r'\.(get|post|patch|put|delete|fetch)\s*\(');
+    RegExp(r'\.(get|post|patch|put|delete|fetch|request)\s*\(');
 
 /// `values.byName` 正则（判据 B）：词边界防 `xvalues.byName` / `values.byNameX` 误命中。
 final RegExp _valuesByNamePattern = RegExp(r'\bvalues\.byName\b');
+
+/// 函数/方法声明候选正则（判据 A2）：取「名字(」形态，名字首字符小写或下划线。
+///
+/// 候选后用闭括号之后的字符区分**声明**与**调用**（[_isDeclarationSite]）：
+/// 控制结构（if/for/while/switch/catch/return/...）在 [_controlKeywords]
+/// 中整体剔除，类名（大写起首）不匹配，故命中的小写名即为函数/方法声明。
+final RegExp _functionHeadPattern = RegExp(r'\b([a-z_][A-Za-z0-9_]*)\s*\(');
+
+/// 控制结构关键字（判据 A2）：这些词的「名字(」是语句而非函数声明，剔除。
+///
+/// 注意 `catch` 也在列：catch 子句 `catch (e)` 不是声明；A2 的 catch 信号
+/// 另由 [_catchClausePattern] / [_catchErrorPattern] 检出。
+const Set<String> _controlKeywords = {
+  'if', 'for', 'while', 'switch', 'catch', 'return', 'assert',
+};
+
+/// 重试驱动信号之「显式延迟」（判据 A2 条件 3）：递归重试的等待形态。
+///
+/// 不带类型参数（`Future<T>.delayed`）——该写法无存量，登记为已知漏报面。
+final RegExp _delayPattern = RegExp(r'\bFuture\.delayed\b');
+
+/// 重试驱动信号之「catch 子句」（判据 A2 条件 3）：`catch (` 形态——
+/// `catch` 是保留字，代码中该形态只可能是 catch 子句（含 `} catch (e)`、
+/// `on E catch (e)`）；词边界保证不命中 `catchError(`（h 后接 E 无边界）。
+final RegExp _catchClausePattern = RegExp(r'\bcatch\s*\(');
+
+/// 重试驱动信号之「异步错误链」（判据 A2 条件 3）：`future.catchError(...)`
+/// 是 catch 子句的 Future 链等价物，递归重试常在错误回调里调自身。
+final RegExp _catchErrorPattern = RegExp(r'\.catchError\s*\(');
+
+/// `ApiException.parse(` 计数正则（判据 C1）：工厂调用/定义的统一形态。
+///
+/// 转义点号防 `ApiExceptionXparse(` 之类近似名误命中（点号须实存）。
+final RegExp _parseFactoryCallPattern = RegExp(r'ApiException\.parse\s*\(');
+
+/// `ApiException(` 构造调用正则（判据 C2）：配合参数区间匹配内联 parseError。
+final RegExp _apiExceptionCtorPattern = RegExp(r'\bApiException\s*\(');
+
+/// 内联 parseError 实参正则（判据 C2）：构造参数里直接写 parseError 即违规。
+final RegExp _inlineParseErrorPattern = RegExp(r'ApiErrorCode\.parseError\b');
 
 /// 一条反冗余违规命中（含定位信息，toString 直接用于 expect 的 reason 输出）。
 class AntiRedundancyViolation {
@@ -76,13 +152,20 @@ class AntiRedundancyViolation {
     required this.lineText,
   });
 
-  /// 判据标识：features 循环重试（详设 §14.2）。
+  /// 判据标识：features 循环重试（详设 §14.2，判据 A1）。
   static const String ruleLoopRetry = 'features-loop-retry';
 
-  /// 判据标识：禁 values.byName（详设 §10.3）。
+  /// 判据标识：features 递归重试（详设 §14.2，判据 A2）。
+  static const String ruleRecursiveRetry = 'features-recursive-retry';
+
+  /// 判据标识：禁 values.byName（详设 §10.3，判据 B）。
   static const String ruleValuesByName = 'no-values-byname';
 
-  /// 命中的判据标识（[ruleLoopRetry] / [ruleValuesByName]）。
+  /// 判据标识：禁内联 parseError 构造（判据 C2，统一走 ApiException.parse）。
+  static const String ruleInlineParseError = 'no-inline-parse-error';
+
+  /// 命中的判据标识（[ruleLoopRetry] / [ruleRecursiveRetry] /
+  /// [ruleValuesByName] / [ruleInlineParseError]）。
   final String ruleId;
 
   /// 相对扫描根的 `/` 分隔路径（如 `discovery/listing_repository.dart`）。
@@ -490,7 +573,183 @@ List<AntiRedundancyViolation> scanValuesByNameViolations(Directory scanRoot) {
   return violations;
 }
 
-/// features 域源码目录：`lib/features/`（判据 A 的扫描根）。
+/// 判据 A2：扫描目录下 Dart 代码中的递归形态重试（详设 §14.2，评审 #3）。
+///
+/// 功能：逐文件经 [stripDartTrivia] 剥离后，用 [_functionHeadPattern] 枚举
+/// 全部小写名函数/方法声明（控制关键字剔除，声明/调用以闭括号后的
+/// `{` / `=>` 区分），函数体同时满足「含网络调用 + 含自身函数名调用 +
+/// 含延迟/catch 重试信号」三条件即记违规。启发式口径与已知漏报面见文件头。
+///
+/// 参数：[scanRoot] 扫描根目录（守护断言传 `lib/features/`，变异测试传
+///   临时 fixtures 目录）；目录不存在抛 [StateError]（FAIL 而非 SKIP）。
+/// 返回：[List<AntiRedundancyViolation>] 违规清单，空清单即 PASS。
+List<AntiRedundancyViolation> scanRecursiveRetryViolations(
+    Directory scanRoot) {
+  _assertScanRootExists(scanRoot);
+  final violations = <AntiRedundancyViolation>[];
+  for (final file in _dartFilesUnder(scanRoot)) {
+    final source = file.readAsStringSync();
+    final stripped = stripDartTrivia(source);
+    final relPath = _relativeSlashPath(file, scanRoot);
+    final reportedLines = <int>{};
+    for (final head in _functionHeadPattern.allMatches(stripped)) {
+      final name = head.group(1)!;
+      if (_controlKeywords.contains(name)) continue;
+      final openParen = head.end - 1;
+      final closeParen = _matchBracket(stripped, openParen, '(', ')');
+      if (closeParen == null) continue; // 畸形文本，保守跳过不误报
+      final body = _functionBody(stripped, closeParen);
+      if (body == null) continue; // 闭括号后是调用形态/抽象声明，无函数体
+      // 条件 (1)：体内含网络调用形态。
+      if (!_networkCallPattern.hasMatch(body.text)) continue;
+      // 条件 (3)：体内有延迟或错误处理重试驱动信号（先算便宜的正则）。
+      final hasRetrySignal = _delayPattern.hasMatch(body.text) ||
+          _catchClausePattern.hasMatch(body.text) ||
+          _catchErrorPattern.hasMatch(body.text);
+      if (!hasRetrySignal) continue;
+      // 条件 (2)：体内出现自身函数名的裸名调用（排除 `.name(` 方法调用）。
+      final selfCall = RegExp('\\b${RegExp.escape(name)}\\s*\\(')
+          .allMatches(body.text)
+          .where((m) =>
+              m.start == 0 || body.text[m.start - 1] != '.')
+          .firstOrNull;
+      if (selfCall == null) continue;
+      final offset = body.start + selfCall.start;
+      final line = _lineNumberAt(stripped, offset);
+      if (!reportedLines.add(line)) continue;
+      violations.add(AntiRedundancyViolation(
+        ruleId: AntiRedundancyViolation.ruleRecursiveRetry,
+        file: relPath,
+        line: line,
+        lineText: _lineTextAt(source, offset),
+      ));
+    }
+  }
+  return violations;
+}
+
+/// 函数体文本区间（判据 A2 辅助）。
+///
+/// 功能：从参数闭括号之后定位函数体——跳过空白与 `async`/`async*`/`sync*`
+/// 修饰，`{...}` 块取配对闭括号；`=> expr` 取至下一个 `;`。闭括号后是
+/// `;`/`,`/`.`/`)` 等调用形态（或抽象方法声明）时返回 null。
+///
+/// 参数：[text] 剥离后的文本；[closeParen] 参数闭括号偏移。
+/// 返回：[_TextSpan?] 函数体区间（相对 [text] 的绝对偏移）；无函数体返回 null。
+_TextSpan? _functionBody(String text, int closeParen) {
+  var i = _skipWhitespace(text, closeParen + 1);
+  if (i >= text.length) return null;
+  // 跳过可选的函数体修饰关键字（仅声明位置合法，故同时充当声明判据）。
+  if (text.startsWith('async*', i) || text.startsWith('sync*', i)) {
+    i += 6;
+    i = _skipWhitespace(text, i);
+  } else if (text.startsWith('async', i)) {
+    i += 5;
+    i = _skipWhitespace(text, i);
+  }
+  if (i >= text.length) return null;
+  if (text[i] == '{') {
+    final closeBrace = _matchBracket(text, i, '{', '}');
+    if (closeBrace == null) return null;
+    return _TextSpan(i + 1, closeBrace, text);
+  }
+  if (text[i] == '=' && i + 1 < text.length && text[i + 1] == '>') {
+    final semicolon = text.indexOf(';', i + 2);
+    final end = semicolon == -1 ? text.length : semicolon;
+    return _TextSpan(i + 2, end, text);
+  }
+  return null;
+}
+
+/// 判据 C1：统计 `ApiException.parse(` 在扫描根下全部 Dart 文件中的命中数。
+///
+/// 功能：逐文件剥离注释/字符串静态文本后计数 [_parseFactoryCallPattern]
+/// （注释里讨论工厂名不算调用），跨文件汇总。调用方断言恒等基线，新增或
+/// 删除调用点时基线与 api_exception.dart 文件头清单必须同改。
+///
+/// 参数：[scanRoot] 扫描根目录（守护断言传 `lib/`）；不存在抛 [StateError]。
+/// 返回：[int] 命中总数（含工厂定义自身 1 处）。
+int countParseFactoryCalls(Directory scanRoot) {
+  _assertScanRootExists(scanRoot);
+  var count = 0;
+  for (final file in _dartFilesUnder(scanRoot)) {
+    final stripped = stripDartTrivia(file.readAsStringSync());
+    count += _parseFactoryCallPattern.allMatches(stripped).length;
+  }
+  return count;
+}
+
+/// 判据 C2：扫描绕开工厂的内联 `ApiException(code: ApiErrorCode.parseError)`。
+///
+/// 功能：逐文件剥离后枚举每个 [_apiExceptionCtorPattern] 构造调用，配对
+/// 参数区间内含 [_inlineParseErrorPattern] 即记违规；api_exception.dart
+/// 是工厂定义文件（唯一豁免，文件名按 basename 精确匹配防同名目录绕过）。
+///
+/// 参数：[scanRoot] 扫描根目录（守护断言传 `lib/`）；不存在抛 [StateError]。
+/// 返回：[List<AntiRedundancyViolation>] 违规清单，空清单即 PASS。
+List<AntiRedundancyViolation> scanInlineParseErrorViolations(
+    Directory scanRoot) {
+  _assertScanRootExists(scanRoot);
+  final violations = <AntiRedundancyViolation>[];
+  for (final file in _dartFilesUnder(scanRoot)) {
+    if (_basename(file.path) == _parseFactoryFileName) continue; // 唯一定义文件豁免
+    final source = file.readAsStringSync();
+    final stripped = stripDartTrivia(source);
+    final relPath = _relativeSlashPath(file, scanRoot);
+    for (final ctor in _apiExceptionCtorPattern.allMatches(stripped)) {
+      final closeParen = _matchBracket(stripped, ctor.end - 1, '(', ')');
+      if (closeParen == null) continue;
+      final args = stripped.substring(ctor.end, closeParen);
+      final hit = _inlineParseErrorPattern.firstMatch(args);
+      if (hit == null) continue;
+      final offset = ctor.start;
+      violations.add(AntiRedundancyViolation(
+        ruleId: AntiRedundancyViolation.ruleInlineParseError,
+        file: relPath,
+        line: _lineNumberAt(stripped, offset),
+        lineText: _lineTextAt(source, offset),
+      ));
+    }
+  }
+  return violations;
+}
+
+/// 文本区间（绝对偏移 + 原文引用，判据 A2 函数体传递用）。
+class _TextSpan {
+  /// 构造一个文本区间。
+  ///
+  /// [start] 起始偏移（含）；[end] 结束偏移（不含）；[text] 所属全文。
+  const _TextSpan(this.start, this.end, String text) : _text = text;
+
+  /// 起始偏移（含）。
+  final int start;
+
+  /// 结束偏移（不含）。
+  final int end;
+
+  /// 所属全文（取子串用）。
+  final String _text;
+
+  /// 区间文本。
+  String get text => _text.substring(start, end);
+}
+
+/// 取路径 basename（判据 C2 白名单按文件名精确匹配，不依赖 dart:io 的
+/// FileSystemEntity 以保持纯字符串判定）。
+///
+/// 参数：[path] 文件全路径。
+/// 返回：[String] 最后一个路径分隔符之后的部分（`/`/`\` 双分隔符兼容）。
+String _basename(String path) {
+  final slash = path.lastIndexOf(Platform.pathSeparator);
+  final alt = path.lastIndexOf('/');
+  final cut = slash > alt ? slash : alt;
+  return cut == -1 ? path : path.substring(cut + 1);
+}
+
+/// 判据 C2 唯一豁免文件名：`ApiException.parse` 工厂定义文件。
+const String _parseFactoryFileName = 'api_exception.dart';
+
+/// features 域源码目录：`lib/features/`（判据 A1/A2 的扫描根）。
 ///
 /// 派生自 [libDir] 而非独立常量，保持与 repo_paths 单一真源。
 final Directory featuresDir =
@@ -503,7 +762,7 @@ void main() {
     assertRepoLayout();
     if (!featuresDir.existsSync()) {
       throw StateError(
-        'lib/features/ 目录缺失，判据 A（循环重试扫描）失去判定对象——'
+        'lib/features/ 目录缺失，判据 A1/A2（循环/递归重试扫描）失去判定对象——'
         '按 FAIL 处理而非 SKIP（部署 §14.5：先断言待判对象存在，再执行判据）。',
       );
     }
@@ -516,9 +775,14 @@ void main() {
     const int featuresDartFileBaseline = 32;
 
     /// lib/ 全部 Dart 文件数基线（同上，评审 #10）。
-    const int libDartFileBaseline = 54;
+    /// 55 = 54 + dispatch_markers.dart（#1 反冗余重构新增共享文件）。
+    const int libDartFileBaseline = 55;
 
-    test('lib/features/ 无 for/while 循环重试（详设 §14.2）', () {
+    /// `ApiException.parse(` 命中总数基线（判据 C1）：工厂定义 1 + 调用 12。
+    /// 新增/删除解析失败抛出点时，与 api_exception.dart 文件头清单同改。
+    const int parseFactoryTotalBaseline = 13;
+
+    test('lib/features/ 无 for/while 循环重试（详设 §14.2，判据 A1）', () {
       // 先断言扫描面非空且不小于基线（部署 §14.5：先断言待判对象存在），
       // 否则 glob 根写错/目录被清空时 violations 恒空，守门假绿。
       final scanned = _dartFilesUnder(featuresDir);
@@ -554,6 +818,36 @@ void main() {
               '服务端新增枚举值时 byName 会抛异常，switch 的 default 分支才能降级）：\n'
               '${violations.join('\n')}\n'
               '修复：改为显式 switch 映射 + default 降级。');
+    });
+
+    test('lib/features/ 无递归形态重试（详设 §14.2，判据 A2）', () {
+      final violations = scanRecursiveRetryViolations(featuresDir);
+      expect(violations, isEmpty,
+          reason: 'features 域发现 Future.delayed/catch 驱动的递归重试'
+              '（详设 §14.2：RetryInterceptor 是全局唯一重试点，'
+              '把重试写进递归同样违规）：\n'
+              '${violations.join('\n')}\n'
+              '修复：删除递归重试，网络失败交给 RetryInterceptor 统一退避。');
+    });
+
+    test('ApiException.parse 调用点数恒为基线（判据 C1，评审 #5）', () {
+      final count = countParseFactoryCalls(libDir);
+      expect(count, parseFactoryTotalBaseline,
+          reason: 'ApiException.parse 命中数 $count != 基线 '
+              '$parseFactoryTotalBaseline：文件头人工清单已漂移。\n'
+              '新增解析失败抛出点时：(1) 必须走 ApiException.parse 工厂；'
+              '(2) 同步更新 api_exception.dart 文件头调用点清单；'
+              '(3) 同步更新本基线。删除点同理。');
+    });
+
+    test('lib/ 无内联 parseError 构造（判据 C2，评审 #5）', () {
+      final violations = scanInlineParseErrorViolations(libDir);
+      expect(violations, isEmpty,
+          reason: '发现绕开 ApiException.parse 工厂的内联 '
+              'ApiException(code: ApiErrorCode.parseError, ...)：\n'
+              '${violations.join('\n')}\n'
+              '修复：改用 ApiException.parse(message)——统一入口保证 '
+              'message 经定长截断、口径单一（编码规范 §1.1/§1.2）。');
     });
   });
 
@@ -619,6 +913,89 @@ Future<void> load() async {
 ''');
       expect(scanLoopRetryViolations(tmp), isNotEmpty,
           reason: '无花括号的单语句循环体同样是重试形态，必须被检出');
+    });
+
+    test('for 循环体含 dio.request 泛型入口注入 → 判据 A1 FAIL（评审 #3）', () {
+      final tmp = Directory.systemTemp.createTempSync('anti_redundancy_');
+      addTearDown(() {
+        if (tmp.existsSync()) tmp.deleteSync(recursive: true);
+      });
+      File('${tmp.path}${Platform.pathSeparator}request_fixture.dart')
+          .writeAsStringSync('''
+Future<void> load() async {
+  for (final attempt in [1, 2]) {
+    await dio.request('/posts');
+  }
+}
+''');
+      final hits = scanLoopRetryViolations(tmp);
+      expect(hits, isNotEmpty,
+          reason: 'dio.request 是 dio 泛型请求入口，for 循环内调用'
+              '同样是重试形态，必须与命名动词一并检出（评审 #3 漏报补全）');
+      expect(hits.single.line, 3, reason: '命中行须是 dio.request 行（fixture 第 3 行）');
+    });
+
+    test('Future.delayed 递归重试注入 → 判据 A2 FAIL（评审 #3）', () {
+      final tmp = Directory.systemTemp.createTempSync('anti_redundancy_');
+      addTearDown(() {
+        if (tmp.existsSync()) tmp.deleteSync(recursive: true);
+      });
+      File('${tmp.path}${Platform.pathSeparator}recur_delay_fixture.dart')
+          .writeAsStringSync('''
+Future<void> fetchPage(int attempt) async {
+  try {
+    await dio.get('/posts?page=\$attempt');
+  } catch (e) {
+    await Future.delayed(const Duration(seconds: 1));
+    return fetchPage(attempt + 1);
+  }
+}
+''');
+      final hits = scanRecursiveRetryViolations(tmp);
+      expect(hits, isNotEmpty, reason: 'catch + Future.delayed 驱动的自调用是递归重试，必须检出');
+      expect(hits.single.file, 'recur_delay_fixture.dart');
+      expect(hits.single.line, 6,
+          reason: '违规定位在自调用行（fixture 第 6 行 return fetchPage 行）');
+    });
+
+    test('catchError 链递归重试注入 → 判据 A2 FAIL（评审 #3）', () {
+      final tmp = Directory.systemTemp.createTempSync('anti_redundancy_');
+      addTearDown(() {
+        if (tmp.existsSync()) tmp.deleteSync(recursive: true);
+      });
+      File('${tmp.path}${Platform.pathSeparator}recur_chain_fixture.dart')
+          .writeAsStringSync('''
+Future<void> load(int attempt) {
+  return dio.post('/retry').then((r) {}).catchError((e) {
+    return load(attempt + 1);
+  });
+}
+''');
+      final hits = scanRecursiveRetryViolations(tmp);
+      expect(hits, isNotEmpty,
+          reason: 'catchError 错误回调内自调用是 Future 链形态的递归重试，必须检出');
+    });
+
+    test('内联 parseError 构造注入 → 判据 C2 FAIL（评审 #5）', () {
+      final tmp = Directory.systemTemp.createTempSync('anti_redundancy_');
+      addTearDown(() {
+        if (tmp.existsSync()) tmp.deleteSync(recursive: true);
+      });
+      File('${tmp.path}${Platform.pathSeparator}inline_fixture.dart')
+          .writeAsStringSync('''
+Object parseBody(Object? raw) {
+  if (raw == null) {
+    throw ApiException(code: ApiErrorCode.parseError, message: 'body null');
+  }
+  return raw;
+}
+''');
+      final hits = scanInlineParseErrorViolations(tmp);
+      expect(hits, isNotEmpty,
+          reason: '非工厂定义文件内联 ApiException(code: parseError) 绕过统一入口，'
+              '必须检出（评审 #5）');
+      expect(hits.single.file, 'inline_fixture.dart');
+      expect(hits.single.line, 3, reason: '命中行须是内联构造行（fixture 第 3 行 throw 行）');
     });
 
     test('values.byName 注入 → 判据 FAIL 且定位精确', () {
@@ -711,17 +1088,85 @@ List<String> namesOf(List<int> ids) {
       expect(scanLoopRetryViolations(tmp), isEmpty,
           reason: '普通 for 循环（add/write 等集合操作）循环体无网络调用形态，不得误报');
     });
+
+    test('游标分页递归（无延迟无 catch）→ 判据 A2 不命中', () {
+      final tmp = Directory.systemTemp.createTempSync('anti_redundancy_');
+      addTearDown(() {
+        if (tmp.existsSync()) tmp.deleteSync(recursive: true);
+      });
+      File('${tmp.path}${Platform.pathSeparator}pagination_fixture.dart')
+          .writeAsStringSync('''
+Future<List<int>> fetchPage(String? cursor) {
+  return dio.get('/items?cursor=\$cursor').then((resp) {
+    final next = resp.data['next_cursor'] as String?;
+    if (next == null) return <int>[];
+    return fetchPage(next);
+  });
+}
+''');
+      expect(scanRecursiveRetryViolations(tmp), isEmpty,
+          reason: '游标分页是推进查询条件的正常递归（无 Future.delayed、无 catch），'
+              '三条件缺条件 (3)，不得误报为重试');
+    });
+
+    test('非递归的延迟网络调用 → 判据 A2 不命中', () {
+      final tmp = Directory.systemTemp.createTempSync('anti_redundancy_');
+      addTearDown(() {
+        if (tmp.existsSync()) tmp.deleteSync(recursive: true);
+      });
+      File('${tmp.path}${Platform.pathSeparator}delayed_once_fixture.dart')
+          .writeAsStringSync('''
+Future<void> switchHint() async {
+  await Future<void>.delayed(const Duration(seconds: 2));
+  await dio.get('/hint');
+}
+
+Future<void> loadOnce() async {
+  try {
+    await dio.request('/posts');
+  } catch (e) {
+    await reportError(e);
+  }
+}
+''');
+      expect(scanRecursiveRetryViolations(tmp), isEmpty,
+          reason: '一次性延迟切换与 catch 内调别人（非自调用）均不构成递归重试，'
+              '三条件缺条件 (2)，不得误报');
+    });
+
+    test('api_exception.dart 工厂定义文件豁免 → 判据 C2 不命中', () {
+      final tmp = Directory.systemTemp.createTempSync('anti_redundancy_');
+      addTearDown(() {
+        if (tmp.existsSync()) tmp.deleteSync(recursive: true);
+      });
+      // 模拟真实工厂文件：basename 同名即唯一豁免点。
+      File('${tmp.path}${Platform.pathSeparator}api_exception.dart')
+          .writeAsStringSync('''
+class ApiException {
+  factory ApiException.parse(String message) => ApiException(
+        code: ApiErrorCode.parseError,
+        message: message,
+      );
+}
+''');
+      expect(scanInlineParseErrorViolations(tmp), isEmpty,
+          reason: 'api_exception.dart 是 parse 工厂唯一定义文件，其体内 '
+              'ApiErrorCode.parseError 是规范构造本身，不得误报');
+    });
   });
 
   group('判据对象缺失按 FAIL 处理（非 SKIP）', () {
-    test('扫描目录不存在 → 两判据均抛 StateError', () {
+    test('扫描目录不存在 → 全部判据均抛 StateError', () {
       final missing =
           Directory('${Directory.systemTemp.path}${Platform.pathSeparator}'
               'anti_redundancy_missing_${DateTime.now().microsecondsSinceEpoch}');
       expect(missing.existsSync(), isFalse);
       expect(() => scanLoopRetryViolations(missing), throwsStateError,
           reason: '判据对象缺失是门禁失效，必须红而不是静默 SKIP');
+      expect(() => scanRecursiveRetryViolations(missing), throwsStateError);
       expect(() => scanValuesByNameViolations(missing), throwsStateError);
+      expect(() => scanInlineParseErrorViolations(missing), throwsStateError);
+      expect(() => countParseFactoryCalls(missing), throwsStateError);
     });
   });
 
