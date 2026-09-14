@@ -264,7 +264,7 @@ void main() {
       expect(error.message, contains('503'));
     });
 
-    test('HTML 502 不带头 → networkFailure 且 retryAfterSec=null（退退避表）',
+    test('HTML 502 不带头 -> networkFailure 且 retryAfterSec=null（退回默认退避表）',
         () {
       final error = unwrapRaw(502);
       expect(error.code, ApiErrorCode.networkFailure);

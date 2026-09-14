@@ -56,7 +56,8 @@
 /// （那是 Retry 自己 fetch 才置的标记）。若不加区分地自开外层循环，重放
 /// 失败先花一份预算、错误冒泡回首发链 onError 再开一份，最坏放大为
 /// 1 + 1 + 2 + 2×3 = 10 个业务请求。故约定：
-///   - 重放 options 置 [AuthRefreshInterceptor.authReplayDispatchExtraKey]；
+///   - 重放 options 置 [authReplayDispatchExtraKey]（定义见
+///     dispatch_markers.dart）；
 ///   - 重放链上的本次 onError 见该标记**不自开循环**，直接 next 把错误
 ///     抛回 AuthRefresh 的 `await fetch`；
 ///   - AuthRefresh catch 剥离该标记后 reject 回**首发链**，首发链本次
@@ -75,7 +76,7 @@ import 'package:dio/dio.dart';
 import '../../../nfr_constants.dart';
 import '../api_error_code.dart';
 import '../api_exception.dart';
-import 'auth_refresh_interceptor.dart';
+import 'dispatch_markers.dart';
 
 /// 全链路唯一自动重试拦截器（链序第 5 位）。
 class RetryInterceptor extends Interceptor {
@@ -85,7 +86,7 @@ class RetryInterceptor extends Interceptor {
   ///   [networkDio]  业务 dio 自引用：重放经 `networkDio.fetch` 从链首
   ///                 重走全部拦截器（KTD4）；注入而非从 RequestOptions
   ///                 反取，因 dio 5.11.1 的 RequestOptions 不持有所属 dio
-  ///                 （与 [AuthRefreshInterceptor] 同构）；
+  ///                 （与 AuthRefreshInterceptor 同构）；
   ///   [newUuidV4]   UUID v4 生成器。**刻意注入但本类全程不调用、不保存**
   ///                 ——两键保全由 HeaderInterceptor「containsKey 才写」在
   ///                 重放链路上逐字沿用（§11.1.1）；保留此构造参数是任务
@@ -167,7 +168,7 @@ class RetryInterceptor extends Interceptor {
     //    的 await fetch 处被接住，其 catch 剥离 auth_replay_dispatch 标记后
     //    reject 回**首发链**；首发链本次 onError 见不到该标记，按下方 ④
     //    正常进入唯一外层循环计数。
-    if (options.extra[AuthRefreshInterceptor.authReplayDispatchExtraKey] ==
+    if (options.extra[authReplayDispatchExtraKey] ==
         true) {
       handler.next(err);
       return;
@@ -225,14 +226,20 @@ class RetryInterceptor extends Interceptor {
         // 退避期间取消 / 重放被取消：cancel 已在再入 onError 时裸穿透
         // 到此处（内层 reject），以裸 cancel 落调用方，不继续重试。
         if (replayError.type == DioExceptionType.cancel) {
-          handler.reject(_asOuterError(replayError), true);
+          handler.reject(
+            errorWithoutExtraKey(replayError, retryInnerDispatchExtraKey),
+            true,
+          );
           return;
         }
         final normalized = _apiErrorFrom(replayError);
         // 非可重试行为（如重放收到 429/40903/parseError）：立即以该
         // 错误落调用方，不花完剩余预算——重试只会复现确定性失败。
         if (normalized.code.behavior != ErrBehavior.autoRetry) {
-          handler.reject(_asOuterError(replayError), true);
+          handler.reject(
+            errorWithoutExtraKey(replayError, retryInnerDispatchExtraKey),
+            true,
+          );
           return;
         }
         lastError = normalized;
@@ -309,22 +316,6 @@ class RetryInterceptor extends Interceptor {
     return value is int ? value : 0;
   }
 
-  /// 把内层 fetch 抛出的错误还原为外层形态：保留计数、剔除内层标记，
-  /// 使落调用方的错误 extra 不含 [retryInnerDispatchExtraKey]（场景 8）。
-  ///
-  /// 参数：[innerError] 内层 fetch 抛出（并经内层 onError reject）的错误。
-  /// 返回：[DioException] 携带外层形态 requestOptions 的同类错误。
-  DioException _asOuterError(DioException innerError) {
-    final outerOptions = _stripInnerMarker(innerError.requestOptions);
-    return DioException(
-      requestOptions: outerOptions,
-      response: innerError.response,
-      type: innerError.type,
-      error: innerError.error,
-      stackTrace: innerError.stackTrace,
-    );
-  }
-
   /// 构造重试耗尽的终局错误（计划 U6 场景 2）。
   ///
   /// 诊断文案除「已耗尽」语义外，逐字附上末次失败的 message：末次为非
@@ -359,19 +350,6 @@ class RetryInterceptor extends Interceptor {
             '末次失败形态 ${lastError.code.name}：${lastError.message}',
       ),
     );
-  }
-
-  /// 复制一份剔除内层调度标记的请求配置（计数等其余 extra 原样保留）。
-  ///
-  /// 参数：[options] 可能携带内层标记的请求配置。
-  /// 返回：[RequestOptions] 不含 [retryInnerDispatchExtraKey] 的配置。
-  RequestOptions _stripInnerMarker(RequestOptions options) {
-    if (!options.extra.containsKey(retryInnerDispatchExtraKey)) {
-      return options;
-    }
-    final outerExtra = Map<String, dynamic>.of(options.extra)
-      ..remove(retryInnerDispatchExtraKey);
-    return options.copyWith(extra: outerExtra);
   }
 
   /// 从 [DioException.error] 载体取出业务异常；非 [ApiException] 载体
