@@ -17,6 +17,7 @@
 /// 与「已被锁 15 分钟，再试也没用」—— 而后者若说成前者，用户会一直重试到放弃。
 library;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// 短信验证码有效期（§12.2 `/auth/sms/send` 出参 `expire_in`）。
@@ -209,7 +210,9 @@ class AuthRepository {
     _pending[phone] = _PendingCode(
       // 固定码仅用于本地联调（真实码由服务端生成后经短信下发，客户端不可知）。
       // TODO(接后端)：删除本地生成，改为只记录 expire_in。
-      code: _debugCode,
+      // kDebugMode 编译期包裹（规范 §5.9 第①层）：release 折叠为 ''，常量
+      // 因无引用被树摇，产物 grep 不到固定码（出包 L3 双零兜底）。
+      code: kDebugMode ? _debugCode : '',
       sentAt: at,
     );
     return null;
@@ -335,6 +338,8 @@ class AuthRepository {
   /// 之所以是固定值而非随机：随机码在无短信通道时根本取不到，登录页就无法自测。
   /// 之所以定义为常量而非散落在代码里：接后端时删掉它，所有引用处立刻编译报错，
   /// 不会有一条漏网的本地后门留在包里。
+  /// 引用点均已 `kDebugMode` 包裹（规范 §5.9 第①层）：release 下本常量无引用
+  /// 被树摇，字面量不进产物；**新增引用点必须同样包裹**，否则出包 L3 双零中止。
   static const String _debugCode = '888888';
 
   /// 暴露给测试与登录页提示条使用的联调码。
@@ -369,18 +374,65 @@ final authRepositoryProvider = Provider<AuthRepository>(
 /// 值为 null 表示未登录。用可空而非单独的 `isLoggedIn` 布尔：
 /// 两个字段能表达出「已登录但会话为空」这种不该存在的组合，而组合一旦可表达，
 /// 就一定会有某条分支忘了同步其中一个。
+///
+/// **会话代次（[sessionEpoch]，计划 KTD5/R10）**：单调递增整数，每次
+/// 登录/登出 +1，续期写回（[updateToken]）**不**递增——续期是同一会话的
+/// Token 轮换。AuthRefreshInterceptor 在续期发起时取样、写回前比对：
+/// 在途续期期间用户登出/换号会使代次不一致，续期结果被丢弃，避免
+/// 「已登出的旧会话被续期结果复活」竞态。
 class AuthSessionNotifier extends Notifier<AuthSession?> {
+  /// 当前会话代次（初值 0 表示从未建立过会话；每次 signIn/signOut 递增）。
+  int _sessionEpoch = 0;
+
   @override
   AuthSession? build() => null;
 
-  /// 登录成功后写入会话。
-  void signIn(AuthSession session) => state = session;
+  /// 读当前会话代次（经 NetworkHooks.readSessionEpoch 焊接给 core）。
+  ///
+  /// 返回：[int] 单调递增代次；会话存否均可读，登出态也有确定值。
+  int get sessionEpoch => _sessionEpoch;
 
-  /// 退出登录（§3.4.2 个人中心的退出按钮）。
+  /// 登录成功后写入会话并推进代次。
+  ///
+  /// 参数：[session] 新登录会话。
+  /// 返回：void；同一账号重复登录同样视为新会话（代次 +1），使任何
+  ///   在途的旧续期结果因代次不符而被丢弃。
+  void signIn(AuthSession session) {
+    _sessionEpoch += 1;
+    state = session;
+  }
+
+  /// 续期成功后写回新 Token（单 Token 模型，契约 `/auth/token/refresh`）。
+  ///
+  /// 与 [signIn] 的区别：续期不推进代次、不更换 userId/phone 等会话身份
+  /// 字段，只轮换 Token 与到期时刻。
+  ///
+  /// 参数：
+  ///   [token]    续期响应的新 JWT（`data.token`）；
+  ///   [expireAt] 续期响应的新到期时刻（`data.expire_at`）。
+  /// 返回：void；当前无会话（续期在途期间已登出）时**拒绝写回**——
+  ///   这是代次校验之外的第二道防线，避免旧会话被续期结果复活。
+  void updateToken({required String token, required DateTime expireAt}) {
+    final current = state;
+    if (current == null) return;
+    state = AuthSession(
+      userId: current.userId,
+      phone: current.phone,
+      token: token,
+      expireAt: expireAt,
+      isNewUser: current.isNewUser,
+      realNameVerified: current.realNameVerified,
+    );
+  }
+
+  /// 退出登录（§3.4.2 个人中心的退出按钮）并推进代次。
   ///
   /// 本期只清内存：会话未落盘，故无需清持久化。
   /// TODO(接后端)：调 §12.2 `POST /auth/logout` 并清除持久化 Token。
-  void signOut() => state = null;
+  void signOut() {
+    _sessionEpoch += 1;
+    state = null;
+  }
 }
 
 /// 会话 Provider。

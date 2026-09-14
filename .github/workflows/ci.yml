@@ -8,10 +8,14 @@
 #
 # 本流水线三道判据全部只依赖代码与 git 索引，在 runner 上可真实判定：
 #   1. flutter analyze —— 0 error（DevSecOps §7.2）
-#   2. flutter test —— 全量测试全绿，其中包含两组「守门测试」：
+#   2. flutter test —— 全量测试全绿，其中包含三组「守门测试」：
 #        test/gates/openapi_contract_gate_test.dart  契约静态守门（14 项）
 #        test/gates/quality_gate_test.dart           代码质量门禁（10 项：
 #          G-Q1 后门码 888888 登记册 / G-Q2 密钥泄露扫描 / G-Q3 .sh 执行位）
+#        test/gates/anti_redundancy_gate_test.dart   反冗余静态扫描（13 项：
+#          lib/features/ 无 for 循环重试（详设 §14.2）/ lib/ 无 values.byName
+#          （详设 §10.3），各配变异自检——注入违规必 FAIL、合法输入不误报、
+#          判据对象缺失按 FAIL 处理）
 #   3. 版本锁定 —— Flutter 3.41.9（Dart 3.11.5），与 pubspec 的 sdk 约束一致，
 #      禁用 3.44.x+（本机实测锁定版本，版本漂移导致的测试差异不可接受）。
 #
@@ -59,8 +63,9 @@ jobs:
       - name: flutter analyze（0 error，DevSecOps §7.2）
         run: flutter analyze
 
-      # 判据 2：全量测试。契约守门（openapi_contract_gate_test）与
-      # 代码质量门禁（quality_gate_test）是其中普通测试文件——
+      # 判据 2：全量测试。契约守门（openapi_contract_gate_test）、
+      # 代码质量门禁（quality_gate_test）与反冗余静态扫描
+      # （anti_redundancy_gate_test）是其中普通测试文件——
       # 它们 FAIL 时整条流水线即红，无需额外接线。
       # 先单独跑一遍守门测试并让其 [INFO] 留证（豁免列名）出现在日志中，
       # 再跑全量，便于在 CI 日志里直接看到「豁免了什么、占位了什么」。

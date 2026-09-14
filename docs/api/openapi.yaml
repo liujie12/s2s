@@ -101,6 +101,18 @@ info:
 
     单 Token 模型，有效期 30 天；客户端**不依赖本地过期判断**，一律以服务端 `40101` 为触发源。
 
+    <!-- 编码落地注记（2026-09-12，U5 AuthRefreshInterceptor，描述性补充，不改契约）：
+         上述第 4 步「失败」细化为三分流——① refresh 自身再回 40101 或 403 段：
+         leader 唯一一次清会话、挂起请求保留各自原始 40101 不重放；② 429 段：
+         不清会话，异常携带本响应整数秒 Retry-After 透传；③ 网络失败/5xx/解析
+         失败：不清会话，异常透传（重试不在续期拦截器内）。续期在途期间会话
+         登出/换号（会话代次变更）同样丢弃结果、不写回、不重放。
+         实现形态：续期请求走独立 dio，仅挂 Header/Envelope 两个拦截器（不挂
+         续期/重试拦截器，防递归与嵌套重试）；挂起请求的重放经业务 dio.fetch
+         重走全链，X-Interaction-Id 与 Idempotency-Key 由请求头注入「containsKey
+         才写」规则逐字沿用，Authorization 由「每次重写」规则换新，是重放请求
+         唯一变化的头；续期请求自身无请求体，旧 Token 仅在 Authorization 头。 -->
+
     ## 6. 时钟不一致口径
 
     | 场景 | 以谁为准 |
@@ -283,8 +295,20 @@ paths:
       x-domain: auth
       description: |
         由客户端在收到任意 `40101` 后**单飞**调用（并发场景实际调用次数必须等于 1）。
-        请求需携带当前（已失效）Token 于 `Authorization` 头。
+        请求需携带当前（已失效）Token 于 `Authorization` 头，**无请求体**（单 Token 模型）。
         续期失败（返回 `40101`）时客户端必须清空会话并跳转登录页。
+
+        编码落地注记（2026-09-12，U5，描述性补充不改契约）：失败处置按错误类别三分流，
+        详见 info.description 第 5 节——refresh 自身 40101/403 段才清会话；429 段不清会话、
+        透传 `Retry-After`；网络失败/5xx 不清会话、异常透传。本端点由独立 dio 调用，
+        仅挂请求头注入与信封拆包两个拦截器，不挂续期/重试拦截器。
+
+        响应键语义子集（评审 #2，2026-09-14 补形式契约）：400 = 请求形态非法（如缺
+        Authorization 头，40001）；403 = 服务端按策略拒绝续期；429 = 触发频控/熔断，
+        复用 TooManyRequests 组件且必带 `Retry-After`，本端点不清会话。复用组件按全仓
+        惯例「组件列全部可能码、端点按语义子集实现」：Unauthorized 组件中的 40105、
+        Forbidden 组件中的 40301–40305 是组件全集，refresh 实际只返回其中语义子集，
+        不为此端点拆专用响应组件。
       parameters:
         - $ref: '#/components/parameters/XInteractionId'
         - $ref: '#/components/parameters/XDeviceId'
@@ -309,7 +333,10 @@ paths:
                             type: string
                             format: date-time
                             description: 新 Token 到期时间（服务端为准）
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   /auth/logout:

@@ -20,7 +20,7 @@
 /// 本就是两件事：聚合阈值参与计算，配色只参与绘制。
 library;
 
-import '../core/api_exception.dart';
+import '../core/network/api_exception.dart';
 
 /// 五大分类。
 ///
