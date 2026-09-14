@@ -17,6 +17,7 @@
 /// 与「已被锁 15 分钟，再试也没用」—— 而后者若说成前者，用户会一直重试到放弃。
 library;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// 短信验证码有效期（§12.2 `/auth/sms/send` 出参 `expire_in`）。
@@ -209,7 +210,9 @@ class AuthRepository {
     _pending[phone] = _PendingCode(
       // 固定码仅用于本地联调（真实码由服务端生成后经短信下发，客户端不可知）。
       // TODO(接后端)：删除本地生成，改为只记录 expire_in。
-      code: _debugCode,
+      // kDebugMode 编译期包裹（规范 §5.9 第①层）：release 折叠为 ''，常量
+      // 因无引用被树摇，产物 grep 不到固定码（出包 L3 双零兜底）。
+      code: kDebugMode ? _debugCode : '',
       sentAt: at,
     );
     return null;
@@ -335,6 +338,8 @@ class AuthRepository {
   /// 之所以是固定值而非随机：随机码在无短信通道时根本取不到，登录页就无法自测。
   /// 之所以定义为常量而非散落在代码里：接后端时删掉它，所有引用处立刻编译报错，
   /// 不会有一条漏网的本地后门留在包里。
+  /// 引用点均已 `kDebugMode` 包裹（规范 §5.9 第①层）：release 下本常量无引用
+  /// 被树摇，字面量不进产物；**新增引用点必须同样包裹**，否则出包 L3 双零中止。
   static const String _debugCode = '888888';
 
   /// 暴露给测试与登录页提示条使用的联调码。

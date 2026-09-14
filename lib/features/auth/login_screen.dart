@@ -20,6 +20,7 @@ library;
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -222,7 +223,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 onSend: _sendCode,
                 onChanged: (_) => setState(() {}),
               ),
-              if (_codeSent) ...[
+              // kDebugMode 编译期包裹（规范 §5.9 第①层）：release 下整块
+              // 死代码消除，提示条与 debugCode 引用均不进产物（L3 双零兜底）。
+              if (kDebugMode && _codeSent) ...[
                 const SizedBox(height: AppSpacing.sm),
                 // 联调提示条：没有短信通道时，不给出这条提示就无法自测登录。
                 // 文案里写明「联调」，避免被误认为正式功能。
