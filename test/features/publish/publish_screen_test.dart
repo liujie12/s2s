@@ -17,42 +17,20 @@
 /// 子节点首帧即构建，加载中/已加载两态都可稳定断言。
 library;
 
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:zhaoyazhao/core/network/api_error_code.dart';
 import 'package:zhaoyazhao/core/network/api_exception.dart';
-import 'package:zhaoyazhao/features/category/category_dto.dart';
 import 'package:zhaoyazhao/features/category/category_repository.dart';
 import 'package:zhaoyazhao/features/publish/publish_form_state.dart';
 import 'package:zhaoyazhao/features/publish/publish_screen.dart';
 
-import '../../support/category_fixtures.dart';
+import '../../support/fake_repositories.dart';
 
-/// 假 category 仓库：继承生产类保单一调用面（签名漂移编译期炸）。
-class _FakeCategoryRepository extends CategoryRepository {
-  _FakeCategoryRepository() : super(Dio());
-
-  /// 为 null 时按 [serverTemplatePayload] 默认返回；非 null 时抛出。
-  Object? errorToThrow;
-
-  /// fetchTemplate 调用次数。
-  var fetchCount = 0;
-
-  @override
-  Future<TemplateDto> fetchTemplate(
-    int leafCategoryId, {
-    String? interactionId,
-  }) async {
-    fetchCount++;
-    final error = errorToThrow;
-    if (error != null) throw error;
-    return TemplateDto.fromJson(
-      serverTemplatePayload(leafCategoryId: leafCategoryId),
-    );
-  }
-}
+/// 假 category 仓库（共享替身，见 support/fake_repositories.dart）：
+/// 本文件用其 fetchTemplate 的正常/失败两态。
+typedef _FakeCategoryRepository = FakeCategoryRepository;
 
 void main() {
   late _FakeCategoryRepository repo;
@@ -110,7 +88,7 @@ void main() {
     await tester.pumpWidget(app(const PublishFormState()));
     await tester.pumpAndSettle();
 
-    expect(repo.fetchCount, 0);
+    expect(repo.templateFetchCount, 0);
     expect(find.text('分类专属信息'), findsNothing);
     expect(find.text('模板加载中…'), findsNothing);
     expect(find.text('请先选择分类'), findsOneWidget);
@@ -140,12 +118,12 @@ void main() {
     expect(find.text('模板必填项未填完'), findsOneWidget);
     expect(find.text('模板加载中…'), findsNothing);
     expect(submitDisabled(tester), isTrue);
-    expect(repo.fetchCount, 1);
+    expect(repo.templateFetchCount, 1);
   });
 
   testWidgets('拉取失败降级本地模板字段，页面照常渲染可填', (tester) async {
     useTallSurface(tester);
-    repo.errorToThrow = const ApiException(
+    repo.templateErrorToThrow = const ApiException(
       code: ApiErrorCode.networkFailure,
       message: '网络连接失败，请检查网络后重试',
     );
@@ -158,6 +136,6 @@ void main() {
     expect(find.text('工作时间'), findsOneWidget);
     expect(find.text('食宿情况'), findsOneWidget);
     expect(find.text('模板加载中…'), findsNothing);
-    expect(repo.fetchCount, 1);
+    expect(repo.templateFetchCount, 1);
   });
 }

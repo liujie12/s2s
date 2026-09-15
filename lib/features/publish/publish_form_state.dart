@@ -304,6 +304,42 @@ class PublishFormState {
     return copyWith(loadedTemplate: template);
   }
 
+  /// 构造 PostDraft 契约载荷（[124] B4，`POST /posts/precheck` 用；
+  /// B5 `POST /posts` 复用同一构造 —— 两个端点的载荷 schema 同源，
+  /// 各写一份会出现 precheck 过了、createPost 传了不同字段的分叉）。
+  ///
+  /// 映射口径（契约 `PostDraft`，全字段非必填允许半成品预校验）：
+  /// - `type`：supply→`resource`、demand→`demand`（契约 PostTypeEnum）；
+  /// - `attributes`：只含当前模板字段键的非空值（空值不传键——
+  ///   attributes 语义是「已填的动态属性」，空串值无意义）；
+  /// - `lng`/`lat`/`address`：本轮无真实坐标（地图选点待高德 Key，
+  ///   见 publish_screen 文件头），不传假值——precheck 对半成品开放，
+  ///   服务端五项校验（敏感词/图片/禁发/资质/实名上限）均不依赖坐标；
+  /// - `address_precise`：门牌号手填非空即 true（§9.8 条件二兜底口径）；
+  /// - `media_ids`：媒体上传保持占位（说明文档裁定），恒空数组；
+  /// - 派生字段（`l2_category_id`/`completeness_level`/`grid_id`/
+  ///   `expire_at`/`version`）一律不传（契约：客户端传了也被忽略，
+  ///   不传是对「服务端生成」的正向表达）。
+  ///
+  /// 返回：[Map] 契约 `PostDraft` 形态对象（可直接作请求体）。
+  Map<String, Object?> postDraftPayload() {
+    return <String, Object?>{
+      'type': kind == PublishKind.supply ? 'resource' : 'demand',
+      if (leafCategoryId != null) 'leaf_category_id': leafCategoryId,
+      if (title.trim().isNotEmpty) 'title': title.trim(),
+      if (description.trim().isNotEmpty) 'description': description.trim(),
+      'attributes': <String, String>{
+        for (final field in template.extraFields)
+          if ((templateValues[field.key] ?? '').trim().isNotEmpty)
+            field.key: templateValues[field.key]!.trim(),
+      },
+      'address_precise': doorNumber.trim().isNotEmpty,
+      'media_ids': const <String>[],
+      'contact_type': 'phone',
+      if (contact.trim().isNotEmpty) 'contact_value': contact.trim(),
+    };
+  }
+
   /// 换分类后重置模板相关字段。
   ///
   /// **为什么不能用 `copyWith`**：换分类会换模板，旧模板的 `templateValues`

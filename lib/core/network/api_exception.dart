@@ -12,13 +12,16 @@
 /// 失败抛出点只准走该工厂，禁止内联
 /// `ApiException(code: ApiErrorCode.parseError, ...)` —— 统一入口保证
 /// message 必经 [_truncateParseMessage] 截断、口径单一（编码规范 §1.1）。
-/// 现有 23 处生产调用点：`core/network` 9 处（`api_error_code.dart` ×1、
+/// 现有 24 处生产调用点：`core/network` 9 处（`api_error_code.dart` ×1、
 /// `api_client.dart` ×4、`interceptors/auth_refresh_interceptor.dart` ×1、
 /// `interceptors/envelope_interceptor.dart` ×3）、
+/// `core/contract_json.dart` ×10（解析助手，[124] B4 自 category_dto
+/// 上浮 9 处并新增 optInt，搬家不减调用点）、
 /// `domain/listing_category.dart` ×2、
 /// `features/discovery/discovery_filter.dart` ×1、
-/// `features/category/category_dto.dart` ×11（level 范围校验 1 + 文件内
-/// 私有解析助手 10，[124] B1）；新增解析失败点同走本工厂。
+/// `features/category/category_dto.dart` ×2（level 范围校验 1 +
+/// `_optChildren` 1，[124] B1 起 11 处中 9 处已上浮）；
+/// 新增解析失败点同走本工厂。
 ///
 /// **循环 import 说明**：见 `api_error_code.dart` 文件头，同一份说明。
 library;
@@ -72,6 +75,14 @@ class ApiException implements Exception {
 
   /// 服务端 `Retry-After` 整数秒，可空。
   final int? retryAfterSec;
+
+  /// 用户可读报错文案（详设 §11.4 UI 报错唯一格式，[124] B4 提取为
+  /// 唯一实现处——selector 与 precheck 两处消费）。
+  ///
+  /// 格式 `{message}（{request_id}）`；[requestId] 为 null 只显
+  /// [message]，**禁用 interaction_id 顶替**（详设 §11.4）。
+  String get uiMessage =>
+      requestId == null ? message : '$message（$requestId）';
 
   /// `parseError` message 的定长上限（字符数）。
   ///

@@ -253,16 +253,13 @@ class _CategorySelectorScreenState
     );
   }
 
-  /// 错误态（§5.6 与 loading/空态分开）：文案按 §11.4 唯一格式
-  /// `{message}（{request_id}）`，request_id 为 null 只显 message。
+  /// 错误态（§5.6 与 loading/空态分开）：文案取 [ApiException.uiMessage]
+  ///（§11.4 唯一格式 `{message}（{request_id}）`，唯一实现处在
+  /// ApiException）。
   /// [error] 链上归一后的异常；null 且 [isEmptyTree] 表示线上空树
   /// （服务端违约形态，无异常对象可展示）。
   Widget _buildError(ApiException? error, {bool isEmptyTree = false}) {
-    final message = isEmptyTree
-        ? '分类数据为空，请稍后重试'
-        : error!.requestId == null
-        ? error.message
-        : '${error.message}（${error.requestId}）';
+    final message = isEmptyTree ? '分类数据为空，请稍后重试' : error!.uiMessage;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),

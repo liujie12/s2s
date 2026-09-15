@@ -15,6 +15,7 @@
 /// 缺失语义由 DTO→domain 转换层落实，不在 DTO 内偷塞默认值。
 library;
 
+import 'package:zhaoyazhao/core/contract_json.dart';
 import 'package:zhaoyazhao/core/network/api_exception.dart';
 
 /// 模板字段类型的契约枚举（openapi.yaml `TemplateField.type` 五值）。
@@ -76,8 +77,8 @@ class CategoryNodeDto {
   /// 抛出：[ApiException.parse] required 字段缺失/类型不符、`level`
   ///   超出 1..3、可选字段类型不符时（均含实际收到值）。
   factory CategoryNodeDto.fromJson(Object? json) {
-    final map = _requireMap(json, 'CategoryNode');
-    final level = _requireInt(map, 'level', 'CategoryNode');
+    final map = requireMap(json, 'CategoryNode');
+    final level = requireInt(map, 'level', 'CategoryNode');
     // level 是结构属性（契约 enum [1,2,3]）：未知层级无法降级渲染，
     // 树会拼错，按服务端违约处理抛 parse（与字段类型未知值可降级不同）。
     if (level < 1 || level > 3) {
@@ -86,12 +87,12 @@ class CategoryNodeDto {
       );
     }
     return CategoryNodeDto(
-      id: _requireInt(map, 'id', 'CategoryNode'),
-      name: _requireString(map, 'name', 'CategoryNode'),
+      id: requireInt(map, 'id', 'CategoryNode'),
+      name: requireString(map, 'name', 'CategoryNode'),
       level: level,
-      icon: _optString(map, 'icon', 'CategoryNode'),
-      sensitive: _optBool(map, 'sensitive', 'CategoryNode'),
-      banned: _optBool(map, 'banned', 'CategoryNode'),
+      icon: optString(map, 'icon', 'CategoryNode'),
+      sensitive: optBool(map, 'sensitive', 'CategoryNode'),
+      banned: optBool(map, 'banned', 'CategoryNode'),
       children: _optChildren(map),
     );
   }
@@ -150,11 +151,11 @@ class CategoryTreeDto {
   /// 返回：[CategoryTreeDto]。
   /// 抛出：[ApiException.parse] required 字段缺失/类型不符时。
   factory CategoryTreeDto.fromJson(Object? json) {
-    final map = _requireMap(json, 'CategoryTree');
+    final map = requireMap(json, 'CategoryTree');
     return CategoryTreeDto(
-      version: _requireString(map, 'version', 'CategoryTree'),
+      version: requireString(map, 'version', 'CategoryTree'),
       categories: [
-        for (final item in _requireList(map, 'categories', 'CategoryTree'))
+        for (final item in requireList(map, 'categories', 'CategoryTree'))
           CategoryNodeDto.fromJson(item),
       ],
     );
@@ -195,11 +196,11 @@ class TemplateDto {
   /// 返回：[TemplateDto]。
   /// 抛出：[ApiException.parse] required 字段缺失/类型不符时。
   factory TemplateDto.fromJson(Object? json) {
-    final map = _requireMap(json, 'Template');
+    final map = requireMap(json, 'Template');
     return TemplateDto(
-      leafCategoryId: _requireInt(map, 'leaf_category_id', 'Template'),
+      leafCategoryId: requireInt(map, 'leaf_category_id', 'Template'),
       fields: [
-        for (final item in _requireList(map, 'fields', 'Template'))
+        for (final item in requireList(map, 'fields', 'Template'))
           TemplateFieldDto.fromJson(item),
       ],
     );
@@ -234,17 +235,17 @@ class TemplateFieldDto {
   ///   降级 text 不抛错。
   /// 抛出：[ApiException.parse] required 字段缺失/类型不符时。
   factory TemplateFieldDto.fromJson(Object? json) {
-    final map = _requireMap(json, 'TemplateField');
+    final map = requireMap(json, 'TemplateField');
     return TemplateFieldDto(
-      key: _requireString(map, 'key', 'TemplateField'),
-      label: _requireString(map, 'label', 'TemplateField'),
+      key: requireString(map, 'key', 'TemplateField'),
+      label: requireString(map, 'label', 'TemplateField'),
       type: templateFieldTypeFromApi(
-        _requireString(map, 'type', 'TemplateField'),
+        requireString(map, 'type', 'TemplateField'),
       ),
-      isRequired: _requireBool(map, 'required', 'TemplateField'),
-      options: _optStringList(map, 'options', 'TemplateField'),
-      unit: _optString(map, 'unit', 'TemplateField'),
-      placeholder: _optString(map, 'placeholder', 'TemplateField'),
+      isRequired: requireBool(map, 'required', 'TemplateField'),
+      options: optStringList(map, 'options', 'TemplateField'),
+      unit: optString(map, 'unit', 'TemplateField'),
+      placeholder: optString(map, 'placeholder', 'TemplateField'),
     );
   }
 
@@ -272,144 +273,9 @@ class TemplateFieldDto {
 }
 
 // ---------------------------------------------------------------------------
-// 解析助手（文件内私有，编码规范 §1.1：字段类型校验逻辑唯一实现处）。
-// 统一走 ApiException.parse 工厂（守门判据 C：禁内联 parseError 构造）；
-// 后续 post 域 DTO 复用时再上浮 lib/core/（当前唯一调用方，不上浮）。
+// CategoryNode 专用解析（通用字段读取助手已上浮 lib/core/contract_json.dart
+// —— post 域 DTO 复用后按反冗余纪律 §1.1 上浮，此处只留本域私有逻辑）。
 // ---------------------------------------------------------------------------
-
-/// 取 JSON 对象本体（fromJson 入口校验）。
-///
-/// 参数：[json] 待解析值；[owner] 契约类型名（诊断用）。
-/// 返回：[Map] 字符串键视图。
-/// 抛出：[ApiException.parse] 非 JSON 对象时。
-Map<String, Object?> _requireMap(Object? json, String owner) {
-  if (json is! Map) {
-    throw ApiException.parse(
-      '$owner 应为 JSON 对象，实际类型: ${json.runtimeType}',
-    );
-  }
-  return json.cast<String, Object?>();
-}
-
-/// 取必填 String 字段。
-///
-/// 参数：[map] 父对象；[key] 契约 snake_case 键；[owner] 契约类型名。
-/// 返回：[String] 字段值。
-/// 抛出：[ApiException.parse] 字段缺失或非 String 时（含实际值）。
-String _requireString(Map<String, Object?> map, String key, String owner) {
-  final value = map[key];
-  if (value is! String) {
-    throw ApiException.parse(
-      '$owner.$key 缺失或类型不符（期望 String），实际: $value',
-    );
-  }
-  return value;
-}
-
-/// 取必填 int 字段。
-///
-/// 参数：[map] 父对象；[key] 契约键；[owner] 契约类型名。
-/// 返回：[int] 字段值。
-/// 抛出：[ApiException.parse] 字段缺失或非 int 时（含实际值）。
-int _requireInt(Map<String, Object?> map, String key, String owner) {
-  final value = map[key];
-  if (value is! int) {
-    throw ApiException.parse(
-      '$owner.$key 缺失或类型不符（期望 int），实际: $value',
-    );
-  }
-  return value;
-}
-
-/// 取必填 bool 字段。
-///
-/// 参数：[map] 父对象；[key] 契约键；[owner] 契约类型名。
-/// 返回：[bool] 字段值。
-/// 抛出：[ApiException.parse] 字段缺失或非 bool 时（含实际值）。
-bool _requireBool(Map<String, Object?> map, String key, String owner) {
-  final value = map[key];
-  if (value is! bool) {
-    throw ApiException.parse(
-      '$owner.$key 缺失或类型不符（期望 bool），实际: $value',
-    );
-  }
-  return value;
-}
-
-/// 取必填数组字段。
-///
-/// 参数：[map] 父对象；[key] 契约键；[owner] 契约类型名。
-/// 返回：[List] 字段值（元素类型由调用方逐项解析校验）。
-/// 抛出：[ApiException.parse] 字段缺失或非数组时（含实际值）。
-List<Object?> _requireList(Map<String, Object?> map, String key, String owner) {
-  final value = map[key];
-  if (value is! List) {
-    throw ApiException.parse(
-      '$owner.$key 缺失或类型不符（期望数组），实际: $value',
-    );
-  }
-  return value;
-}
-
-/// 取可选 String 字段（缺失/JSON null 均为 null，不用默认值掩盖）。
-///
-/// 参数：[map] 父对象；[key] 契约键；[owner] 契约类型名。
-/// 返回：[String?] 字段值；缺失为 null。
-/// 抛出：[ApiException.parse] 出现但非 String 时（服务端违约，含实际值）。
-String? _optString(Map<String, Object?> map, String key, String owner) {
-  final value = map[key];
-  if (value == null) return null;
-  if (value is! String) {
-    throw ApiException.parse(
-      '$owner.$key 应为 String 或 null，实际: $value',
-    );
-  }
-  return value;
-}
-
-/// 取可选 bool 字段（缺失/JSON null 均为 null）。
-///
-/// 参数：[map] 父对象；[key] 契约键；[owner] 契约类型名。
-/// 返回：[bool?] 字段值；缺失为 null。
-/// 抛出：[ApiException.parse] 出现但非 bool 时（含实际值）。
-bool? _optBool(Map<String, Object?> map, String key, String owner) {
-  final value = map[key];
-  if (value == null) return null;
-  if (value is! bool) {
-    throw ApiException.parse(
-      '$owner.$key 应为 bool 或 null，实际: $value',
-    );
-  }
-  return value;
-}
-
-/// 取可选字符串数组字段（缺失/JSON null 均为 null，元素逐个校验）。
-///
-/// 参数：[map] 父对象；[key] 契约键；[owner] 契约类型名。
-/// 返回：[List<String>?] 字段值；缺失为 null。
-/// 抛出：[ApiException.parse] 出现但非数组、或元素非 String 时（含实际值）。
-List<String>? _optStringList(
-  Map<String, Object?> map,
-  String key,
-  String owner,
-) {
-  final value = map[key];
-  if (value == null) return null;
-  if (value is! List) {
-    throw ApiException.parse(
-      '$owner.$key 应为字符串数组或 null，实际: $value',
-    );
-  }
-  return [
-    for (final item in value)
-      if (item is String)
-        item
-      else
-        throw ApiException.parse(
-          '$owner.$key 元素应为 String，实际: $item',
-        ),
-  ];
-}
 
 /// 取可选子节点数组（CategoryNode 专用：元素递归走完整 DTO 解析）。
 ///

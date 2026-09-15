@@ -33,8 +33,11 @@ import 'package:go_router/go_router.dart';
 import '../../design_tokens.dart';
 import '../../domain/category_tree.dart';
 import '../../domain/publish_template.dart';
+import '../../core/network/api_exception.dart';
 import '../../router/app_router.dart';
 import '../auth/auth_repository.dart';
+import '../post/post_dto.dart';
+import '../post/post_repository.dart';
 import 'publish_form_state.dart';
 import 'publish_template_provider.dart';
 
@@ -121,9 +124,13 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
     });
   }
 
-  /// 提交发布（§5.5 S6 / §5.8「强制认证拦截」）。
+  /// 提交发布（§5.5 S6 / §5.8「强制认证拦截」/ §12.3 precheck）。
+  ///
+  /// 顺序：本地必填闸门 → 登录引导 → 本地资质拦截 → 服务端 precheck
+  ///（[124] B4，提前暴露服务端口径阻断项）→ 通过后进完成页
+  ///（正式 `POST /posts` 为 B5 接线）。
   Future<void> _submit() async {
-    if (!_form.canSubmit) return;
+    if (!_form.canSubmit || _precheckInFlight) return;
     final router = GoRouter.of(context);
 
     // 未登录先引导登录（§5.5 S1「或首次弹未登录引导」）。
@@ -148,9 +155,53 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
       return;
     }
 
-    // 真正的提交需 §12.3 `POST /posts`。无服务端时直接进完成页，
-    // 带上表单快照供完成页算 §9.8 档位。
+    // [124] B4：提交前 precheck。填完长表单才在 POST /posts 被打回是
+    // 最挫败的路径；precheck 把服务端口径（敏感词/图片/禁发/资质/
+    // 未实名上限）提前到提交前，blocks 一次性给全不逐条打断。
+    setState(() => _precheckInFlight = true);
+    try {
+      final result = await ref
+          .read(postRepositoryProvider)
+          .precheck(_form.postDraftPayload());
+      if (!mounted) return;
+      if (!result.passed) {
+        await _showPrecheckBlocks(result.blocks);
+        return;
+      }
+    } on ApiException catch (error) {
+      // precheck 链路失败（传输/信封错误）与「校验不通过」是两种语义：
+      // 后者在 blocks 里（上方弹层），前者按 §11.4 唯一格式提示，
+      // 不静默进完成页。
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error.uiMessage)),
+        );
+      }
+      return;
+    } finally {
+      if (mounted) setState(() => _precheckInFlight = false);
+    }
+
+    // precheck 通过。真正的提交需 §12.3 `POST /posts`（B5 接线）；
+    // 当前直接进完成页，带上表单快照供完成页算 §9.8 档位。
     router.push(AppRoutes.publishSuccess, extra: _form);
+  }
+
+  /// precheck 进行中标志（防重入）：网络往返期间主按钮仍可点，
+  /// 双发请求虽无害（不写库）但会弹两次结果，且用户无从知道第一次
+  /// 还在路上。
+  bool _precheckInFlight = false;
+
+  /// 弹出 precheck 阻断项列表（[124] B4）。
+  ///
+  /// 参数 [blocks] 服务端一次性给全的阻断项（契约语义「不逐条打断
+  /// 用户」—— 这里也一次性列全，不逐条弹）。
+  /// 返回：[Future]，弹层关闭时完成。
+  Future<void> _showPrecheckBlocks(List<PrecheckBlockDto> blocks) {
+    return showModalBottomSheet<void>(
+      context: context,
+      builder: (_) => _PrecheckSheet(blocks: blocks),
+    );
   }
 
   /// 临时入口：走 AI 确认页（§5.9）。
@@ -227,7 +278,9 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
           // §5.4.1 顶部栏右上主按钮，禁用直到必填齐全。与底部主按钮同一动作 ——
           // 长表单滚到中段时顶部按钮省一次回滚。
           TextButton(
-            onPressed: _form.canSubmit ? _submit : null,
+            // precheck 进行中同样禁用（防重入，见 _precheckInFlight 注释）
+            onPressed:
+                _form.canSubmit && !_precheckInFlight ? _submit : null,
             child: Text(
               '发布',
               style: TextStyle(
@@ -394,7 +447,9 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
         blocker: blocker,
         onAgreedChanged: (v) =>
             setState(() => _form = _form.copyWith(agreed: v)),
-        onSubmit: _submit,
+        // null 表示提交链路进行中（precheck 网络往返），与 blocker 禁用
+        // 同效但不出禁用文案 —— 期间文案继续显示「差什么」没有意义。
+        onSubmit: _precheckInFlight ? null : _submit,
       ),
     );
   }
@@ -1011,7 +1066,9 @@ class _SubmitBar extends StatelessWidget {
   /// 当前阻塞原因，null 表示可提交。
   final PublishBlocker? blocker;
   final ValueChanged<bool> onAgreedChanged;
-  final VoidCallback onSubmit;
+
+  /// 提交回调；null 表示提交链路进行中（precheck 防重入），按钮禁用。
+  final VoidCallback? onSubmit;
 
   @override
   Widget build(BuildContext context) {
@@ -1070,7 +1127,10 @@ class _SubmitBar extends StatelessWidget {
           SizedBox(
             height: 48,
             child: ElevatedButton(
-              onPressed: blocker == null ? onSubmit : null,
+              // blocker 存在按原禁用语义；onSubmit 为 null 是提交进行中
+              onPressed: blocker == null && onSubmit != null
+                  ? onSubmit
+                  : null,
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(AppColors.primary),
                 foregroundColor: Colors.white,
@@ -1098,6 +1158,124 @@ class _SubmitBar extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// precheck 阻断项弹层（[124] B4，§12.3「blocks[] 一次性给全」的呈现侧）。
+///
+/// 每项展示服务端 [PrecheckBlockDto.message]（契约「可直接呈现的中文
+/// 提示」，逐字照贴不重写——文案口径在服务端，客户端重写会出现两套
+/// 说法）。五码中两码带动作入口（PRD §12.5）：40302「去认证」、
+/// 40304「去实名」，其余码只陈述（40901 改文案、40902 本轮无媒体不
+/// 出现、40303 禁发无出口）。
+class _PrecheckSheet extends StatelessWidget {
+  const _PrecheckSheet({required this.blocks});
+
+  /// 服务端一次性给全的阻断项。
+  final List<PrecheckBlockDto> blocks;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.lg,
+          AppSpacing.lg,
+          AppSpacing.lg,
+          AppSpacing.md,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              '发布前需处理以下问题',
+              style: TextStyle(
+                fontSize: AppTypeScale.h3.size,
+                fontWeight: FontWeight.w600,
+                color: const Color(AppColors.textPrimary),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            for (final block in blocks)
+              Padding(
+                padding: const EdgeInsets.only(bottom: AppSpacing.md),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.error_outline,
+                      size: 18,
+                      color: const Color(AppColors.warningText),
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    Expanded(
+                      child: Text(
+                        block.message,
+                        style: TextStyle(
+                          fontSize: AppTypeScale.body.size,
+                          height: AppTypeScale.body.lineHeight,
+                          color: const Color(AppColors.textPrimary),
+                        ),
+                      ),
+                    ),
+                    if (_actionRouteOf(block) != null)
+                      Padding(
+                        padding: const EdgeInsets.only(left: AppSpacing.sm),
+                        child: TextButton(
+                          // 关弹层再跳：sheet 挂在 root navigator 上，
+                          // 不关直接 push 会叠在弹层下面
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                            GoRouter.of(context).push(_actionRouteOf(block)!);
+                          },
+                          child: Text(
+                            _actionLabelOf(block),
+                            style: const TextStyle(
+                              color: Color(AppColors.primary),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            const SizedBox(height: AppSpacing.sm),
+            SizedBox(
+              height: 44,
+              child: OutlinedButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('知道了'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 五码 → 动作路由映射（[124] B4 唯一实现处；PRD §12.5 客户端行为列）。
+  ///
+  /// 参数 [block] 阻断项。
+  /// 返回：[String?] 路由路径；无动作码（40901/40902/40303）为 null。
+  String? _actionRouteOf(PrecheckBlockDto block) {
+    return switch (block.code) {
+      40302 => AppRoutes.trust, // 高敏未认证 → 信任与认证中心
+      40304 => AppRoutes.trust, // 未实名上限 → 同上（实名在认证中心）
+      _ => null,
+    };
+  }
+
+  /// 五码 → 动作按钮文案。
+  ///
+  /// 参数 [block] 阻断项。
+  /// 返回：[String] 按钮文案（仅 [_actionRouteOf] 非 null 的码会取到）。
+  String _actionLabelOf(PrecheckBlockDto block) {
+    return switch (block.code) {
+      40302 => '去认证',
+      40304 => '去实名',
+      _ => '',
+    };
   }
 }
 

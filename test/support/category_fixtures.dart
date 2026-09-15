@@ -6,6 +6,7 @@
 ///   - [cachedCategoryTreePayload] / [kCachedTreeVersion]：本地缓存旧树，
 ///     内容与线上树刻意不同，便于用例凭叶子 id 判断 state 数据来源；
 ///   - [serverTemplatePayload] / [stubTemplate]：叶子发布模板桩（B3）。
+/// post 域桩见 post_fixtures.dart（域与文件对应，不混装）。
 library;
 
 import 'api_envelope.dart';
