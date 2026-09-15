@@ -5,7 +5,9 @@
 ///
 /// **校验不写在本文件**：全部收在 [PublishFormState.blocker]。页面只做两件事 ——
 /// 把输入回写进状态、把 blocker 的文案显示出来。这样「填完了按钮还是灰的」
-/// 这类问题可以在单测里定位，而不是靠手点复现。
+/// 这类问题可以在单测里定位，而不是靠手点复现。唯一的例外是
+/// [PublishBlocker.templateLoading]：模板拉取是异步事态，进不了同步 blocker
+/// 链，由本页在 [PublishFormState.templatePending] 时合成（[124] B3）。
 ///
 /// **§5.4.1 八段中降级处理的两段，及原因**：
 /// ① **第 2 段位置**：地图选点依赖高德 Key（未申请，说明文档 M4-1b 已记）。
@@ -34,6 +36,7 @@ import '../../domain/publish_template.dart';
 import '../../router/app_router.dart';
 import '../auth/auth_repository.dart';
 import 'publish_form_state.dart';
+import 'publish_template_provider.dart';
 
 /// 位置演示值（§5.4.1 第 2 段示例「XX 小区南门·300m」）。
 ///
@@ -43,14 +46,19 @@ const String _demoLocationLabel = 'XX 小区南门 · 300m（演示位置）';
 
 /// 发布页。
 class PublishScreen extends ConsumerStatefulWidget {
-  const PublishScreen({super.key});
+  const PublishScreen({super.key, this.initialForm = const PublishFormState()});
+
+  /// 初始表单快照（测试缝：widget 测试与 B5 提交链测试以预填表单驱动，
+  /// 避免为填表而拉起 GoRouter + 级联选择器全链路）。生产调用方不传。
+  @visibleForTesting
+  final PublishFormState initialForm;
 
   @override
   ConsumerState<PublishScreen> createState() => _PublishScreenState();
 }
 
 class _PublishScreenState extends ConsumerState<PublishScreen> {
-  PublishFormState _form = const PublishFormState();
+  late PublishFormState _form = widget.initialForm;
 
   final TextEditingController _titleCtrl = TextEditingController();
   final TextEditingController _priceCtrl = TextEditingController();
@@ -164,8 +172,32 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // [124] B3：watch 服务端模板，数据到达后回写表单。不用 ref.listen ——
+    // WidgetRef.listen 无 fireImmediately，family 缓存命中（再次进入发布页
+    // 选同一叶子）时 provider 已是 data、不再有「下一次变化」，loadedTemplate
+    // 会永远等不到。watch 在每次 build 核对一次：有数据且未回写则帧后
+    // setState（build 中不可 setState）；已回写（同一实例）不再调度。
+    final leafId = _form.leafCategoryId;
+    if (leafId != null) {
+      ref
+          .watch(publishTemplateProvider(leafId))
+          .whenData((template) {
+            if (_form.loadedTemplate == template) return;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted && _form.loadedTemplate != template) {
+                setState(() => _form = _form.withTemplate(template));
+              }
+            });
+          });
+    }
+
     final template = _form.template;
-    final blocker = _form.blocker;
+    // 模板异步闸门（[124] B3）：已选分类而服务端模板未就位时禁提交，
+    // 优先于同步 blocker 链 —— 防止本地字段校验放行、提交时被服务端
+    // precheck 以「必填字段缺失」打回（B4）。
+    final blocker = _form.templatePending
+        ? PublishBlocker.templateLoading
+        : _form.blocker;
 
     return Scaffold(
       backgroundColor: const Color(AppColors.background),
@@ -294,7 +326,17 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
           ),
           // 模板附加字段（§5.4.3「附加字段」列）。通用模板无附加字段，
           // 此段自然不出现 —— 空标题的空卡片比不显示更让人以为是加载失败。
-          if (template.extraFields.isNotEmpty)
+          // [124] B3：模板加载中渲染骨架（§5.6 loading 骨架屏而非转圈），
+          // 此时不渲染本地字段 —— 服务端字段集合一到就整体替换，用户
+          // 在本地字段上的输入可能落进不复存在的键。
+          if (_form.templatePending)
+            const _SectionCard(
+              index: null,
+              title: '分类专属信息',
+              done: false,
+              child: _TemplateFieldsSkeleton(),
+            )
+          else if (template.extraFields.isNotEmpty)
             _SectionCard(
               index: null,
               title: '分类专属信息',
@@ -864,6 +906,45 @@ class _TemplateField extends StatelessWidget {
           ],
         ],
       ),
+    );
+  }
+}
+
+/// 模板字段加载中的骨架占位（[124] B3，§5.6「loading 骨架屏，首屏不转圈」）。
+///
+/// 两行「标签条 + 输入框条」示意字段版面，不渲染真实字段控件 —— 服务端
+/// 字段集合到达后整体替换，此时可输入的控件会让值落进不复存在的键。
+class _TemplateFieldsSkeleton extends StatelessWidget {
+  const _TemplateFieldsSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (var i = 0; i < 2; i++)
+          Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.lg),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 72,
+                  height: 12,
+                  color: const Color(AppColors.background),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                Container(
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: const Color(AppColors.background),
+                    borderRadius: BorderRadius.circular(AppRadius.md),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
     );
   }
 }

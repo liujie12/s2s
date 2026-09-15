@@ -21,40 +21,6 @@ import '../../support/category_fixtures.dart';
 import '../../support/mock_api_server.dart';
 import '../../support/network_chain_harness.dart';
 
-/// 登记 `/templates/{leaf_category_id}` 正常桩（两字段覆盖 number/select
-/// 两类型与 required 两态）。
-///
-/// 参数：[harness] 网络链 harness。
-/// 返回：void。
-void _stubTemplate(NetworkChainHarness harness) {
-  harness.stub('GET', '/api/v1/templates/10101', (req) async {
-    return MockResponse(
-      body: ApiEnvelope.success(
-        data: {
-          'leaf_category_id': 10101,
-          'fields': [
-            {
-              'key': 'headcount',
-              'label': '招聘人数',
-              'type': 'number',
-              'required': true,
-              'placeholder': '如：3',
-            },
-            {
-              'key': 'board',
-              'label': '食宿情况',
-              'type': 'select',
-              'required': false,
-              'options': ['包吃包住', '包吃不包住', '不包吃住'],
-              'unit': null,
-            },
-          ],
-        },
-      ),
-    );
-  });
-}
-
 void main() {
   late NetworkChainHarness harness;
   late CategoryRepository repo;
@@ -153,7 +119,7 @@ void main() {
   group('fetchTemplate', () {
     test('正常：字段模板逐字段解析（required 两态 + options/placeholder）',
         () async {
-      _stubTemplate(harness);
+      stubTemplate(harness);
 
       final template = await repo.fetchTemplate(10101);
 

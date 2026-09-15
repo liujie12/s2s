@@ -289,4 +289,58 @@ void main() {
       expect(demandPrefixFor(PublishKind.demand, 999999), isNull);
     });
   });
+
+  group('[124] B3 服务端模板装配（loadedTemplate / templatePending）', () {
+    /// 构造「服务端口径」模板：本地框架文案 + 单个服务端必填字段。
+    ///
+    /// 参数 [leafId] 叶子 ID。返回 extraFields 被替换后的模板实例。
+    PublishTemplate serverTemplateOf(int leafId) {
+      return templateForLeaf(leafId).withExtraFields(const [
+        TemplateFieldSpec(
+          key: 'server_only',
+          label: '服务端字段',
+          type: TemplateFieldType.text,
+          required: true,
+        ),
+      ]);
+    }
+
+    test('未选分类：templatePending 恒 false（通用模板无等待语义）', () {
+      expect(const PublishFormState().templatePending, isFalse);
+    });
+
+    test('已选分类未加载：templatePending 为 true（B3 提交闸门判据）', () {
+      expect(complete().templatePending, isTrue);
+    });
+
+    test('withTemplate 就位后闸门解除，template 取服务端字段集', () {
+      final form = complete().withTemplate(serverTemplateOf(40101));
+      expect(form.templatePending, isFalse);
+      expect(form.template.extraFields.map((f) => f.key), ['server_only']);
+      // 框架文案恒取本地，不被服务端字段集替换
+      expect(
+        form.template.titlePlaceholder,
+        templateForLeaf(40101).titlePlaceholder,
+      );
+      expect(form.template.priceUnits, templateForLeaf(40101).priceUnits);
+    });
+
+    test('loadedTemplate 的必填字段参与 blocker：本地字段填齐不算数', () {
+      final pending = complete().withTemplate(serverTemplateOf(40101));
+      // complete() 填的是本地字段（condition），服务端字段空着仍拦
+      expect(pending.blocker, PublishBlocker.templateFieldMissing);
+      final filled = pending.copyWith(
+        templateValues: const {'server_only': '填了'},
+      );
+      expect(filled.blocker, isNull);
+    });
+
+    test('withCategory 清空 loadedTemplate：新分类必须重新拉取模板', () {
+      final loaded = complete().withTemplate(serverTemplateOf(40101));
+      expect(loaded.templatePending, isFalse);
+      final switched = loaded.withCategory(30101);
+      expect(switched.loadedTemplate, isNull);
+      expect(switched.templatePending, isTrue);
+    });
+  });
 }

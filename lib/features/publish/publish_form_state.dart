@@ -49,6 +49,14 @@ enum PublishBlocker {
   /// 描述为空（§5.4.1 第 5 段）
   noDescription('请填写描述'),
 
+  /// 模板字段加载中（[124] B3：`GET /templates/{leaf}` 未返回前禁提交，
+  /// 防止用本地字段校验放行、提交时被服务端 precheck 打回）。
+  ///
+  /// **它不由 [PublishFormState.blocker] 返回**：blocker 是纯同步链，模板
+  /// 加载是异步事态。该值由发布页在「已选分类且 loadedTemplate 未就位」
+  /// 时于 blocker 之前合成（见 `publish_screen.dart`）。
+  templateLoading('模板加载中…'),
+
   /// 模板必填项未齐（§5.4.3「附加字段」中标必填的）
   templateFieldMissing('模板必填项未填完'),
 
@@ -100,6 +108,7 @@ class PublishFormState {
     this.negotiable = false,
     this.description = '',
     this.templateValues = const {},
+    this.loadedTemplate,
     this.imageCount = 0,
     this.contact = '',
     this.agreed = false,
@@ -142,6 +151,12 @@ class PublishFormState {
   /// 模板附加字段的值，key 对应 [TemplateFieldSpec.key]。
   final Map<String, String> templateValues;
 
+  /// 服务端模板就位后的生效模板（[124] B3）：字段集合来自
+  /// `GET /templates/{leaf}`，框架文案来自本地（合成唯一实现处在
+  /// `publish_template_provider.dart`）。null 表示尚未加载（含拉取
+  /// 尚未返回与从未发起两种，页面不区分——都按 [templatePending] 处理）。
+  final PublishTemplate? loadedTemplate;
+
   final int imageCount;
 
   /// 联系方式（§5.4.1 第 8 段）。
@@ -151,9 +166,22 @@ class PublishFormState {
   final bool agreed;
 
   /// 当前生效的模板（未选分类时为通用模板）。
-  PublishTemplate get template => leafCategoryId == null
-      ? genericTemplate
-      : templateForLeaf(leafCategoryId!);
+  ///
+  /// [loadedTemplate] 就位后优先取之（字段集合是服务端口径）；未就位时
+  /// 回退本地查表 —— 标题提示 / 价格单位 / 描述引导三项框架文案契约
+  /// 不下发，加载中也必须有值渲染，故 getter 永不返回 null。
+  PublishTemplate get template =>
+      loadedTemplate ??
+      (leafCategoryId == null
+          ? genericTemplate
+          : templateForLeaf(leafCategoryId!));
+
+  /// 模板字段是否等待服务端下发（[124] B3 的提交闸门判据）。
+  ///
+  /// 已选分类且 [loadedTemplate] 未就位即 true；未选分类不涉及模板
+  /// 拉取，恒 false（通用模板无附加字段，无等待语义）。
+  bool get templatePending =>
+      leafCategoryId != null && loadedTemplate == null;
 
   /// 价格是否已交代清楚 —— 填了数字，或选了「面议」。
   ///
@@ -243,6 +271,7 @@ class PublishFormState {
     bool? negotiable,
     String? description,
     Map<String, String>? templateValues,
+    PublishTemplate? loadedTemplate,
     int? imageCount,
     String? contact,
     bool? agreed,
@@ -258,10 +287,21 @@ class PublishFormState {
       negotiable: negotiable ?? this.negotiable,
       description: description ?? this.description,
       templateValues: templateValues ?? this.templateValues,
+      loadedTemplate: loadedTemplate ?? this.loadedTemplate,
       imageCount: imageCount ?? this.imageCount,
       contact: contact ?? this.contact,
       agreed: agreed ?? this.agreed,
     );
+  }
+
+  /// 服务端模板就位后回写（[124] B3，由发布页在 provider 数据到达时调用）。
+  ///
+  /// 参数 [template] 合成后的模板（服务端字段 + 本地框架文案）。
+  /// 返回：loadedTemplate 更新后的新快照；templateValues 保留 —— 加载中
+  /// 页面渲染的是本地字段（同 key 时输入不丢），换分类才清值（见
+  /// [withCategory]）。
+  PublishFormState withTemplate(PublishTemplate template) {
+    return copyWith(loadedTemplate: template);
   }
 
   /// 换分类后重置模板相关字段。
@@ -270,6 +310,9 @@ class PublishFormState {
   /// 键在新模板里不存在。留着它们不会报错、也不显示，但会被一起提交入库
   /// （§13.2 `template_values` 是 JSON），成为查不出来的脏数据。
   /// 价格单位同理 —— 家政的「元/小时」在二手闲置模板里不是合法选项。
+  ///
+  /// `loadedTemplate` 同样不携带（构造器未传即 null）：新分类的字段集合
+  /// 必须重新向 `/templates/{leaf}` 拉取，[templatePending] 恢复为 true。
   PublishFormState withCategory(int leafId) {
     final next = templateForLeaf(leafId);
     return PublishFormState(

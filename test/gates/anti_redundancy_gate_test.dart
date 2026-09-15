@@ -773,13 +773,15 @@ void main() {
     /// 扫描面文件数基线（评审 #10：空目录/扫不到文件时 violations 恒空，
     /// 只断 isEmpty 的守门是假阴性）。新增 Dart 文件只增不减，缩小即说明
     /// 扫描根或枚举方式坏了，必须显式更新基线并说明原因。
-    /// 35 = 34 + category_tree_provider.dart（[124] B2 分类树状态层）。
-    const int featuresDartFileBaseline = 35;
+    /// 36 = 35 + publish_template_provider.dart（[124] B3 发布模板装配）；
+    /// 35 = 34 + category_tree_provider.dart（B2 分类树状态层）。
+    const int featuresDartFileBaseline = 36;
 
     /// lib/ 全部 Dart 文件数基线（同上，评审 #10）。
-    /// 58 = 57 + category_tree_provider.dart（[124] B2 分类树状态层；
+    /// 59 = 58 + publish_template_provider.dart（[124] B3 发布模板装配）；
+    /// 58 = 57 + category_tree_provider.dart（B2 分类树状态层；
     /// 57 = 55 + category_dto + category_repository，B1 新增）。
-    const int libDartFileBaseline = 58;
+    const int libDartFileBaseline = 59;
 
     /// `ApiException.parse(` 命中总数基线（判据 C1）：工厂定义 1 + 调用 23。
     /// 23 = 12（既有）+ 11（category_dto.dart：level 范围 1 + 解析助手 10，
