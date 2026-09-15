@@ -164,4 +164,49 @@ void main() {
     );
     expect(find.text('成功页占位'), findsNothing);
   });
+
+  group('[125] B5 POST /posts 提交链', () {
+    testWidgets('成功：precheck→POST 两跳都发，跳完成页', (tester) async {
+      await pumpReady(tester, submittable());
+      await tapSubmit(tester);
+
+      expect(postRepo.createCount, 1);
+      // POST 载荷与 precheck 同源（postDraftPayload 唯一构造处）
+      expect(postRepo.lastCreateDraft, postRepo.lastDraft);
+      expect(find.text('成功页占位'), findsOneWidget);
+    });
+
+    testWidgets('POST 回五码（40901）：复用阻断弹层，不跳完成页',
+        (tester) async {
+      postRepo.createErrorToThrow = const ApiException(
+        code: ApiErrorCode.sensitiveWord,
+        message: '包含敏感词：xxx，请修改',
+      );
+
+      await pumpReady(tester, submittable());
+      await tapSubmit(tester);
+
+      expect(find.text('发布前需处理以下问题'), findsOneWidget);
+      expect(find.text('包含敏感词：xxx，请修改'), findsOneWidget);
+      // 40901 无动作入口（只有 40302/40304 有）
+      expect(find.text('去认证'), findsNothing);
+      expect(find.text('成功页占位'), findsNothing);
+    });
+
+    testWidgets('POST 回非五码（40001）：SnackBar 按 §11.4，不跳完成页',
+        (tester) async {
+      postRepo.createErrorToThrow = const ApiException(
+        code: ApiErrorCode.paramInvalid,
+        message: '参数缺失或类型不符',
+        requestId: 'req_post_1',
+      );
+
+      await pumpReady(tester, submittable());
+      await tapSubmit(tester);
+
+      expect(find.text('参数缺失或类型不符（req_post_1）'), findsOneWidget);
+      expect(find.text('发布前需处理以下问题'), findsNothing);
+      expect(find.text('成功页占位'), findsNothing);
+    });
+  });
 }

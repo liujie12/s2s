@@ -13,6 +13,7 @@ import 'package:zhaoyazhao/features/post/post_dto.dart';
 import 'package:zhaoyazhao/features/post/post_repository.dart';
 
 import 'category_fixtures.dart';
+import 'post_fixtures.dart';
 
 /// 假 category 仓库：fetchTree 恒返线上树；fetchTemplate 按注入态返回。
 class FakeCategoryRepository extends CategoryRepository {
@@ -63,6 +64,15 @@ class FakePostRepository extends PostRepository {
   /// precheck 收到的载荷（断言表单映射透传）。
   Map<String, Object?>? lastDraft;
 
+  /// createPost 抛出的异常（POST 失败形态）；null 走正常返回。
+  Object? createErrorToThrow;
+
+  /// createPost 收到的载荷。
+  Map<String, Object?>? lastCreateDraft;
+
+  /// createPost 调用次数（成功链路断言 precheck→POST 两跳都发生）。
+  var createCount = 0;
+
   @override
   Future<PrecheckResultDto> precheck(
     Map<String, Object?> draft, {
@@ -72,5 +82,17 @@ class FakePostRepository extends PostRepository {
     final error = errorToThrow;
     if (error != null) throw error;
     return resultToReturn ?? PrecheckResultDto(passed: true, blocks: const []);
+  }
+
+  @override
+  Future<PostCreatedDto> createPost(
+    Map<String, Object?> draft, {
+    String? interactionId,
+  }) async {
+    createCount++;
+    lastCreateDraft = draft;
+    final error = createErrorToThrow;
+    if (error != null) throw error;
+    return PostCreatedDto.fromJson(postCreatedPayload());
   }
 }

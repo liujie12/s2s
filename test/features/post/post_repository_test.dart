@@ -119,4 +119,83 @@ void main() {
       );
     });
   });
+
+  group('createPost 发布（[125] B5）', () {
+    test('成功：回执 8 字段解析，请求带 Idempotency-Key（HeaderInterceptor'
+        ' 写接口注入）', () async {
+      stubCreatePost(harness);
+
+      final created = await repo.createPost(const {});
+
+      expect(created.id, 1001);
+      expect(created.type, 'resource');
+      expect(created.leafCategoryId, 40101);
+      expect(created.l2CategoryId, 401); // 服务端派生回执
+      expect(created.status, 'active');
+      expect(created.version, 0);
+      expect(created.completenessLevel, 1);
+      // 幂等头由拦截器按写接口纪律注入（详设 §11.2），本层不碰
+      expect(harness.server.lastRequest!.header('Idempotency-Key'), isNotNull,
+          reason: 'POST /posts 是正式写接口，幂等键必须随请求发出');
+    });
+
+    test('载荷派生字段不传：l2_category_id/grid_id/expire_at/version 均缺',
+        () async {
+      stubCreatePost(harness);
+      final draft = <String, Object?>{
+        'type': 'resource',
+        'leaf_category_id': 40101,
+        'title': '九成新实木餐桌转让',
+        'contact_type': 'phone',
+        'contact_value': '13800138000',
+      };
+
+      await repo.createPost(draft);
+
+      final body = harness.server.lastRequest!.body as Map<String, Object?>;
+      for (final derived in [
+        'l2_category_id',
+        'grid_id',
+        'expire_at',
+        'version',
+        'completeness_level',
+      ]) {
+        expect(body.containsKey(derived), isFalse,
+            reason: '派生字段 $derived 由服务端生成，客户端传了也是坏先例');
+      }
+    });
+
+    test('发布阻断五码（40901）：DioException 包 ApiException(sensitiveWord)',
+        () async {
+      stubCreatePostFailure(harness, 40901, '包含敏感词：xxx，请修改');
+
+      await expectLater(
+        repo.createPost(const {}),
+        throwsA(
+          isA<DioException>().having(
+            (e) => e.error,
+            'error 包业务异常',
+            isA<ApiException>()
+                .having((e) => e.code, 'code', ApiErrorCode.sensitiveWord),
+          ),
+        ),
+      );
+    });
+
+    test('响应缺 version：抛 parseError（出参必带 version 是契约红线）',
+        () async {
+      harness.stub('POST', '/api/v1/posts', (req) async {
+        final payload = postCreatedPayload()..remove('version');
+        return MockResponse(body: ApiEnvelope.success(data: payload));
+      });
+
+      await expectLater(
+        repo.createPost(const {}),
+        throwsA(
+          isA<ApiException>()
+              .having((e) => e.code, 'code', ApiErrorCode.parseError),
+        ),
+      );
+    });
+  });
 }

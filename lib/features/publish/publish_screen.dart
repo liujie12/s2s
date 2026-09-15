@@ -178,14 +178,50 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
         );
       }
       return;
+    }
+
+    // [125] B5：正式提交。precheck 与 POST 之间的时间差内服务端口径
+    // 可能变化（如审核策略调整），POST 仍可能回发布阻断五码——按同款
+    // 弹层处理（复用动作入口），其余错误按 §11.4 提示。
+    // 返回值（id/version）当前无消费方：埋点事件体与详情跳转分别属
+    // [130] 与详情页条目，接入时再接。
+    try {
+      await ref
+          .read(postRepositoryProvider)
+          .createPost(_form.postDraftPayload());
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      if (_isPublishBlockCode(error.code.code)) {
+        await _showPrecheckBlocks([
+          PrecheckBlockDto(code: error.code.code, message: error.message),
+        ]);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error.uiMessage)),
+        );
+      }
+      return;
     } finally {
       if (mounted) setState(() => _precheckInFlight = false);
     }
 
-    // precheck 通过。真正的提交需 §12.3 `POST /posts`（B5 接线）；
-    // 当前直接进完成页，带上表单快照供完成页算 §9.8 档位。
-    router.push(AppRoutes.publishSuccess, extra: _form);
+    // TODO([130] 埋点队列)：post_published 事件入队（事件体 interaction_id
+    // 取本次提交交互、ts 取此刻毫秒精度）；队列与上报实现属 [130]，
+    // 本轮只留调用点，不引入 TrackReporter 依赖。
+
+    // 发布成功进完成页（带上表单快照供完成页算 §9.8 档位）。
+    if (mounted) router.push(AppRoutes.publishSuccess, extra: _form);
   }
+
+  /// 是否为发布阻断五码（40901/40902/40302/40303/40304，§12.5）。
+  ///
+  /// precheck 的 blocks 与 POST 的错误码共用这五码语义，POST 侧收到
+  /// 时复用阻断弹层（含 40302/40304 动作入口）。
+  ///
+  /// 参数 [code] 信封错误码数值。
+  /// 返回：[bool] 五码之一为 true。
+  bool _isPublishBlockCode(int code) =>
+      code == 40901 || code == 40902 || code == 40302 || code == 40303 || code == 40304;
 
   /// precheck 进行中标志（防重入）：网络往返期间主按钮仍可点，
   /// 双发请求虽无害（不写库）但会弹两次结果，且用户无从知道第一次

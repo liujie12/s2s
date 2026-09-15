@@ -89,3 +89,70 @@ class PrecheckBlockDto {
   /// 关联字段名（契约 nullable：非 required，供定位具体表单项）。
   final String? field;
 }
+
+/// 发布成功响应 DTO（[125] B5，`POST /posts` 响应 = 契约 `PostDetail`）。
+///
+/// 只解析本端点消费的 required 8 字段；`PostDetail` 的可选项
+/// （category_path/media/contact_mask 等）属详情页域，待对应条目扩展，
+/// 不在本端点预建（预留字段不造数据）。
+class PostCreatedDto {
+  /// 构造发布成功 DTO。
+  const PostCreatedDto({
+    required this.id,
+    required this.type,
+    required this.leafCategoryId,
+    required this.l2CategoryId,
+    required this.title,
+    required this.status,
+    required this.version,
+    required this.completenessLevel,
+  });
+
+  /// 由信封 data 构造。
+  ///
+  /// 参数：[json] 信封 data（`POST /posts` 的 data 字段）。
+  /// 返回：[PostCreatedDto]。
+  /// 抛出：[ApiException.parse] required 字段缺失/类型不符时（含实际值）。
+  factory PostCreatedDto.fromJson(Object? json) {
+    final map = requireMap(json, 'PostDetail');
+    return PostCreatedDto(
+      id: requireInt(map, 'id', 'PostDetail'),
+      type: requireString(map, 'type', 'PostDetail'),
+      leafCategoryId: requireInt(map, 'leaf_category_id', 'PostDetail'),
+      l2CategoryId: requireInt(map, 'l2_category_id', 'PostDetail'),
+      title: requireString(map, 'title', 'PostDetail'),
+      status: requireString(map, 'status', 'PostDetail'),
+      version: requireInt(map, 'version', 'PostDetail'),
+      // 契约 int enum [0,1,2]，int32；服务端 STORED 生成列产出
+      completenessLevel: requireInt(
+        map,
+        'completeness_level',
+        'PostDetail',
+      ),
+    );
+  }
+
+  /// 帖子 ID（int64；发布后由服务端生成）。
+  final int id;
+
+  /// 供需态（`resource`/`demand`，回显入参）。
+  final String type;
+
+  /// 叶子类目 ID（回显入参）。
+  final int leafCategoryId;
+
+  /// 二级类目 ID（服务端派生，STORED 生成列）。
+  final int l2CategoryId;
+
+  /// 标题（回显入参）。
+  final String title;
+
+  /// 状态（新建即 `active`，先发后审）。
+  final String status;
+
+  /// 乐观锁版本（初始 0）。
+  final int version;
+
+  /// 完整度等级（0/1/2，服务端三条件达成数映射）。
+  final int completenessLevel;
+}

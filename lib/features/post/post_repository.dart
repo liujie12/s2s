@@ -60,6 +60,34 @@ class PostRepository {
     return PrecheckResultDto.fromJson(response.data);
   }
 
+  /// 发布帖子（`POST /posts`，[125] B5）。
+  ///
+  /// 幂等：契约挂 `Idempotency-Key` 参数，HeaderInterceptor 按「写接口
+  /// 缺失即注入」纪律自动生成 UUID v4；重试链（RetryInterceptor）已按
+  /// 「containsKey 才写」保全同键重发（详设 §11.1.1），本层不碰该头。
+  /// 服务端 SETNX 首次成功响应缓存后，同键重放原样返回首次结果。
+  ///
+  /// 参数：
+  ///   [draft] 与 precheck 同源的 PostDraft 载荷（必填项由
+  ///     `PublishFormState.postDraftPayload` 构造侧保证齐全——本地闸门
+  ///     全过才会走到本方法）；
+  ///   [interactionId] 交互起点生成的 X-Interaction-Id；null 由拦截器兜底。
+  /// 返回：[PostCreatedDto]（服务端生成的 id/version 及派生字段回执）。
+  /// 抛出：[ApiException] 信封业务错误（含发布阻断五码 40901/40902/
+  ///   40302/40303/40304、参数 40001、未登录 40101 等）与传输错误归一
+  ///   后的异常，由调用方按 §12.2 行为表处理。
+  Future<PostCreatedDto> createPost(
+    Map<String, Object?> draft, {
+    String? interactionId,
+  }) async {
+    final response = await _dio.post<Object?>(
+      '/posts',
+      data: draft,
+      options: _interactionOptions(interactionId),
+    );
+    return PostCreatedDto.fromJson(response.data);
+  }
+
   /// 组装携带 X-Interaction-Id 的按请求选项。
   ///
   /// 参数：[interactionId] 交互 ID，null 表示无透传值。

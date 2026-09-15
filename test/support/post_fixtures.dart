@@ -61,3 +61,42 @@ void stubPrecheck(
     return MockResponse(body: ApiEnvelope.success(data: payload));
   });
 }
+
+/// 构造 `POST /posts` 成功响应 data（契约 `PostDetail` required 8 字段）。
+///
+/// 返回：[Map] 契约 `PostDetail` 形态的 data 对象（id=1001、version=0、
+/// status=active、completeness_level=1）。
+Map<String, Object?> postCreatedPayload() => {
+  'id': 1001,
+  'type': 'resource',
+  'leaf_category_id': 40101,
+  'l2_category_id': 401,
+  'title': '九成新实木餐桌转让',
+  'status': 'active',
+  'version': 0,
+  'completeness_level': 1,
+};
+
+/// 登记 `POST /posts` 成功桩（回执帖 1001）。
+///
+/// 参数：[harness] 网络链 harness。
+/// 返回：void。
+void stubCreatePost(NetworkChainHarness harness) {
+  harness.stub('POST', '/api/v1/posts', (req) async {
+    return MockResponse(body: ApiEnvelope.success(data: postCreatedPayload()));
+  });
+}
+
+/// 登记 `POST /posts` 失败桩（信封业务错误，如发布阻断五码/40001）。
+///
+/// 参数：[harness] 网络链 harness；[code] 信封错误码；[message] 提示。
+/// 返回：void。
+void stubCreatePostFailure(
+  NetworkChainHarness harness,
+  int code,
+  String message,
+) {
+  harness.stub('POST', '/api/v1/posts', (req) async {
+    return MockResponse(status: 409, body: ApiEnvelope.failure(code, message));
+  });
+}
