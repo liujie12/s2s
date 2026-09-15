@@ -17,65 +17,9 @@ import 'package:zhaoyazhao/features/category/category_dto.dart';
 import 'package:zhaoyazhao/features/category/category_repository.dart';
 
 import '../../support/api_envelope.dart';
+import '../../support/category_fixtures.dart';
 import '../../support/mock_api_server.dart';
 import '../../support/network_chain_harness.dart';
-
-/// mock 服务端分类树版本（夹具唯一字面量处，改版本只动这里）。
-const String _serverVersion = '2026-09-14.1';
-
-/// 构造三级分类树响应 data（含 sensitive/banned/icon 三种可选标记的
-/// 出现与缺失两种形态）。
-///
-/// 参数：[version] 版本号。
-/// 返回：[Map] 契约 `CategoryTree` 形态的 data 对象。
-Map<String, Object?> _treePayload({String version = _serverVersion}) => {
-  'version': version,
-  'categories': [
-    {
-      'id': 1,
-      'name': '工作',
-      'level': 1,
-      'children': [
-        {
-          'id': 101,
-          'name': '全职招聘',
-          'level': 2,
-          'children': [
-            {
-              'id': 10101,
-              'name': '餐饮服务',
-              'level': 3,
-              'sensitive': true,
-              'banned': false,
-              'icon': null,
-            },
-            {'id': 10102, 'name': '零售导购', 'level': 3},
-          ],
-        },
-      ],
-    },
-  ],
-};
-
-/// 登记 `/categories/tree` 版本协商桩：query version 与服务端一致回
-/// `data=null`（304 语义），否则回全量树；无 version 参数回全量树。
-///
-/// 参数：[harness] 网络链 harness；[serverVersion] 服务端当前版本。
-/// 返回：void。
-void _stubTree(
-  NetworkChainHarness harness, {
-  String serverVersion = _serverVersion,
-}) {
-  harness.stub('GET', '/api/v1/categories/tree', (req) async {
-    final queryVersion = Uri.parse(req.path).queryParameters['version'];
-    if (queryVersion != null && queryVersion == serverVersion) {
-      return MockResponse(body: ApiEnvelope.success(data: null));
-    }
-    return MockResponse(
-      body: ApiEnvelope.success(data: _treePayload(version: serverVersion)),
-    );
-  });
-}
 
 /// 登记 `/templates/{leaf_category_id}` 正常桩（两字段覆盖 number/select
 /// 两类型与 required 两态）。
@@ -128,13 +72,13 @@ void main() {
   group('fetchTree 版本协商', () {
     test('不带 version（首启强制全量）：返回 full，请求不带 version 参数',
         () async {
-      _stubTree(harness);
+      stubCategoryTree(harness);
 
       final result = await repo.fetchTree();
 
       expect(result.isUnchanged, isFalse);
       final tree = result.tree!;
-      expect(tree.version, _serverVersion);
+      expect(tree.version, kServerTreeVersion);
       // 请求行不得携带 version 参数（契约：缺省即强制全量）。
       expect(
         Uri.parse(harness.server.lastRequest!.path).queryParameters,
@@ -143,28 +87,28 @@ void main() {
     });
 
     test('version 与服务端一致：返回 unchanged（304 语义 data=null）', () async {
-      _stubTree(harness);
+      stubCategoryTree(harness);
 
-      final result = await repo.fetchTree(localVersion: _serverVersion);
+      final result = await repo.fetchTree(localVersion: kServerTreeVersion);
 
       expect(result.isUnchanged, isTrue);
       expect(result.tree, isNull);
       // 确认确实发出去了协商请求（而非本地短路）。
       expect(
         Uri.parse(harness.server.lastRequest!.path).queryParameters['version'],
-        _serverVersion,
+        kServerTreeVersion,
       );
     });
 
     test('version 落后于服务端：返回全量树，DTO 三级结构与可选标记齐全',
         () async {
-      _stubTree(harness);
+      stubCategoryTree(harness);
 
       final result = await repo.fetchTree(localVersion: '2026-08-31.1');
 
       expect(result.isUnchanged, isFalse);
       final tree = result.tree!;
-      expect(tree.version, _serverVersion);
+      expect(tree.version, kServerTreeVersion);
       expect(tree.categories, hasLength(1));
 
       final top = tree.categories.single;
@@ -194,7 +138,7 @@ void main() {
     });
 
     test('interactionId 透传：X-Interaction-Id 头逐字到达服务端', () async {
-      _stubTree(harness);
+      stubCategoryTree(harness);
       const interactionId = '11111111-1111-4111-8111-111111111111';
 
       await repo.fetchTree(interactionId: interactionId);

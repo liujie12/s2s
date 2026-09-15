@@ -23,6 +23,8 @@
 /// **循环 import 说明**：见 `api_error_code.dart` 文件头，同一份说明。
 library;
 
+import 'package:dio/dio.dart' show DioException;
+
 import 'api_error_code.dart';
 
 /// 契约层 / 网络层统一异常。
@@ -94,4 +96,35 @@ class ApiException implements Exception {
 
   @override
   String toString() => 'ApiException(${code.name}): $message';
+}
+
+/// 从链上 catch 到的异常对象中拆出 [ApiException]（生产侧唯一拆包处，
+/// 编码规范 §1.1）。
+///
+/// 链上异常只有两种形态（详设 §11 / 计划 KTD2、KTD10）：
+///   1. [DioException] 且其 `error` 为 [ApiException]——信封业务错误经
+///      EnvelopeInterceptor reject、传输层错误经 RetryInterceptor 链尾
+///      归一（networkFailure）后的统一形态；
+///   2. 裸 [ApiException]——DTO/契约解析失败在响应返回后同步抛出，
+///      不经拦截器 reject 包装。
+/// 页面/状态层 catch 后一律经本函数归一再展示或入状态，禁止各处自行
+/// 强转；测试侧对应物是 `NetworkChainHarness.apiErrorOf`（断言形态、
+/// 不兜底，测试缺陷不得当契约行为放过）。
+///
+/// 参数：[error] try/catch 捕获的异常对象。
+/// 返回：[ApiException]。理论不可达的第三形态（拦截器链缺损、绕过
+///   生产装配发请求）按 [ApiErrorCode.networkFailure] 兜底并在 message
+///   注明实际运行时类型——autoRetry 行为给页面重试入口，比静默吞掉
+///   或整页崩溃诚实。
+ApiException asApiException(Object error) {
+  if (error is ApiException) return error;
+  if (error is DioException) {
+    final inner = error.error;
+    if (inner is ApiException) return inner;
+  }
+  return ApiException(
+    code: ApiErrorCode.networkFailure,
+    message: '未归一的异常形态（期望 DioException 包 ApiException 或裸 '
+        'ApiException），实际类型: ${error.runtimeType}',
+  );
 }

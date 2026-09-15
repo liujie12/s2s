@@ -117,6 +117,24 @@ class CategoryNodeDto {
   /// 子节点（非 required；契约「L3 无 children」，缺失即无子节点，
   /// 由转换层落实为空列表语义）。
   final List<CategoryNodeDto>? children;
+
+  /// 序列化为契约 JSON 形态（本地缓存持久化用，[124] B2）。
+  ///
+  /// 键名与 [fromJson] 输入逐字一致（snake_case）；为 null 的可选字段
+  /// **省略键**而非写 JSON null——[fromJson] 对「缺失」与「JSON null」
+  /// 均解析为 null（`_opt*` 语义），往返一致且缓存体积更小。
+  ///
+  /// 返回：[Map] 契约形态节点对象（含递归序列化的子节点）。
+  Map<String, Object?> toJson() => <String, Object?>{
+    'id': id,
+    'name': name,
+    'level': level,
+    if (icon != null) 'icon': icon,
+    if (sensitive != null) 'sensitive': sensitive,
+    if (banned != null) 'banned': banned,
+    if (children != null)
+      'children': [for (final child in children!) child.toJson()],
+  };
 }
 
 /// 分类树全量数据 DTO（openapi.yaml `CategoryTree`：required =
@@ -151,6 +169,18 @@ class CategoryTreeDto {
 
   /// 一级类目列表（L1 → L2 → L3 嵌套在 [CategoryNodeDto.children]）。
   final List<CategoryNodeDto> categories;
+
+  /// 序列化为契约 JSON 形态（本地缓存持久化用，[124] B2）。
+  ///
+  /// 与 [fromJson] 往返一致：缓存恢复路径与网络路径共用同一份解析校验
+  /// （缓存损坏即[fromJson] 抛 [ApiException.parse]，由存储层按
+  /// 「无缓存」降级，见 `CategoryTreeStore`）。
+  ///
+  /// 返回：[Map] 契约形态 `CategoryTree` 对象。
+  Map<String, Object?> toJson() => <String, Object?>{
+    'version': version,
+    'categories': [for (final node in categories) node.toJson()],
+  };
 }
 
 /// 叶子类目发布模板 DTO（openapi.yaml `Template`：required =
