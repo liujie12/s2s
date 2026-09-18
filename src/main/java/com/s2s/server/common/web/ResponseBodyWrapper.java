@@ -26,15 +26,15 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyAdvice;
  *       （compose healthcheck 依赖原生格式，部署架构设计文档）。</li>
  * </ol>
  *
- * <p>{@code request_id} 最小实现（本条目 U-3）：从请求属性 {@link #REQUEST_ID_ATTRIBUTE} 读取，
- * 取不到则生成 UUID 放入；<b>衔接点</b>——[124] {@code RequestIdFilter} 正式落地后由 Filter 在链首
- * 生成并写入同一属性，本方法与 {@code GlobalExceptionHandler} 仅读取，生成逻辑降为兜底。
+ * <p>{@code request_id} 实现：从请求属性 {@link #REQUEST_ID_ATTRIBUTE} 读取，
+ * 取不到则生成 UUID 放入；[122] {@code RequestIdFilter} 已在链首
+ * 生成并写入同一属性，本方法与 {@code GlobalExceptionHandler} 仅读取，生成逻辑为防御性兜底。
  */
 @RestControllerAdvice
 public class ResponseBodyWrapper implements ResponseBodyAdvice<Object> {
 
     /**
-     * {@code request_id} 的请求属性键。[124] {@code RequestIdFilter} 落地后写入同一键；
+     * {@code request_id} 的请求属性键。[122] {@code RequestIdFilter} 在链首写入本键；
      * {@code GlobalExceptionHandler} 与本类经 {@link #resolveOrCreateRequestId()} 共享读取。
      */
     public static final String REQUEST_ID_ATTRIBUTE = "X_REQUEST_ID";
@@ -106,8 +106,8 @@ public class ResponseBodyWrapper implements ResponseBodyAdvice<Object> {
     /**
      * 解析当前请求的 {@code request_id}（从 {@link RequestContextHolder} 线程本地取当前请求）：
      * 优先读请求属性 {@link #REQUEST_ID_ATTRIBUTE}
-     * （[124] {@code RequestIdFilter} 的正式写入点）；缺失时生成 UUID 并回写属性，
-     * 保证同一请求内 wrapper 与 handler 取到同一值；非请求线程兜底直接生成。
+     * （[122] {@code RequestIdFilter} 链首生成的正式写入点）；Filter 链首生成，此处仅防御性兜底——
+     * 属性缺失时生成 UUID 并回写，保证同一请求内 wrapper 与 handler 取到同一值；非请求线程兜底直接生成。
      * 本方法是该逻辑的<b>唯一实现处</b>（编码规范 §1.1 反冗余），{@code GlobalExceptionHandler} 复用。
      *
      * @return {@link String} 当前请求的 {@code request_id}，非空

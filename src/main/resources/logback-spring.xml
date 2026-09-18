@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  S2S 应用日志配置（唯一真源） — [122] U2 / KTD5
+  =========================================================================
+  依据：《可观测性架构方案》§3（JSON 单行、8 必备字段、脱敏）
+       《部署架构设计文档》§4.2 硬性配置②（轮转 50MB/14 天/3GB）
+       《前后端详细设计文档》§3.1/§3.2（横切链首 Filter 与两 ID 分工）
+
+  真源声明：本文件是全工程唯一生效的 logback 配置（随 jar classpath 生效）。
+  deploy/config/logback-spring.xml 是历史占位文件，从未被 compose 挂载消费，
+  已改写为指向本文件的声明——勿在 deploy 侧维护第二份配置（双份漂移已实证：
+  旧文件字段名是 traceId/userId 旧口径，与可观测 §3 定案的 8 字段不一致）。
+
+  8 必备字段的承载分工（可观测 §3）：
+    ts      ← encoder 原生（fieldNames.timestamp 重命名 + UTC 时区，RFC3339）
+    level   ← encoder 原生
+    request_id / interaction_id / user_id
+            ← MDC 全程常驻（RequestIdFilter 注入两键，user_id 由 AuthInterceptor
+               [122] U3 写入；includeMdc 默认展开为顶层字段）
+    path / code / rt_ms
+            ← 仅访问日志事件携带：RequestIdFilter finally 先 putMDC 再经独立
+               logger "ACCESS" 输出（承载方式裁定见 RequestIdFilter 类注释——
+               三值与两 ID 同走 MDC 单出口，不用 StructuredArguments 双出口）
+    访问日志 logger 名刻意不落 com.s2s 层级（防 deploy 的 com.s2s: WARN 压制），
+    deploy 三份 application-{env}.yml 显式放行 ACCESS: INFO。
+
+  轮转数值出处：《部署架构设计文档》§4.2 硬性配置②（maxFileSize 50MB /
+    maxHistory 14 / totalSizeCap 3GB），3GB 总量与 §3.1 磁盘分配表
+    「应用日志落盘 3GB」行对账；compose 以命名卷 app_logs:/var/log/app 承载。
+    审计日志（audit_log 落库，LogstashEncoder 侧无审计 appender）随 [124]
+    crypto 组件落地，本文件不预置空壳。
+
+  环境口径：不分 springProfile，全环境统一 JSON 单行（console + file）——
+  本地联调留证（8 字段 JSON 可见）与生产格式一致性优先于本地人类可读性。
+
+  脱敏纪律（可观测 §10.1）：脱敏在应用代码侧完成，本层不做正则替换；
+  门禁 G9 grep 手机号正则零命中兜底。本文件任何字段不携带
+  手机号/身份证/Authorization 头的承载路径。
+-->
+<configuration>
+
+  <!-- 日志目录：生产/容器默认 /var/log/app（compose 命名卷 app_logs）；
+       本地联调用 --logging.file.path=logs 覆盖（U2 验证口径：logs/ 下出 8 字段 JSON 单行）。 -->
+  <springProperty scope="context" name="logPath" source="logging.file.path"
+                  defaultValue="/var/log/app"/>
+
+  <!-- ====== 1. 控制台输出（JSON，docker logs 消费） ====== -->
+  <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+      <timeZone>UTC</timeZone>
+      <fieldNames>
+        <!-- 可观测 §3 字段名定案为 ts（encoder 默认 @timestamp 重命名） -->
+        <timestamp>ts</timestamp>
+      </fieldNames>
+      <includeContext>false</includeContext>
+      <customFields>{"app":"s2s-server"}</customFields>
+    </encoder>
+  </appender>
+
+  <!-- ====== 2. 文件输出（JSON 单行 + 按大小与时间滚动） ====== -->
+  <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+    <file>${logPath}/s2s-server.log</file>
+    <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+      <timeZone>UTC</timeZone>
+      <fieldNames>
+        <timestamp>ts</timestamp>
+      </fieldNames>
+      <includeContext>false</includeContext>
+      <customFields>{"app":"s2s-server"}</customFields>
+    </encoder>
+    <!-- 数值出处：部署架构设计文档 §4.2 硬性配置②（勿改单边，须与文档同改） -->
+    <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+      <fileNamePattern>${logPath}/s2s-server-%d{yyyy-MM-dd}.%i.log</fileNamePattern>
+      <maxFileSize>50MB</maxFileSize>
+      <maxHistory>14</maxHistory>
+      <totalSizeCap>3GB</totalSizeCap>
+    </rollingPolicy>
+  </appender>
+
+  <root level="INFO">
+    <appender-ref ref="CONSOLE"/>
+    <appender-ref ref="FILE"/>
+  </root>
+
+</configuration>
