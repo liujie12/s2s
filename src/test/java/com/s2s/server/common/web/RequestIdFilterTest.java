@@ -7,6 +7,7 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import com.s2s.server.auth.AuthInterceptor;
 import com.s2s.server.config.WebCrosscutConfig;
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.FilterChain;
@@ -19,6 +20,7 @@ import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import static org.mockito.Mockito.mock;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
@@ -214,7 +216,9 @@ class RequestIdFilterTest {
      */
     @Test
     void registersFilterAtHighestPrecedenceForRequestDispatchOnly() {
-        FilterRegistrationBean<RequestIdFilter> registration = new WebCrosscutConfig().requestIdFilterRegistration();
+        AuthInterceptor mockAuth = mock(AuthInterceptor.class);
+        FilterRegistrationBean<RequestIdFilter> registration =
+                new WebCrosscutConfig(mockAuth).requestIdFilterRegistration();
 
         assertThat(registration.getOrder()).isEqualTo(Ordered.HIGHEST_PRECEDENCE);
         assertThat(readDispatcherTypes(registration)).isEqualTo(java.util.EnumSet.of(DispatcherType.REQUEST));
