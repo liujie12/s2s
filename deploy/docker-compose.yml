@@ -115,6 +115,10 @@ services:
       SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD}
       # 埋点独立 database（见《可观测性架构方案》§4.4）
       TRACK_DATASOURCE_URL: jdbc:mysql://mysql:3306/${MYSQL_TRACK_DATABASE}?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8mb4
+      # JWT HS256 签名密钥（[122] KTD10）：env_file 已全量注入，此处显式映射与
+      # SPRING_*_PASSWORD 三项同范式——点名 app 消费该变量，缺失时由
+      # SecretsProperties 守卫启动期快速失败（已解析 + ≥32 字节双校验）
+      JWT_SECRET: ${JWT_SECRET}
       TZ: Asia/Shanghai
     volumes:
       # 应用日志落盘，容量上限由 logback 轮转策略控制在 3GB 内（见 §4.2 配置②）
