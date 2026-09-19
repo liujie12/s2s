@@ -29,6 +29,10 @@ logging:
   level:
     root: WARN
     com.s2s: WARN
+    # 访问日志独立 logger 显式放行（[122] U2/KTD5）：不落 com.s2s 层级，
+    # 若不放行会被 root: WARN 压制——每请求一条 INFO（8 字段之 path/code/rt_ms），
+    # 日志量恒定可控（QPS 量级），不参与「WARN 省盘」的收敛对象
+    ACCESS: INFO
 
 # --- Actuator ---------------------------------------------------------------
 management:

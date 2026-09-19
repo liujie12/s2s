@@ -13,7 +13,8 @@ import org.springframework.web.context.request.ServletRequestAttributes;
  * 同一逻辑出现第 2 次必须提取为共享实现（编码规范 §1.1），本类即唯一实现处。
  *
  * <p>request_id 属性键引用 {@link ResponseBodyWrapper#REQUEST_ID_ATTRIBUTE} 公共常量，
- * 不复制字面量（编码规范 §0.2）；这是正式生成方 [124] RequestIdFilter 落地前的最小实现路径，
+ * 不复制字面量（编码规范 §0.2）；[122] {@code RequestIdFilter} 已在生产链首生成并写入
+ * 同一属性键，纯单测经本夹具直接设置该键、绕过完整 Filter 链（KTD12 纯单测策略），
  * 与生产侧读取路径保持同一属性键。
  */
 final class RequestContextFixtures {

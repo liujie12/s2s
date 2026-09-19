@@ -38,7 +38,8 @@ class GlobalExceptionHandlerTest {
 
     /**
      * 每测前置：经 {@link RequestContextFixtures} 安装带预置 request_id 的请求上下文，
-     * 验证 handler 注入的 request_id 逐字沿用请求属性（与 wrapper 同一最小实现路径，[124] 衔接）。
+     * 验证 handler 注入的 request_id 逐字沿用请求属性（与 wrapper 同一纯单测最小路径，
+     * 与 [122] RequestIdFilter 链首生成方同键衔接）。
      *
      * @return void
      */
