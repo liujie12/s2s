@@ -37,7 +37,8 @@ class ResponseBodyWrapperTest {
 
     /**
      * 每测前置：构造 wrapper，并经 {@link RequestContextFixtures} 安装带预置 request_id 的
-     * 请求线程上下文（正式生成方 [124] RequestIdFilter 落地前的最小实现路径）。
+     * 请求线程上下文（纯单测经夹具直接设置同一属性键，与 [122] RequestIdFilter 生产链首
+     * 生成方同键，KTD12 纯单测策略）。
      *
      * @return void
      */

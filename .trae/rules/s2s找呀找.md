@@ -110,6 +110,7 @@
 
 - 【双端】NFR 阈值只存在于常量真源：Flutter `lib/nfr_constants.dart`（`const Xxx._();` + `static const`）；Java 在 `common` 建对应常量类，**值从 Dart 真源逐一抄录并注章节号**，业务代码一律引用（详设 §0.1）。
 - 【双端】有效期、配额等业务天数只引用常量（如 `NfrPostLifecycle`），禁新造天数。
+- 【例外登记】限频阈值 `RateLimitThresholds`（`common/constants`）为<b>服务端单端正源</b>——Dart 真源无 `NfrRateLimit` 类，因客户端被禁止本地预测剩余次数（§5.9「限频文案不承诺剩余次数」），阈值在 Dart 端无消费方，故不建 Dart 镜像，直接以详设 §3.4 键表为真源抄录（[122] KTD11，唯一允许 Java 独有 NFR 数字常量的类）。
 
 ### 3.2 错误码（详设 §2.3、§12；契约）
 
