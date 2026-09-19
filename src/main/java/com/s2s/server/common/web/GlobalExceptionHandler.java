@@ -25,9 +25,13 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
  *
  * <p>响应体统一 {@link ApiResponse}（handler 返回值经 {@code ResponseBodyWrapper.supports()}
  * 判定不再二次套壳）；{@code request_id} 经 {@link ResponseBodyWrapper#resolveOrCreateRequestId()}
- * 注入（[124] {@code RequestIdFilter} 衔接点同 wrapper）。
+ * 注入（[122] {@code RequestIdFilter} 衔接点同 wrapper）。
+ *
+ * <p>{@code basePackages = "com.s2s.server"} 限定作用域（[122] P2 #8）：与
+ * {@code ResponseBodyWrapper} 同口径——不限定则 {@code /error} 错误派发路径的
+ * {@code BasicErrorController} 会被本 advice 匹配，套上 {@code code=0} 假成功信封。
  */
-@RestControllerAdvice
+@RestControllerAdvice(basePackages = "com.s2s.server")
 public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);

@@ -26,11 +26,17 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyAdvice;
  *       （compose healthcheck 依赖原生格式，部署架构设计文档）。</li>
  * </ol>
  *
+ * <p>{@code basePackages = "com.s2s.server"} 限定作用域（[122] P2 #8）：不限定则
+ * {@code /error} 错误派发路径（{@code BasicErrorController}，包名
+ * {@code org.springframework.boot.web.servlet.error}）也会被本 advice 匹配、
+ * 套上 {@code code=0} 假成功信封——详见 {@code AdviceScopeTest}。
+ * 限定后本 advice 只作用于业务包 controller，运维/框架 controller 不受干扰。</p>
+ *
  * <p>{@code request_id} 实现：从请求属性 {@link #REQUEST_ID_ATTRIBUTE} 读取，
  * 取不到则生成 UUID 放入；[122] {@code RequestIdFilter} 已在链首
  * 生成并写入同一属性，本方法与 {@code GlobalExceptionHandler} 仅读取，生成逻辑为防御性兜底。
  */
-@RestControllerAdvice
+@RestControllerAdvice(basePackages = "com.s2s.server")
 public class ResponseBodyWrapper implements ResponseBodyAdvice<Object> {
 
     /**
