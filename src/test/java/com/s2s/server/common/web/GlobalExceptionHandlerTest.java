@@ -2,7 +2,6 @@ package com.s2s.server.common.web;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
@@ -24,10 +23,10 @@ import org.springframework.http.ResponseEntity;
  * {@code BizException(42902, retryAfterSeconds=3600)} → HTTP 429、响应体 code=42902、
  * 整数秒 {@code Retry-After: 3600} 响应头（全系统唯一写该头的位置，详设 §2.2 纪律）；
  * 未知 {@link RuntimeException} → 50001 且响应体无堆栈字段（日志打全栈、响应体无堆栈）。
- * 另补泳道 C 测试伞两例（P2 登记 #3）：needRetryAfter=false 高频路径（40001）无秒数正常
- * 返回、无 {@code Retry-After} 头、不触发 WARN；needRetryAfter=true 码缺秒数时 WARN 绊线
- * 必须 firing——P2 登记 #4「of() 对 true 码构造期拒收」未落地前，运行期唯一防线即 handler
- * 的 WARN 分支（编码规范 §3.2「缺即实现缺陷」的可观测出口），误删/误写守卫无回归网，本用例即回归网。
+ * 另补泳道 C 测试伞一例（P2 登记 #3-①）：needRetryAfter=false 高频路径（40001）无秒数正常
+ * 返回、无 {@code Retry-After} 头、不触发 WARN。原 #3-②「needRetryAfter=true 码缺秒数时
+ * WARN 绊线」场景因 [122] U6 落地 P2 #4（of() 对 true 码构造期拒收）而不可达——该行为
+ * 已由 {@code BizExceptionTest} 参数化 8 码覆盖，本测试不再保留。
  * 选纯单测路径（U-3 任务书授权「@WebMvcTest 或纯单测均可，选最快路径」）。
  *
  * <p>proof-first：本测试先于生产代码编写（U-3），首轮运行应编译失败。
@@ -111,35 +110,6 @@ class GlobalExceptionHandlerTest {
     }
 
     /**
-     * 场景四（泳道 C 测试伞，P2 登记 #3-②）：needRetryAfter=true 码（42902）缺秒数时
-     * WARN 绊线必须 firing。P2 登记 #4「of() 构造期拒收」未落地前，该 WARN 是
-     * 编码规范 §3.2「缺即实现缺陷」运行期的唯一可观测出口；本用例钉住「不写
-     * {@code Retry-After} 头 + WARN 含错误码」两要素。#4 落地后按拒收形态改写本例（登记口径）。
-     *
-     * @return void；断言失败即 WARN 绊线被误删/误写
-     */
-    @Test
-    void needRetryAfterCodeMissingSecondsFiresWarnTripwire() {
-        ListAppender<ILoggingEvent> appender = attachListAppender();
-        try {
-            ResponseEntity<ApiResponse<Void>> response =
-                    handler.handleBizException(BizException.of(ErrorCode.CONTACT_LIMIT));
-
-            assertThat(response.getStatusCode().value()).isEqualTo(429);
-            assertThat(response.getHeaders().getFirst(HttpHeaders.RETRY_AFTER)).isNull();
-            ApiResponse<Void> body = response.getBody();
-            assertThat(body).isNotNull();
-            assertThat(body.code()).isEqualTo(42902);
-            assertThat(appender.list).anySatisfy(event -> {
-                assertThat(event.getLevel()).isEqualTo(Level.WARN);
-                assertThat(event.getFormattedMessage()).contains("42902");
-            });
-        } finally {
-            detachListAppender(appender);
-        }
-    }
-
-    /**
      * 场景二：未知 {@link RuntimeException} 兜底映射为 HTTP 500 + 50001，
      * 响应体序列化后仅含 code/message/data/request_id 四键、无任何堆栈字段
      * （详设 §2.2「日志打全栈，响应体不含堆栈信息」；安全口径：禁止把服务端堆栈透传到 UI，PRD §12.5）。
@@ -163,8 +133,8 @@ class GlobalExceptionHandlerTest {
     }
 
     /**
-     * 测试辅助：给 handler 日志器挂载 logback 内存 appender（WARN 绊线的观测口）。
-     * 场景三/四同形态，按编码规范 §1.1 收敛为唯一实现处；调用方须在 finally 中
+     * 测试辅助：给 handler 日志器挂载 logback 内存 appender（无秒数正常路径的观测口）。
+     * 场景三使用，按编码规范 §1.1 收敛为唯一实现处；调用方须在 finally 中
      * 配对调用 {@link #detachListAppender(ListAppender)}，避免跨用例串扰。
      *
      * @return 已 start 并挂载的 {@link ListAppender}，测试读其 {@code list} 断言日志事件
