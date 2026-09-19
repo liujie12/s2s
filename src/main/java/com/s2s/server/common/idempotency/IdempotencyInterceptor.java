@@ -204,7 +204,9 @@ public class IdempotencyInterceptor implements HandlerInterceptor {
      */
     private boolean pollAndReplay(String redisKey, HttpServletRequest request) {
         long deadline = System.currentTimeMillis() + pollTimeoutMillis;
-        while (System.currentTimeMillis() < deadline) {
+        // [122] review #15 修复：循环条件加中断判定，线程被中断（容器停机/客户端断开）
+        // 时提前退出，不跑满剩余窗口占用 Servlet 线程
+        while (System.currentTimeMillis() < deadline && !Thread.currentThread().isInterrupted()) {
             String value = getValue(redisKey);
             if (value == null) {
                 // 首次执行者已失败删键 → 本请求重新竞逐执行权
@@ -222,7 +224,7 @@ public class IdempotencyInterceptor implements HandlerInterceptor {
             }
             sleepQuietly();
         }
-        log.warn("幂等轮询超时（{} ms），返 50001: key={}",
+        log.warn("幂等轮询超时或被中断（{} ms），返 50001: key={}",
                 pollTimeoutMillis, redisKey);
         throw BizException.of(ErrorCode.INTERNAL_ERROR);
     }

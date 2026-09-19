@@ -4,7 +4,9 @@ import com.s2s.server.common.constants.RateLimitThresholds;
 import com.s2s.server.common.web.AuthContext;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import java.time.Duration;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.stereotype.Component;
@@ -36,6 +38,12 @@ import org.springframework.web.servlet.HandlerInterceptor;
  * 不合法则 <b>跳过设备轨</b>（仅 IP 轨/账号轨照常计数）——防键空间污染，
  * 与幂等键的「格式错 → 40001」不同：设备 ID 是辅助维度，错了不拒绝请求，
  * 只是少一个维度的保护，降级路径更温和。
+ *
+ * <p><b>渠道级三轨的显式拒绝（[122] review #4 修复）</b>：{@code SMS_PHONE}/
+ * {@code SMS_IP}/{@code LOGIN_FAIL} 三轨的维度是手机号（在请求体里，拦截器读不到），
+ * 须由 auth 域业务代码直调 {@link RateLimiter}。若被经 {@code @RateLimit} 标注，
+ * 本拦截器抛 {@link IllegalStateException}（快速失败）而非静默放行——静默放行会让
+ * 限频无声失效，快速失败把误标注暴露在开发期。
  */
 @Component
 public class RateLimitInterceptor implements HandlerInterceptor {
@@ -109,6 +117,8 @@ public class RateLimitInterceptor implements HandlerInterceptor {
      * 为指定轨拼装键并加入 entries 列表。
      * 本方法是单轨到键的映射中心，集中处理：
      * <ul>
+     *   <li>渠道级三轨（SMS_PHONE/SMS_IP/LOGIN_FAIL）抛异常拒绝——维度是手机号，
+     *       拦截器拿不到，须业务代码直调 RateLimiter（[122] review #4）；</li>
      *   <li>游客轨的鉴权判定（已登录 → 跳过）；</li>
      *   <li>设备轨的格式校验（不合法 → 跳过）；</li>
      *   <li>多窗口轨（SMS_PHONE 有 1m/1h/1d 三个窗口）逐一加 entries。</li>
@@ -127,72 +137,47 @@ public class RateLimitInterceptor implements HandlerInterceptor {
             List<RateLimiter.RateLimitEntry> entries) {
         RateLimitTrack.WindowRule[] rules = track.rules();
         switch (track) {
-            case SMS_PHONE -> {
-                // SMS_PHONE 是渠道级，需要手机号 —— 手机号从哪来？
-                // 注：短信发送接口的限流在 [123] 业务代码里直接调 RateLimiter
-                // （因为手机号在请求体里，拦截器拿不到），本拦截器不处理 SMS_* 轨。
-                // 此处保留 switch 分支完整性，实际调用不会到这里。
-            }
-            case SMS_IP -> {
-                // 同上：渠道级 IP 轨由业务代码直接调，拦截器不处理。
-            }
-            case LOGIN_FAIL -> {
-                // 登录失败计数由 auth service 直接调，拦截器不处理。
-            }
+            case SMS_PHONE, SMS_IP, LOGIN_FAIL -> throw new IllegalStateException(
+                    "渠道级轨 " + track + " 不能经 @RateLimit 声明（维度是手机号，拦截器读不到），"
+                            + "须业务代码直调 RateLimiter（详设 §3.4 纪律 2）");
             case CONTACT_UID -> {
                 if (userId != null) {
                     for (RateLimitTrack.WindowRule rule : rules) {
-                        String key = RateLimitKeys.contactUidDay(userId, today);
-                        entries.add(new RateLimiter.RateLimitEntry(
-                                key, ttlForWindow(rule.windowSeconds(), today),
-                                rule.limit(), rule.overflowCode()));
+                        entries.add(entry(RateLimitKeys.contactUidDay(userId, today), rule, today));
                     }
                 }
             }
             case CONTACT_DEV -> {
                 if (validDeviceId) {
                     for (RateLimitTrack.WindowRule rule : rules) {
-                        String key = RateLimitKeys.contactDevDay(deviceId, today);
-                        entries.add(new RateLimiter.RateLimitEntry(
-                                key, ttlForWindow(rule.windowSeconds(), today),
-                                rule.limit(), rule.overflowCode()));
+                        entries.add(entry(RateLimitKeys.contactDevDay(deviceId, today), rule, today));
                     }
                 }
                 // 设备 ID 不合法 → 跳过设备轨（KTD14：防键空间污染，不拒绝请求）
             }
             case CONTACT_IP -> {
                 for (RateLimitTrack.WindowRule rule : rules) {
-                    String key = RateLimitKeys.contactIpDay(ip, today);
-                    entries.add(new RateLimiter.RateLimitEntry(
-                            key, ttlForWindow(rule.windowSeconds(), today),
-                            rule.limit(), rule.overflowCode()));
+                    entries.add(entry(RateLimitKeys.contactIpDay(ip, today), rule, today));
                 }
             }
             case CONTACT_BURST -> {
                 if (userId != null) {
                     for (RateLimitTrack.WindowRule rule : rules) {
-                        String key = RateLimitKeys.contactBurstMinute(userId);
-                        entries.add(new RateLimiter.RateLimitEntry(
-                                key, rule.windowSeconds(), rule.limit(), rule.overflowCode()));
+                        entries.add(entry(RateLimitKeys.contactBurstMinute(userId), rule, today));
                     }
                 }
             }
             case REPORT_UID -> {
                 if (userId != null) {
                     for (RateLimitTrack.WindowRule rule : rules) {
-                        String key = RateLimitKeys.reportUidDay(userId, today);
-                        entries.add(new RateLimiter.RateLimitEntry(
-                                key, ttlForWindow(rule.windowSeconds(), today),
-                                rule.limit(), rule.overflowCode()));
+                        entries.add(entry(RateLimitKeys.reportUidDay(userId, today), rule, today));
                     }
                 }
             }
             case TRACK_UID -> {
                 if (userId != null) {
                     for (RateLimitTrack.WindowRule rule : rules) {
-                        String key = RateLimitKeys.trackUidMinute(userId);
-                        entries.add(new RateLimiter.RateLimitEntry(
-                                key, rule.windowSeconds(), rule.limit(), rule.overflowCode()));
+                        entries.add(entry(RateLimitKeys.trackUidMinute(userId), rule, today));
                     }
                 }
             }
@@ -200,20 +185,14 @@ public class RateLimitInterceptor implements HandlerInterceptor {
                 // 42907 轨：仅未登录时计数（鉴权后判定，链序保证）
                 if (userId == null && validDeviceId) {
                     for (RateLimitTrack.WindowRule rule : rules) {
-                        String key = RateLimitKeys.guestDetailDevDay(deviceId, today);
-                        entries.add(new RateLimiter.RateLimitEntry(
-                                key, ttlForWindow(rule.windowSeconds(), today),
-                                rule.limit(), rule.overflowCode()));
+                        entries.add(entry(RateLimitKeys.guestDetailDevDay(deviceId, today), rule, today));
                     }
                 }
             }
             case GUEST_DETAIL_IP -> {
                 if (userId == null) {
                     for (RateLimitTrack.WindowRule rule : rules) {
-                        String key = RateLimitKeys.guestDetailIpDay(ip, today);
-                        entries.add(new RateLimiter.RateLimitEntry(
-                                key, ttlForWindow(rule.windowSeconds(), today),
-                                rule.limit(), rule.overflowCode()));
+                        entries.add(entry(RateLimitKeys.guestDetailIpDay(ip, today), rule, today));
                     }
                 }
             }
@@ -221,36 +200,49 @@ public class RateLimitInterceptor implements HandlerInterceptor {
     }
 
     /**
-     * 根据窗口秒数计算 TTL：自然日窗口（windowSeconds == 86400）的 TTL = 到次日零点秒数 + 2h 缓冲，
-     * 滚动窗口（1m/1h/15min）的 TTL = 窗口秒数本身。
+     * 按窗口语义构造限频条目（[122] review #5 修复：分离键 TTL 与用户可见剩余秒）。
      *
-     * <p>为什么自然日键不直接用 86400 秒 TTL：因为计数键在一天内的任意时刻创建，
-     * 86400 秒后过期 = 第二天的同一时刻过期，这和「自然日归零」语义不符——
-     * 用户可能在 23:59 发请求，计数键存活到次日 23:59，跨了两个自然日。
-     * 正确做法是键尾嵌日期片 + TTL 设为「到次日零点 + 2h 缓冲」——
-     * 零点后旧键自然过期，新日期的键从零开始。
+     * <p>滚动窗口（{@code :1m}/{@code :1h}）：键 TTL 与剩余秒均为窗口秒数。
+     * 自然日窗口（{@code :1d}）：键 TTL = 到次日零点秒数 + 2h 缓冲（26h 防跨日残留），
+     * 但 Retry-After 必须是「到次日零点的真实剩余秒」——二者若混用，用户会被提示
+     * 比真实重置时间多等 2h（review #5 缺陷）。故 {@link RateLimiter.RateLimitEntry}
+     * 的 {@code ttlSeconds} 与 {@code retryAfterSeconds} 分开承载。</p>
      *
-     * @param windowSeconds 窗口秒数（RateLimitThresholds 常量）
-     * @param today         当前自然日（用于计算到零点的秒数）
-     * @return long TTL 秒数
+     * @param key   Redis 计数键
+     * @param rule  窗口规则（阈值/窗口秒/超限码三元组）
+     * @param today 当前自然日（自然日窗口算到零点秒数用）
+     * @return {@link RateLimiter.RateLimitEntry} 五元组
      */
-    private long ttlForWindow(long windowSeconds, LocalDate today) {
+    private RateLimiter.RateLimitEntry entry(String key, RateLimitTrack.WindowRule rule, LocalDate today) {
+        long windowSeconds = rule.windowSeconds();
         if (windowSeconds == RateLimitThresholds.WINDOW_DAY_SECONDS) {
-            // 自然日窗口：到次日零点的秒数 + 2h 缓冲（KTD6：26h 防跨日残留）
-            long secondsUntilEndOfDay = java.time.Duration.between(
-                    java.time.LocalDateTime.now(RateLimitThresholds.ZONE),
-                    today.plusDays(1).atStartOfDay(RateLimitThresholds.ZONE)
-            ).getSeconds();
-            return secondsUntilEndOfDay + 7200; // +2h 缓冲 = 26h 最大 TTL
+            long secondsUntilEndOfDay = secondsUntilEndOfDay(today);
+            // 键 TTL = 到零点 + 2h 缓冲；Retry-After = 到零点（不含缓冲）
+            return new RateLimiter.RateLimitEntry(key, secondsUntilEndOfDay + 7200,
+                    secondsUntilEndOfDay, rule.limit(), rule.overflowCode());
         }
-        return windowSeconds;
+        return new RateLimiter.RateLimitEntry(key, windowSeconds, windowSeconds,
+                rule.limit(), rule.overflowCode());
     }
 
     /**
-     * 取客户端 IP（优先 X-Forwarded-For 最左，然后 X-Real-IP，最后 getRemoteAddr）。
-     * 与 forward-headers-strategy: framework（KTD2）对齐——Spring 已处理 XFF，
-     * getRemoteAddr() 返回的就是客户端真实 IP。
-     * 保留此方法是为了在 Spring 未处理的降级场景下也能取到 IP（双重保险）。
+     * 计算自当前时刻到次日零点（Asia/Shanghai 时区）的剩余秒数——自然日窗口
+     * 的「用户可见剩余秒」（Retry-After 真源），不含键 TTL 的 +2h 缓冲。
+     *
+     * @param today 当前自然日（Asia/Shanghai）
+     * @return long 到次日零点的剩余秒数，恒 ≥0
+     */
+    private long secondsUntilEndOfDay(LocalDate today) {
+        return Duration.between(
+                LocalDateTime.now(RateLimitThresholds.ZONE),
+                today.plusDays(1).atStartOfDay(RateLimitThresholds.ZONE)
+        ).getSeconds();
+    }
+
+    /**
+     * 取客户端 IP。{@code forward-headers-strategy: framework}（KTD2）下，
+     * Spring 已把 {@code X-Forwarded-For} 解析进 {@code request.getRemoteAddr()}，
+     * 故直接取 {@code getRemoteAddr()} 即为真实客户端 IP（无代理头时回退直连地址）。
      *
      * @param request 当前 HTTP 请求
      * @return {@link String} 客户端 IP 地址；永不返回 null（空串兜底）

@@ -78,6 +78,12 @@ spring:
       # "Could not resolve placeholder 'SPRING_DATA_REDIS_PASSWORD'"，报错点名变量；
       # Redis 必 requirepass（编码规范 §3.3），故不提供空口令默认值
       password: ${SPRING_DATA_REDIS_PASSWORD}
+      # [122] review #2 修复：命令超时与连接超时显式收敛（默认 60s 会让 Redis 黑洞时
+      # 鉴权黑名单读/幂等 SETNX/限频 Lua 阻塞请求线程到 60s，耗尽 Tomcat 线程池级联）。
+      # 2s 足够覆盖本机/容器内网 Redis 正常往返，Redis 不可达时快速失败
+      # （鉴权黑名单读故障→50001，限频写失败→WARN 放行，幂等→50001，KTD7）。
+      timeout: 2s
+      connect-timeout: 2s
 
 management:
   endpoints:

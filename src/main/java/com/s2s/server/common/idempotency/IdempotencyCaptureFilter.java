@@ -116,6 +116,11 @@ public class IdempotencyCaptureFilter extends OncePerRequestFilter {
      * （TTL 24h），非 2xx 则 DEL 占位键（同 Key 重放重新执行）。
      * Redis 写失败记 ERROR 不抛异常（响应已产生，依赖 TTL 自愈）。
      *
+     * <p><b>[122] review #7 修复</b>：2xx 但 SET 覆盖失败时，改为 DEL 占位键（与非 2xx 路径对齐）——
+     * 若仅记 ERROR 依赖 TTL 自愈，占位键会停在 PENDING 长达 24h，期间同 Key 既不可重放
+     * 也不可重执行（SETNX 永远失败），形成「成功但不可重放」的悬挂态；改 DEL 后同 Key
+     * 重放会重新 SETNX 执行，闭环恢复。</p>
+     *
      * @param wrapped  已包装的响应（状态与缓存字节读取源）
      * @param redisKey 幂等 Redis 键
      */
@@ -127,16 +132,27 @@ public class IdempotencyCaptureFilter extends OncePerRequestFilter {
                 redisTemplate.opsForValue().set(
                         redisKey, bodyJson, keyTtl.toSeconds(), TimeUnit.SECONDS);
             } catch (Exception exception) {
-                log.error("幂等成功缓存 SET 覆盖失败（依赖 {}h TTL 自愈，登记已知代价）: key={}",
-                        NfrApi.IDEMPOTENCY_WINDOW_HOURS, redisKey, exception);
+                log.error("幂等成功缓存 SET 覆盖失败，改 DEL 占位键允许重放重新执行: key={}",
+                        redisKey, exception);
+                deletePlaceholder(redisKey);
             }
         } else {
-            try {
-                redisTemplate.delete(redisKey);
-            } catch (Exception exception) {
-                log.error("幂等占位 DEL 失败（依赖 {}h TTL 自愈，登记已知代价）: key={}",
-                        NfrApi.IDEMPOTENCY_WINDOW_HOURS, redisKey, exception);
-            }
+            deletePlaceholder(redisKey);
+        }
+    }
+
+    /**
+     * 删除幂等占位键（成功缓存 SET 失败与非 2xx 两条路径共用）。DEL 失败记 ERROR 不抛异常，
+     * 依赖占位键 24h TTL 自愈（登记已知代价）。
+     *
+     * @param redisKey 幂等 Redis 键
+     */
+    private void deletePlaceholder(String redisKey) {
+        try {
+            redisTemplate.delete(redisKey);
+        } catch (Exception exception) {
+            log.error("幂等占位 DEL 失败（依赖 {}h TTL 自愈，登记已知代价）: key={}",
+                    NfrApi.IDEMPOTENCY_WINDOW_HOURS, redisKey, exception);
         }
     }
 }

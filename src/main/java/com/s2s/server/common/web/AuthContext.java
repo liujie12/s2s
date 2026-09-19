@@ -73,15 +73,4 @@ public final class AuthContext {
         }
         return null;
     }
-
-    /**
-     * 判断当前请求是否已登录（基于 {@link #currentUserId(HttpServletRequest)} 的便捷方法，
-     * 避免调用方各自写 {@code != null} 判空）。
-     *
-     * @param request 当前 HTTP 请求
-     * @return boolean；{@code true} 表示已登录，{@code false} 表示游客
-     */
-    public static boolean isLoggedIn(HttpServletRequest request) {
-        return currentUserId(request) != null;
-    }
 }

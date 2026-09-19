@@ -89,16 +89,17 @@ class CrosscutChainIntegrationTest {
      */
     @Test
     void rateLimitPrecedesIdempotency() throws Exception {
-        // CONTACT_UID 轨 limit=30，返回 current=31 触发超限，ttl=100
+        // CONTACT_UID 轨 limit=30，Lua 返回 "31"（String，模拟 StringRedisSerializer 真实反序列化）
+        // 触发超限；Retry-After 为 entry.retryAfterSeconds（自然日到零点秒数，动态值，断言存在即可）
         when(redis.execute(any(RedisScript.class), anyList(), anyString()))
-                .thenReturn(Arrays.asList(31L, 100L));
+                .thenReturn("31");
 
         MockMvc mvc = buildMockMvc();
         mvc.perform(post("/stub/limited-idempotent")
                         .header("Authorization", "Bearer test-token"))
                 .andExpect(status().is(429))
                 .andExpect(jsonPath("$.code").value(42902))
-                .andExpect(header().string("Retry-After", "100"));
+                .andExpect(header().exists("Retry-After"));
     }
 
     /**

@@ -5,6 +5,7 @@ import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
+import io.jsonwebtoken.JwtParser;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import java.nio.charset.StandardCharsets;
@@ -60,8 +61,16 @@ public class JwtVerifier {
     private final StringRedisTemplate redisTemplate;
 
     /**
+     * 已构建的 JWT 解析器（[122] review #14 修复：构造期缓存复用）。
+     * jjwt 的 {@link JwtParser} 是不可变且线程安全的，本应在构造时构建一次复用；
+     * 原实现在每次验签时 {@code Jwts.parser().verifyWith(...).build()} 重建，
+     * 属鉴权每请求热路径的无谓分配。
+     */
+    private final JwtParser parser;
+
+    /**
      * 构造 JWT 验签器：从 {@link SecretsProperties} 取 JWT 密钥并转换为
-     * {@link SecretKey}（HMAC-SHA-256）；注入 Redis 模板供黑名单查询。
+     * {@link SecretKey}（HMAC-SHA-256），构建并缓存 {@link JwtParser}；注入 Redis 模板供黑名单查询。
      *
      * @param secretsProperties 全量凭证配置（jwtSecret 字段已在启动期验证非空且 ≥32 字节）
      * @param redisTemplate     Redis 字符串操作模板（黑名单读路径）
@@ -69,6 +78,7 @@ public class JwtVerifier {
     public JwtVerifier(SecretsProperties secretsProperties, StringRedisTemplate redisTemplate) {
         this.signingKey = Keys.hmacShaKeyFor(secretsProperties.jwtSecret().getBytes(StandardCharsets.UTF_8));
         this.redisTemplate = redisTemplate;
+        this.parser = Jwts.parser().verifyWith(this.signingKey).build();
     }
 
     /**
@@ -104,11 +114,7 @@ public class JwtVerifier {
      */
     private Claims parseClaims(String token) {
         try {
-            return Jwts.parser()
-                    .verifyWith(signingKey)
-                    .build()
-                    .parseSignedClaims(token)
-                    .getPayload();
+            return parser.parseSignedClaims(token).getPayload();
         } catch (JwtException | IllegalArgumentException exception) {
             // jjwt 0.12.x 的所有解析异常基类 JwtException；IllegalArgumentException 覆盖
             // 空串 / null / 格式完全乱码等前置校验失败——统一归 40101
@@ -181,5 +187,6 @@ public class JwtVerifier {
     private JwtVerifier(SecretKey signingKey, StringRedisTemplate redisTemplate) {
         this.signingKey = signingKey;
         this.redisTemplate = redisTemplate;
+        this.parser = Jwts.parser().verifyWith(signingKey).build();
     }
 }
