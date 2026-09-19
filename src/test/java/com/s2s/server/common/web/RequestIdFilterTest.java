@@ -219,8 +219,13 @@ class RequestIdFilterTest {
         AuthInterceptor mockAuth = mock(AuthInterceptor.class);
         com.s2s.server.common.ratelimit.RateLimitInterceptor mockRateLimit =
                 mock(com.s2s.server.common.ratelimit.RateLimitInterceptor.class);
+        com.s2s.server.common.idempotency.IdempotencyInterceptor mockIdempotency =
+                mock(com.s2s.server.common.idempotency.IdempotencyInterceptor.class);
+        org.springframework.data.redis.core.StringRedisTemplate mockRedis =
+                mock(org.springframework.data.redis.core.StringRedisTemplate.class);
         FilterRegistrationBean<RequestIdFilter> registration =
-                new WebCrosscutConfig(mockAuth, mockRateLimit).requestIdFilterRegistration();
+                new WebCrosscutConfig(mockAuth, mockRateLimit, mockIdempotency, mockRedis)
+                        .requestIdFilterRegistration();
 
         assertThat(registration.getOrder()).isEqualTo(Ordered.HIGHEST_PRECEDENCE);
         assertThat(readDispatcherTypes(registration)).isEqualTo(java.util.EnumSet.of(DispatcherType.REQUEST));

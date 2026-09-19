@@ -1,9 +1,9 @@
 package com.s2s.server.common.ratelimit;
 
 import com.s2s.server.common.constants.RateLimitThresholds;
+import com.s2s.server.common.web.UuidV4;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
-import java.util.regex.Pattern;
 
 /**
  * 限频 Redis 键<b>唯一拼装处</b>（[122] U4；详设 §3.4 键表 11 行；编码规范 §1.2 唯一实现处清单）。
@@ -36,14 +36,6 @@ public final class RateLimitKeys {
 
     /** 自然日窗口日期格式（yyyyMMdd）。 */
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd");
-
-    /**
-     * 设备 ID 合法格式正则（UUID v4 标准格式，含横杠）。
-     * 与前端首次启动自生成 UUID 的格式对齐（KTD14）。
-     * 不合法的设备 ID 不入键（跳过设备轨，仅 IP 轨计数）。
-     */
-    private static final Pattern DEVICE_ID_PATTERN = Pattern.compile(
-            "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$");
 
     /**
      * 工具类：禁止实例化。
@@ -246,14 +238,15 @@ public final class RateLimitKeys {
      * 不合法则设备轨跳过（不写入、不计数），仅 IP 轨照常计数——
      * 防键空间污染（超长串、控制字符、路径遍历字符等）。
      *
-     * <p>正则与前端生成规则对齐（首次启动自生成 UUID v4）。
-     * null / 空串 / 大写 / v1 / 无横杠 均视为不合法。
+     * <p>校验逻辑委托 {@link UuidV4#isValid(String)}（UUID v4 正则唯一实现处，
+     * 编码规范 §1.1）；本方法的语义来源为 KTD14，与幂等键的详设 §3.3 来源不同但格式
+     * 口径一致，故共用同一正则。null / 空串 / 大写 / v1 / 无横杠均视为不合法。
      *
      * @param deviceId 设备 ID 头值
      * @return boolean；{@code true} 表示合法可入键，{@code false} 表示跳过设备轨
      */
     public static boolean isValidDeviceId(String deviceId) {
-        return deviceId != null && DEVICE_ID_PATTERN.matcher(deviceId).matches();
+        return UuidV4.isValid(deviceId);
     }
 
     /**

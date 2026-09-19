@@ -1,6 +1,8 @@
 package com.s2s.server.config;
 
 import com.s2s.server.auth.AuthInterceptor;
+import com.s2s.server.common.idempotency.IdempotencyCaptureFilter;
+import com.s2s.server.common.idempotency.IdempotencyInterceptor;
 import com.s2s.server.common.ratelimit.RateLimitInterceptor;
 import com.s2s.server.common.web.RequestIdFilter;
 import jakarta.servlet.DispatcherType;
@@ -8,6 +10,7 @@ import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
@@ -39,16 +42,28 @@ public class WebCrosscutConfig implements WebMvcConfigurer {
     /** 限频拦截器（构造注入，Spring 托管的单例）。 */
     private final RateLimitInterceptor rateLimitInterceptor;
 
+    /** 幂等判定拦截器（构造注入，Spring 托管的单例）。 */
+    private final IdempotencyInterceptor idempotencyInterceptor;
+
+    /** Redis 模板（供幂等捕获 Filter 显式实例化，非拦截器用——拦截器各自注入）。 */
+    private final StringRedisTemplate redisTemplate;
+
     /**
-     * 构造组装根，注入所有拦截器（当前 Auth + RateLimit，U5 追加 Idempotency）。
+     * 构造组装根，注入全部拦截器与 Redis 模板。
      *
-     * @param authInterceptor      鉴权拦截器（auth 域 @Component）
-     * @param rateLimitInterceptor 限频拦截器（common/ratelimit 域 @Component）
+     * @param authInterceptor       鉴权拦截器（auth 域 @Component）
+     * @param rateLimitInterceptor  限频拦截器（common/ratelimit 域 @Component）
+     * @param idempotencyInterceptor 幂等拦截器（common/idempotency 域 @Component）
+     * @param redisTemplate         Redis 模板（幂等捕获 Filter 实例化参数）
      */
     public WebCrosscutConfig(AuthInterceptor authInterceptor,
-            RateLimitInterceptor rateLimitInterceptor) {
+            RateLimitInterceptor rateLimitInterceptor,
+            IdempotencyInterceptor idempotencyInterceptor,
+            StringRedisTemplate redisTemplate) {
         this.authInterceptor = authInterceptor;
         this.rateLimitInterceptor = rateLimitInterceptor;
+        this.idempotencyInterceptor = idempotencyInterceptor;
+        this.redisTemplate = redisTemplate;
     }
 
     /**
@@ -68,12 +83,28 @@ public class WebCrosscutConfig implements WebMvcConfigurer {
     }
 
     /**
+     * 注册 {@link IdempotencyCaptureFilter}：紧随 RequestIdFilter 之后（HIGHEST + 1）、
+     * 仅 REQUEST 派发。响应体捕获必须在 Filter 层先于 DispatcherServlet 包装 response
+     * （架构评审 P0），故 order 紧邻 RequestIdFilter 之后、其余任何 Filter 之前。
+     *
+     * @return {@link FilterRegistrationBean} 携带已定位的幂等捕获 Filter 注册描述
+     */
+    @Bean
+    public FilterRegistrationBean<IdempotencyCaptureFilter> idempotencyCaptureFilterRegistration() {
+        FilterRegistrationBean<IdempotencyCaptureFilter> registration =
+                new FilterRegistrationBean<>(new IdempotencyCaptureFilter(redisTemplate));
+        registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 1);
+        registration.setDispatcherTypes(DispatcherType.REQUEST);
+        return registration;
+    }
+
+    /**
      * 注册拦截器链：按 add 顺序 = 执行顺序（详设 §3.1 链序定死：
      * AuthInterceptor → RateLimitInterceptor → IdempotencyInterceptor）。
-     * 当前（[122] U4）注册 Auth + RateLimit 两个；IdempotencyInterceptor 随 U5 追加。
      *
-     * <p><b>全路径生效</b>：不加 excludePathPatterns——具体哪些接口启用哪些限频轨
-     * 由方法上的 {@code @RateLimit} 注解声明，拦截器对无注解的方法直接放行。
+     * <p><b>全路径生效</b>：不加 excludePathPatterns——具体哪些接口启用哪些限频轨/幂等
+     * 由方法上的 {@code @RateLimit}/{@code @Idempotent} 注解声明，拦截器对无注解的方法
+     * 直接放行。
      *
      * @param registry Spring MVC 拦截器注册器
      */
@@ -81,5 +112,6 @@ public class WebCrosscutConfig implements WebMvcConfigurer {
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(authInterceptor);
         registry.addInterceptor(rateLimitInterceptor);
+        registry.addInterceptor(idempotencyInterceptor);
     }
 }
