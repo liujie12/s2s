@@ -21,7 +21,9 @@ import org.springframework.mock.web.MockHttpServletResponse;
  * {@link ResponseBodyWrapper} 套壳行为测试。
  *
  * <p>覆盖 U-3 任务四场景：record 返回值套壳（code=0、request_id 非空且逐字沿用请求属性）、
- * String 返回值套壳后仍为合法 JSON、已是 {@link ApiResponse} 不二次套壳、{@code /actuator/**} 不套壳。
+ * String 返回值套壳后仍为合法 JSON、已是 {@link ApiResponse} 不二次套壳、{@code /actuator/**} 不套壳；
+ * 另补泳道 C 测试伞场景五（P2 登记 #7）：{@code supports()} 普通 DTO 端点正向配对——
+ * 原仅负向断言，取反逻辑被改错（如误写恒 {@code false}）测试仍绿，配对后闸门两方向破改均亮红灯。
  * 选纯单测路径（U-3 任务书授权「@WebMvcTest 或纯单测均可，选最快路径」）。
  *
  * <p>proof-first：本测试先于生产代码编写（U-3），首轮运行应编译失败。
@@ -115,6 +117,20 @@ class ResponseBodyWrapperTest {
     void doesNotWrapWhenReturnTypeAlreadyApiResponse() throws NoSuchMethodException {
         MethodParameter returnType = stubMethodParameter("apiResponseEndpoint");
         assertThat(wrapper.supports(returnType, MappingJackson2HttpMessageConverter.class)).isFalse();
+    }
+
+    /**
+     * 场景五（泳道 C 测试伞，P2 登记 #7）：{@code supports()} 对普通 DTO 端点返回 {@code true}
+     * ——与场景三负向断言配对。{@code supports()} 是全站套壳总闸门，仅负向断言时取反逻辑被
+     * 改错（误写恒 {@code false} 或判错类型）测试仍绿；正向配对后两方向破改均触发红灯。
+     *
+     * @return void；断言失败即套壳总闸门正向判定失效
+     * @throws NoSuchMethodException 反射取占位方法句柄失败时抛出（测试固有问题，非被测行为）
+     */
+    @Test
+    void supportsReturnsTrueForPlainDtoEndpoint() throws NoSuchMethodException {
+        MethodParameter returnType = stubMethodParameter("recordEndpoint");
+        assertThat(wrapper.supports(returnType, MappingJackson2HttpMessageConverter.class)).isTrue();
     }
 
     /**
