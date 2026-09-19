@@ -217,8 +217,10 @@ class RequestIdFilterTest {
     @Test
     void registersFilterAtHighestPrecedenceForRequestDispatchOnly() {
         AuthInterceptor mockAuth = mock(AuthInterceptor.class);
+        com.s2s.server.common.ratelimit.RateLimitInterceptor mockRateLimit =
+                mock(com.s2s.server.common.ratelimit.RateLimitInterceptor.class);
         FilterRegistrationBean<RequestIdFilter> registration =
-                new WebCrosscutConfig(mockAuth).requestIdFilterRegistration();
+                new WebCrosscutConfig(mockAuth, mockRateLimit).requestIdFilterRegistration();
 
         assertThat(registration.getOrder()).isEqualTo(Ordered.HIGHEST_PRECEDENCE);
         assertThat(readDispatcherTypes(registration)).isEqualTo(java.util.EnumSet.of(DispatcherType.REQUEST));

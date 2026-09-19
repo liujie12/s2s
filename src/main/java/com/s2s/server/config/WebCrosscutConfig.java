@@ -1,6 +1,7 @@
 package com.s2s.server.config;
 
 import com.s2s.server.auth.AuthInterceptor;
+import com.s2s.server.common.ratelimit.RateLimitInterceptor;
 import com.s2s.server.common.web.RequestIdFilter;
 import jakarta.servlet.DispatcherType;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
@@ -35,13 +36,19 @@ public class WebCrosscutConfig implements WebMvcConfigurer {
     /** 鉴权拦截器（构造注入，Spring 托管的单例）。 */
     private final AuthInterceptor authInterceptor;
 
+    /** 限频拦截器（构造注入，Spring 托管的单例）。 */
+    private final RateLimitInterceptor rateLimitInterceptor;
+
     /**
-     * 构造组装根，注入所有拦截器（当前仅 AuthInterceptor，U4/U5 后续追加）。
+     * 构造组装根，注入所有拦截器（当前 Auth + RateLimit，U5 追加 Idempotency）。
      *
-     * @param authInterceptor 鉴权拦截器（auth 域 @Component）
+     * @param authInterceptor      鉴权拦截器（auth 域 @Component）
+     * @param rateLimitInterceptor 限频拦截器（common/ratelimit 域 @Component）
      */
-    public WebCrosscutConfig(AuthInterceptor authInterceptor) {
+    public WebCrosscutConfig(AuthInterceptor authInterceptor,
+            RateLimitInterceptor rateLimitInterceptor) {
         this.authInterceptor = authInterceptor;
+        this.rateLimitInterceptor = rateLimitInterceptor;
     }
 
     /**
@@ -61,19 +68,18 @@ public class WebCrosscutConfig implements WebMvcConfigurer {
     }
 
     /**
-     * 注册拦截器链：按 add 顺序 = 执行顺序（详设 §3.1 链序定死）。
-     * 当前（[122] U3）仅注册 AuthInterceptor；RateLimitInterceptor 与 IdempotencyInterceptor
-     * 随 U4/U5 追加在此方法内。
+     * 注册拦截器链：按 add 顺序 = 执行顺序（详设 §3.1 链序定死：
+     * AuthInterceptor → RateLimitInterceptor → IdempotencyInterceptor）。
+     * 当前（[122] U4）注册 Auth + RateLimit 两个；IdempotencyInterceptor 随 U5 追加。
      *
-     * <p><b>全路径生效</b>：不加 excludePathPatterns——鉴权拦截器对所有请求执行，
-     * 「是否需要登录」是业务层判定（40101 只是 Token 无效，和「该接口是否要登录」
-     * 是两个维度）。匿名接口带无效 Token 也必须 40101（KTD3），这是默认全路径
-     * 生效的直接结果，无需额外配置。
+     * <p><b>全路径生效</b>：不加 excludePathPatterns——具体哪些接口启用哪些限频轨
+     * 由方法上的 {@code @RateLimit} 注解声明，拦截器对无注解的方法直接放行。
      *
      * @param registry Spring MVC 拦截器注册器
      */
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(authInterceptor);
+        registry.addInterceptor(rateLimitInterceptor);
     }
 }
