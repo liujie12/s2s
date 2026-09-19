@@ -360,8 +360,8 @@ U1（底座）→ U2/U3（可并行，各自依赖 U1）→ U4（依赖 U3 上�
 - **Dependencies**：U1–U7 全部。
 - **Files**：
   - `src/main/java/com/s2s/server/common/web/ResponseBodyWrapper.java`、`GlobalExceptionHandler.java`、两测试与 `RequestContextFixtures`、`common/ratelimit/package-info.java`、`common/idempotency/package-info.java`（修改；漂移点 1–9 全量订正，U2/U4/U5 已顺带改的复核）
-  - `docs/design/前后端详细设计文档.md`（修改；§3.4 窗口语义「自然日 + 键尾日期片」一行、§3.3 匿名幂等键维度一行（KTD13，含「幂等只防重试、防滥用由渠道限频轨兜底」边界句）、§1.2 补五个组件落点条目（AuthInterceptor→auth 域、RateLimitInterceptor/RateLimit 注解/RateLimitTrack→common/ratelimit、AuthContext 与根 config 包）并订正 [124]→[122] 编号、轮询参数 KTD4 回写）
-  - `.trae/rules/s2s找呀找.md`（修改；§3.1 加限频阈值单端正源例外一行）
+  - `docs/design/后端详细设计文档.md`（修改；§3.4 窗口语义「自然日 + 键尾日期片」一行、§3.3 匿名幂等键维度一行（KTD13，含「幂等只防重试、防滥用由渠道限频轨兜底」边界句）、§1.2 补五个组件落点条目（AuthInterceptor→auth 域、RateLimitInterceptor/RateLimit 注解/RateLimitTrack→common/ratelimit、AuthContext 与根 config 包）并订正 [124]→[122] 编号、轮询参数 KTD4 回写）
+  - `docs/architecture/编码规范.md`（修改；§3.1 加限频阈值单端正源例外一行）
   - `说明文档.md`（修改；[122] 进度记录 + P2 #8/#4 已修标记 + 「Redis 会话存储 = 黑名单查询点 + `jwt:bl:{jti}` 键形，写入随 [123] logout」拆解口径一句（防 S1 出口验收争议，架构验证 D8-3）+ gap-register 轮询参数/黑名单 jti 兜底两项登记）
 - **Approach**：漂移清单以研究 §8 九处为准逐一核销；说明文档按个人规则标记完成并补结果说明（测试计数、验收三条、遗留项）。
 - **Test scenarios**：Test expectation: none —— 纯文档单元；以 grep 复核九处零残留 `[124] RequestIdFilter`/`[124] RateLimiter`/`[124] IdempotencyInterceptor` 字样。

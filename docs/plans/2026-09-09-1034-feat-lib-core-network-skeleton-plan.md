@@ -17,7 +17,7 @@ deepened: 2026-09-09
 
 - **Objective:** worktree 具备可编译、全测试覆盖的 `lib/core/network/` 网络底座，后续条目（auth 接线、Pin 缓存、埋点链）只写业务不接底座。
 - **Means:** 先合入主仓未提交批次重建基线，再以 dio 5.11.1 五拦截器链落地（KTD2），内存 mock 先行验证协议形态。
-- **Authority:** 冲突时依次以编码规范 `.trae/rules/s2s找呀找.md`、详设 §10–§14（主仓 `docs/design/前后端详细设计文档.md`）、本计划为准；本计划与依据源冲突先回写规范再编码。
+- **Authority:** 冲突时依次以编码规范 `.trae/rules/s2s找呀找.md`、详设 §10–§14（主仓 `docs/design/前端详细设计文档.md`）、本计划为准；本计划与依据源冲突先回写规范再编码。
 - **Stop conditions:** 需要改动 features 域页面、需要预建 cache/track、dio 解析偏离 5.11.1 且无法钉住、U4 实测证伪 onError 按添加序执行（则停止并回 ce-plan 重设链序，KTD2/KTD3/KTD4 全部受影响）。
 - **Execution profile:** 6 个实施单元 + 1 个门禁单元，执行序 U1 → U2 → U7 → U3 → U4 → U5 → U6，U1 是全部后续单元的前置。
 - **Tail ownership:** gzip/执行序实测结论回写详设 §11.5/§11.1（U4）；refresh 失败三分口径同批回写三处依据源：详设 §13.1、契约 `docs/api/openapi.yaml` 全局纪律第 5 节、`docs/architecture/系统总体架构设计文档.md` 续期失败段（U5）；完成后更新 `说明文档.md` 进度。
@@ -336,7 +336,7 @@ stateDiagram-v2
 
 ### Sources / Research
 
-- 详设 §10–§14、§19、§21（主仓 `docs/design/前后端详细设计文档.md`）：五拦截器逐字口径、错误码枚举、必测断言清单、缺口 #6。
+- 详设 §10–§14、§19（主仓 `docs/design/前端详细设计文档.md`）、§21（主仓 `docs/design/后端详细设计文档.md`）：五拦截器逐字口径、错误码枚举、必测断言清单、缺口 #6。
 - dio 5.11.1 官方文档与源码（Context7 + GitHub cfug/dio）：拦截器 FIFO 三方向、`reject(err, true)` 语义、`dio.fetch` 全链重走、5.9.1/5.10.0/5.11.0 悬挂修复、HttpClient `autoUncompress` 默认解压。
 - `docs/solutions/workflow-issues/`（主仓）：spec-to-failing-gate-tests（双轨测试与例外通道）、gate-exit-code-needs-a-consumer（CI 消费方）、verification-code-fails-silently-as-pass（变异自检与第三态）、phase-boundary-verification-scaffolding（不预建占位的越界三问）、test-data-fidelity（mock 保真边界）、gap-register-triage（缺口回写唯一口径源）。
 - 既有脚手架：`test/support/mock_api_server.dart`（dart:io 真栈、received 请求列表）、`test/support/test_support.dart`（25 码全集、幂等键 fixtures）、`test/contract/api_contract_example_test.dart`（双轨示范形态）。
