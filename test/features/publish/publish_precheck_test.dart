@@ -165,6 +165,51 @@ void main() {
     expect(find.text('成功页占位'), findsNothing);
   });
 
+  testWidgets('阻断后关闭弹层可再次提交（_precheckInFlight 复位）',
+      (tester) async {
+    postRepo.resultToReturn = PrecheckResultDto.fromJson(
+      precheckBlockedPayload(),
+    );
+    await pumpReady(tester, submittable());
+    await tapSubmit(tester);
+
+    expect(find.text('发布前需处理以下问题'), findsOneWidget);
+
+    // 关闭弹层（「知道了」）：提交按钮应复位为可再次提交。
+    await tester.tap(find.text('知道了'));
+    await tester.pumpAndSettle();
+
+    // 改为通过态，再次提交应成功跳完成页（若 _precheckInFlight 未复位，
+    // 按钮仍禁用，本次 tap 无效果、成功页不会出现）。
+    postRepo.resultToReturn = PrecheckResultDto.fromJson(
+      precheckPassedPayload(),
+    );
+    await tapSubmit(tester);
+    expect(find.text('成功页占位'), findsOneWidget);
+  });
+
+  testWidgets('链路失败后可再次提交（_precheckInFlight 复位）', (tester) async {
+    postRepo.errorToThrow = const ApiException(
+      code: ApiErrorCode.networkFailure,
+      message: '网络连接失败，请检查网络后重试',
+      requestId: 'req_abc123',
+    );
+    await pumpReady(tester, submittable());
+    await tapSubmit(tester);
+
+    expect(
+      find.text('网络连接失败，请检查网络后重试（req_abc123）'),
+      findsOneWidget,
+    );
+
+    // 等 SnackBar 自动消失后，清除失败态，再次提交应成功。
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+    postRepo.errorToThrow = null;
+    await tapSubmit(tester);
+    expect(find.text('成功页占位'), findsOneWidget);
+  });
+
   group('[125] B5 POST /posts 提交链', () {
     testWidgets('成功：precheck→POST 两跳都发，跳完成页', (tester) async {
       await pumpReady(tester, submittable());

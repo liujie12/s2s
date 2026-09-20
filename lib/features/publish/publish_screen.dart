@@ -166,6 +166,7 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
       if (!mounted) return;
       if (!result.passed) {
         await _showPrecheckBlocks(result.blocks);
+        if (mounted) setState(() => _precheckInFlight = false);
         return;
       }
     } on ApiException catch (error) {
@@ -176,6 +177,7 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(error.uiMessage)),
         );
+        setState(() => _precheckInFlight = false);
       }
       return;
     }
