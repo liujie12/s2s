@@ -51,8 +51,9 @@
 ///     `lib/core/network/api_exception.dart` 文件头登记的调用点清单）。
 ///     文件头人工清单会漂移，判据 C 用机器计数锁定：
 ///     - C1：剥离后的 `lib/` 全量文本中 `ApiException.parse(` 命中数恒为
-///       [parseFactoryTotalBaseline]（工厂定义自身 1 + 生产调用点 23 = 24，
-///       23 含 category_dto.dart 11 处，[124] B1）；
+///       [parseFactoryTotalBaseline]（工厂定义自身 1 + 生产调用点 24 = 25，
+///       24 含 core/contract_json.dart 10 + category_dto.dart 2 留守 +
+///       既有非 category 12，[124] B4）；
 ///       新增/删除调用点必须同改基线与 api_exception.dart 文件头清单；
 ///     - C2：`ApiException(` 构造调用中出现 `ApiErrorCode.parseError` 实参
 ///       的内联构造，全 `lib/` 只允许 api_exception.dart 工厂定义体内 1 处，
