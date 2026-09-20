@@ -40,6 +40,10 @@ logging:
     root: INFO
     # 业务包开 DEBUG，便于本地跟踪调用链
     com.s2s: DEBUG
+    # 访问日志独立 logger（[122] U2/KTD5）——logger 名刻意不落 com.s2s 层级，
+    # 须显式放行 INFO：一是与 staging/prod 口径一致，二是防 root 未来调低时
+    # 静默丢访问日志（每请求一条，rt_ms/code/path 是可观测 §3 的 8 字段之三）
+    ACCESS: INFO
     # 原 org.hibernate.orm.jdbc.bind: TRACE 已随 JPA 一并删除（KTD-2 禁 JPA）；
     # 纪律保留：SQL 参数日志 staging/prod 绝不可开 —— 参数里含手机号等个人信息，
     # 开了等于把明文个信写进日志，直接违反门禁 G9

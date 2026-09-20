@@ -16,7 +16,8 @@
 | [系统安全设计方案.md](file:///d:/developer/code/aicoding/s2s/docs/architecture/系统安全设计方案.md) §3.2 / §7.5 / §13 | 两条红线审计、后门剔除、45 项自检与 5 项 🔴 验收 |
 | [可观测性架构方案.md](file:///d:/developer/code/aicoding/s2s/docs/architecture/可观测性架构方案.md) §9.1.1 / §10 / §10.1 | 主看板 SQL 清单、验收三列化、红线审计可执行定义 |
 | [PRD.md](file:///d:/developer/code/aicoding/s2s/docs/PRD.md) §13.4 / §14.6 | 9 条保留策略键（CI 比对键）、NFR 验收清单 |
-| [前后端详细设计文档.md](file:///d:/developer/code/aicoding/s2s/docs/design/前后端详细设计文档.md) §9 / §19 / §21 | 后端与前端自检清单、6 项已识别缺口 |
+| [后端详细设计文档.md](file:///d:/developer/code/aicoding/s2s/docs/design/后端详细设计文档.md) §9 / §21 | 后端自检清单、已识别缺口 |
+| [前端详细设计文档.md](file:///d:/developer/code/aicoding/s2s/docs/design/前端详细设计文档.md) §19 | 前端自检清单 |
 | [技术栈选型说明.md](file:///d:/developer/code/aicoding/s2s/docs/architecture/技术栈选型说明.md) | 版本锁定口径 |
 | [BRD.md](file:///d:/developer/code/aicoding/s2s/docs/BRD.md) §9.3 + 人力约束 | 红线、1 人 + AI 辅助 + 28 工作日 |
 

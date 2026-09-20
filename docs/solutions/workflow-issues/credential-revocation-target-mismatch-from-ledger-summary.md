@@ -70,3 +70,4 @@ tags: [secrets-management, credential-rotation, env-injection, g-q2-secret-scan,
 - [评审结论的实测核验](review-findings-require-empirical-verification.md)：姊妹篇——不凭二手结论（评审断言/挂账摘要）直接行动，先实证核验再执行处置；本篇覆盖凭证作废对象核对场景。
 - [破坏性脚本参数尽调](destructive-script-parameter-audit.md)：不可逆/破坏性操作前必须对「作用对象」做尽调——参数/对象就是写入授权。
 - [跨文档引用核对](cross-document-reference-verification.md)：摘要/搬运文本会掩盖事实差别，须回权威原文逐字核对。
+- [fail-closed-gate-judgments-with-mutation-self-checks.md](fail-closed-gate-judgments-with-mutation-self-checks.md)：同一 G-Q2 密钥检出事件的另一侧面——本篇讲处置对象张冠李戴的纠正，该篇讲检出判据在合并态的活体验证（实证守门读工作区而非 git 索引），闭合「检出→处置」链。

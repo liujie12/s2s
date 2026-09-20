@@ -1,5 +1,7 @@
 package com.s2s.server.common.config;
 
+import java.nio.charset.StandardCharsets;
+
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
@@ -23,14 +25,22 @@ import org.springframework.validation.annotation.Validated;
  * {@code @Value} 硬注入路径（如 config/FlywayTrackConfig），{@code @ConfigurationProperties}
  * 路径不可依赖。
  *
- * <p>凭证清单：DB 口令、Redis 口令、HMAC pepper 列表、AEAD 主密钥列表、OSS AK/SK
+ * <p>凭证清单：DB 口令、Redis 口令、HMAC pepper 列表、AEAD 主密钥列表、OSS AK/SK、
+ * JWT HS256 签名密钥（[122] KTD10 新增的第七个硬必填字段）
  * 为本条目启动硬依赖（缺失即快速失败）；短信/高德 Key 按计划 OQ-3 在本条目为
  * <b>可选绑定</b>——Batch1 后端无短信/地图消费方，compose 叠加路径也不注入这两个变量，
  * 若做硬守卫会让按部署模板起整栈必然启动失败（评审 finding #1）。收紧时点：
  * SMS_KEY 随条目 [123]（短信登录验证码渠道）、AMAP_KEY 随条目 [126]（逆地理/POI 服务）
  * 落地时改回 {@code @NotBlank} + {@link #requireResolved(String, String)} 硬守卫，
  * 并同步在 deploy/env 三份模板补占位。两个密钥列表按 {@code key_version} 列表结构
- * 承载 JSON 串（安全 §4：轮换时新旧版本并存于列表）。
+ * 承载 JSON 串（安全 §4：轮换时新旧版本并存于列表）。</p>
+ *
+ * <p><b>jwtSecret 的双重守卫</b>（[122] KTD10）：除 {@link #requireResolved(String, String)}
+ * 三形态守卫外，还有 {@link #requireMinBytes(String, int, String)} 原始字节长度守卫——
+ * jjwt 对 HS256 短密钥在<b>运行期</b>抛 {@code WeakKeyException}（首次验签才暴露），
+ * 启动期长度校验把该失败提前到进程拉起时（与既有凭证守卫同构的快速失败）。
+ * 密钥值不入任何仓库文件；泄露处置口径：立即换值并接受全量登出（30 天 Token 全失效），
+ * 随 gap-register 登记。</p>
  *
  * <p>设计取舍：
  * <ul>
@@ -53,6 +63,9 @@ import org.springframework.validation.annotation.Validated;
  *                           按 key_version 列表结构，安全 §4）
  * @param ossAccessKeyId     阿里云 OSS AccessKey ID（媒体对象存储凭证）
  * @param ossAccessKeySecret 阿里云 OSS AccessKey Secret（媒体对象存储凭证）
+ * @param jwtSecret          JWT HS256 签名密钥（[122] KTD10；登录态 Token 签发/验签密钥，
+ *                           jjwt 消费方为 auth 域 JwtVerifier/[123]；双重守卫：
+ *                           已解析 + 原始 UTF-8 字节 ≥32，短密钥启动期即失败）
  * @param smsKey             短信服务 Key（登录验证码渠道凭证）；本条目可选绑定（OQ-3），
  *                           未注入/占位未解析/空白统一归一为 null，[123] 落地时收紧为硬守卫
  * @param amapKey            高德地图 Key（逆地理/POI 服务凭证）；本条目可选绑定（OQ-3），
@@ -67,11 +80,19 @@ public record SecretsProperties(
         @NotBlank String aeadMasterKeysJson,
         @NotBlank String ossAccessKeyId,
         @NotBlank String ossAccessKeySecret,
+        @NotBlank String jwtSecret,
         String smsKey,
         String amapKey) {
 
+    /** JWT HS256 签名密钥最小原始长度（字节）= 256 bit。RFC 7518 §3.2 要求 HS256 密钥
+     * 位宽不小于哈希输出（256 bit = 32 字节），jjwt 运行期对短密钥抛
+     * {@code WeakKeyException}——本常量承载该下界供启动期守卫（[122] KTD10）引用，
+     * 业务代码禁内联 32。 */
+    private static final int JWT_SECRET_MIN_BYTES = 32;
+
     /**
-     * 紧凑构造器：六个硬依赖凭证逐字段执行 {@link #requireResolved(String, String)} 守卫，
+     * 紧凑构造器：七个硬依赖凭证逐字段执行 {@link #requireResolved(String, String)} 守卫
+     * （jwtSecret 额外叠加 {@link #requireMinBytes(String, int, String)} 长度守卫，KTD10），
      * 任一未真实注入即让绑定失败（启动快速失败，编码规范 §3.3）；短信/高德 Key 走
      * {@link #normalizeOptional(String)} 归一为可选绑定（计划 OQ-3，评审 finding #1）。
      */
@@ -82,6 +103,8 @@ public record SecretsProperties(
         requireResolved(aeadMasterKeysJson, "AEAD_MASTER_KEYS_JSON");
         requireResolved(ossAccessKeyId, "OSS_ACCESS_KEY_ID");
         requireResolved(ossAccessKeySecret, "OSS_ACCESS_KEY_SECRET");
+        requireResolved(jwtSecret, "JWT_SECRET");
+        requireMinBytes(jwtSecret, JWT_SECRET_MIN_BYTES, "JWT_SECRET");
         smsKey = normalizeOptional(smsKey);
         amapKey = normalizeOptional(amapKey);
     }
@@ -98,6 +121,28 @@ public record SecretsProperties(
         if (value == null || value.isBlank() || (value.startsWith("${") && value.endsWith("}"))) {
             throw new IllegalArgumentException(
                     "凭证未注入或占位未解析，启动快速失败（编码规范 §3.3）：请检查环境变量 " + envVar);
+        }
+    }
+
+    /**
+     * 凭证最小字节长度守卫（[122] KTD10）：原始 UTF-8 字节数不足下界即拒绝并点名环境变量。
+     *
+     * <p>为什么按<b>原始字节</b>而非字符数判：多字节字符（如中文）会让字符数虚高于字节数
+     * 的反面不成立——字节才是 HMAC-SHA256 密钥强度的真实度量；jjwt HS256 的
+     * {@code WeakKeyException} 同样按解码后字节数判定，此处口径与其一致，把运行期失败
+     * 提前到启动期。当前唯一消费方是 jwtSecret（≥32 字节）。</p>
+     *
+     * @param value    绑定到的字段值（调用前已通过 {@link #requireResolved(String, String)}，非 null）
+     * @param minBytes 允许的最小原始 UTF-8 字节长度（引用常量，禁内联数字）
+     * @param envVar   该字段对应的环境变量名（用于报错定位）
+     * @throws IllegalArgumentException 原始字节长度小于 {@code minBytes} 时抛出；
+     *         异常信息含变量名与下界，随绑定失败终止启动
+     */
+    private static void requireMinBytes(String value, int minBytes, String envVar) {
+        if (value.getBytes(StandardCharsets.UTF_8).length < minBytes) {
+            throw new IllegalArgumentException(
+                    "凭证强度不足（原始 UTF-8 字节 < " + minBytes + "），启动快速失败（[122] KTD10 弱密钥防御）：请检查环境变量 "
+                            + envVar);
         }
     }
 

@@ -92,7 +92,7 @@ execution: code
 ### Sources
 
 - 条目定义：主仓 `说明文档.md` §2.8.4（行 269）、§2.7、§2.8.1
-- 设计依据：主仓 `docs/design/前后端详细设计文档.md` §1.2/§2.1/§2.2/§2.3/§21；`docs/api/openapi.yaml` §2–§3；`docs/database/ddl/V1__init_schema.sql`、`V1__init_track_schema.sql`；`docs/architecture/技术栈选型说明.md` §3/§5/§6；`docs/architecture/系统安全设计方案.md` §4/§10；`docs/architecture/完成定义DoD.md`
+- 设计依据：主仓 `docs/design/后端详细设计文档.md` §1.2/§2.1/§2.2/§2.3/§21；`docs/api/openapi.yaml` §2–§3；`docs/database/ddl/V1__init_schema.sql`、`V1__init_track_schema.sql`；`docs/architecture/技术栈选型说明.md` §3/§5/§6；`docs/architecture/系统安全设计方案.md` §4/§10；`docs/architecture/完成定义DoD.md`
 - 常量真源：主仓 `lib/nfr_constants.dart`（7 常量类，Java 镜像抄录源）
 - POC 资产：主仓 `tool/poc_a_cluster_benchmark.dart`、`tool/poc_b_paint_benchmark.dart`、`lib/features/discovery/stress_data.dart`
 - 部署现状：`deploy/Dockerfile:29-34`、`deploy/env/.env.dev.example`（23 变量）、`deploy/config/app/application-*.yml`、compose initdb.d 挂载
@@ -184,7 +184,7 @@ flowchart TD
 
 ### U-7：文档回写
 
-- **Files**：主仓 `docs/design/前后端详细设计文档.md` §2.3（「枚举总数 23」→25）与 §1.2（「24 个错误码枚举」→25）、主仓 `说明文档.md`（§2.8.1 数据基线行修正 + §2.7 POC 处置口径按 KTD-6/PRD:2652 回写（含 §2.8.4 行）+ 进度记录 [121] 完成标记 + initdb.d 口径变更说明）
+- **Files**：主仓 `docs/design/后端详细设计文档.md` §2.3（「枚举总数 23」→25）与 §1.2（「24 个错误码枚举」→25）、主仓 `说明文档.md`（§2.8.1 数据基线行修正 + §2.7 POC 处置口径按 KTD-6/PRD:2652 回写（含 §2.8.4 行）+ 进度记录 [121] 完成标记 + initdb.d 口径变更说明）
 - **Approach**：回写只动失实行与进度记录，不重写设计内容；每处回写注明本计划出处；回写在主仓单独提交，不进 `item/121-backend-init` 分支（KTD-12）
 - **Test scenarios**：回写后与代码事实一致（ErrorCode 实际枚举数 == 文档数）
 - **Verification**：`ErrorCode.values().length == 25` 与详设文字一致；说明文档进度勾选

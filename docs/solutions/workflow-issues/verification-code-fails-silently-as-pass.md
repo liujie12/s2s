@@ -244,3 +244,4 @@ echo "不会执行到这里"
 - [破坏性脚本的传参审计：参数就是写入授权](file:///d:/developer/code/aicoding/s2s/docs/solutions/workflow-issues/destructive-script-parameter-audit.md) —— 同为「脚本参数处理」类风险，那篇管写入授权，本篇管参数位置与校验失效
 - [设计阶段的验证越界](file:///d:/developer/code/aicoding/s2s/docs/solutions/workflow-issues/phase-boundary-verification-scaffolding.md) —— 同为「为验证而搭的工程」的边界问题
 - 落地记录：[说明文档.md](file:///d:/developer/code/aicoding/s2s/说明文档.md) 条目 [106]（IaC 四类交付物 + 本轮 8 项审查修复）
+- [fail-closed 质量守门：判据工程化、变异自检与合并态活体实证](file:///d:/developer/code/aicoding/s2s/docs/solutions/workflow-issues/fail-closed-gate-judgments-with-mutation-self-checks.md) —— fail-closed 原则在 Dart 守门测试侧的镜像落地：「不可读/缺失文件即 FAIL」「inspected>0 空扫描面守卫」是本文 SKIP≠PASS 的工程化形态

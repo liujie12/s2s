@@ -29,9 +29,23 @@
 #      （编码规范 §4.3；详设 §2.2），兜住未被 GlobalExceptionHandler 接住的 /error 路径。
 #   5. KTD-3：Java 21 不开虚拟线程，全文件不出现 spring.threads.virtual.enabled
 #     （退出条件：Java 24 或压测证明 I/O 阻塞）。
+#   6. [122] 起的变化：
+#      - server.forward-headers-strategy: framework（[122] KTD2）——Caddy 反代后 IP 维限频
+#        （rl:sms:ip / rl:contact:ip / rl:guestdetail:ip）须取真实客户端 IP；framework 策略
+#        读 X-Forwarded-For 且无头时回退 remoteAddr（本地直连开发兼容）。安全前提：Caddy
+#        覆盖式 header_up X-Forwarded-For {remote_host}（禁追加/透传，部署门禁断言该行存在）。
+#      - s2s.secrets.jwt-secret（[122] KTD10）——JWT HS256 签名密钥占位。刻意用裸占位
+#        ＄{JWT_SECRET} 而非 ＄{JWT_SECRET:?}：s2s.secrets.* 走 @ConfigurationProperties
+#        非严格解析，:? 形态未注入时会绑成默认值 "?"（见文件头注释 1 的 datasource 实测），
+#        守卫识别不了该形态；裸占位未注入时绑 "${JWT_SECRET}" 字面量，被 SecretsProperties
+#        的 requireResolved 直接拦截并点名变量（快速失败闸门在守卫，同其余六项范式）。
+#        长度 ≥32 字节的强度守卫同在 SecretsProperties（KTD10）。
 # ─────────────────────────────────────────────────────────────────
 
 server:
+  # [122] KTD2：framework 策略使 X-Forwarded-For 参与 request.getRemoteAddr() 解析
+  # （IP 维限频三轨取真实客户端 IP；无代理头时回退 remoteAddr，本地直连不受影响）
+  forward-headers-strategy: framework
   error:
     # 响应体永不携带堆栈（编码规范 §4.3「日志打全栈、响应体无堆栈」+ 详设 §2.2）：
     # GlobalExceptionHandler 已保证业务异常路径无堆栈，本项兜住容器/BasicErrorController
@@ -64,6 +78,12 @@ spring:
       # "Could not resolve placeholder 'SPRING_DATA_REDIS_PASSWORD'"，报错点名变量；
       # Redis 必 requirepass（编码规范 §3.3），故不提供空口令默认值
       password: ${SPRING_DATA_REDIS_PASSWORD}
+      # [122] review #2 修复：命令超时与连接超时显式收敛（默认 60s 会让 Redis 黑洞时
+      # 鉴权黑名单读/幂等 SETNX/限频 Lua 阻塞请求线程到 60s，耗尽 Tomcat 线程池级联）。
+      # 2s 足够覆盖本机/容器内网 Redis 正常往返，Redis 不可达时快速失败
+      # （鉴权黑名单读故障→50001，限频写失败→WARN 放行，幂等→50001，KTD7）。
+      timeout: 2s
+      connect-timeout: 2s
 
 management:
   endpoints:
@@ -94,3 +114,7 @@ s2s:
     sms-key: ${SMS_KEY}
     # ⑥b 高德地图 Key（逆地理/POI 服务凭证，编码规范 §3.3 六类凭证之六）
     amap-key: ${AMAP_KEY}
+    # ⑦ JWT HS256 签名密钥（[122] KTD10；登录态 Token 签发/验签，第七个硬必填凭证）。
+    # 裸占位（非 :? 形态）的理由见文件头注释 6：快速失败闸门在 SecretsProperties 守卫
+    # （已解析 + ≥32 字节双校验），与其余硬依赖同构；例值生成 openssl rand -hex 32
+    jwt-secret: ${JWT_SECRET}

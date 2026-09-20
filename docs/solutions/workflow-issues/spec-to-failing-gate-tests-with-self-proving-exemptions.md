@@ -186,3 +186,4 @@ if (files == null) {
 - [gate-exit-code-needs-a-consumer.md](file:///d:/developer/code/aicoding/s2s/docs/solutions/workflow-issues/gate-exit-code-needs-a-consumer.md)：门禁有效性公式与四态、带理由放行；本文补反向准入——不可在 CI 真实判定的条款不进 CI。
 - [cross-document-reference-verification.md](file:///d:/developer/code/aicoding/s2s/docs/solutions/workflow-issues/cross-document-reference-verification.md)：溯源标注即审计闸门；本文的佐证词反向断言是其"规格↔测试"自动化版本。
 - [phase-boundary-verification-scaffolding.md](file:///d:/developer/code/aicoding/s2s/docs/solutions/workflow-issues/phase-boundary-verification-scaffolding.md)：零实现阶段验证不得替下一阶段做决策；静态解析 + mock 是该边界下的合规正面形态。
+- [fail-closed-gate-judgments-with-mutation-self-checks.md](file:///d:/developer/code/aicoding/s2s/docs/solutions/workflow-issues/fail-closed-gate-judgments-with-mutation-self-checks.md)：同一测试骨架的三轮评审加固篇——fail-closed 扫描面、逐命中三分支防同行连坐（本文 §3/§5 豁免口径的修订性细化）、$ref 不可解析即红、空扫描面守卫、合并态活体实证；与本文构成「建立→加固」完整谱系。
