@@ -40,7 +40,9 @@
 <configuration>
 
   <!-- 日志目录：生产/容器默认 /var/log/app（compose 命名卷 app_logs）；
-       本地联调用 --logging.file.path=logs 覆盖（U2 验证口径：logs/ 下出 8 字段 JSON 单行）。 -->
+       本地联调用命令行参数 logging.file.path=logs 覆盖
+       （XML 注释内不可出现连续两个短横线，故此处不写该参数的短横线前缀；
+       U2 验证口径：logs/ 下出 8 字段 JSON 单行）。 -->
   <springProperty scope="context" name="logPath" source="logging.file.path"
                   defaultValue="/var/log/app"/>
 

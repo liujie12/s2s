@@ -106,15 +106,26 @@ services:
     environment:
       # Profile 由环境 override 覆盖为 dev / staging / prod
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
-      # 数据面连接串在此拼装，口令部分引用 env_file 中的变量，不出现字面量
-      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE}?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8mb4
+      # 数据面连接串在此拼装，口令部分引用 env_file 中的变量，不出现字面量。
+      # 两个参数口径（2026-09-19 补联调环境时实测定案，勿改回）：
+      #   ① sslMode=REQUIRED 而非 useSSL=false：MySQL 8 默认认证插件
+      #      caching_sha2_password 在【非 TLS】连接下首连必须向服务端索取 RSA 公钥，
+      #      而驱动默认禁此行为 => 报 "Public Key Retrieval is not allowed" 连不上。
+      #      走 TLS 后该步不再发生：数据面全程加密、服务端零改动（MySQL 8 自动生成证书）、
+      #      服务端无 TLS 时 fail-closed。**刻意不采用 allowPublicKeyRetrieval=true** ——
+      #      那等于把库口令交给任何在 s2s-net 上冒充 mysql:3306 的进程，
+      #      抵消架构 §4.3 / 安全 §10.1 的「强口令」控制（残余口径见说明文档 §2.9 DEC-05）。
+      #   ② characterEncoding 取 Java 字符集名 UTF-8，不可写服务端的 utf8mb4：
+      #      驱动按 Java charset 解析该参数，写 utf8mb4 抛
+      #      "Unsupported character encoding 'utf8mb4'" 启动即失败。
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE}?sslMode=REQUIRED&serverTimezone=Asia/Shanghai&characterEncoding=UTF-8
       SPRING_DATASOURCE_USERNAME: ${MYSQL_USER}
       SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD}
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: 6379
       SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD}
       # 埋点独立 database（见《可观测性架构方案》§4.4）
-      TRACK_DATASOURCE_URL: jdbc:mysql://mysql:3306/${MYSQL_TRACK_DATABASE}?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8mb4
+      TRACK_DATASOURCE_URL: jdbc:mysql://mysql:3306/${MYSQL_TRACK_DATABASE}?sslMode=REQUIRED&serverTimezone=Asia/Shanghai&characterEncoding=UTF-8
       # JWT HS256 签名密钥（[122] KTD10）：env_file 已全量注入，此处显式映射与
       # SPRING_*_PASSWORD 三项同范式——点名 app 消费该变量，缺失时由
       # SecretsProperties 守卫启动期快速失败（已解析 + ≥32 字节双校验）
