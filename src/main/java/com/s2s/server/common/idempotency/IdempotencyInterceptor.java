@@ -12,6 +12,7 @@ import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.web.method.HandlerMethod;
@@ -88,8 +89,15 @@ public class IdempotencyInterceptor implements HandlerInterceptor {
     /**
      * 构造幂等拦截器（生产构造，Spring 注入用）：轮询参数取 {@link IdempotencyPolicy} 常量。
      *
+     * <p><b>{@code @Autowired} 不可省</b>：本类有两个构造器（本生产构造 + 供测试注入短轮询
+     * 参数的包级构造），Spring 在「多构造器且无 {@code @Autowired}」时退回无参构造装配，
+     * 而本类没有无参构造，启动即报 {@code No default constructor found}
+     * （[122] 实测缺陷，与 {@code JwtVerifier} 同源；补联调环境时首次全量上下文启动暴露，
+     * 单测为切片装配故当时未拦下）。
+     *
      * @param redisTemplate Redis 字符串模板（SETNX 与轮询 GET 载体）
      */
+    @Autowired
     public IdempotencyInterceptor(StringRedisTemplate redisTemplate) {
         this(redisTemplate, IdempotencyPolicy.POLL_INTERVAL_MILLIS,
                 IdempotencyPolicy.POLL_TIMEOUT_MILLIS);

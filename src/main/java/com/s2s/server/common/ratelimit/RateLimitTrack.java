@@ -44,9 +44,15 @@ public enum RateLimitTrack {
      * 行 3 · 登录失败锁定（渠道级）：键形 {@code rl:login:fail:{phone}}，
      * 5 次锁 15min → 40105。窗口秒取锁定时长（计数窗与锁定窗同为 15 分钟，
      * 详设 §3.4 原文「5 次 → 锁 15min」）。
+     *
+     * <p><b>limit 取 threshold − 1 的 off-by-one 修正（[123] U5 定案）</b>：
+     * {@link RateLimiter} 超限判定统一为 {@code current > limit}（严格大于），即
+     * 「允许 limit 次、第 limit+1 次超限」。业务语义「5 次失败锁定」= 第 5 次失败
+     * 触发（前端 {@code count >= kMaxFailedAttempts} 同口径），即「允许 4 次失败、
+     * 第 5 次锁定」，故 limit = threshold − 1 = 4。</p>
      */
     LOGIN_FAIL(
-            new WindowRule(RateLimitThresholds.LOGIN_FAIL_THRESHOLD,
+            new WindowRule(RateLimitThresholds.LOGIN_FAIL_THRESHOLD - 1,
                     RateLimitThresholds.LOGIN_FAIL_LOCK_SECONDS,
                     RateLimitThresholds.LOGIN_FAIL_OVERFLOW)),
 

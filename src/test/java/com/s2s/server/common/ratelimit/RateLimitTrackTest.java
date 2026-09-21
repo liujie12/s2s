@@ -70,7 +70,7 @@ class RateLimitTrackTest {
                 RateLimitThresholds.WINDOW_HOUR_SECONDS,
                 RateLimitThresholds.SMS_OVERFLOW);
         assertSingleRule(RateLimitTrack.LOGIN_FAIL,
-                RateLimitThresholds.LOGIN_FAIL_THRESHOLD,
+                RateLimitThresholds.LOGIN_FAIL_THRESHOLD - 1,
                 RateLimitThresholds.LOGIN_FAIL_LOCK_SECONDS,
                 RateLimitThresholds.LOGIN_FAIL_OVERFLOW);
         assertSingleRule(RateLimitTrack.CONTACT_UID,
