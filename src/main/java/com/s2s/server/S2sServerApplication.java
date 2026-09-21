@@ -1,5 +1,6 @@
 package com.s2s.server;
 
+import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
@@ -23,12 +24,18 @@ import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
  * 零装配成本，且启动类作为唯一组装根符合「common 只被依赖」（详设 §1.2）；
  * 逐类点名方案每加一个属性类都要改一处 @EnableConfigurationProperties，易漏。
  *
+ * <p>{@code @MapperScan} 取舍（[123] U2）：扫描根为 {@code com.s2s.server.**.mapper}
+ * 而非根包 {@code com.s2s.server}——@MapperScan 默认把包下<b>所有接口</b>注册为 Mapper，
+ * 扫根包会把各域 service 接口误当 mapper 装配（启动即失败）；{@code **} 通配匹配任意层级
+ * mapper 包（当前 auth 域，后续 post/contact 等域 mapper 落位后零改装配成本）。
+ *
  * <p>启动前提（U-5 起）：业务库/埋点库连接串、Redis 口令与六类凭证全部经环境变量注入
  * （application.yml 的 {@code s2s.secrets.*} 硬占位），缺任一变量启动快速失败且报错点名变量名
  * （编码规范 §3.3）；变量清单见仓库根 .env.example。
  */
 @SpringBootApplication
 @ConfigurationPropertiesScan
+@MapperScan("com.s2s.server.**.mapper")
 public class S2sServerApplication {
 
     /**

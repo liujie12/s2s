@@ -85,6 +85,19 @@ spring:
       timeout: 2s
       connect-timeout: 2s
 
+# --- MyBatis-Plus 持久层（[123] U2；编码规范 §4.9「简单 CRUD 用 MyBatis-Plus，性能语句 XML + EXPLAIN」）---
+mybatis-plus:
+  global-config:
+    db-config:
+      # 主键策略：数据库 AUTO_INCREMENT 自增（V1__init_schema.sql 三表 id 均 AUTO_INCREMENT）。
+      # MyBatis-Plus 默认雪花 ID（ASSIGN_ID）会在 insert 时生成新 id 覆盖数据库自增，
+      # 故必须显式 AUTO；与各 entity 的 @TableId(type = IdType.AUTO) 双保险一致
+      id-type: auto
+  configuration:
+    # 下划线列名 → 驼峰字段自动映射（phone_mask → phoneMask）。MyBatis-Plus 默认已开启，
+    # 此处显式写出以固化口径、防误关（entity 因此无需逐字段 @TableField 声明列名）
+    map-underscore-to-camel-case: true
+
 management:
   endpoints:
     web:
