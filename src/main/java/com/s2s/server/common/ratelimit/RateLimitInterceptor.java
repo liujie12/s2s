@@ -1,12 +1,9 @@
 package com.s2s.server.common.ratelimit;
 
-import com.s2s.server.common.constants.RateLimitThresholds;
 import com.s2s.server.common.web.AuthContext;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import java.time.Duration;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.stereotype.Component;
@@ -143,41 +140,41 @@ public class RateLimitInterceptor implements HandlerInterceptor {
             case CONTACT_UID -> {
                 if (userId != null) {
                     for (RateLimitTrack.WindowRule rule : rules) {
-                        entries.add(entry(RateLimitKeys.contactUidDay(userId, today), rule, today));
+                        entries.add(RateLimiter.entry(RateLimitKeys.contactUidDay(userId, today), rule, today));
                     }
                 }
             }
             case CONTACT_DEV -> {
                 if (validDeviceId) {
                     for (RateLimitTrack.WindowRule rule : rules) {
-                        entries.add(entry(RateLimitKeys.contactDevDay(deviceId, today), rule, today));
+                        entries.add(RateLimiter.entry(RateLimitKeys.contactDevDay(deviceId, today), rule, today));
                     }
                 }
                 // 设备 ID 不合法 → 跳过设备轨（KTD14：防键空间污染，不拒绝请求）
             }
             case CONTACT_IP -> {
                 for (RateLimitTrack.WindowRule rule : rules) {
-                    entries.add(entry(RateLimitKeys.contactIpDay(ip, today), rule, today));
+                    entries.add(RateLimiter.entry(RateLimitKeys.contactIpDay(ip, today), rule, today));
                 }
             }
             case CONTACT_BURST -> {
                 if (userId != null) {
                     for (RateLimitTrack.WindowRule rule : rules) {
-                        entries.add(entry(RateLimitKeys.contactBurstMinute(userId), rule, today));
+                        entries.add(RateLimiter.entry(RateLimitKeys.contactBurstMinute(userId), rule, today));
                     }
                 }
             }
             case REPORT_UID -> {
                 if (userId != null) {
                     for (RateLimitTrack.WindowRule rule : rules) {
-                        entries.add(entry(RateLimitKeys.reportUidDay(userId, today), rule, today));
+                        entries.add(RateLimiter.entry(RateLimitKeys.reportUidDay(userId, today), rule, today));
                     }
                 }
             }
             case TRACK_UID -> {
                 if (userId != null) {
                     for (RateLimitTrack.WindowRule rule : rules) {
-                        entries.add(entry(RateLimitKeys.trackUidMinute(userId), rule, today));
+                        entries.add(RateLimiter.entry(RateLimitKeys.trackUidMinute(userId), rule, today));
                     }
                 }
             }
@@ -185,58 +182,18 @@ public class RateLimitInterceptor implements HandlerInterceptor {
                 // 42907 轨：仅未登录时计数（鉴权后判定，链序保证）
                 if (userId == null && validDeviceId) {
                     for (RateLimitTrack.WindowRule rule : rules) {
-                        entries.add(entry(RateLimitKeys.guestDetailDevDay(deviceId, today), rule, today));
+                        entries.add(RateLimiter.entry(RateLimitKeys.guestDetailDevDay(deviceId, today), rule, today));
                     }
                 }
             }
             case GUEST_DETAIL_IP -> {
                 if (userId == null) {
                     for (RateLimitTrack.WindowRule rule : rules) {
-                        entries.add(entry(RateLimitKeys.guestDetailIpDay(ip, today), rule, today));
+                        entries.add(RateLimiter.entry(RateLimitKeys.guestDetailIpDay(ip, today), rule, today));
                     }
                 }
             }
         }
-    }
-
-    /**
-     * 按窗口语义构造限频条目（[122] review #5 修复：分离键 TTL 与用户可见剩余秒）。
-     *
-     * <p>滚动窗口（{@code :1m}/{@code :1h}）：键 TTL 与剩余秒均为窗口秒数。
-     * 自然日窗口（{@code :1d}）：键 TTL = 到次日零点秒数 + 2h 缓冲（26h 防跨日残留），
-     * 但 Retry-After 必须是「到次日零点的真实剩余秒」——二者若混用，用户会被提示
-     * 比真实重置时间多等 2h（review #5 缺陷）。故 {@link RateLimiter.RateLimitEntry}
-     * 的 {@code ttlSeconds} 与 {@code retryAfterSeconds} 分开承载。</p>
-     *
-     * @param key   Redis 计数键
-     * @param rule  窗口规则（阈值/窗口秒/超限码三元组）
-     * @param today 当前自然日（自然日窗口算到零点秒数用）
-     * @return {@link RateLimiter.RateLimitEntry} 五元组
-     */
-    private RateLimiter.RateLimitEntry entry(String key, RateLimitTrack.WindowRule rule, LocalDate today) {
-        long windowSeconds = rule.windowSeconds();
-        if (windowSeconds == RateLimitThresholds.WINDOW_DAY_SECONDS) {
-            long secondsUntilEndOfDay = secondsUntilEndOfDay(today);
-            // 键 TTL = 到零点 + 2h 缓冲；Retry-After = 到零点（不含缓冲）
-            return new RateLimiter.RateLimitEntry(key, secondsUntilEndOfDay + 7200,
-                    secondsUntilEndOfDay, rule.limit(), rule.overflowCode());
-        }
-        return new RateLimiter.RateLimitEntry(key, windowSeconds, windowSeconds,
-                rule.limit(), rule.overflowCode());
-    }
-
-    /**
-     * 计算自当前时刻到次日零点（Asia/Shanghai 时区）的剩余秒数——自然日窗口
-     * 的「用户可见剩余秒」（Retry-After 真源），不含键 TTL 的 +2h 缓冲。
-     *
-     * @param today 当前自然日（Asia/Shanghai）
-     * @return long 到次日零点的剩余秒数，恒 ≥0
-     */
-    private long secondsUntilEndOfDay(LocalDate today) {
-        return Duration.between(
-                LocalDateTime.now(RateLimitThresholds.ZONE),
-                today.plusDays(1).atStartOfDay(RateLimitThresholds.ZONE)
-        ).getSeconds();
     }
 
     /**

@@ -43,6 +43,11 @@ public final class RateLimitThresholds {
      * 日期片、TTL 给 26h 防跨日残留），本值是秒数换算基准，非自然日语义本身。 */
     public static final long WINDOW_DAY_SECONDS = 86_400;
 
+    /** 自然日窗口键 TTL 的 +2h 缓冲（秒）。KTD6：键 TTL = 到次日零点秒数 + 本缓冲
+     * （26h 防跨日边界残留 + 时钟漂移），但 Retry-After 用不含缓冲的真实剩余秒——
+     * 二者若混用，用户会被提示多等 2h（[122] review #5）。 */
+    public static final long NATURAL_DAY_TTL_BUFFER_SECONDS = 7200;
+
     /** 限频计数/窗口的时区固化。KTD6：自然日窗口以 Asia/Shanghai 计日，不依赖 JVM
      * 默认时区（容器时区漂移会改变「今日」边界）。 */
     public static final ZoneId ZONE = ZoneId.of("Asia/Shanghai");

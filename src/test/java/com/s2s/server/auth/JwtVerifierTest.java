@@ -176,6 +176,26 @@ class JwtVerifierTest {
     }
 
     /**
+     * 场景七：过期 Token 经「允许过期」验签（续期专用）→ 返回 userId，不抛 40101。
+     *
+     * @return void；断言失败即 {@code verifyAndGetUserIdAllowExpired} 的过期放行路径未生效
+     */
+    @Test
+    void expiredTokenAllowExpiredReturnsUserId() {
+        String token = buildToken(77L, "jti-expired-refresh", 100);
+
+        try {
+            TimeUnit.MILLISECONDS.sleep(200);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+
+        Long userId = verifier.verifyAndGetUserIdAllowExpired(token);
+
+        assertThat(userId).isEqualTo(77L);
+    }
+
+    /**
      * 辅助方法：用测试密钥签发一个 JWT（HS256，sub=userId，jti=tokenId）。
      *
      * @param userId       写入 sub 的用户 ID

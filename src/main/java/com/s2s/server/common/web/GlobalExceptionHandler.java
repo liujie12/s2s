@@ -6,6 +6,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.FieldError;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -14,12 +16,14 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
  * （详设 §2.2；编码规范 §1.2 唯一实现处清单）。业务代码只在 {@link BizException}
  * 里携带剩余秒数，不各自写 header（详设 §2.2 纪律）。
  *
- * <p>本条目（U-3，KTD-10）只落地两条映射：{@link BizException} → 取其 {@link ErrorCode}；
- * 兜底 {@link Exception} → {@code 50001}（日志打全栈、响应体无堆栈）。以下为既定扩展点，
+ * <p>本条目（U-3，KTD-10）落地两条映射：{@link BizException} → 取其 {@link ErrorCode}；
+ * 兜底 {@link Exception} → {@code 50001}（日志打全栈、响应体无堆栈）。
+ * {@link MethodArgumentNotValidException} → {@code 40001}（message 拼字段名）随 [123] U4
+ * （首个带 {@code @Valid} 的业务接口 {@code POST /auth/sms/send}）补充。以下为剩余扩展点，
  * 随业务条目补充，禁止提前实现（KTD-10）：
  * <ul>
- *   <li>{@code MethodArgumentNotValidException} / {@code MissingRequestHeaderException} /
- *       {@code ConstraintViolationException} → {@code 40001}，message 拼出具体字段名；</li>
+ *   <li>{@code MissingRequestHeaderException} / {@code ConstraintViolationException} →
+ *       {@code 40001}，message 拼出具体字段名；</li>
  *   <li>{@code OptimisticLockException}（自定义，mapper 更新 0 行时抛）→ {@code 40903}。</li>
  * </ul>
  *
@@ -60,6 +64,26 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(errorCode.getHttpStatus())
                 .headers(headers)
                 .body(errorBody(errorCode));
+    }
+
+    /**
+     * 映射 Bean Validation 失败：取首个字段校验错误，拼出字段名返回 {@code 40001}
+     * （message 拼字段名口径，详设 §2.2；对齐 openapi BadRequest 示例「缺少必填参数 grid_id」）。
+     *
+     * @param exception 参数校验异常，携带绑定结果（取其首个字段错误定位字段名）
+     * @return {@link ResponseEntity}：HTTP 400，响应体
+     *         {@code ApiResponse(40001, "缺少必填参数 " + field, null, requestId)}
+     */
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ApiResponse<Void>> handleValidation(MethodArgumentNotValidException exception) {
+        String field = exception.getBindingResult().getFieldErrors().stream()
+                .findFirst()
+                .map(FieldError::getField)
+                .orElse("");
+        return ResponseEntity.status(ErrorCode.PARAM_INVALID.getHttpStatus())
+                .body(new ApiResponse<>(ErrorCode.PARAM_INVALID.getCode(),
+                        "缺少必填参数 " + field, null,
+                        ResponseBodyWrapper.resolveOrCreateRequestId()));
     }
 
     /**

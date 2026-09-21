@@ -4,12 +4,15 @@ import com.s2s.server.common.config.SecretsProperties;
 import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.JwtParser;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import javax.crypto.SecretKey;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.stereotype.Component;
@@ -72,9 +75,17 @@ public class JwtVerifier {
      * 构造 JWT 验签器：从 {@link SecretsProperties} 取 JWT 密钥并转换为
      * {@link SecretKey}（HMAC-SHA-256），构建并缓存 {@link JwtParser}；注入 Redis 模板供黑名单查询。
      *
+     * <p><b>{@code @Autowired} 不可省</b>：本类有两个构造器（本生产构造 + 供
+     * {@link #forTest} 使用的私钥构造），Spring 在「多构造器且无 {@code @Autowired}」时
+     * 退回无参构造装配，而本类没有无参构造，启动即报
+     * {@code No default constructor found}（[122] 实测缺陷，补联调环境时首次全量上下文启动暴露；
+     * 单测为切片/MockMvc 装配，未走到真实上下文装配故当时未拦下）。显式标注后
+     * Spring 只以本构造器装配，测试路径仍走 {@link #forTest}。
+     *
      * @param secretsProperties 全量凭证配置（jwtSecret 字段已在启动期验证非空且 ≥32 字节）
      * @param redisTemplate     Redis 字符串操作模板（黑名单读路径）
      */
+    @Autowired
     public JwtVerifier(SecretsProperties secretsProperties, StringRedisTemplate redisTemplate) {
         this.signingKey = Keys.hmacShaKeyFor(secretsProperties.jwtSecret().getBytes(StandardCharsets.UTF_8));
         this.redisTemplate = redisTemplate;
@@ -105,6 +116,50 @@ public class JwtVerifier {
     }
 
     /**
+     * 验签并提取 userId（<b>允许 Token 已过期</b>，供续期接口使用）。
+     *
+     * <p>与 {@link #verifyAndGetUserId(String)} 的区别：过期（签名仍合法）不视为失败，
+     * 仍提取 {@code sub} 并查黑名单——续期语义是「旧 Token 即使过期，只要未被登出，
+     * 就可换新」（plan R3）。签名非法 / 格式错 / 黑名单命中仍 40101。</p>
+     *
+     * @param token 原始 Token 字符串（不含 "Bearer " 前缀）
+     * @return {@link Long} userId；永不返回 null
+     * @throws BizException 签名非法/格式错/黑名单命中 → 40101；Redis 异常 → 50001
+     */
+    public Long verifyAndGetUserIdAllowExpired(String token) {
+        Claims claims = parseClaimsAllowExpired(token);
+        String jti = claims.get(CLAIM_JTI, String.class);
+        if (jti == null || jti.isBlank()) {
+            throw BizException.of(ErrorCode.UNAUTHORIZED);
+        }
+        checkBlacklist(jti);
+        return parseUserId(claims);
+    }
+
+    /**
+     * 验签并提取 Token 信息（<b>允许过期、不查黑名单</b>，供登出写黑名单用）。
+     *
+     * <p>与 {@link #verifyAndGetUserIdAllowExpired} 的区别：不查黑名单——登出是<b>写</b>
+     * 黑名单（plan R4 读写分工），重复登出应幂等成功，而非因 Token 已在黑名单被拒 40101。
+     * 返回 {@link TokenInfo}（userId + jti + 过期时刻）供写黑名单（jti 键 + 到期剩余 TTL）
+     * 与清 push_token（userId 定位）使用。</p>
+     *
+     * @param token 原始 Token 字符串（不含 "Bearer " 前缀）
+     * @return {@link TokenInfo} userId + jti + 过期时刻
+     * @throws BizException 签名非法/格式错 → 40101
+     */
+    public TokenInfo verifyAndGetTokenInfoAllowExpired(String token) {
+        Claims claims = parseClaimsAllowExpired(token);
+        String jti = claims.get(CLAIM_JTI, String.class);
+        if (jti == null || jti.isBlank()) {
+            throw BizException.of(ErrorCode.UNAUTHORIZED);
+        }
+        Long userId = parseUserId(claims);
+        Instant expiresAt = claims.getExpiration().toInstant();
+        return new TokenInfo(userId, jti, expiresAt);
+    }
+
+    /**
      * 解析 JWT 声明体：验签 + 有效期校验，失败统一映射为 40101。
      * 本方法私有，不暴露 Claims 给调用方（最小化依赖面）。
      *
@@ -118,6 +173,25 @@ public class JwtVerifier {
         } catch (JwtException | IllegalArgumentException exception) {
             // jjwt 0.12.x 的所有解析异常基类 JwtException；IllegalArgumentException 覆盖
             // 空串 / null / 格式完全乱码等前置校验失败——统一归 40101
+            throw BizException.of(ErrorCode.UNAUTHORIZED);
+        }
+    }
+
+    /**
+     * 解析 JWT 声明体：验签但<b>允许过期</b>（续期专用）。
+     * 过期抛 {@link ExpiredJwtException} 时提取其 claims（签名仍合法），
+     * 其余解析失败（签名错 / 格式错）仍 40101。
+     *
+     * @param token 原始 Token 字符串
+     * @return {@link Claims} 解析后的声明集
+     * @throws BizException 签名错 / 格式错 → 40101
+     */
+    private Claims parseClaimsAllowExpired(String token) {
+        try {
+            return parser.parseSignedClaims(token).getPayload();
+        } catch (ExpiredJwtException exception) {
+            return exception.getClaims();
+        } catch (JwtException | IllegalArgumentException exception) {
             throw BizException.of(ErrorCode.UNAUTHORIZED);
         }
     }
@@ -188,5 +262,15 @@ public class JwtVerifier {
         this.signingKey = signingKey;
         this.redisTemplate = redisTemplate;
         this.parser = Jwts.parser().verifyWith(signingKey).build();
+    }
+
+    /**
+     * 验签产出的 Token 信息（[123] U7；供登出写黑名单与清 push_token 使用）。
+     *
+     * @param userId    用户 ID（sub 的 Long 形态）
+     * @param jti       Token 唯一标识（黑名单键 {@code jwt:bl:{jti}} 的来源）
+     * @param expiresAt Token 过期时刻（黑名单键 TTL = 到该时刻的剩余秒数）
+     */
+    public record TokenInfo(Long userId, String jti, Instant expiresAt) {
     }
 }
