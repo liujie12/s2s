@@ -775,12 +775,14 @@ void main() {
     const int featuresDartFileBaseline = 32;
 
     /// lib/ 全部 Dart 文件数基线（同上，评审 #10）。
-    /// 55 = 54 + dispatch_markers.dart（#1 反冗余重构新增共享文件）。
-    const int libDartFileBaseline = 55;
+    /// 56 = 55 + token_storage.dart（[123] U10 新增 Token 安全存储）。
+    const int libDartFileBaseline = 56;
 
-    /// `ApiException.parse(` 命中总数基线（判据 C1）：工厂定义 1 + 调用 12。
+    /// `ApiException.parse(` 命中总数基线（判据 C1）：工厂定义 1 + 调用 20。
+    /// 21 = 13 + 8（[123] U10：AuthSession.fromJson 2 + AuthRepository
+    /// _parseLoginResult 4 + _parseUserId 2）。
     /// 新增/删除解析失败抛出点时，与 api_exception.dart 文件头清单同改。
-    const int parseFactoryTotalBaseline = 13;
+    const int parseFactoryTotalBaseline = 21;
 
     test('lib/features/ 无 for/while 循环重试（详设 §14.2，判据 A1）', () {
       // 先断言扫描面非空且不小于基线（部署 §14.5：先断言待判对象存在），

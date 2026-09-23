@@ -19,6 +19,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:zhaoyazhao/core/network/api_client.dart';
+import 'package:zhaoyazhao/core/storage/token_storage.dart';
 import 'package:zhaoyazhao/features/auth/auth_network_wiring.dart';
 import 'package:zhaoyazhao/features/auth/auth_repository.dart';
 import 'package:zhaoyazhao/features/privacy/privacy_consent.dart';
@@ -37,9 +38,36 @@ ProviderContainer buildContainer({
     privacyConsentProvider.overrideWith(
       () => _FixedPrivacyConsentNotifier(consent),
     ),
+    // U10：注入内存假 TokenStorage，使 AuthSessionNotifier 的 signIn/
+    // updateToken/signOut 落盘不触真实 FlutterSecureStorage 平台通道
+    // （测试环境无原生实现，会抛 MissingPluginException）。
+    tokenStorageProvider.overrideWithValue(_MemoryTokenStorage()),
   ]);
   addTearDown(container.dispose);
   return container;
+}
+
+/// 内存假 [TokenStorage]：会话落盘/清盘在测试内不触平台通道。
+///
+/// 继承而非实现接口——[TokenStorage] 是具体类；override 三个方法后
+/// 父类的 [_storage]（FlutterSecureStorage）永远不会被调用。
+class _MemoryTokenStorage extends TokenStorage {
+  _MemoryTokenStorage() : super();
+
+  String? _value;
+
+  @override
+  Future<void> save(String json) async {
+    _value = json;
+  }
+
+  @override
+  Future<String?> read() async => _value;
+
+  @override
+  Future<void> clear() async {
+    _value = null;
+  }
 }
 
 /// 固定会话态的 Notifier（不依赖登录流程，直接置初始值）。

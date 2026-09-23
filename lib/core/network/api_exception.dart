@@ -12,11 +12,14 @@
 /// 失败抛出点只准走该工厂，禁止内联
 /// `ApiException(code: ApiErrorCode.parseError, ...)` —— 统一入口保证
 /// message 必经 [_truncateParseMessage] 截断、口径单一（编码规范 §1.1）。
-/// 现有 12 处生产调用点：`core/network` 9 处（`api_error_code.dart` ×1、
+/// 现有 20 处生产调用点：`core/network` 9 处（`api_error_code.dart` ×1、
 /// `api_client.dart` ×4、`interceptors/auth_refresh_interceptor.dart` ×1、
 /// `interceptors/envelope_interceptor.dart` ×3）、
 /// `domain/listing_category.dart` ×2、
-/// `features/discovery/discovery_filter.dart` ×1；新增解析失败点同走本工厂。
+/// `features/discovery/discovery_filter.dart` ×1、
+/// `features/auth/auth_repository.dart` ×8（[123] U10：AuthSession.fromJson ×2、
+/// AuthRepository._parseLoginResult ×4、_parseUserId ×2）；
+/// 新增解析失败点同走本工厂。
 ///
 /// **循环 import 说明**：见 `api_error_code.dart` 文件头，同一份说明。
 library;

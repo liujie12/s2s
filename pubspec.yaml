@@ -103,6 +103,7 @@ dependencies:
   # 埋点队列必须落盘而非只存内存：§17.3 的补报前提是「进程被杀后事件不丢」，
   # 只存内存的队列在冷启动后为空，那条补报路径等于从未存在。
   path_provider: ^2.1.5
+  flutter_secure_storage: ^11.2.0
 
 dev_dependencies:
   flutter_test:

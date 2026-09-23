@@ -55,9 +55,9 @@ class RegisteredBackdoor {
 const List<RegisteredBackdoor> registeredBackdoors = [
   RegisteredBackdoor(
     file: 'lib/features/auth/auth_repository.dart',
-    lineContains: "_debugCode = '888888'",
-    reason: '接短信通道前的本地联调固定验证码（无真实短信通道时登录页无法自测）',
-    removeWhen: '接入服务端登录接口、验证码改由短信下发时删除（TODO(接后端) 已标注于引用处）',
+    lineContains: "debugCode = '888888'",
+    reason: '登录页 kDebugMode 联调提示条展示固定验证码（与后端 SmsCodePolicy.DEBUG_CODE 对齐），客户端不参与验证码生成/校验',
+    removeWhen: '接入真实短信服务、移除联调提示条（login_screen 内 kDebugMode 包裹块）时删除',
   ),
 ];
 
@@ -142,6 +142,22 @@ const List<RegisteredSecretFinding> registeredSecretFindings = [
     reason: '早期交互原型测试页地图联调用 key（与 index.html 同一串）；不随 App/镜像交付。'
         '同评审 #1：因 512KB 上限被静默跳扫而漏登',
     remediation: '须到高德控制台作废该 Key；作废后将代码替换为 YOUR_AMAP_KEY 占位并移除本登记',
+  ),
+  RegisteredSecretFinding(
+    file: 'src/test/java/com/s2s/server/common/config/SecretsPropertiesTest.java',
+    lineContains: '0123456789abcdef0123456789abcdef',
+    provider: '无（单元测试假值）',
+    reason: '后端 SecretsProperties 测试的固定假 JWT 密钥（fake- 前缀明确标注），'
+        '仅用于断言绑定/取值，非真实密钥、不进任何环境',
+    remediation: '无需作废（非真实密钥）；若测试改用常量占位符则移除本登记',
+  ),
+  RegisteredSecretFinding(
+    file: 'src/test/java/com/s2s/server/common/ratelimit/RateLimitKeysTest.java',
+    lineContains: '550e8400e29b41d4a716446655440000',
+    provider: '无（单元测试假值）',
+    reason: '后端 RateLimitKeys 测试的固定假 device id（UUID v4 去连字符形态，'
+        '用于「无横杠 → 不通过」断言），非真实密钥',
+    remediation: '无需作废（非真实密钥）；若测试改用常量占位符则移除本登记',
   ),
 ];
 
