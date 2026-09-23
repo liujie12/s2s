@@ -51,7 +51,9 @@
 ///     `lib/core/network/api_exception.dart` 文件头登记的调用点清单）。
 ///     文件头人工清单会漂移，判据 C 用机器计数锁定：
 ///     - C1：剥离后的 `lib/` 全量文本中 `ApiException.parse(` 命中数恒为
-///       [parseFactoryTotalBaseline]（工厂定义自身 1 + 生产调用点 12 = 13）；
+///       [parseFactoryTotalBaseline]（工厂定义自身 1 + 生产调用点 24 = 25，
+///       24 含 core/contract_json.dart 10 + category_dto.dart 2 留守 +
+///       既有非 category 12，[124] B4）；
 ///       新增/删除调用点必须同改基线与 api_exception.dart 文件头清单；
 ///     - C2：`ApiException(` 构造调用中出现 `ApiErrorCode.parseError` 实参
 ///       的内联构造，全 `lib/` 只允许 api_exception.dart 工厂定义体内 1 处，
@@ -772,15 +774,27 @@ void main() {
     /// 扫描面文件数基线（评审 #10：空目录/扫不到文件时 violations 恒空，
     /// 只断 isEmpty 的守门是假阴性）。新增 Dart 文件只增不减，缩小即说明
     /// 扫描根或枚举方式坏了，必须显式更新基线并说明原因。
-    const int featuresDartFileBaseline = 32;
+    /// 38 = 37 + post_dto + post_repository（[124] B4 precheck 接线）；
+    /// 36 = 35 + publish_template_provider.dart（B3 发布模板装配）；
+    /// 35 = 34 + category_tree_provider.dart（B2 分类树状态层）。
+    const int featuresDartFileBaseline = 38;
 
     /// lib/ 全部 Dart 文件数基线（同上，评审 #10）。
-    /// 55 = 54 + dispatch_markers.dart（#1 反冗余重构新增共享文件）。
-    const int libDartFileBaseline = 55;
+    /// 62 = 61 + post 域两文件（post_dto + post_repository，[124] B4）；
+    /// 61 = 60 + contract_json.dart（B4 解析助手上浮）；
+    /// 60 = 59 + publish_template_provider.dart（B3 发布模板装配）；
+    /// 59 = 58 + category_tree_provider.dart（B2 分类树状态层；
+    /// 58 = 57 + category_tree_provider；57 = 55 + category_dto +
+    /// category_repository，B1 新增）。
+    const int libDartFileBaseline = 62;
 
-    /// `ApiException.parse(` 命中总数基线（判据 C1）：工厂定义 1 + 调用 12。
-    /// 新增/删除解析失败抛出点时，与 api_exception.dart 文件头清单同改。
-    const int parseFactoryTotalBaseline = 13;
+    /// `ApiException.parse(` 命中总数基线（判据 C1）：工厂定义 1 + 调用 24。
+    /// 24 = 23 + 1（[124] B4：contract_json.dart 新增 optInt 1；category_dto
+    /// 的 11 处中 9 处随解析助手迁至 core/contract_json.dart、2 处留守
+    /// （level 校验 + _optChildren），搬家不减调用点）。原 23 = 12（既有
+    /// 非 category）+ 11（[124] B1 category_dto）。新增/删除解析失败
+    /// 抛出点时，与 api_exception.dart 文件头清单同改。
+    const int parseFactoryTotalBaseline = 25;
 
     test('lib/features/ 无 for/while 循环重试（详设 §14.2，判据 A1）', () {
       // 先断言扫描面非空且不小于基线（部署 §14.5：先断言待判对象存在），

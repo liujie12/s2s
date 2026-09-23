@@ -9,13 +9,18 @@
 /// 深度保洁、开荒保洁）字段集合完全相同，按叶子配等于把同一份 Schema 抄三遍。
 /// 故查表键取二级 ID，由叶子 ID 除 100 推出（`category_tree.dart` 的编号规则）。
 ///
-/// **不做的两件事**：
-/// ① **Schema 从服务端下发**（§12.3 `/categories/tree` 可带模板）—— 无服务端时
-///    下发与硬编码的区别只是多一层解析，而解析代码没有真实响应可测；
-/// ② **记忆机制**（§5.7「按 user_id + category_leaf_id 存最近一次发布值」）——
-///    §5.7 明确「先拉云端，本地作 fallback」，云端不存在时只剩 fallback，
-///    做出来是个单机草稿箱，与 PRD 描述的能力不是同一个东西。本轮在字段上
-///    留出 `memoryHint` 展示位，让「【记忆带入】」的版面占位可被验收。
+/// **本地模板与服务端模板的分工**（[124] B3 起，`publish_template_provider.dart`）：
+/// 字段集合（extraFields）以服务端 `GET /templates/{leaf}` 为真源，拉取成功
+/// 即替换本地字段（[PublishTemplate.withExtraFields]）；拉取失败降级本地字段，
+/// 服务端 precheck 是最终口径的兜底。契约 `Template` 不含标题提示 / 价格单位 /
+/// 描述引导三项框架文案，它们恒取本地 —— 本地四模板仍按二级查表，未配置的
+/// 二级走 [genericTemplate]。
+///
+/// **不做的一件事**：
+/// **记忆机制**（§5.7「按 user_id + category_leaf_id 存最近一次发布值」）——
+/// §5.7 明确「先拉云端，本地作 fallback」，云端不存在时只剩 fallback，
+/// 做出来是个单机草稿箱，与 PRD 描述的能力不是同一个东西。本轮在字段上
+/// 留出 `memoryHint` 展示位，让「【记忆带入】」的版面占位可被验收。
 library;
 
 import 'category_tree.dart';
@@ -114,6 +119,23 @@ class PublishTemplate {
 
   /// 是否为通用模板降级态（§5.8「模板缺配 → 降级为通用模板」）。
   bool get isGeneric => id == genericTemplateId;
+
+  /// 以服务端下发的字段集合替换本地 [extraFields]，其余部分保持不变
+  ///（[124] B3：`GET /templates/{leaf}` 只下发字段，标题提示 / 价格单位 /
+  /// 描述引导三项框架文案契约没有，恒取本地）。
+  ///
+  /// 参数 [fields] 服务端字段映射后的 spec 列表（映射唯一实现处在
+  /// `publish_template_provider.dart`）。
+  /// 返回：字段替换后的新模板实例（本类不可变，原实例不改）。
+  PublishTemplate withExtraFields(List<TemplateFieldSpec> fields) {
+    return PublishTemplate(
+      id: id,
+      titlePlaceholder: titlePlaceholder,
+      priceUnits: priceUnits,
+      descriptionGuide: descriptionGuide,
+      extraFields: fields,
+    );
+  }
 }
 
 /// 通用模板 ID。

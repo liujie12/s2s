@@ -93,10 +93,11 @@ class RegisteredSecretFinding {
 
 /// 密钥命中豁免登记册。
 ///
-/// 以下 6 处均位于 prototype/——需求阶段的 HTML/JS 交互原型，不随 Flutter App
-/// 编译、不进 Docker 镜像，属一次性演示资产。**但 key 已进入 git 历史，
-/// 删除代码不等于撤销泄露**，故每条 remediation 都如实标注：唯一彻底处置是
-/// 到对应云控制台作废更换。新增密钥命中而不在此登记，G-Q2 立即失败。
+/// 以下 8 处：6 处位于 prototype/——需求阶段的 HTML/JS 交互原型，不随
+/// Flutter App 编译、不进 Docker 镜像，属一次性演示资产（**key 已进入 git
+/// 历史，删除代码不等于撤销泄露**，唯一彻底处置是到云控制台作废更换）；
+/// 另 2 处为 src/test/java/ 单元测试假值（非真实凭据，无需作废）。
+/// 新增密钥命中而不在此登记，G-Q2 立即失败。
 const List<RegisteredSecretFinding> registeredSecretFindings = [
   RegisteredSecretFinding(
     file: 'prototype/pathDetail.html',
@@ -142,6 +143,21 @@ const List<RegisteredSecretFinding> registeredSecretFindings = [
     reason: '早期交互原型测试页地图联调用 key（与 index.html 同一串）；不随 App/镜像交付。'
         '同评审 #1：因 512KB 上限被静默跳扫而漏登',
     remediation: '须到高德控制台作废该 Key；作废后将代码替换为 YOUR_AMAP_KEY 占位并移除本登记',
+  ),
+  RegisteredSecretFinding(
+    file: 'src/test/java/com/s2s/server/common/config/SecretsPropertiesTest.java',
+    lineContains: '0123456789abcdef0123456789abcdef',
+    provider: '测试桩假值（非真实密钥）',
+    reason: '[122] 单元测试固定假 JWT 密钥（fake-jwt-secret 前缀 + 32 位 hex），'
+        '非真实凭据，不泄露任何密钥',
+    remediation: '无需作废（假值）；如测试改用随机生成值，可移除本登记',
+  ),
+  RegisteredSecretFinding(
+    file: 'src/test/java/com/s2s/server/common/ratelimit/RateLimitKeysTest.java',
+    lineContains: '550e8400e29b41d4a716446655440000',
+    provider: '测试桩假值（非真实密钥）',
+    reason: '[122] 单元测试固定 UUID 作非法 deviceId 样例，非真实凭据',
+    remediation: '无需作废（假值）；如测试改用随机生成值，可移除本登记',
   ),
 ];
 

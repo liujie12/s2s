@@ -501,15 +501,21 @@ const List<CategoryNode> categoryTree = [
 /// 按叶子 ID 回溯面包屑（§2.6 详情页「工作 > 全职招聘 > 餐饮服务」）。
 ///
 /// 参数 [leafId] 为 §13.2 的 `post.leaf_category_id`。
+/// 参数 [tree] 为当前生效的分类树，默认取内置 [categoryTree]——已接线
+/// 页面（分类选择器等）应传入分类树 Provider 的当前树（[124] B2，
+/// 版本协商见 §16.4）；未接线页面沿用默认内置树，随各自条目切换。
 /// 返回：一级→二级→叶子三个节点；ID 不存在时返回空列表。
 ///
 /// 返回空而不抛异常：脏数据（如运营删了某类目而旧帖仍指向它）在生产是
 /// 会发生的，页面该退化成不显示面包屑，而不是整页崩掉。
-List<CategoryNode> categoryPathOf(int leafId) {
+List<CategoryNode> categoryPathOf(
+  int leafId, {
+  List<CategoryNode> tree = categoryTree,
+}) {
   final topId = leafId ~/ 10000;
   final midId = leafId ~/ 100;
 
-  final top = categoryTree.where((n) => n.id == topId).firstOrNull;
+  final top = tree.where((n) => n.id == topId).firstOrNull;
   if (top == null) return const [];
   final mid = top.children.where((n) => n.id == midId).firstOrNull;
   if (mid == null) return const [];
@@ -521,14 +527,15 @@ List<CategoryNode> categoryPathOf(int leafId) {
 
 /// 面包屑文案（如「工作 > 全职招聘 > 餐饮服务」）。
 ///
-/// 参数 [leafId] 叶子 ID。返回拼好的路径；ID 不存在时返回 null。
+/// 参数 [leafId] 叶子 ID；[tree] 同 [categoryPathOf]（默认内置树）。
+/// 返回拼好的路径；ID 不存在时返回 null。
 ///
 /// **为什么要有这个函数而不是各处自己 join**：AI 猜测生成的分类值与
 /// §5.10 Step 4 的逆向比对必须用**同一拼法** —— 分隔符或取名方式散在两处时，
 /// 改一处就会让校验把自己刚生成的合法值判成非法（本函数落地前，
 /// 两处写的是 `categoryPathOf(id).join(' > ')`，拼出的是对象的 toString）。
-String? categoryPathLabel(int leafId) {
-  final path = categoryPathOf(leafId);
+String? categoryPathLabel(int leafId, {List<CategoryNode> tree = categoryTree}) {
+  final path = categoryPathOf(leafId, tree: tree);
   return path.isEmpty ? null : path.map((n) => n.name).join(' > ');
 }
 
