@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.s2s.server.map.mapper.MapPostMapper">
+
+    <!--
+      /map/pins 覆盖索引查询（详设 §5.4.2）。
+      EXPLAIN 结论（实测，2026-09-05 复测，见数据库设计 §4.4 / explain_pins_real.sh）：
+        type=range, key=idx_pins_cover, Extra="Using where; Using index"（index-only 不回表）。
+      判定依据：SELECT 列表 6 列（id/lng/lat/leaf_category_id/type/completeness_level）
+      全部落在 idx_pins_cover 后 5 列 + 前缀段（category_id/type），无任何回表列。
+      反例：若 SELECT * 或加 user_id/desc 等非索引列，Extra 退化为 "Using index condition"（回表）。
+      纪律：本查询列集合不得增删，否则覆盖索引失效（技术栈选型 §7）。
+    -->
+    <select id="selectPins" resultType="map">
+        SELECT id, lng, lat, leaf_category_id, type, completeness_level
+        FROM post
+        WHERE status = 'active' AND expire_at &gt; NOW()
+        <if test="gridIds != null">
+            AND grid_id IN
+            <foreach collection="gridIds" item="g" open="(" separator="," close=")">#{g}</foreach>
+        </if>
+        AND leaf_category_id IN
+        <foreach collection="leafCategoryIds" item="c" open="(" separator="," close=")">#{c}</foreach>
+        AND type = #{type}
+        LIMIT #{limit}
+    </select>
+
+    <select id="countPins" resultType="long">
+        SELECT COUNT(*)
+        FROM post
+        WHERE status = 'active' AND expire_at &gt; NOW()
+        <if test="gridIds != null">
+            AND grid_id IN
+            <foreach collection="gridIds" item="g" open="(" separator="," close=")">#{g}</foreach>
+        </if>
+        AND leaf_category_id IN
+        <foreach collection="leafCategoryIds" item="c" open="(" separator="," close=")">#{c}</foreach>
+        AND type = #{type}
+    </select>
+
+    <!-- 远景服务端预聚合：按 grid_id 聚簇，返回聚合点坐标与计数（category_id 由客户端用默认色）。 -->
+    <select id="selectClusters" resultType="map">
+        SELECT ROUND(AVG(lng), 5) AS lng, ROUND(AVG(lat), 5) AS lat, COUNT(*) AS count
+        FROM post
+        WHERE status = 'active' AND expire_at &gt; NOW()
+        <if test="gridIds != null">
+            AND grid_id IN
+            <foreach collection="gridIds" item="g" open="(" separator="," close=")">#{g}</foreach>
+        </if>
+        AND leaf_category_id IN
+        <foreach collection="leafCategoryIds" item="c" open="(" separator="," close=")">#{c}</foreach>
+        AND type = #{type}
+        GROUP BY grid_id
+        LIMIT #{limit}
+    </select>
+
+    <!-- 列表检索候选集：JOIN user 取作者摘要，排序/分页在 service 应用层完成（数据库设计 §4.2）。 -->
+    <select id="selectSearchPosts" resultType="map">
+        SELECT p.id,
+               p.type,
+               p.leaf_category_id,
+               p.l2_category_id,
+               p.title,
+               p.`desc` AS summary,
+               p.lng,
+               p.lat,
+               p.completeness_level,
+               p.created_at AS publish_at,
+               u.id AS author_id,
+               u.nickname,
+               u.avatar_url,
+               u.realname_status
+        FROM post p
+        JOIN user u ON p.user_id = u.id
+        WHERE p.status = 'active' AND p.expire_at &gt; NOW()
+        <if test="gridIds != null">
+            AND p.grid_id IN
+            <foreach collection="gridIds" item="g" open="(" separator="," close=")">#{g}</foreach>
+        </if>
+        AND p.leaf_category_id IN
+        <foreach collection="leafCategoryIds" item="c" open="(" separator="," close=")">#{c}</foreach>
+        AND p.type = #{type}
+        <if test="keyword != null and keyword != ''">
+            AND (p.title LIKE CONCAT('%', #{keyword}, '%')
+                 OR p.`desc` LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+    </select>
+
+</mapper>

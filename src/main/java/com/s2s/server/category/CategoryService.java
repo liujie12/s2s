@@ -77,6 +77,20 @@ public class CategoryService {
     }
 
     /**
+     * 判断客户端分类树版本是否过期（map 域 {@code /map/pins}、{@code /posts/search}
+     * 的 {@code category_version_stale} 判定复用本方法，避免版本比较口径分散）。
+     *
+     * <p>口径与 {@link #getTree(String)} 一致：版本不一致不报错，仅以布尔值告知，
+     * 由客户端异步拉树并清空 Pin 缓存（架构 §9.2.1）。</p>
+     *
+     * @param clientVersion 客户端本地版本号
+     * @return boolean；{@code true} 表示客户端版本过期（含服务端配置缺失兜底空串）
+     */
+    public boolean isVersionStale(String clientVersion) {
+        return !getServerVersion().equals(clientVersion);
+    }
+
+    /**
      * 读取服务端分类树版本号（真源 system_config.category_tree_version）。
      *
      * @return 版本号字符串
