@@ -210,8 +210,7 @@
 
 ### Open Questions
 
-- `NfrMedia.MAX_SIZE_BYTES` 单文件字节上限的权威数值来源（PRD §13.2 仅给合计 200MB / 图片 ≤9，无单文件上限），实现前需向用户索取，禁猜值
-- `40304` 发布上限开关的配置键命名与落库方式（V2 迁移 seed 新键 vs 代码常量短路）
+- `40304` 发布上限开关的配置键命名与落库方式（V2 迁移 seed 新键 vs 代码常量短路）——**延后到 [127] 状态机一并处理**（session-settled: user-directed，2026-09-23）
 
 ### Dependencies
 
@@ -281,7 +280,7 @@
 **Approach:**
 - `GridIdCalculator` 按详设 §5.4.1 整数微度域实现，步长/精度为命名常量
 - `NfrPost`：`VALID_DAYS=7`（镜像 Dart `NfrPostLifecycle.validDays`）
-- `NfrMedia`：`MAX_MEDIA_COUNT=9`、`ALLOWED_CONTENT_TYPES={image/jpeg,image/png,image/webp}`、`MAX_SIZE_BYTES`（单文件上限真源未定，见 Open Questions，禁猜值）
+- `NfrMedia`：`MAX_MEDIA_COUNT=9`、`ALLOWED_CONTENT_TYPES={image/jpeg,image/png,image/webp}`、`MAX_SIZE_BYTES=20MB`（session-settled: user-directed，2026-09-23）
 
 **Test scenarios:**
 - 10 条测试向量全绿

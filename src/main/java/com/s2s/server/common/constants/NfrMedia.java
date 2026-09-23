@@ -21,11 +21,10 @@ public final class NfrMedia {
             Set.of("image/jpeg", "image/png", "image/webp");
 
     /**
-     * 单文件字节上限。
+     * 单文件字节上限（session-settled: user-directed，2026-09-23 定 20MB）。
      *
-     * <p><b>TODO（Open Question）</b>：本值真源未定——PRD §13.2 仅给「媒体合计
-     * ≤200MB / 图片 ≤9」，无单文件上限；现为占位值，实现前须向用户索取权威值，
-     * 禁猜值。</p>
+     * <p>设计文档未覆盖单文件上限（PRD §13.2 仅给「媒体合计 ≤200MB / 图片 ≤9」），
+     * 经用户裁定定为 20MB，与合计上限自洽（9 × 20MB = 180MB &lt; 200MB）。</p>
      */
     public static final int MAX_SIZE_BYTES = 20 * 1024 * 1024;
 
