@@ -138,6 +138,18 @@
             <version>${logstash-logback-encoder.version}</version>
         </dependency>
 
+        <!--
+          Caffeine：本地进程内缓存（[124]；详设 §5.2「分类树与模板属静态数据，
+          走 NfrCache.staticL1TtlSec 档本地 Caffeine 缓存」）。版本由 spring-boot-starter-parent
+          托管（Boot 3.5.16 dependencyManagement 内 caffeine 3.x），不另钉版。
+          选型：纯本地 LRU + TTL，无网络开销、无序列化成本，适配「读多写零」的
+          分类树/模板场景（运营改配置才失效，TTL 兜底）。
+        -->
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+        </dependency>
+
         <!-- 测试底座（版本由 parent 托管；U-3 起承载 ErrorCodeTest 等单测） -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
