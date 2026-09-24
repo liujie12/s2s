@@ -62,7 +62,7 @@
 
 #### R5: grid_id 计算（`GridIdCalculator`）
 
-- 算法（三方逐位一致，整数微度域）：`floor(x*100000)/100000` → `floorDiv(micro, 450)` → `"{gx}_{gy}"`，`STEP_MICRO=450`
+- 算法（三方逐位一致，整数微度域）：`floor(x*100000 + FLOOR_EPSILON)/100000` → `floorDiv(micro, 450)` → `"{gx}_{gy}"`，`STEP_MICRO=450`、`FLOOR_EPSILON=1e-9`
 - 10 条测试向量（含第 9 条中间微度断言 `-2`）全绿；算法落 `common/geo/GridIdCalculator.java`
 
 #### R6: 完整度三档
@@ -144,7 +144,7 @@
 - **位置**：`src/main/java/com/s2s/server/common/geo/GridIdCalculator.java`
 - **签名**：`public static String of(double lng, double lat)`
 - **算法**（详设 §5.4.1 逐字）：
-  - `floorToMicroDegree(deg) = (long) Math.floor(deg * 100_000d)`（`Math.floor` 非 `(long)` 截断——第 9 条向量依赖）
+  - `floorToMicroDegree(deg) = (long) Math.floor(deg * 100_000d + FLOOR_EPSILON)`（`Math.floor` 非 `(long)` 截断——第 9 条向量依赖；`FLOOR_EPSILON=1e-9` 补偿 `0.00450` 的 FP 误差，第 3 条向量依赖）
   - `gx = Math.floorDiv(lngMicro, STEP_MICRO)`，`STEP_MICRO = 450`
   - 返回 `gx + "_" + gy`
 - **常量**：步长 `450` 微度、精度 `100_000` 须为命名常量，禁写死数字（红线「不复制字面量」）
