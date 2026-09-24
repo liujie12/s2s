@@ -196,6 +196,20 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
+            <!--
+              测试 JVM 参数：Mockito 5 默认 inline mock maker 需 Byte Buddy attach 到当前 VM。
+              JDK 9+ 默认禁止自 attach（jdk.attach.allowAttachSelf=false），Byte Buddy 因此回退到
+              「另起外部进程 attach」；本机（Windows）该回退路径失败，表现为 88 个用例连坐报
+              「Could not initialize inline Byte Buddy mock maker / Could not self-attach to current
+              VM using external process」。显式放开自 attach 后走进程内路径，与外部进程/平台环境解耦。
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <argLine>-Djdk.attach.allowAttachSelf=true</argLine>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
 </project>
