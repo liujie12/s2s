@@ -5,9 +5,9 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.s2s.server.category.dto.CategoryNodeDto;
 import com.s2s.server.category.dto.CategoryTreeDto;
 import com.s2s.server.category.entity.CategoryEntity;
-import com.s2s.server.category.entity.SystemConfigEntity;
 import com.s2s.server.category.mapper.CategoryMapper;
-import com.s2s.server.category.mapper.SystemConfigMapper;
+import com.s2s.server.common.config.SystemConfigEntity;
+import com.s2s.server.common.config.mapper.SystemConfigMapper;
 import com.s2s.server.config.CacheConfig;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -38,6 +38,10 @@ public class CategoryService {
 
     /** system_config 中分类树版本号的键。 */
     private static final String CATEGORY_TREE_VERSION_KEY = "category_tree_version";
+
+    /** 类目层级编号除数：L2 = L3 DIV 100、L1 = L2 DIV 100
+     * （与 DDL 生成列 {@code l2_category_id = leaf_category_id DIV 100} 同式）。 */
+    private static final int CATEGORY_LEVEL_DIVISOR = 100;
 
     private final CategoryMapper categoryMapper;
     private final SystemConfigMapper systemConfigMapper;
@@ -88,6 +92,39 @@ public class CategoryService {
      */
     public boolean isVersionStale(String clientVersion) {
         return !getServerVersion().equals(clientVersion);
+    }
+
+    /**
+     * 组装叶子类目的面包屑名称（L1 → L2 → L3，[127] 详情页类目显示位）。
+     *
+     * <p>层级由<b>编号规则</b>直接派生（数据库设计 §7.3：三级类目编号即不变量，
+     * 已发布编号不得重排），与 STORED 生成列
+     * {@code l2_category_id = leaf_category_id DIV 100} 同式，故无需递归查 parent_id。
+     * 一次 {@code selectBatchIds} 取三行走主键，避免三次往返。</p>
+     *
+     * @param leafCategoryId 叶子类目 ID（L3）；{@code null} 时返回空列表
+     * @return {@link List} 名称列表，顺序 L1 → L2 → L3；编号缺级时跳过缺失项
+     */
+    public List<String> categoryPath(Integer leafCategoryId) {
+        if (leafCategoryId == null) {
+            return List.of();
+        }
+        int l2Id = leafCategoryId / CATEGORY_LEVEL_DIVISOR;
+        int l1Id = l2Id / CATEGORY_LEVEL_DIVISOR;
+        List<CategoryEntity> rows =
+                categoryMapper.selectBatchIds(List.of(l1Id, l2Id, leafCategoryId));
+        Map<Integer, String> nameById = new HashMap<>();
+        for (CategoryEntity row : rows) {
+            nameById.put(row.getId(), row.getName());
+        }
+        List<String> path = new ArrayList<>(3);
+        for (int id : new int[] {l1Id, l2Id, leafCategoryId}) {
+            String name = nameById.get(id);
+            if (name != null) {
+                path.add(name);
+            }
+        }
+        return path;
     }
 
     /**

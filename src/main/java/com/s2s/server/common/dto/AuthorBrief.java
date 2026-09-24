@@ -1,11 +1,13 @@
-package com.s2s.server.map.dto;
+package com.s2s.server.common.dto;
 
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import java.util.List;
 
 /**
- * 作者摘要（[126]；对应 openapi {@code AuthorBrief}）。
+ * 作者摘要（[126] 引入，[127] 迁至 common——openapi {@code AuthorBrief} 为跨域共享
+ * schema，map 域 {@code PostCard} 与 post 域 {@code PostDetail} 同形消费，按编码规范
+ * §1.1「同一逻辑第二次出现即上浮」落在公共包，避免两份同形 record 各自漂移）。
  *
  * <p>严格遵循 {@code user} 对外视图白名单：仅 {@code id/nickname/avatar_url/
  * realname_status}，{@code phone_mask}/{@code real_name_enc}/{@code id_card_hash}

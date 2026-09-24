@@ -1,4 +1,4 @@
-package com.s2s.server.category.entity;
+package com.s2s.server.common.config;
 
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
@@ -6,13 +6,12 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import java.time.LocalDateTime;
 
 /**
- * 系统级配置实体（[124]；映射表 {@code system_config}）。
+ * 系统级配置实体（[124] 引入，[127] 迁至 common——{@code system_config} 是系统级
+ * key-value 配置表（DDL 表注释原文），分类树版本号与详情额度开关等多域共用，
+ * 按编码规范 §1.1 上浮公共包，避免 post 域反向依赖 category 域）。
  *
- * <p>职责：承载 {@code system_config} 表一行，承载分类树全局版本号等系统级配置。
- * 字段与 {@code V1__init_schema.sql} 第 116–125 行逐列对齐。</p>
- *
- * <p>分类树版本号真源为 {@code config_key='category_tree_version'} 的行，
- * 值格式为 {@code YYYY-MM-DD.N} 字符串（架构 §9.2.1 唯一口径）。</p>
+ * <p>职责：承载 {@code system_config} 表一行。字段与 {@code V1__init_schema.sql}
+ * 第 116–125 行逐列对齐。</p>
  */
 @TableName("system_config")
 public class SystemConfigEntity {
