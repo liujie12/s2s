@@ -134,6 +134,23 @@ int? optInt(Map<String, Object?> map, String key, String owner) {
   return value;
 }
 
+/// 取可选数值字段（缺失/JSON null 均为 null；[127] 详情 price 首个消费方）。
+///
+/// 参数：[map] 父对象；[key] 契约键；[owner] 契约类型名。
+/// 返回：[double?] 字段值（int 自动转 double）；缺失为 null。
+/// 抛出：[ApiException.parse] 出现但非 num 时（含实际值）。
+///
+/// 用 [num] 承接 int/double 两种 JSON 数值：契约 `price` 为 `format: double`，
+/// 但整数值（如 50）在 JSON 反序列化后是 int，若只认 double 会把合法整数判违约。
+double? optDouble(Map<String, Object?> map, String key, String owner) {
+  final value = map[key];
+  if (value == null) return null;
+  if (value is num) return value.toDouble();
+  throw ApiException.parse(
+    '$owner.$key 应为 number 或 null，实际: $value',
+  );
+}
+
 /// 取可选字符串数组字段（缺失/JSON null 均为 null，元素逐个校验）。
 ///
 /// 参数：[map] 父对象；[key] 契约键；[owner] 契约类型名。
