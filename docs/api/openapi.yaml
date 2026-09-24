@@ -2268,6 +2268,15 @@ components:
         type: { $ref: '#/components/schemas/PostTypeEnum' }
         leaf_category_id: { type: integer, format: int32 }
         title: { type: string, maxLength: 40 }
+        price:
+          type: number
+          format: double
+          nullable: true
+          description: 价格（元）。null/缺省表示「面议」（PRD §5.8 允许价格为空）
+        price_unit:
+          type: string
+          nullable: true
+          description: 价格单位，取模板 price_units 之一；price 为 null 时无意义
         description: { type: string, maxLength: 500 }
         attributes:
           type: object
@@ -2352,6 +2361,8 @@ components:
           description: 类目面包屑名称，L1 → L2 → L3
           items: { type: string }
         title: { type: string }
+        price: { type: number, format: double, nullable: true, description: 价格（元）；null=面议 }
+        price_unit: { type: string, nullable: true, description: 价格单位；price 为 null 时无意义 }
         description: { type: string, nullable: true }
         attributes:
           type: object

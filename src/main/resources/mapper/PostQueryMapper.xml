@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.s2s.server.post.mapper.PostQueryMapper">
+
+    <!--
+      详情行：JOIN user 取作者摘要（对外视图白名单四列，禁带 phone_mask 等敏感列，
+      安全 §9.6 数据最小化）。口径「API 状态由 (status, status_reason) 派生」在
+      Java 侧 PostStatus.toApi 完成，本 SQL 只出海选列，不做状态翻译。
+    -->
+    <select id="selectDetailRow" resultType="map">
+        SELECT p.id,
+               p.user_id,
+               p.type,
+               p.leaf_category_id,
+               p.l2_category_id,
+               p.title,
+               p.price,
+               p.price_unit,
+               p.`desc`       AS description,
+               p.template_values,
+               p.lng,
+               p.lat,
+               p.address,
+               p.completeness_level,
+               p.status,
+               p.status_reason,
+               p.created_at,
+               p.expire_at,
+               p.version,
+               u.id             AS author_id,
+               u.nickname       AS author_nickname,
+               u.avatar_url     AS author_avatar_url,
+               u.realname_status AS author_realname_status
+        FROM post p
+        JOIN user u ON p.user_id = u.id
+        WHERE p.id = #{postId}
+    </select>
+
+    <!--
+      我的发布候选集：status / status_reason 条件由 PostStatus.ApiStatusFilter 提供，
+      本 XML 只负责把「状态集合 + 归因集合 + 是否放行 NULL 归因」翻成 SQL 谓词。
+      dbStatuses 恒非空（无筛选时 service 传 filter=null，走 <if> 跳过整段）。
+    -->
+    <select id="selectMine" resultType="map">
+        SELECT p.id,
+               p.type,
+               p.leaf_category_id,
+               p.title,
+               p.completeness_level,
+               p.status,
+               p.status_reason,
+               p.created_at,
+               p.expire_at,
+               p.version
+        FROM post p
+        WHERE p.user_id = #{userId}
+        <if test="dbStatuses != null and dbStatuses.size() > 0">
+            AND p.status IN
+            <foreach collection="dbStatuses" item="s" open="(" separator="," close=")">#{s}</foreach>
+        </if>
+        <if test="reasons != null and reasons.size() > 0">
+            AND (
+                p.status_reason IN
+                <foreach collection="reasons" item="r" open="(" separator="," close=")">#{r}</foreach>
+                <if test="allowNullReason">OR p.status_reason IS NULL</if>
+            )
+        </if>
+        ORDER BY p.created_at DESC, p.id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <!-- 总数：筛选条件与 selectMine 逐条一致（两处必须同改）。 -->
+    <select id="countMine" resultType="long">
+        SELECT COUNT(*)
+        FROM post p
+        WHERE p.user_id = #{userId}
+        <if test="dbStatuses != null and dbStatuses.size() > 0">
+            AND p.status IN
+            <foreach collection="dbStatuses" item="s" open="(" separator="," close=")">#{s}</foreach>
+        </if>
+        <if test="reasons != null and reasons.size() > 0">
+            AND (
+                p.status_reason IN
+                <foreach collection="reasons" item="r" open="(" separator="," close=")">#{r}</foreach>
+                <if test="allowNullReason">OR p.status_reason IS NULL</if>
+            )
+        </if>
+    </select>
+
+    <!-- 联系数批量聚合（一次查询覆盖整页，避免 N+1）。 -->
+    <select id="countContactEvents" resultType="map">
+        SELECT post_id, COUNT(*) AS cnt
+        FROM contact_event
+        WHERE post_id IN
+        <foreach collection="postIds" item="pid" open="(" separator="," close=")">#{pid}</foreach>
+        GROUP BY post_id
+    </select>
+
+</mapper>

@@ -5,10 +5,14 @@ import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.s2s.server.common.constants.NfrPost;
 import com.s2s.server.common.crypto.CryptoFacade;
+import com.s2s.server.common.error.BizException;
+import com.s2s.server.common.error.ErrorCode;
 import com.s2s.server.common.geo.GridIdCalculator;
 import com.s2s.server.post.dto.MediaItem;
 import com.s2s.server.post.dto.PostCreateRequest;
 import com.s2s.server.post.dto.PostDetail;
+import com.s2s.server.post.dto.PostStatusResult;
+import com.s2s.server.post.dto.PostStatusUpdateRequest;
 import com.s2s.server.post.dto.PrecheckResult;
 import com.s2s.server.post.entity.PostEntity;
 import com.s2s.server.post.entity.PostMediaEntity;
@@ -87,6 +91,8 @@ public class PostService {
         post.setType(req.type());
         post.setLeafCategoryId(req.leafCategoryId());
         post.setTitle(req.title());
+        post.setPrice(req.price() == null ? null : BigDecimal.valueOf(req.price()));
+        post.setPriceUnit(req.priceUnit());
         post.setDescription(req.description());
         post.setTemplateValues(toJson(req.attributes()));
         post.setGridId(gridId);
@@ -116,6 +122,73 @@ public class PostService {
         // 重查取 STORED 生成列（l2_category_id / completeness_level）
         PostEntity saved = postMapper.selectById(post.getId());
         return assemble(saved, req, userId);
+    }
+
+    /**
+     * 变更帖子状态（[127]；openapi {@code PATCH /posts/{post_id}/status}、详设 §5.3.3）。
+     *
+     * <p><b>乐观锁强约束</b>：{@code version} 必带（缺失由 Bean Validation 拦成 40001，
+     * 本方法不做兜底）；更新语句形态 {@code WHERE id=? AND user_id=? AND version=?}，
+     * 影响 0 行 → {@code 40903}（编码规范 §4.9），客户端须重取详情后由用户决定，
+     * 禁自动带新 version 重发。</p>
+     *
+     * <p><b>归属并入 WHERE 而非先查归属</b>：非本人与版本不符一律表现为 0 行 → 同一个
+     * {@code 40903}，既不新造 403 口径（依据源只规定「0 行→40903」），也不按 id 泄露
+     * 「该帖存在且属他人」。</p>
+     *
+     * <p><b>{@code version} 自增写进 SQL</b>：本工程未注册 MyBatis-Plus 乐观锁插件
+     * （{@code OptimisticLockerInnerInterceptor} 未配置，实体 {@code @Version} 不自动生效），
+     * 故显式 {@code version = version + 1}；它与 {@code WHERE version=?} 是一对，
+     * 只写其一即乐观锁失效。</p>
+     *
+     * <p><b>动作语义</b>（openapi 枚举，均清空 {@code status_reason}——只有「进入非 active
+     * 路径」才有归因）：
+     * <ul>
+     *   <li>{@code offline}：{@code → archived} 且 {@code status_reason=0}（用户主动下架，
+     *       数据库设计 §7.2 路径 1 {@code user_archive}）；</li>
+     *   <li>{@code republish}：{@code → active}，重算 {@code expire_at}（详设 §5.3.3 状态机）；</li>
+     *   <li>{@code renew}：保持 {@code active}，顺延 {@code expire_at}。</li>
+     * </ul>
+     * </p>
+     *
+     * @param userId 当前登录用户 ID（归属约束）
+     * @param postId 帖子 ID
+     * @param req    变更入参（{@code action} + {@code version}）
+     * @return {@link PostStatusResult} 变更后状态/到期时间/新版本号
+     * @throws BizException {@code 40001}（动作非法）、{@code 40903}（0 行：版本不符或非本人）
+     */
+    @Transactional
+    public PostStatusResult updateStatus(Long userId, Long postId, PostStatusUpdateRequest req) {
+        if (!PostStatus.isValidAction(req.action())) {
+            throw BizException.of(ErrorCode.PARAM_INVALID);
+        }
+        LocalDateTime now = LocalDateTime.now();
+        UpdateWrapper<PostEntity> update = new UpdateWrapper<>();
+        update.eq("id", postId).eq("user_id", userId).eq("version", req.version());
+        switch (req.action()) {
+            case PostStatus.ACTION_OFFLINE -> update
+                    .set("status", PostStatus.DB_ARCHIVED)
+                    .set("status_reason", PostStatus.REASON_USER_ARCHIVE);
+            case PostStatus.ACTION_REPUBLISH, PostStatus.ACTION_RENEW -> update
+                    .set("status", PostStatus.DB_ACTIVE)
+                    .set("status_reason", null)
+                    .set("expire_at", now.plusDays(NfrPost.VALID_DAYS));
+            default -> throw BizException.of(ErrorCode.PARAM_INVALID);
+        }
+        update.set("status_changed_at", now);
+        update.setSql("version = version + 1");
+
+        int affected = postMapper.update(null, update);
+        if (affected == 0) {
+            throw BizException.of(ErrorCode.VERSION_CONFLICT);
+        }
+        // 重查返回权威值（version 由 SQL 自增，实体侧不猜）
+        PostEntity updated = postMapper.selectById(postId);
+        return new PostStatusResult(
+                updated.getId(),
+                PostStatus.toApi(updated.getStatus(), updated.getStatusReason()),
+                updated.getExpireAt().toInstant(ZoneOffset.UTC),
+                updated.getVersion());
     }
 
     /**
@@ -160,17 +233,24 @@ public class PostService {
                 post.getType(),
                 post.getLeafCategoryId(),
                 post.getL2CategoryId(),
+                // categoryPath / distanceM / author：POST /posts 出参不填充，属 [127] 读接口范畴
+                null,
                 post.getTitle(),
+                post.getPrice(),
+                post.getPriceUnit(),
                 post.getDescription(),
                 req.attributes(),
                 post.getLng(),
                 post.getLat(),
                 post.getAddress(),
+                null,
                 media,
                 maskContact(req.contactValue()),
                 post.getCompletenessLevel(),
-                post.getStatus(),
+                PostStatus.toApi(post.getStatus(), post.getStatusReason()),
+                post.getCreatedAt().toInstant(ZoneOffset.UTC),
                 post.getExpireAt().toInstant(ZoneOffset.UTC),
+                null,
                 post.getVersion());
     }
 
