@@ -131,3 +131,10 @@ s2s:
     # 裸占位（非 :? 形态）的理由见文件头注释 6：快速失败闸门在 SecretsProperties 守卫
     # （已解析 + ≥32 字节双校验），与其余硬依赖同构；例值生成 openssl rand -hex 32
     jwt-secret: ${JWT_SECRET}
+  # --- OSS 媒体直传（[125] KTD2）---
+  oss:
+    # 直传开关：true = dev 桩（默认，真桶未就绪兜底），false = 真阿里云 SDK
+    mock: ${OSS_MOCK:true}
+    # 真 SDK 路径的 endpoint/bucket（mock=false 时必填；dev 桩不消费）
+    endpoint: ${OSS_ENDPOINT:}
+    bucket: ${OSS_BUCKET:}

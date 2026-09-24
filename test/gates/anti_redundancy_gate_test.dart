@@ -780,21 +780,24 @@ void main() {
     const int featuresDartFileBaseline = 38;
 
     /// lib/ 全部 Dart 文件数基线（同上，评审 #10）。
+    /// 66 = 62 + [126] 三处缓存件（grid_id / pin_cache / pin_cache_key）
+    /// + token_storage.dart（[123] U10 Token 安全存储）；
     /// 62 = 61 + post 域两文件（post_dto + post_repository，[124] B4）；
     /// 61 = 60 + contract_json.dart（B4 解析助手上浮）；
     /// 60 = 59 + publish_template_provider.dart（B3 发布模板装配）；
     /// 59 = 58 + category_tree_provider.dart（B2 分类树状态层；
     /// 58 = 57 + category_tree_provider；57 = 55 + category_dto +
     /// category_repository，B1 新增）。
-    const int libDartFileBaseline = 62;
+    const int libDartFileBaseline = 66;
 
-    /// `ApiException.parse(` 命中总数基线（判据 C1）：工厂定义 1 + 调用 24。
-    /// 24 = 23 + 1（[124] B4：contract_json.dart 新增 optInt 1；category_dto
-    /// 的 11 处中 9 处随解析助手迁至 core/contract_json.dart、2 处留守
-    /// （level 校验 + _optChildren），搬家不减调用点）。原 23 = 12（既有
-    /// 非 category）+ 11（[124] B1 category_dto）。新增/删除解析失败
-    /// 抛出点时，与 api_exception.dart 文件头清单同改。
-    const int parseFactoryTotalBaseline = 25;
+    /// `ApiException.parse(` 命中总数基线（判据 C1）：工厂定义 1 + 调用 32。
+    /// 32 = 24 + 8（[123] U10：AuthSession.fromJson 2 + AuthRepository
+    /// _parseLoginResult 4 + _parseUserId 2）。原 24 = 23 + 1（[124] B4：
+    /// contract_json.dart 新增 optInt 1；category_dto 的 11 处中 9 处随解析
+    /// 助手迁至 core/contract_json.dart、2 处留守（level 校验 + _optChildren），
+    /// 搬家不减调用点）。新增/删除解析失败抛出点时，与 api_exception.dart
+    /// 文件头清单同改。
+    const int parseFactoryTotalBaseline = 33;
 
     test('lib/features/ 无 for/while 循环重试（详设 §14.2，判据 A1）', () {
       // 先断言扫描面非空且不小于基线（部署 §14.5：先断言待判对象存在），

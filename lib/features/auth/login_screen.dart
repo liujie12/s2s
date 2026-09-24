@@ -145,10 +145,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     setState(() {
       _submitting = false;
       _error = _errorTextOf(result);
-      // 验证码过期后必须允许立即重发，否则用户困在「码过期了但还要等 60s」里。
-      // 这行写在 setState 内而不塞进 _errorTextOf：一个名为「取文案」的方法
-      // 顺手改状态，是日后排查「谁把 _codeSent 改回去了」时最难找的那一类。
-      if (result.failure == AuthFailure.codeExpired) _codeSent = false;
     });
   }
 

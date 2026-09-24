@@ -55,9 +55,9 @@ class RegisteredBackdoor {
 const List<RegisteredBackdoor> registeredBackdoors = [
   RegisteredBackdoor(
     file: 'lib/features/auth/auth_repository.dart',
-    lineContains: "_debugCode = '888888'",
-    reason: '接短信通道前的本地联调固定验证码（无真实短信通道时登录页无法自测）',
-    removeWhen: '接入服务端登录接口、验证码改由短信下发时删除（TODO(接后端) 已标注于引用处）',
+    lineContains: "debugCode = '888888'",
+    reason: '登录页 kDebugMode 联调提示条展示固定验证码（与后端 SmsCodePolicy.DEBUG_CODE 对齐），客户端不参与验证码生成/校验',
+    removeWhen: '接入真实短信服务、移除联调提示条（login_screen 内 kDebugMode 包裹块）时删除',
   ),
 ];
 

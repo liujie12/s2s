@@ -14,11 +14,25 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'core/network/api_client.dart';
 import 'design_tokens.dart';
+import 'features/auth/auth_network_wiring.dart';
 import 'router/app_router.dart';
 
 void main() {
-  runApp(const ProviderScope(child: ZhaoYaZhaoApp()));
+  runApp(
+    ProviderScope(
+      // 组装根接线（KTD5）：把 features 侧的会话态/隐私态/设备标识/UUID
+      // 焊接为 core 的 NetworkHooks。core 的 networkHooksProvider 默认抛
+      // StateError，必须在此 override，否则首个经 dioProvider 的请求即失败。
+      overrides: [
+        networkHooksProvider.overrideWith(
+          (ref) => ref.watch(wiredNetworkHooksProvider),
+        ),
+      ],
+      child: const ZhaoYaZhaoApp(),
+    ),
+  );
 }
 
 /// 应用根组件。

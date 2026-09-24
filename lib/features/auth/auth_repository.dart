@@ -17,24 +17,22 @@
 /// 与「已被锁 15 分钟，再试也没用」—— 而后者若说成前者，用户会一直重试到放弃。
 library;
 
+import 'dart:convert';
+
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-/// 短信验证码有效期（§12.2 `/auth/sms/send` 出参 `expire_in`）。
-///
-/// 与 [kSmsResendCooldown] 是两件事：冷却是「多久能再发一条」（§3.5 步骤 2 的
-/// 60s 倒计时），有效期是「这条码多久作废」。合成一个值会导致倒计时结束的同时
-/// 码也失效，用户按 §3.5 的节奏操作反而永远登录不上。
-const Duration kSmsCodeTtl = Duration(minutes: 5);
+import '../../core/network/api_client.dart';
+import '../../core/network/api_error_code.dart';
+import '../../core/network/api_exception.dart';
+import '../../core/storage/token_storage.dart';
 
 /// 重新发送验证码的冷却时长（§3.5 步骤 2「发送短信 → 60s 倒计时」）。
 const Duration kSmsResendCooldown = Duration(seconds: 60);
 
 /// 同一手机号连续校验失败达此次数即锁定（§3.8 / §12.2 登录风控）。
 const int kMaxFailedAttempts = 5;
-
-/// 风控锁定时长（§12.2「返回 `40105` 并锁定 15 分钟」）。
-const Duration kLockoutDuration = Duration(minutes: 15);
 
 /// 登录失败原因（文案与原因绑定，避免同一错误在不同页面说法不一）。
 enum AuthFailure {
@@ -49,15 +47,6 @@ enum AuthFailure {
 
   /// 验证码错误，仍可重试（剩余次数见 [AuthResult.remainingAttempts]）。
   wrongCode('验证码不正确，请重新输入'),
-
-  /// 验证码已过期（超过 [kSmsCodeTtl]）。
-  ///
-  /// 与 [wrongCode] 分开：过期该引导「重新获取」，输错该引导「再输一次」。
-  /// 文案混用会让用户反复输一个已经作废的码。
-  codeExpired('验证码已过期，请重新获取'),
-
-  /// 尚未请求过验证码就点了登录。
-  codeNotRequested('请先获取短信验证码'),
 
   /// 风控锁定（§12.2 错误码 `40105`）。
   ///
@@ -154,32 +143,90 @@ class AuthSession {
   /// 参数 [now] 由调用方注入而非内部取 `DateTime.now()`：便于测试固定输入，
   /// 也避免同一帧内两次调用得到不同答案。
   bool isExpired(DateTime now) => !now.isBefore(expireAt);
+
+  /// 序列化为可持久化的 JSON（键名与字段语义对齐，非 openapi 信封）。
+  ///
+  /// 用于 Token 持久化（KTD7）：冷启动恢复会话需要全部字段——
+  /// [token] 供 API 鉴权、[userId]/[phone] 供个人中心展示、
+  /// [isNewUser]/[realNameVerified] 供首进引导与权限展示。只存
+  /// token + expireAt 的话，重启后 userId/phone 丢失，个人中心无法显示
+  /// 本人号码（完整号码只在登录时输入过，服务端只回脱敏 phone_mask）。
+  ///
+  /// 返回：[Map<String, dynamic>] 会话 JSON。
+  Map<String, dynamic> toJson() => {
+        'user_id': userId,
+        'phone': phone,
+        'token': token,
+        'expire_at': expireAt.toIso8601String(),
+        'is_new_user': isNewUser,
+        'real_name_verified': realNameVerified,
+      };
+
+  /// 从持久化 JSON 反序列化会话。
+  ///
+  /// 参数：[json] 由 [toJson] 产出的会话 JSON。
+  /// 返回：[AuthSession] 会话实例。
+  /// 抛出：[ApiException.parse] 字段缺失/类型不符时（不静默吞，§10.3）。
+  static AuthSession fromJson(Map<String, dynamic> json) {
+    final userId = json['user_id'];
+    final phone = json['phone'];
+    final token = json['token'];
+    final expireAtRaw = json['expire_at'];
+    if (userId is! String || phone is! String || token is! String) {
+      throw ApiException.parse(
+        '会话 JSON 缺 user_id/phone/token 或类型不符: $json',
+      );
+    }
+    final expireAt = DateTime.tryParse(expireAtRaw is String ? expireAtRaw : '');
+    if (expireAt == null) {
+      throw ApiException.parse('会话 JSON expire_at 非时间: $expireAtRaw');
+    }
+    return AuthSession(
+      userId: userId,
+      phone: phone,
+      token: token,
+      expireAt: expireAt,
+      isNewUser: json['is_new_user'] as bool? ?? false,
+      realNameVerified: json['real_name_verified'] as bool? ?? false,
+    );
+  }
 }
 
-/// 鉴权仓库（§12.2 `/auth/sms/send` 与 `/auth/sms/login` 的本地替身）。
+/// 鉴权仓库（§12.2 `/auth/sms/send` 与 `/auth/sms/login` 的真网络实现）。
 ///
-/// **状态存在实例字段里，因此它必须是单实例**（见 [authRepositoryProvider]）：
-/// 待校验的验证码与失败计数在真实系统里存于服务端，这里只能存在内存。
-/// 若每次读 Provider 都新建一个，失败计数会被重置，风控形同虚设。
+/// 接后端后（U10）删除本地验证码生成/校验 mock，改为经 [Dio] 调真接口：
+///   - 验证码生成与校验在服务端，客户端永不持有正确验证码；
+///   - 失败原因由服务端错误码映射（§12.1 错误码表），本层不吞信封；
+///   - 本地仅保留「60s 重发冷却」的计时状态（[kSmsResendCooldown]），
+///     用于页面倒计时展示，服务端侧另有更细的限频（42905）。
+///
+/// 仍须单实例（见 [authRepositoryProvider]）：60s 冷却的计时存在实例字段里，
+/// 每次读 Provider 新建会把冷却清零。
 class AuthRepository {
-  AuthRepository();
-
-  /// 已下发但未使用的验证码，按手机号索引。
+  /// 构造鉴权仓库，注入业务网络客户端。
   ///
-  /// **明文存内存仅因为这里在扮演服务端**：真实客户端永远不该知道正确的验证码。
-  /// 这也是为什么校验逻辑放在本类而不是页面里 —— 页面若能拿到正确答案，
-  /// 「验证码」这道门就只是一个装饰。
-  final Map<String, _PendingCode> _pending = {};
+  /// 参数：[dio] 经 [buildNetworkDio] 装配的业务 dio（[dioProvider] 注入；
+  ///   测试注入 [NetworkChainHarness] 装配的同款实例）。
+  AuthRepository(this._dio);
 
-  /// 连续失败计数与锁定截止，按手机号索引（§3.8 风控维度是 phone）。
-  final Map<String, _RiskState> _risk = {};
+  /// 业务网络客户端（生产同款五拦截器链）。
+  final Dio _dio;
 
-  /// 手机号格式校验（11 位、1 开头）。
+  /// 各手机号最近一次成功发码时刻（本地 60s 冷却计时，非服务端真源）。
+  final Map<String, DateTime> _lastSentAt = {};
+
+  /// 手机号格式校验（11 位、1[3-9] 开头，对齐契约 pattern）。
   ///
   /// 不做运营商号段白名单：号段年年新增，写死会把持有新号段的真实用户挡在门外，
   /// 而这类问题上线后极难被发现（用户装不上就走了，不会来报错）。
   static bool isValidPhone(String phone) =>
-      RegExp(r'^1\d{10}$').hasMatch(phone);
+      RegExp(r'^1[3-9]\d{9}$').hasMatch(phone);
+
+  /// 联调固定验证码（与后端 `SmsCodePolicy.DEBUG_CODE` 对齐）。
+  ///
+  /// 只用于 debug 提示条（login_screen 内 `kDebugMode` 包裹），客户端**不参与**
+  /// 验证码生成/校验。release 下提示条被树摇，字面量不进产物。
+  static const String debugCode = '888888';
 
   /// 发送短信验证码（§12.2 `POST /auth/sms/send`）。
   ///
@@ -194,35 +241,23 @@ class AuthRepository {
 
     if (!isValidPhone(phone)) return AuthFailure.invalidPhone;
 
-    // 锁定期内连发码都不给：只拦登录不拦发码的话，攻击者仍能持续消耗短信费用，
-    // 而短信是按条计费的真实成本。
-    if (_lockedUntil(phone, at) != null) return AuthFailure.lockedOut;
-
-    final prev = _pending[phone];
-    if (prev != null && at.difference(prev.sentAt) < kSmsResendCooldown) {
-      return AuthFailure.resendTooSoon;
+    try {
+      await _dio.post<Object?>(
+        '/auth/sms/send',
+        data: {'phone': phone, 'scene': 'login'},
+      );
+      _lastSentAt[phone] = at;
+      return null;
+    } catch (e) {
+      return _mapSendFailure(e);
     }
-
-    // 模拟网络往返：按钮点下去到倒计时开始之间若无反馈，用户会连点，
-    // 而连点在真实环境下每次都是一条计费短信。
-    await Future<void>.delayed(const Duration(milliseconds: 400));
-
-    _pending[phone] = _PendingCode(
-      // 固定码仅用于本地联调（真实码由服务端生成后经短信下发，客户端不可知）。
-      // TODO(接后端)：删除本地生成，改为只记录 expire_in。
-      // kDebugMode 编译期包裹（规范 §5.9 第①层）：release 折叠为 ''，常量
-      // 因无引用被树摇，产物 grep 不到固定码（出包 L3 双零兜底）。
-      code: kDebugMode ? _debugCode : '',
-      sentAt: at,
-    );
-    return null;
   }
 
   /// 验证码登录（§12.2 `POST /auth/sms/login`，注册合并）。
   ///
   /// 参数 [phone] 手机号；[code] 用户输入的验证码；
   /// [agreementAccepted] 协议是否已勾（§12.2 必 true）；[now] 当前时刻。
-  /// 返回 [AuthResult]：成功携 [AuthSession]，失败携具名原因与剩余次数。
+  /// 返回 [AuthResult]：成功携 [AuthSession]，失败携具名原因。
   Future<AuthResult> loginWithSms({
     required String phone,
     required String code,
@@ -238,135 +273,157 @@ class AuthRepository {
       return const AuthResult.failure(AuthFailure.agreementNotAccepted);
     }
 
-    final locked = _lockedUntil(phone, at);
-    if (locked != null) {
-      return AuthResult.failure(AuthFailure.lockedOut, lockedUntil: locked);
-    }
-
-    final pending = _pending[phone];
-    if (pending == null) {
-      return const AuthResult.failure(AuthFailure.codeNotRequested);
-    }
-    if (at.difference(pending.sentAt) >= kSmsCodeTtl) {
-      // 过期码即刻废弃，避免它一直占着「已请求过」的位置。
-      _pending.remove(phone);
-      return const AuthResult.failure(AuthFailure.codeExpired);
-    }
-
-    await Future<void>.delayed(const Duration(milliseconds: 500));
-
-    if (code != pending.code) {
-      final risk = _recordFailure(phone, at);
-      if (risk.lockedUntil != null) {
-        return AuthResult.failure(
-          AuthFailure.lockedOut,
-          remainingAttempts: 0,
-          lockedUntil: risk.lockedUntil,
-        );
-      }
-      return AuthResult.failure(
-        AuthFailure.wrongCode,
-        remainingAttempts: kMaxFailedAttempts - risk.failedCount,
+    try {
+      final response = await _dio.post<Object?>(
+        '/auth/sms/login',
+        data: {
+          'phone': phone,
+          'code': code,
+          'agreed': agreementAccepted,
+          'platform': _platformName,
+        },
       );
+      final session = _parseLoginResult(response.data, phone);
+      _lastSentAt.remove(phone);
+      return AuthResult.success(session);
+    } catch (e) {
+      return _mapLoginFailure(e, at);
     }
-
-    // 成功即清空该号码的失败计数与待校验码：
-    // 不清计数会让「昨天输错 4 次、今天成功登录」的用户在下次输错一次时直接被锁。
-    _risk.remove(phone);
-    _pending.remove(phone);
-
-    // 「未注册手机号验证后自动注册」（§3.4.1 底部文案）：
-    // 首次见到的号码即视为新用户。真实实现由服务端返回 `is_new_user`。
-    final isNew = !_knownPhones.contains(phone);
-    _knownPhones.add(phone);
-
-    return AuthResult.success(
-      AuthSession(
-        userId: 'user-${phone.substring(phone.length - 4)}',
-        phone: phone,
-        token: 'local-token-${at.millisecondsSinceEpoch}',
-        // §3.7 有效期 30 天。
-        expireAt: at.add(const Duration(days: 30)),
-        isNewUser: isNew,
-      ),
-    );
   }
 
   /// 距下次可重发验证码的剩余时长。返回 [Duration.zero] 表示可立即发送。
   ///
-  /// 供页面驱动 60s 倒计时。倒计时的**真源在这里而不在页面**：
+  /// 供页面驱动 60s 倒计时。倒计时的**计时真源在这里而不在页面**：
   /// 放在页面的话，用户退出重进登录页就能刷新倒计时，冷却被绕过。
   Duration resendCooldownLeft(String phone, {DateTime? now}) {
-    final pending = _pending[phone];
-    if (pending == null) return Duration.zero;
-    final elapsed = (now ?? DateTime.now()).difference(pending.sentAt);
+    final sentAt = _lastSentAt[phone];
+    if (sentAt == null) return Duration.zero;
+    final elapsed = (now ?? DateTime.now()).difference(sentAt);
     final left = kSmsResendCooldown - elapsed;
     return left.isNegative ? Duration.zero : left;
   }
 
-  /// 当前锁定截止时刻，未锁定返回 null（顺带清理已到期的锁）。
-  DateTime? _lockedUntil(String phone, DateTime now) {
-    final risk = _risk[phone];
-    final until = risk?.lockedUntil;
-    if (until == null) return null;
-    if (!now.isBefore(until)) {
-      // 锁已到期：连同失败计数一起清零，否则解锁后第一次输错就又被锁。
-      _risk.remove(phone);
-      return null;
-    }
-    return until;
-  }
-
-  /// 记一次失败，达阈值则置锁。返回更新后的风控状态。
-  _RiskState _recordFailure(String phone, DateTime now) {
-    final count = (_risk[phone]?.failedCount ?? 0) + 1;
-    final state = _RiskState(
-      failedCount: count,
-      lockedUntil: count >= kMaxFailedAttempts
-          ? now.add(kLockoutDuration)
-          : null,
-    );
-    _risk[phone] = state;
-    return state;
-  }
-
-  /// 已注册过的号码（仅样例，用于给出 `is_new_user`）。
-  final Set<String> _knownPhones = {};
-
-  /// 本地联调用固定验证码。
+  /// 客户端平台名（契约 `platform` 枚举：android / ios）。
   ///
-  /// 之所以是固定值而非随机：随机码在无短信通道时根本取不到，登录页就无法自测。
-  /// 之所以定义为常量而非散落在代码里：接后端时删掉它，所有引用处立刻编译报错，
-  /// 不会有一条漏网的本地后门留在包里。
-  /// 引用点均已 `kDebugMode` 包裹（规范 §5.9 第①层）：release 下本常量无引用
-  /// 被树摇，字面量不进产物；**新增引用点必须同样包裹**，否则出包 L3 双零中止。
-  static const String _debugCode = '888888';
+  /// 用 [defaultTargetPlatform] 而非 `dart:io Platform`：纯 Dart 仓库层不
+  /// 依赖平台通道，测试无需 mock 平台通道即可固定判定。
+  String get _platformName =>
+      defaultTargetPlatform == TargetPlatform.android ? 'android' : 'ios';
 
-  /// 暴露给测试与登录页提示条使用的联调码。
-  static String get debugCode => _debugCode;
-}
+  /// 把发送验证码的异常映射为失败原因（发码只区分「限频」与「其他」）。
+  ///
+  /// 参数：[error] catch 到的异常（DioException 包 ApiException 或裸 ApiException）。
+  /// 返回：[AuthFailure] 限频 → resendTooSoon，其余 → networkError。
+  AuthFailure _mapSendFailure(Object error) {
+    final api = _asApiException(error);
+    if (api.code == ApiErrorCode.smsLimit) return AuthFailure.resendTooSoon;
+    return AuthFailure.networkError;
+  }
 
-/// 待校验的验证码。
-class _PendingCode {
-  const _PendingCode({required this.code, required this.sentAt});
+  /// 把登录异常映射为失败结果（§12.1 错误码 → [AuthFailure]）。
+  ///
+  /// 参数：[error] catch 到的异常；[at] 锁定截止的基准时刻。
+  /// 返回：[AuthResult] 锁定 → lockedOut（拼 lockedUntil）、限频 → resendTooSoon、
+  ///   协议 → agreementNotAccepted、其余（含 40001 验证码错误）→ wrongCode。
+  AuthResult _mapLoginFailure(Object error, DateTime at) {
+    final api = _asApiException(error);
+    switch (api.code) {
+      case ApiErrorCode.loginLocked:
+        final retryAfter = api.retryAfterSec;
+        return AuthResult.failure(
+          AuthFailure.lockedOut,
+          remainingAttempts: 0,
+          lockedUntil: retryAfter == null
+              ? null
+              : at.add(Duration(seconds: retryAfter)),
+        );
+      case ApiErrorCode.smsLimit:
+        return const AuthResult.failure(AuthFailure.resendTooSoon);
+      case ApiErrorCode.agreementRequired:
+        return const AuthResult.failure(AuthFailure.agreementNotAccepted);
+      default:
+        // 40001（验证码错误/过期统一，服务端不区分）、网络失败等兜底为
+        // wrongCode —— 页面据此引导「重输」；验证码过期由用户重新获取。
+        return const AuthResult.failure(AuthFailure.wrongCode);
+    }
+  }
 
-  final String code;
-  final DateTime sentAt;
-}
+  /// 解析登录响应为会话（§12.2 LoginResult：token/expire_at/is_new_user/user）。
+  ///
+  /// 参数：[data] EnvelopeInterceptor 拆出的信封 data（LoginResult）；[phone] 用户
+  ///   输入的完整手机号（服务端只回脱敏 phone_mask，完整号只能取输入值）。
+  /// 返回：[AuthSession] 会话。
+  /// 抛出：[ApiException.parse] 字段缺失/类型不符时（不静默吞，§10.3）。
+  AuthSession _parseLoginResult(Object? data, String phone) {
+    if (data is! Map) {
+      throw ApiException.parse(
+        '登录响应 data 应为 Map，实际: ${data.runtimeType}',
+      );
+    }
+    final token = data['token'];
+    final expireAtRaw = data['expire_at'];
+    final isNewUser = data['is_new_user'];
+    if (token is! String || token.isEmpty) {
+      throw ApiException.parse('登录响应 data.token 缺失或非 String: $token');
+    }
+    final expireAt = DateTime.tryParse(expireAtRaw is String ? expireAtRaw : '');
+    if (expireAt == null) {
+      throw ApiException.parse('登录响应 data.expire_at 非时间: $expireAtRaw');
+    }
+    if (isNewUser is! bool) {
+      throw ApiException.parse('登录响应 data.is_new_user 缺失: $isNewUser');
+    }
+    return AuthSession(
+      userId: _parseUserId(data['user']),
+      phone: phone,
+      token: token,
+      expireAt: expireAt,
+      isNewUser: isNewUser,
+    );
+  }
 
-/// 单个手机号的风控状态。
-class _RiskState {
-  const _RiskState({required this.failedCount, this.lockedUntil});
+  /// 从 LoginResult.user（MyProfile）取 userId（int64 → String）。
+  ///
+  /// 参数：[user] 登录响应 data.user（MyProfile）。
+  /// 返回：[String] 用户 ID 的字符串形式（int64 不丢精度）。
+  /// 抛出：[ApiException.parse] user 非 Map 或 id 缺失。
+  String _parseUserId(Object? user) {
+    if (user is! Map) {
+      throw ApiException.parse('登录响应 data.user 应为 Map，实际: $user');
+    }
+    final id = user['id'];
+    if (id is! num) {
+      throw ApiException.parse('登录响应 data.user.id 缺失或非数值: $id');
+    }
+    return id.toString();
+  }
 
-  final int failedCount;
-  final DateTime? lockedUntil;
+  /// 归一链上异常为 [ApiException]（§11.3 两形态 + 传输层归一）。
+  ///
+  /// 参数：[error] catch 到的对象。
+  /// 返回：[ApiException] 业务异常；传输层/未知异常归一为 networkFailure。
+  ApiException _asApiException(Object error) {
+    if (error is ApiException) return error;
+    if (error is DioException) {
+      final inner = error.error;
+      if (inner is ApiException) return inner;
+      return ApiException(
+        code: ApiErrorCode.networkFailure,
+        message: error.message ?? '网络异常',
+      );
+    }
+    return ApiException(
+      code: ApiErrorCode.networkFailure,
+      message: '$error',
+    );
+  }
 }
 
 /// 鉴权仓库 Provider。
 ///
-/// 全局单实例：失败计数与待校验码存在实例内（见 [AuthRepository] 类注释）。
+/// 全局单实例：60s 冷却计时存在实例内（见 [AuthRepository] 类注释）。
 final authRepositoryProvider = Provider<AuthRepository>(
-  (ref) => AuthRepository(),
+  (ref) => AuthRepository(ref.watch(dioProvider)),
 );
 
 /// 当前会话状态。
@@ -385,14 +442,34 @@ class AuthSessionNotifier extends Notifier<AuthSession?> {
   int _sessionEpoch = 0;
 
   @override
-  AuthSession? build() => null;
+  AuthSession? build() {
+    _load();
+    return null;
+  }
 
   /// 读当前会话代次（经 NetworkHooks.readSessionEpoch 焊接给 core）。
   ///
   /// 返回：[int] 单调递增代次；会话存否均可读，登出态也有确定值。
   int get sessionEpoch => _sessionEpoch;
 
-  /// 登录成功后写入会话并推进代次。
+  /// 冷启动异步恢复会话（KTD7：Token 持久化 → 重启仍保持登录态）。
+  ///
+  /// build 返回 null（未登录）后异步读安全存储，命中则把 [state] 置为
+  /// 恢复出的会话。读盘/解析失败一律视为未登录（不抛出、不清除损坏值，
+  /// 下次覆盖即可），避免坏数据把用户挡在登录页外。
+  Future<void> _load() async {
+    try {
+      final json = await ref.read(tokenStorageProvider).read();
+      if (json == null) return;
+      final decoded = jsonDecode(json);
+      if (decoded is! Map<String, dynamic>) return;
+      state = AuthSession.fromJson(decoded);
+    } catch (_) {
+      // 损坏/不可读的持久化：静默降级为未登录。
+    }
+  }
+
+  /// 登录成功后写入会话并推进代次，同时落盘（KTD7）。
   ///
   /// 参数：[session] 新登录会话。
   /// 返回：void；同一账号重复登录同样视为新会话（代次 +1），使任何
@@ -400,12 +477,13 @@ class AuthSessionNotifier extends Notifier<AuthSession?> {
   void signIn(AuthSession session) {
     _sessionEpoch += 1;
     state = session;
+    _persist(session);
   }
 
   /// 续期成功后写回新 Token（单 Token 模型，契约 `/auth/token/refresh`）。
   ///
   /// 与 [signIn] 的区别：续期不推进代次、不更换 userId/phone 等会话身份
-  /// 字段，只轮换 Token 与到期时刻。
+  /// 字段，只轮换 Token 与到期时刻；新 Token 同样落盘（KTD7）。
   ///
   /// 参数：
   ///   [token]    续期响应的新 JWT（`data.token`）；
@@ -415,7 +493,7 @@ class AuthSessionNotifier extends Notifier<AuthSession?> {
   void updateToken({required String token, required DateTime expireAt}) {
     final current = state;
     if (current == null) return;
-    state = AuthSession(
+    final next = AuthSession(
       userId: current.userId,
       phone: current.phone,
       token: token,
@@ -423,15 +501,26 @@ class AuthSessionNotifier extends Notifier<AuthSession?> {
       isNewUser: current.isNewUser,
       realNameVerified: current.realNameVerified,
     );
+    state = next;
+    _persist(next);
   }
 
-  /// 退出登录（§3.4.2 个人中心的退出按钮）并推进代次。
+  /// 退出登录（§3.4.2 个人中心的退出按钮）并推进代次，同时清除持久化。
   ///
-  /// 本期只清内存：会话未落盘，故无需清持久化。
-  /// TODO(接后端)：调 §12.2 `POST /auth/logout` 并清除持久化 Token。
+  /// 本期由 UI 侧调用（登录页/个人中心）；服务端 `POST /auth/logout` 的
+  /// 调用点与失败处置见 plan U7（后端已实现），前端登出时先清本地会话。
   void signOut() {
     _sessionEpoch += 1;
     state = null;
+    ref.read(tokenStorageProvider).clear();
+  }
+
+  /// 落盘会话（KTD7：token 持久化）。
+  ///
+  /// 参数：[session] 待持久化的会话。
+  /// 返回：void；落盘失败不阻塞内存态（下次 signIn/updateToken 会再写）。
+  void _persist(AuthSession session) {
+    ref.read(tokenStorageProvider).save(jsonEncode(session.toJson()));
   }
 }
 

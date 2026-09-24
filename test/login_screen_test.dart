@@ -11,20 +11,81 @@
 /// 在 contact 页的登录门接线处才是真正的观察点。这里只守住本页自己的判断逻辑。
 library;
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zhaoyazhao/features/auth/auth_repository.dart';
 import 'package:zhaoyazhao/features/auth/login_screen.dart';
 
+/// 测试用假仓库：不触网，直接返回可控结果（页面交互逻辑的观察对象）。
+///
+/// U10 前 login_screen_test 依赖内存 mock 的 AuthRepository；U10 改真网络后，
+/// 若页面测试走真 dio + MockApiServer 会撞上 testWidgets 的 FakeAsync——真实
+/// socket I/O 的多阶段异步链（连接→发送→接收）的 continuation 在 FakeAsync 里
+/// 无法推进，发码/登录会永久挂起。页面测试只关心「给定 AuthResult/AuthFailure
+/// 后页面怎么反应」，服务端错误码映射已由
+/// `test/features/auth/auth_repository_test.dart`（真 HTTP 栈）覆盖，故此处注入
+/// 不触网的假仓库，聚焦页面交互本身。
+class _FakeAuthRepository extends AuthRepository {
+  _FakeAuthRepository() : super(Dio());
+
+  /// 是否已发码（驱动 resendCooldownLeft 返回 60s 冷却）。
+  bool _sent = false;
+
+  @override
+  Future<AuthFailure?> sendCode(String phone, {DateTime? now}) async {
+    if (!AuthRepository.isValidPhone(phone)) return AuthFailure.invalidPhone;
+    _sent = true;
+    return null;
+  }
+
+  @override
+  Duration resendCooldownLeft(String phone, {DateTime? now}) =>
+      _sent ? const Duration(seconds: 60) : Duration.zero;
+
+  @override
+  Future<AuthResult> loginWithSms({
+    required String phone,
+    required String code,
+    required bool agreementAccepted,
+    DateTime? now,
+  }) async {
+    if (!AuthRepository.isValidPhone(phone)) {
+      return const AuthResult.failure(AuthFailure.invalidPhone);
+    }
+    if (!agreementAccepted) {
+      return const AuthResult.failure(AuthFailure.agreementNotAccepted);
+    }
+    if (code == AuthRepository.debugCode) {
+      return AuthResult.success(
+        AuthSession(
+          userId: '10086',
+          phone: phone,
+          token: 'jwt-test-fake',
+          expireAt: DateTime(2099),
+          isNewUser: false,
+        ),
+      );
+    }
+    return const AuthResult.failure(AuthFailure.wrongCode);
+  }
+}
+
 void main() {
   /// 挂载登录页。
   ///
   /// 参数 [tester] 测试驱动器。
   /// 不套 GoRouter：本页构建期不触碰路由，只有关闭按钮与成功分支才会用到。
+  /// 经 [authRepositoryProvider] 注入不触网的假仓库。
   Future<void> pumpLogin(WidgetTester tester) async {
     await tester.pumpWidget(
-      const ProviderScope(child: MaterialApp(home: LoginScreen())),
+      ProviderScope(
+        overrides: [
+          authRepositoryProvider.overrideWithValue(_FakeAuthRepository()),
+        ],
+        child: const MaterialApp(home: LoginScreen()),
+      ),
     );
   }
 
@@ -37,6 +98,14 @@ void main() {
   Future<void> unmount(WidgetTester tester) async {
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(seconds: 1));
+  }
+
+  /// 驱动一次帧刷新。
+  ///
+  /// 假仓库的 sendCode/loginWithSms 是立即完成的异步方法（无真实 I/O），
+  /// 只需一次 pump flush microtask 让 `_sendCode`/`_submit` 的 setState 落地。
+  Future<void> settleAsync(WidgetTester tester) async {
+    await tester.pump();
   }
 
   /// 取出主按钮当前是否可点。
@@ -67,8 +136,7 @@ void main() {
     await tester.enterText(find.byType(TextField).first, '13800138000');
     await tester.pump();
     await tester.tap(find.text('获取验证码'));
-    // 仓库侧 sendCode 有 400ms 的模拟网络往返。
-    await tester.pump(const Duration(milliseconds: 500));
+    await settleAsync(tester);
     await tester.enterText(find.byType(TextField).last, code);
     await tester.pump();
   }
@@ -144,7 +212,7 @@ void main() {
       await tester.enterText(find.byType(TextField).first, '13800138000');
       await tester.pump();
       await tester.tap(find.text('获取验证码'));
-      await tester.pump(const Duration(milliseconds: 500));
+      await settleAsync(tester);
 
       expect(find.text('获取验证码'), findsNothing, reason: '冷却中不该还显示可发送文案');
       expect(find.textContaining('s 后重发'), findsOneWidget);
@@ -156,7 +224,7 @@ void main() {
       await tester.enterText(find.byType(TextField).first, '13800138000');
       await tester.pump();
       await tester.tap(find.text('获取验证码'));
-      await tester.pump(const Duration(milliseconds: 500));
+      await settleAsync(tester);
 
       expect(
         find.textContaining(AuthRepository.debugCode),
@@ -171,7 +239,7 @@ void main() {
       await tester.enterText(find.byType(TextField).first, '13800138000');
       await tester.pump();
       await tester.tap(find.text('获取验证码'));
-      await tester.pump(const Duration(milliseconds: 500));
+      await settleAsync(tester);
 
       final codeField = tester.widget<TextField>(find.byType(TextField).last);
       expect(codeField.enabled, isTrue);
@@ -223,8 +291,7 @@ void main() {
       await tester.tap(find.byType(Checkbox));
       await tester.pump();
       await tester.tap(find.text('登录 / 注册'));
-      // loginWithSms 有 500ms 模拟耗时。
-      await tester.pump(const Duration(milliseconds: 600));
+      await settleAsync(tester);
 
       expect(find.text(AuthFailure.wrongCode.message), findsOneWidget);
       // 再推进几秒，横条必须还在 —— 用户要对照它改输入。
