@@ -2,6 +2,7 @@ package com.s2s.server.post.dto;
 
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
+import java.math.BigDecimal;
 import java.time.Instant;
 
 /**
@@ -15,6 +16,8 @@ import java.time.Instant;
  * @param type              供需态（resource/demand）
  * @param leafCategoryId    叶子类目 ID
  * @param title             标题
+ * @param price             价格（null 表示面议）；PRD §8.3.1 卡片展示列
+ * @param priceUnit         价格单位（price 为 null 时无意义）
  * @param coverMedia        封面媒体（本人视角，可为 {@code null}＝无媒体）
  * @param completenessLevel 完整度档位（0/1/2）
  * @param status            状态（API 值）
@@ -31,6 +34,8 @@ public record MyPostItem(
         String type,
         Integer leafCategoryId,
         String title,
+        BigDecimal price,
+        String priceUnit,
         MediaItem coverMedia,
         Integer completenessLevel,
         String status,

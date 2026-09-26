@@ -185,6 +185,9 @@ public class PostQueryService {
                     (String) row.get("type"),
                     toInteger(row.get("leaf_category_id")),
                     (String) row.get("title"),
+                    // 价格：PRD §8.3.1 卡片展示列（[127] 前端段补契约，SQL 同步补列）
+                    (BigDecimal) row.get("price"),
+                    (String) row.get("price_unit"),
                     covers.get(id),
                     toInteger(row.get("completeness_level")),
                     PostStatus.toApi((String) row.get("status"), toInteger(row.get("status_reason"))),

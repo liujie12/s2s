@@ -2428,6 +2428,8 @@ components:
         type: { $ref: '#/components/schemas/PostTypeEnum' }
         leaf_category_id: { type: integer, format: int32 }
         title: { type: string }
+        price: { type: number, format: double, nullable: true, description: 价格（元）；null=面议 }
+        price_unit: { type: string, nullable: true, description: 价格单位；price 为 null 时无意义 }
         cover_media:
           $ref: '#/components/schemas/MediaItem'
         completeness_level: { $ref: '#/components/schemas/CompletenessLevelEnum' }

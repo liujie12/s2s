@@ -18,6 +18,7 @@ import com.s2s.server.common.config.SystemConfigService;
 import com.s2s.server.common.constants.NfrApi;
 import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
+import com.s2s.server.post.dto.MyPostsResponse;
 import com.s2s.server.post.dto.PostDetail;
 import com.s2s.server.post.dto.PostStatusResult;
 import com.s2s.server.post.dto.PostStatusUpdateRequest;
@@ -148,6 +149,45 @@ class PostQueryServiceTest {
         assertThatThrownBy(() -> service.getDetail(2L, 100L))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("detail_quota_enabled");
+    }
+
+    /**
+     * 构造「我的发布」列表行夹具（{@code selectMine} 出参形态）。
+     *
+     * @param status       库内状态
+     * @param statusReason 进入非 active 路径的归因（{@code active} 为 {@code null}）
+     * @return {@link Map} 列表行
+     */
+    private Map<String, Object> mineRow(String status, Integer statusReason) {
+        Map<String, Object> row = new java.util.HashMap<>();
+        row.put("id", 100L);
+        row.put("type", "resource");
+        row.put("leaf_category_id", 10101);
+        row.put("title", "标题");
+        row.put("price", new BigDecimal("50.00"));
+        row.put("price_unit", "小时");
+        row.put("completeness_level", 2);
+        row.put("status", status);
+        row.put("status_reason", statusReason);
+        row.put("created_at", LocalDateTime.of(2026, 9, 1, 12, 0));
+        row.put("expire_at", LocalDateTime.of(2026, 9, 8, 12, 0));
+        row.put("version", 3L);
+        return row;
+    }
+
+    @Test
+    void 我的发布出参带价格与单位() {
+        when(postQueryMapper.countMine(any(), any(), any(), anyBoolean())).thenReturn(1L);
+        when(postQueryMapper.selectMine(any(), any(), any(), anyBoolean(), anyInt(), anyInt()))
+                .thenReturn(List.of(mineRow("active", null)));
+
+        MyPostsResponse response = service.listMine(1L, null, 1, 20);
+
+        assertThat(response.items()).hasSize(1);
+        // 卡片按 PRD §8.3.1 展示价格，缺列会让价格静默丢失（与 [127] 详情价格缺口同源）
+        assertThat(response.items().get(0).price()).isEqualByComparingTo("50.00");
+        assertThat(response.items().get(0).priceUnit()).isEqualTo("小时");
+        assertThat(response.items().get(0).version()).isEqualTo(3L);
     }
 
     @Test
