@@ -6,8 +6,7 @@ import com.s2s.server.category.dto.CategoryNodeDto;
 import com.s2s.server.category.dto.CategoryTreeDto;
 import com.s2s.server.category.entity.CategoryEntity;
 import com.s2s.server.category.mapper.CategoryMapper;
-import com.s2s.server.common.config.SystemConfigEntity;
-import com.s2s.server.common.config.mapper.SystemConfigMapper;
+import com.s2s.server.common.config.SystemConfigService;
 import com.s2s.server.config.CacheConfig;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -44,21 +43,21 @@ public class CategoryService {
     private static final int CATEGORY_LEVEL_DIVISOR = 100;
 
     private final CategoryMapper categoryMapper;
-    private final SystemConfigMapper systemConfigMapper;
+    private final SystemConfigService systemConfigService;
     private final Cache<String, CategoryTreeDto> categoryTreeCache;
 
     /**
      * 构造分类树服务。
      *
      * @param categoryMapper      分类 Mapper
-     * @param systemConfigMapper  系统配置 Mapper
+     * @param systemConfigService 系统配置读取（版本号）
      * @param categoryTreeCache   分类树本地缓存
      */
     public CategoryService(CategoryMapper categoryMapper,
-                           SystemConfigMapper systemConfigMapper,
+                           SystemConfigService systemConfigService,
                            Cache<String, CategoryTreeDto> categoryTreeCache) {
         this.categoryMapper = categoryMapper;
-        this.systemConfigMapper = systemConfigMapper;
+        this.systemConfigService = systemConfigService;
         this.categoryTreeCache = categoryTreeCache;
     }
 
@@ -130,16 +129,15 @@ public class CategoryService {
     /**
      * 读取服务端分类树版本号（真源 system_config.category_tree_version）。
      *
-     * @return 版本号字符串
+     * <p>经 {@link SystemConfigService} 读取而非自行拼 QueryWrapper：配置键名与「缺失
+     * 兜底」口径收敛在唯一实现处（编码规范 §1.1/§1.2）。</p>
+     *
+     * @return 版本号字符串；配置缺失时返回空串
      */
     private String getServerVersion() {
-        SystemConfigEntity config = systemConfigMapper.selectOne(
-                new QueryWrapper<SystemConfigEntity>().eq("config_key", CATEGORY_TREE_VERSION_KEY));
-        if (config == null) {
-            // 配置缺失兜底：返回空串，客户端必然拉全量
-            return "";
-        }
-        return config.getConfigValue();
+        String value = systemConfigService.getValue(CATEGORY_TREE_VERSION_KEY);
+        // 配置缺失兜底：返回空串，客户端必然拉全量
+        return value == null ? "" : value;
     }
 
     /**

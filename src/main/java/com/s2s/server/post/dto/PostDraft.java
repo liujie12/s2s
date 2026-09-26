@@ -15,6 +15,8 @@ import java.util.Map;
  * @param type           类型（resource/demand）
  * @param leafCategoryId 叶子类目 ID
  * @param title          标题（maxLength 40）
+ * @param price          价格（元；null 表示面议）
+ * @param priceUnit      价格单位（取模板 price_units 之一）
  * @param description    描述正文（maxLength 500）
  * @param attributes     动态属性，键取自模板 fields[].key，落 post.attributes JSON 列
  * @param lng            GCJ-02 经度
@@ -30,6 +32,8 @@ public record PostDraft(
         String type,
         Integer leafCategoryId,
         String title,
+        Double price,
+        String priceUnit,
         String description,
         Map<String, Object> attributes,
         Double lng,

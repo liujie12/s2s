@@ -10,8 +10,7 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import com.s2s.server.category.dto.CategoryTreeDto;
 import com.s2s.server.category.entity.CategoryEntity;
 import com.s2s.server.category.mapper.CategoryMapper;
-import com.s2s.server.common.config.SystemConfigEntity;
-import com.s2s.server.common.config.mapper.SystemConfigMapper;
+import com.s2s.server.common.config.SystemConfigService;
 import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -33,7 +32,7 @@ import org.junit.jupiter.api.Test;
 class CategoryServiceTest {
 
     private CategoryMapper categoryMapper;
-    private SystemConfigMapper systemConfigMapper;
+    private SystemConfigService systemConfigService;
     private CategoryService categoryService;
 
     /**
@@ -44,12 +43,12 @@ class CategoryServiceTest {
     @BeforeEach
     void setUp() {
         categoryMapper = mock(CategoryMapper.class);
-        systemConfigMapper = mock(SystemConfigMapper.class);
+        systemConfigService = mock(SystemConfigService.class);
         Cache<String, CategoryTreeDto> cache = Caffeine.newBuilder()
                 .expireAfterWrite(Duration.ofSeconds(3600))
                 .maximumSize(1)
                 .build();
-        categoryService = new CategoryService(categoryMapper, systemConfigMapper, cache);
+        categoryService = new CategoryService(categoryMapper, systemConfigService, cache);
     }
 
     /**
@@ -59,9 +58,7 @@ class CategoryServiceTest {
      */
     @Test
     void getTree_versionMatch_returnsNull() {
-        SystemConfigEntity config = new SystemConfigEntity();
-        config.setConfigValue("2026-08-31.1");
-        when(systemConfigMapper.selectOne(any())).thenReturn(config);
+        when(systemConfigService.getValue(any())).thenReturn("2026-08-31.1");
 
         CategoryTreeDto result = categoryService.getTree("2026-08-31.1");
 
@@ -75,9 +72,7 @@ class CategoryServiceTest {
      */
     @Test
     void getTree_versionMismatch_returnsFullTree() {
-        SystemConfigEntity config = new SystemConfigEntity();
-        config.setConfigValue("2026-08-31.1");
-        when(systemConfigMapper.selectOne(any())).thenReturn(config);
+        when(systemConfigService.getValue(any())).thenReturn("2026-08-31.1");
 
         CategoryEntity l1 = buildCategory(1, null, 1, "工作", "work", null, 0, 1);
         CategoryEntity l2 = buildCategory(101, 1, 2, "全职招聘", null, "enterprise", 0, 1);
@@ -106,9 +101,7 @@ class CategoryServiceTest {
      */
     @Test
     void getTree_clientVersionNull_returnsFullTree() {
-        SystemConfigEntity config = new SystemConfigEntity();
-        config.setConfigValue("2026-08-31.1");
-        when(systemConfigMapper.selectOne(any())).thenReturn(config);
+        when(systemConfigService.getValue(any())).thenReturn("2026-08-31.1");
         when(categoryMapper.selectList(any())).thenReturn(List.of());
 
         CategoryTreeDto result = categoryService.getTree(null);

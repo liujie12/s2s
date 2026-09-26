@@ -88,4 +88,23 @@ class PostStatusTest {
         assertThat(PostStatus.isValidAction("renew")).isTrue();
         assertThat(PostStatus.isValidAction("delete")).isFalse();
     }
+
+    /**
+     * 筛选值白名单判定：{@code null}（未传）与四个 API 值合法，其余非法。
+     *
+     * <p>controller 据此回 {@code 40001}，避免非法筛选值落到 {@code filterFor} 的
+     * fail-fast 而被全局兜底成 {@code 50001}（客户端会把它当可重试）。</p>
+     *
+     * @return void
+     */
+    @Test
+    void 筛选值合法性判定() {
+        assertThat(PostStatus.isValidFilter(null)).isTrue();
+        assertThat(PostStatus.isValidFilter("active")).isTrue();
+        assertThat(PostStatus.isValidFilter("offline")).isTrue();
+        assertThat(PostStatus.isValidFilter("expired")).isTrue();
+        assertThat(PostStatus.isValidFilter("archived")).isTrue();
+        assertThat(PostStatus.isValidFilter("draft")).isFalse();
+        assertThat(PostStatus.isValidFilter("unknown")).isFalse();
+    }
 }

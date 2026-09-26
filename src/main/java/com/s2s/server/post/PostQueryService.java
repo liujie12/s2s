@@ -159,8 +159,12 @@ public class PostQueryService {
         List<Integer> reasons = filter == null ? null : filter.reasons();
         boolean allowNullReason = filter != null && filter.allowNullReason();
 
-        int resolvedPage = page == null ? 1 : page;
-        int resolvedPageSize = pageSize == null ? NfrApi.PAGE_SIZE_DEFAULT : pageSize;
+        int resolvedPage = page == null || page < 1 ? 1 : page;
+        // 上限钳制：page_size 无界会让 LIMIT 与后续 IN (postIds) 批量查询失去边界，
+        // 单次请求可拉取全表（openapi 声明 max 50，此处兑现）。
+        int resolvedPageSize = pageSize == null || pageSize < 1
+                ? NfrApi.PAGE_SIZE_DEFAULT
+                : Math.min(pageSize, NfrApi.PAGE_SIZE_MAX);
 
         long total = postQueryMapper.countMine(userId, dbStatuses, reasons, allowNullReason);
         List<Map<String, Object>> rows = postQueryMapper.selectMine(userId, dbStatuses, reasons,

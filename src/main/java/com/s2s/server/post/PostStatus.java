@@ -127,6 +127,24 @@ public final class PostStatus {
     }
 
     /**
+     * 判断「我的发布」的状态筛选值是否为 openapi 声明的合法值。
+     *
+     * <p>供 controller 做入参校验：契约外的筛选值属客户端参数错误，应回 {@code 40001}，
+     * 而不是落到 {@link #filterFor} 的 fail-fast（那会经全局兜底变成 {@code 50001} 且
+     * 客户端按可重试处理）。</p>
+     *
+     * @param apiStatus API 状态筛选值；{@code null} 表示未传，属合法（不筛选）
+     * @return boolean；{@code null} 或四个 API 值之一为 {@code true}
+     */
+    public static boolean isValidFilter(String apiStatus) {
+        return apiStatus == null
+                || API_ACTIVE.equals(apiStatus)
+                || API_OFFLINE.equals(apiStatus)
+                || API_EXPIRED.equals(apiStatus)
+                || API_ARCHIVED.equals(apiStatus);
+    }
+
+    /**
      * 判断动作是否为 openapi 声明的合法值。
      *
      * @param action 动作字符串

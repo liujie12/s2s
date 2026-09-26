@@ -84,9 +84,15 @@ class DetailScreen extends ConsumerWidget {
   }
 
   /// 错误态分流：41001（信息下架/不存在）显示「信息不存在」，其余显示可重试错误。
+  ///
+  /// 必须先经 [asApiException] 归一：信封业务错误在链上以
+  /// `DioException(error: ApiException)` 形态到达（EnvelopeInterceptor 的
+  /// reject 载体），直接判 `error is ApiException` 恒为 false，41001 会落到
+  /// 通用错误屏。既有范式见 category_selector_screen.dart / category_tree_provider.dart。
   Widget _buildErrorScreen(Object error) {
+    final apiError = asApiException(error);
     // 41001 是「这条信息已下架/不存在」——用户的预期结果，非故障。
-    if (error is ApiException && error.code == ApiErrorCode.postGone) {
+    if (apiError.code == ApiErrorCode.postGone) {
       return const _NotFoundScreen();
     }
     return const _ErrorScreen();

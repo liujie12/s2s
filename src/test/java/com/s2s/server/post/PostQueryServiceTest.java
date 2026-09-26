@@ -7,12 +7,15 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.s2s.server.category.CategoryService;
 import com.s2s.server.common.config.SystemConfigService;
+import com.s2s.server.common.constants.NfrApi;
 import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
 import com.s2s.server.post.dto.PostDetail;
@@ -58,6 +61,13 @@ class PostQueryServiceTest {
         when(systemConfigService.isOn(any())).thenReturn(false);
     }
 
+    /**
+     * 构造详情行夹具。
+     *
+     * @param status       库内状态
+     * @param statusReason 进入非 active 路径的归因
+     * @return {@link Map} 详情行
+     */
     private Map<String, Object> detailRow(String status, Integer statusReason) {
         Map<String, Object> row = new java.util.HashMap<>();
         row.put("id", 100L);
@@ -138,5 +148,31 @@ class PostQueryServiceTest {
         assertThatThrownBy(() -> service.getDetail(2L, 100L))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("detail_quota_enabled");
+    }
+
+    @Test
+    void 分页越界被钳制到合法区间() {
+        when(postQueryMapper.countMine(any(), any(), any(), anyBoolean())).thenReturn(0L);
+        when(postQueryMapper.selectMine(any(), any(), any(), anyBoolean(), anyInt(), anyInt()))
+                .thenReturn(List.of());
+
+        service.listMine(1L, null, 0, 9999);
+
+        // page=0 -> 第 1 页（offset 0）；page_size=9999 -> 上限
+        verify(postQueryMapper).selectMine(eq(1L), isNull(), isNull(), eq(false), eq(0),
+                eq(NfrApi.PAGE_SIZE_MAX));
+    }
+
+    @Test
+    void 分页非正数取默认值() {
+        when(postQueryMapper.countMine(any(), any(), any(), anyBoolean())).thenReturn(0L);
+        when(postQueryMapper.selectMine(any(), any(), any(), anyBoolean(), anyInt(), anyInt()))
+                .thenReturn(List.of());
+
+        service.listMine(1L, "active", -3, 0);
+
+        // page=-3 -> 第 1 页；page_size=0 -> 默认 20；status=active 走 DB_ACTIVE 筛选
+        verify(postQueryMapper).selectMine(eq(1L), eq(List.of(PostStatus.DB_ACTIVE)), eq(List.of()),
+                eq(false), eq(0), eq(NfrApi.PAGE_SIZE_DEFAULT));
     }
 }

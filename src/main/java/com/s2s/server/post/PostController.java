@@ -138,6 +138,11 @@ public class PostController {
             @RequestParam(value = "page", required = false) Integer page,
             @RequestParam(value = "page_size", required = false) Integer pageSize,
             HttpServletRequest httpRequest) {
+        // 筛选值白名单校验：契约外的值属参数错误（40001），不能让 service 的
+        // fail-fast 变成全局兜底的 50001（50001 在客户端是可重试码）。
+        if (!PostStatus.isValidFilter(status)) {
+            throw BizException.of(ErrorCode.PARAM_INVALID);
+        }
         Long userId = requireUserId(httpRequest);
         return postQueryService.listMine(userId, status, page, pageSize);
     }

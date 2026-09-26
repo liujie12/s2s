@@ -859,6 +859,10 @@ paths:
         | --- | --- |
         | 用户意图变更（本接口） | 守 `version`（乐观锁） |
         | 系统派生变更（定时任务到期下架等） | 守 `status IN (合法前驱集)`，不守 `version` |
+
+        **0 行统一回 `40903`**：归属（`user_id`）与 `version` 一并进 WHERE，故「非本人」
+        「版本不符」「行不存在」三种成因不区分——既不泄露「该 id 存在且属他人」，也避免
+        调用方按错误码探测归属。因此本操作不产生 `403`/`410`（契约已相应收敛）。
       parameters:
         - $ref: '#/components/parameters/XInteractionId'
         - $ref: '#/components/parameters/XDeviceId'
@@ -905,9 +909,7 @@ paths:
                             description: 变更后的新版本号
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
-        '410': { $ref: '#/components/responses/Gone' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   /posts/mine:
@@ -946,7 +948,7 @@ paths:
                           items:
                             type: array
                             items: { $ref: '#/components/schemas/MyPostItem' }
-                          total: { type: integer, format: int32 }
+                          total: { type: integer, format: int64 }
                           page: { type: integer, format: int32 }
                           page_size: { type: integer, format: int32 }
         '400': { $ref: '#/components/responses/BadRequest' }
@@ -2382,7 +2384,11 @@ components:
           items: { $ref: '#/components/schemas/MediaItem' }
         contact_mask:
           type: string
-          description: 脱敏联系方式。完整值只由 /posts/{id}/contact 返回
+          nullable: true
+          description: |
+            脱敏联系方式。**本接口恒为 `null`**：完整/脱敏值只由 `/posts/{id}/contact` 返回
+            （解密唯一入口在 contact 域）。`POST /posts` 出参会给出真实脱敏值，故两处形态不同，
+            客户端须按可空处理。
           example: 138****8000
         completeness_level: { $ref: '#/components/schemas/CompletenessLevelEnum' }
         status: { $ref: '#/components/schemas/PostStatusEnum' }
@@ -2428,10 +2434,10 @@ components:
         status: { $ref: '#/components/schemas/PostStatusEnum' }
         publish_at: { type: string, format: date-time }
         expire_at: { type: string, format: date-time }
-        view_count: { type: integer, format: int32 }
+        view_count: { type: integer, format: int64 }
         contact_count:
           type: integer
-          format: int32
+          format: int64
           description: 被查看联系方式的次数，来自 contact_event 聚合
         version: { type: integer, format: int64 }
 

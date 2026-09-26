@@ -7,7 +7,6 @@ library;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zhaoyazhao/core/network/api_exception.dart';
-import 'package:zhaoyazhao/domain/listing.dart';
 import 'package:zhaoyazhao/domain/listing_category.dart';
 import 'package:zhaoyazhao/domain/listing_detail.dart';
 import 'package:zhaoyazhao/features/detail/post_detail_provider.dart';
