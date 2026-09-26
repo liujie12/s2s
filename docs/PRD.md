@@ -2124,7 +2124,7 @@ POC 拆为**算法级（POC-A）与定标级（POC-B）两级**，二者回答�
 | PATCH | `/posts/{id}` | 编辑 | — | §8.3.1 |
 | POST | `/posts/{id}/renew` | 一键刷新续 7 天 | out: `expire_at` | §5.11 有效期 |
 | POST | `/posts/{id}/repost` | 一键重发（带原内容） | out: 新 `post_id` | §8.3.1 |
-| PATCH | `/posts/{id}/status` | 上/下架（取值须合 §8.6 状态机：`active` / `archived`） | in: `status`,**`version`**(int64，必带) | §8.6 状态机 / 架构 §5.2.1 |
+| PATCH | `/posts/{id}/status` | 上/下架（取值须合 §8.6 状态机：`active` / `archived`） | in: `action`(`offline`/`republish`/`renew`),**`version`**(int64，必带) | §8.6 状态机 / 架构 §5.2.1 |
 | GET | `/posts/mine?status=` | 我的发布（全部/在架/下架/草稿） | 分页；每项均带 **`version`** | §8.3.1 / 架构 §5.2.1 |
 
 **图片上传为两步式（2026-09-03 架构评审定案）**：原设计为单个 `POST /media/upload` 且入参含 `file`，即图片流经服务端。这与 §14.1 的 3M 带宽约束不共存 —— 单张 2MB 图上行占满带宽约 5.5 秒，多图发布必然超时。改为客户端凭一次性凭证直传对象存储：先调 `/media/upload/ticket` 拿 `media_id` 与 `upload_url`，直传成功后调 `/media/{media_id}/commit` 触发元数据剥离与内容审核。**接口总数因此由 38 变为 39，其中 Batch1 为 20 个。** 两条配套红线：客户端只拿一次性直传凭证、不持有对象存储长期密钥；存储桶不开公共读。图片「不经服务端**传输**，但必须经服务端**登记与审核**」，§9.6 的 EXIF 剥离与先发后审两条要求由 `commit` 步骤承载，未被绕过。

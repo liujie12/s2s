@@ -88,6 +88,26 @@ class PostRepository {
     return PostCreatedDto.fromJson(response.data);
   }
 
+  /// 查帖子详情（`GET /posts/{post_id}`，游客可读，[127]）。
+  ///
+  /// 参数：
+  ///   [postId] 帖子 ID（契约路径参数 int64）；
+  ///   [interactionId] 交互起点生成的 X-Interaction-Id；null 由拦截器兜底。
+  /// 返回：[PostDetailDto] 详情（详情页消费字段，映射到域模型在
+  ///   `post_detail_provider.dart` 完成）。
+  /// 抛出：[ApiException] 信封业务错误（含 41001 已下架、42907 游客限频）/
+  ///   解析失败/传输错误归一后的异常，由调用方按 §12.2 行为表处理。
+  Future<PostDetailDto> fetchDetail(
+    int postId, {
+    String? interactionId,
+  }) async {
+    final response = await _dio.get<Object?>(
+      '/posts/$postId',
+      options: _interactionOptions(interactionId),
+    );
+    return PostDetailDto.fromJson(response.data);
+  }
+
   /// 组装携带 X-Interaction-Id 的按请求选项。
   ///
   /// 参数：[interactionId] 交互 ID，null 表示无透传值。

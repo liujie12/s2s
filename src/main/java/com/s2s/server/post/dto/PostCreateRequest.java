@@ -18,6 +18,8 @@ import java.util.Map;
  * @param type           类型（resource/demand，必填）
  * @param leafCategoryId 叶子类目 ID（必填）
  * @param title          标题（必填，maxLength 40）
+ * @param price          价格（元；null 表示面议，PRD §5.8 允许为空）
+ * @param priceUnit      价格单位（取模板 price_units 之一；price 为 null 时无意义）
  * @param description    描述正文（maxLength 500）
  * @param attributes     动态属性
  * @param lng            GCJ-02 经度（必填）
@@ -33,6 +35,8 @@ public record PostCreateRequest(
         @NotBlank String type,
         @NotNull Integer leafCategoryId,
         @NotBlank @Size(max = 40) String title,
+        Double price,
+        String priceUnit,
         @Size(max = 500) String description,
         Map<String, Object> attributes,
         @NotNull Double lng,

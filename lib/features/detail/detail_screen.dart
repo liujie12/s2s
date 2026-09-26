@@ -17,13 +17,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/network/api_exception.dart';
+import '../../core/network/api_error_code.dart';
 import '../../design_tokens.dart';
 import '../../domain/listing_category.dart';
 // 色与图标已迁至 style 扩展（详细设计 §10.4.1）：枚举本体须保持纯 Dart，
 // 否则聚合模块（features/map/clustering/）无法持有它，就得退回用 int 传分类。
 import '../../domain/listing_category_style.dart';
 import '../../domain/listing_detail.dart';
-import 'listing_detail_repository.dart';
+import 'post_detail_provider.dart';
 
 class DetailScreen extends ConsumerWidget {
   const DetailScreen({super.key, required this.listingId});
@@ -34,12 +36,16 @@ class DetailScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final detail = ref.watch(listingDetailProvider(listingId));
+    final detailAsync = ref.watch(postDetailProvider(listingId));
+    return detailAsync.when(
+      loading: () => const _LoadingScreen(),
+      error: (error, _) => _buildErrorScreen(error),
+      data: (detail) => _buildDetail(detail),
+    );
+  }
 
-    if (detail == null) {
-      return const _NotFoundScreen();
-    }
-
+  /// 组装详情正文（三态中的 data 态）。
+  Widget _buildDetail(ListingDetail detail) {
     return Scaffold(
       backgroundColor: Color(AppColors.background),
       appBar: AppBar(
@@ -75,6 +81,21 @@ class DetailScreen extends ConsumerWidget {
       ),
       bottomNavigationBar: _ContactBar(detail: detail),
     );
+  }
+
+  /// 错误态分流：41001（信息下架/不存在）显示「信息不存在」，其余显示可重试错误。
+  ///
+  /// 必须先经 [asApiException] 归一：信封业务错误在链上以
+  /// `DioException(error: ApiException)` 形态到达（EnvelopeInterceptor 的
+  /// reject 载体），直接判 `error is ApiException` 恒为 false，41001 会落到
+  /// 通用错误屏。既有范式见 category_selector_screen.dart / category_tree_provider.dart。
+  Widget _buildErrorScreen(Object error) {
+    final apiError = asApiException(error);
+    // 41001 是「这条信息已下架/不存在」——用户的预期结果，非故障。
+    if (apiError.code == ApiErrorCode.postGone) {
+      return const _NotFoundScreen();
+    }
+    return const _ErrorScreen();
   }
 }
 
@@ -453,6 +474,67 @@ class _ContactBar extends StatelessWidget {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 加载态（详情接口首次拉取中）。
+class _LoadingScreen extends StatelessWidget {
+  const _LoadingScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Color(AppColors.background),
+      appBar: AppBar(
+        toolbarHeight: 48,
+        backgroundColor: Color(AppColors.surface),
+        elevation: 0,
+        title: const Text('详情'),
+      ),
+      body: const Center(child: CircularProgressIndicator()),
+    );
+  }
+}
+
+/// 通用错误态（网络失败 / 游客限频 42907 / 服务端错误等，非 41001）。
+///
+/// 不展示具体错误码：详情页失败对用户而言都是「暂时看不到这条信息」，
+/// 具体原因（限频 vs 网络）在 §12.2 行为表的 UI 层再细分——本页只兜住
+/// 「非 41001 的失败」这一档，避免把错误码细节泄给页面。
+class _ErrorScreen extends StatelessWidget {
+  const _ErrorScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Color(AppColors.background),
+      appBar: AppBar(
+        toolbarHeight: 48,
+        backgroundColor: Color(AppColors.surface),
+        elevation: 0,
+        title: const Text('详情'),
+      ),
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.cloud_off_outlined,
+              size: 48,
+              color: Color(AppColors.textPlaceholder),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            Text(
+              '加载失败，请稍后重试',
+              style: TextStyle(
+                fontSize: AppTypeScale.body.size,
+                color: Color(AppColors.textSecondary),
+              ),
+            ),
+          ],
         ),
       ),
     );

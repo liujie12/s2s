@@ -198,4 +198,58 @@ void main() {
       );
     });
   });
+
+  group('fetchDetail 详情（[127]）', () {
+    test('成功：解析详情字段（price/author/attributes/时间）', () async {
+      stubGetPostDetail(harness, 1001);
+
+      final detail = await repo.fetchDetail(1001);
+
+      expect(detail.id, 1001);
+      expect(detail.type, 'resource');
+      expect(detail.leafCategoryId, 40101);
+      expect(detail.price, 299.0);
+      expect(detail.priceUnit, '元');
+      expect(detail.description, '九成新，无破损，可小刀');
+      expect(detail.attributes, {'成色': '9 成新', '交易方式': '自提'});
+      expect(detail.completenessLevel, 2);
+      expect(detail.author.nickname, '王师傅');
+      expect(detail.author.realnameStatus, 'passed');
+      expect(detail.expireAt, DateTime.utc(2026, 9, 8, 4));
+      expect(harness.server.received, hasLength(1));
+    });
+
+    test('price 缺失（面议）：解析为 null 不抛', () async {
+      final payload = postDetailPayload()
+        ..['price'] = null
+        ..['price_unit'] = null;
+      stubGetPostDetail(harness, 1001, payload: payload);
+
+      final detail = await repo.fetchDetail(1001);
+
+      expect(detail.price, isNull);
+      expect(detail.priceUnit, isNull);
+    });
+
+    test('41001 已下架：DioException 包 ApiException(postGone)', () async {
+      harness.stub('GET', '/api/v1/posts/1001', (req) async {
+        return MockResponse(
+          status: 410,
+          body: ApiEnvelope.failure(41001, '该信息已下架或已过期'),
+        );
+      });
+
+      await expectLater(
+        repo.fetchDetail(1001),
+        throwsA(
+          isA<DioException>().having(
+            (e) => e.error,
+            'error 包业务异常',
+            isA<ApiException>()
+                .having((e) => e.code, 'code', ApiErrorCode.postGone),
+          ),
+        ),
+      );
+    });
+  });
 }

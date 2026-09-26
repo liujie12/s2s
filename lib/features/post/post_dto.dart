@@ -156,3 +156,176 @@ class PostCreatedDto {
   /// 完整度等级（0/1/2，服务端三条件达成数映射）。
   final int completenessLevel;
 }
+
+/// 帖子作者摘要 DTO（openapi.yaml `AuthorBrief`；[127] 详情出参）。
+///
+/// 严格遵循 `user` 对外视图白名单：仅 id/nickname/avatar_url/realname_status，
+/// 不含 phone_mask 等敏感列。映射到域模型 [Publisher] 时 `realname_status`
+/// 四态坍缩为「是否通过实名」布尔（[127] §10.4 语义迁移）。
+class PostAuthorDto {
+  /// 构造作者摘要 DTO。
+  const PostAuthorDto({
+    required this.id,
+    required this.nickname,
+    this.avatarUrl,
+    required this.realnameStatus,
+    required this.qualificationBadges,
+  });
+
+  /// 由信封 data 内的 author 对象构造。
+  ///
+  /// 参数：[json] `PostDetail.author` 对象。
+  /// 返回：[PostAuthorDto]。
+  /// 抛出：[ApiException.parse] required 字段缺失/类型不符时。
+  factory PostAuthorDto.fromJson(Object? json) {
+    final map = requireMap(json, 'AuthorBrief');
+    return PostAuthorDto(
+      id: requireInt(map, 'id', 'AuthorBrief'),
+      nickname: requireString(map, 'nickname', 'AuthorBrief'),
+      avatarUrl: optString(map, 'avatar_url', 'AuthorBrief'),
+      realnameStatus: requireString(map, 'realname_status', 'AuthorBrief'),
+      qualificationBadges:
+          optStringList(map, 'qualification_badges', 'AuthorBrief') ?? const [],
+    );
+  }
+
+  /// 用户 ID。
+  final int id;
+
+  /// 昵称。
+  final String nickname;
+
+  /// 头像 URL（可空）。
+  final String? avatarUrl;
+
+  /// 实名状态（none/pending/passed/rejected）。
+  final String realnameStatus;
+
+  /// 资质徽章（Batch1 恒空，cert 空壳无数据源）。
+  final List<String> qualificationBadges;
+}
+
+/// 帖子详情 DTO（openapi.yaml `PostDetail`；[127] 详情页接线）。
+///
+/// 只解析详情页消费的字段；`version`/`status`/`l2_category_id`/`category_path`/
+/// `contact_mask`/`media` 等属其它端点的消费面，不在本 DTO 预建（预留字段不造数据）。
+/// 映射到域模型 [ListingDetail] 在 `post_detail_provider.dart` 完成（§10.4 语义迁移）。
+class PostDetailDto {
+  /// 构造帖子详情 DTO。
+  const PostDetailDto({
+    required this.id,
+    required this.type,
+    required this.leafCategoryId,
+    required this.title,
+    this.price,
+    this.priceUnit,
+    this.description,
+    required this.attributes,
+    required this.lng,
+    required this.lat,
+    this.address,
+    required this.completenessLevel,
+    required this.publishAt,
+    required this.expireAt,
+    required this.author,
+  });
+
+  /// 由信封 data 构造。
+  ///
+  /// 参数：[json] 信封 data（`GET /posts/{id}` 的 data 字段）。
+  /// 返回：[PostDetailDto]。
+  /// 抛出：[ApiException.parse] required 字段缺失/类型不符时（含实际值）。
+  factory PostDetailDto.fromJson(Object? json) {
+    final map = requireMap(json, 'PostDetail');
+
+    final attributesRaw = map['attributes'];
+    final attributes = attributesRaw == null
+        ? <String, Object?>{}
+        : attributesRaw is Map
+        ? attributesRaw.cast<String, Object?>()
+        : throw ApiException.parse(
+            'PostDetail.attributes 应为对象，实际: $attributesRaw');
+
+    return PostDetailDto(
+      id: requireInt(map, 'id', 'PostDetail'),
+      type: requireString(map, 'type', 'PostDetail'),
+      leafCategoryId: requireInt(map, 'leaf_category_id', 'PostDetail'),
+      title: requireString(map, 'title', 'PostDetail'),
+      price: optDouble(map, 'price', 'PostDetail'),
+      priceUnit: optString(map, 'price_unit', 'PostDetail'),
+      description: optString(map, 'description', 'PostDetail'),
+      attributes: attributes,
+      lng: optDouble(map, 'lng', 'PostDetail') ??
+          (throw ApiException.parse('PostDetail.lng 缺失')),
+      lat: optDouble(map, 'lat', 'PostDetail') ??
+          (throw ApiException.parse('PostDetail.lat 缺失')),
+      address: optString(map, 'address', 'PostDetail'),
+      completenessLevel: requireInt(map, 'completeness_level', 'PostDetail'),
+      publishAt: _requireDateTime(map, 'publish_at', 'PostDetail'),
+      expireAt: _requireDateTime(map, 'expire_at', 'PostDetail'),
+      author: PostAuthorDto.fromJson(map['author']),
+    );
+  }
+
+  /// 帖子 ID。
+  final int id;
+
+  /// 供需态（`resource`/`demand`）。
+  final String type;
+
+  /// 叶子类目 ID。
+  final int leafCategoryId;
+
+  /// 标题。
+  final String title;
+
+  /// 价格（元）；null=面议。
+  final double? price;
+
+  /// 价格单位；price 为 null 时无意义。
+  final String? priceUnit;
+
+  /// 描述正文（可空）。
+  final String? description;
+
+  /// 动态属性（键=模板字段 key，值=字段值）。
+  final Map<String, Object?> attributes;
+
+  /// GCJ-02 经度。
+  final double lng;
+
+  /// GCJ-02 纬度。
+  final double lat;
+
+  /// 门牌号地址（可空）。
+  final String? address;
+
+  /// 完整度等级（0/1/2）。
+  final int completenessLevel;
+
+  /// 发布时间。
+  final DateTime publishAt;
+
+  /// 到期时间。
+  final DateTime expireAt;
+
+  /// 作者摘要。
+  final PostAuthorDto author;
+}
+
+/// 解析必填 date-time 字段（RFC3339 UTC，服务端保证合法）。
+///
+/// 参数：[map] 父对象；[key] 契约键；[owner] 契约类型名。
+/// 返回：[DateTime] 解析结果。
+/// 抛出：[ApiException.parse] 缺失或非合法 ISO8601 时（含实际值）。
+DateTime _requireDateTime(Map<String, Object?> map, String key, String owner) {
+  final value = map[key];
+  if (value is! String) {
+    throw ApiException.parse('$owner.$key 缺失或非 String，实际: $value');
+  }
+  final parsed = DateTime.tryParse(value);
+  if (parsed == null) {
+    throw ApiException.parse('$owner.$key 非合法 ISO8601 时间，实际: $value');
+  }
+  return parsed;
+}
