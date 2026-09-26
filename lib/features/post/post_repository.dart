@@ -16,6 +16,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:zhaoyazhao/core/network/api_client.dart';
 
+import '../../nfr_constants.dart';
 import 'post_dto.dart';
 
 /// post 域仓库。
@@ -106,6 +107,71 @@ class PostRepository {
       options: _interactionOptions(interactionId),
     );
     return PostDetailDto.fromJson(response.data);
+  }
+
+  /// 查「我的发布」列表（`GET /posts/mine`，[127] 前端段）。
+  ///
+  /// **筛选只接受契约单值**（openapi `status` 参数 `$ref: PostStatusEnum`）：
+  /// 「已下架」Tab 只传 `offline`，`expired`/`archived` 仅在「全部」Tab
+  /// 可见并各自标状态（2026-09-27 用户裁定，见说明文档 §2.9）。
+  ///
+  /// 参数：
+  ///   [page] 页码（从 1 起；服务端会再钳制一次）；
+  ///   [pageSize] 每页条数（默认 [NfrApi.pageSizeDefault]，服务端钳上限）；
+  ///   [status] API 状态筛选值；null = 不筛选（「全部」Tab）；
+  ///   [interactionId] 交互起点生成的 X-Interaction-Id；null 由拦截器兜底。
+  /// 返回：[MyPostsPageDto]（items/total/page/page_size）。
+  /// 抛出：[ApiException] 信封业务错误（40001 非法 status）/解析失败/传输错误。
+  Future<MyPostsPageDto> fetchMine({
+    int page = 1,
+    int pageSize = NfrApi.pageSizeDefault,
+    String? status,
+    String? interactionId,
+  }) async {
+    final response = await _dio.get<Object?>(
+      '/posts/mine',
+      queryParameters: <String, Object?>{
+        'page': page,
+        'page_size': pageSize,
+        // 缺省不传 status：契约 required=false，传空串会被服务端判非法值
+        if (status != null) 'status': status,
+      },
+      options: _interactionOptions(interactionId),
+    );
+    return MyPostsPageDto.fromJson(response.data);
+  }
+
+  /// 变更帖子状态（`PATCH /posts/{post_id}/status`，[127] 前端段）。
+  ///
+  /// **乐观锁强约束**：必须带上从 `fetchMine`/`fetchDetail` 取得的
+  /// [version]（契约 description：缺失回 40001，服务端不得兜底）。影响行数
+  /// 为 0（版本不符/非本人/行不存在三成因不区分）一律回 40903，客户端
+  /// **不得自动重试**——40903 属 `forceRefetch`（§12.2），须重取列表后由
+  /// 用户决定，自动重放只会再吃一次同码。
+  ///
+  /// 幂等：契约挂 `Idempotency-Key`，HeaderInterceptor 按写接口（POST/PATCH）
+  /// 纪律缺失即注入，本层不碰该头。
+  ///
+  /// 参数：
+  ///   [postId] 帖子 ID（契约路径参数 int64）；
+  ///   [action] 动作（`offline` 下架 / `republish` 重新上架 / `renew` 延期）；
+  ///   [version] 当前乐观锁版本号；
+  ///   [interactionId] 交互起点生成的 X-Interaction-Id；null 由拦截器兜底。
+  /// 返回：[PostStatusResultDto]（变更后状态/新版本号/到期时间）。
+  /// 抛出：[ApiException] 信封业务错误（40001 动作非法、40903 版本冲突、
+  ///   40101 未登录）与传输错误归一后的异常。
+  Future<PostStatusResultDto> changeStatus(
+    int postId, {
+    required String action,
+    required int version,
+    String? interactionId,
+  }) async {
+    final response = await _dio.patch<Object?>(
+      '/posts/$postId/status',
+      data: <String, Object?>{'action': action, 'version': version},
+      options: _interactionOptions(interactionId),
+    );
+    return PostStatusResultDto.fromJson(response.data);
   }
 
   /// 组装携带 X-Interaction-Id 的按请求选项。

@@ -149,3 +149,97 @@ void stubGetPostDetail(
     );
   });
 }
+
+/// 构造 `GET /posts/mine` 成功响应 data（契约 `MyPostsResponse` 形态）。
+///
+/// 两个列表项刻意覆盖两形态：① 在架 + 有价 + 有封面 + 完整度 2；
+/// ② 已下架 + 面议（price/price_unit 双 null）+ 无封面 + 完整度 0。
+///
+/// 返回：[Map] 契约 `GET /posts/mine` 的 data 对象（items/total/page/page_size）。
+Map<String, Object?> myPostsPayload() => {
+  'items': [
+    {
+      'id': 1001,
+      'type': 'resource',
+      'leaf_category_id': 40101,
+      'title': '九成新实木餐桌转让',
+      'price': 299.0,
+      'price_unit': '元',
+      'cover_media': {
+        'media_id': 'm-1',
+        'url': 'https://oss.example.com/m-1.jpg',
+        'audit_status': 'pass',
+        'reject_reason': null,
+      },
+      'completeness_level': 2,
+      'status': 'active',
+      'publish_at': '2026-09-01T04:00:00Z',
+      'expire_at': '2026-09-08T04:00:00Z',
+      'view_count': null,
+      'contact_count': 3,
+      'version': 1,
+    },
+    {
+      'id': 1002,
+      'type': 'demand',
+      'leaf_category_id': 30101,
+      'title': '求租一室一厅',
+      'price': null,
+      'price_unit': null,
+      'cover_media': null,
+      'completeness_level': 0,
+      'status': 'offline',
+      'publish_at': '2026-08-20T04:00:00Z',
+      'expire_at': '2026-08-27T04:00:00Z',
+      'view_count': null,
+      'contact_count': 0,
+      'version': 4,
+    },
+  ],
+  'total': 2,
+  'page': 1,
+  'page_size': 20,
+};
+
+/// 登记 `GET /posts/mine` 成功桩（query 参数不影响路由匹配）。
+///
+/// 参数：[harness] 网络链 harness；[payload] 响应 data（默认 myPostsPayload）。
+/// 返回：void。
+void stubGetMyPosts(NetworkChainHarness harness, {Map<String, Object?>? payload}) {
+  harness.stub('GET', '/api/v1/posts/mine', (req) async {
+    return MockResponse(
+      body: ApiEnvelope.success(data: payload ?? myPostsPayload()),
+    );
+  });
+}
+
+/// 构造 `PATCH /posts/{id}/status` 成功响应 data（契约四字段）。
+///
+/// 参数：[status] 变更后状态；[version] 变更后新版本号。
+/// 返回：[Map] 契约响应 data 对象。
+Map<String, Object?> postStatusResultPayload({
+  String status = 'offline',
+  int version = 2,
+}) => {
+  'id': 1001,
+  'status': status,
+  'expire_at': '2026-09-15T04:00:00Z',
+  'version': version,
+};
+
+/// 登记 `PATCH /posts/{post_id}/status` 成功桩。
+///
+/// 参数：[harness] 网络链 harness；[postId] 帖子 ID；[payload] 响应 data。
+/// 返回：void。
+void stubChangePostStatus(
+  NetworkChainHarness harness,
+  int postId, {
+  Map<String, Object?>? payload,
+}) {
+  harness.stub('PATCH', '/api/v1/posts/$postId/status', (req) async {
+    return MockResponse(
+      body: ApiEnvelope.success(data: payload ?? postStatusResultPayload()),
+    );
+  });
+}
+
