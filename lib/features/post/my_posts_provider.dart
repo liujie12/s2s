@@ -67,9 +67,24 @@ final myPostsTabProvider = NotifierProvider<MyPostsTabNotifier, MyPostsTab>(
 
 /// 「我的发布」列表状态机（`AsyncValue` 三态 + 分页累积 + 状态变更）。
 class MyPostsNotifier extends Notifier<AsyncValue<MyPostsData>> {
+  /// 追加分页的在途标志（防并发重复请求）。
+  ///
+  /// **为什么不能用 `state.isLoading`**：追加分页刻意**不写 loading 态**（写了会让
+  /// 整屏回到骨架），故追加期间 `isLoading` 恒为 false；而滚动监听每个滚动帧都会
+  /// 回调，一次惯性滑动就会并发发出多个**同一页码**的请求，每个响应各自
+  /// `[...prev, ...items]` → 同一页被追加多次，用户看到重复卡片。
+  /// Dart 单线程 run-to-completion：首个 `await` 前同步置位即可挡住后续进入。
+  bool _loadingMore = false;
+
+  /// 最近一次「加载更多」失败的页码（防滚动监听无冷却地反复重发同页与反复弹提示）。
+  ///
+  /// 清空时机 = 用户显式重试：下拉刷新 / 切换页签 / 页面重建。
+  int? _failedPage;
+
   @override
   AsyncValue<MyPostsData> build() {
     final tab = ref.watch(myPostsTabProvider);
+    _failedPage = null;
     if (!tab.hasDataSource) {
       // 草稿页签：无数据源（服务端不存 draft、本地草稿属 Batch2），
       // 直接给空数据 —— 空数据 + 页面降级空态，而不是发一个必然 40001 的请求。
@@ -127,6 +142,7 @@ class MyPostsNotifier extends Notifier<AsyncValue<MyPostsData>> {
   Future<void> refresh() async {
     final tab = ref.read(myPostsTabProvider);
     if (!tab.hasDataSource) return;
+    _failedPage = null;
     state = const AsyncValue.loading();
     await _loadFirstPage(tab);
   }
@@ -134,15 +150,28 @@ class MyPostsNotifier extends Notifier<AsyncValue<MyPostsData>> {
   /// 触底加载下一页。
   ///
   /// 返回：[Future<void>]；失败**保留已加载数据**并把异常抛给页面弹提示 ——
-  ///   一页失败清空整屏，比少一页更糟。
+  ///   一页失败清空整屏，比少一页更糟。失败后同页不再被滚动监听自动重试
+  ///   （否则每个滚动帧重发一次、每帧弹一条提示），须由用户下拉刷新恢复。
   Future<void> loadMore() async {
     final current = state.asData?.value;
-    if (current == null || !current.hasMore || state.isLoading) return;
-    await _fetch(
-      tab: ref.read(myPostsTabProvider),
-      page: current.page + 1,
-      append: true,
-    );
+    if (_loadingMore || current == null || !current.hasMore || state.isLoading) {
+      return;
+    }
+    final nextPage = current.page + 1;
+    if (_failedPage == nextPage) return;
+    _loadingMore = true;
+    try {
+      await _fetch(
+        tab: ref.read(myPostsTabProvider),
+        page: nextPage,
+        append: true,
+      );
+    } catch (_) {
+      _failedPage = nextPage;
+      rethrow;
+    } finally {
+      _loadingMore = false;
+    }
   }
 
   /// 变更帖子状态（真接口），成功后重拉当前页签。

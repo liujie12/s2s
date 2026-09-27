@@ -100,6 +100,54 @@ void main() {
         reason: '不重拉会让本地 version 落后，下一次操作必吃 40903');
   });
 
+  test('并发触底只发一次下一页请求（在途守卫挡重复页）', () async {
+    repo.mineToReturn = MyPostsPageDto.fromJson({
+      ...myPostsPayload(),
+      'total': 5,
+    });
+    container.invalidate(myPostsProvider);
+    await pumpEventQueue();
+    final before = repo.mineFetchCount;
+
+    // 滚动监听每帧都会调 loadMore：三次并发必须只落一次请求，
+    // 否则同一页会被追加三次（用户看到重复卡片）
+    await Future.wait([
+      container.read(myPostsProvider.notifier).loadMore(),
+      container.read(myPostsProvider.notifier).loadMore(),
+      container.read(myPostsProvider.notifier).loadMore(),
+    ]);
+
+    expect(repo.mineFetchCount, before + 1);
+    expect(container.read(myPostsProvider).requireValue.items, hasLength(4),
+        reason: '首屏 2 条 + 第二页 2 条；重复追加会变成 6 条');
+  });
+
+  test('加载更多失败后不再被自动重试同页（下拉刷新才恢复）', () async {
+    repo.mineToReturn = MyPostsPageDto.fromJson({
+      ...myPostsPayload(),
+      'total': 5,
+    });
+    container.invalidate(myPostsProvider);
+    await pumpEventQueue();
+
+    repo.mineErrorToThrow = ApiException.parse('第二页拉取失败');
+    await expectLater(
+      container.read(myPostsProvider.notifier).loadMore(),
+      throwsA(isA<ApiException>()),
+    );
+    final afterFail = repo.mineFetchCount;
+
+    // 滚动监听继续回调：同页被抑制，不发请求、也不再弹提示
+    await container.read(myPostsProvider.notifier).loadMore();
+    expect(repo.mineFetchCount, afterFail);
+
+    // 用户下拉刷新即清空抑制标记，自动加载恢复
+    repo.mineErrorToThrow = null;
+    await container.read(myPostsProvider.notifier).refresh();
+    await container.read(myPostsProvider.notifier).loadMore();
+    expect(repo.mineFetchCount, afterFail + 2);
+  });
+
   test('首屏失败收敛为错误态（不产生未捕获的异步异常）', () async {
     repo.mineErrorToThrow = ApiException.parse('服务端不可用');
     container.invalidate(myPostsProvider);

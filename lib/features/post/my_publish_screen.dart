@@ -94,12 +94,12 @@ class _MyPublishScreenState extends ConsumerState<MyPublishScreen> {
   /// 参数：[action] 卡片动作；[item] 该动作所属的列表项（带乐观锁版本号）。
   /// 返回：[Future<void>]。
   Future<void> _onAction(MyPostCardAction action, MyPostItemDto item) async {
-    final apiAction = action.apiAction;
-    if (apiAction == null) {
+    if (!action.isWired) {
       // 降级动作：不承诺版本号，只说本期状态（说「后续版本」等于替未排期的事打包票）
       _showMessage('${_actionLabel(action)}功能本期内测版暂未开放');
       return;
     }
+    final apiAction = action.apiAction!;
     try {
       await ref
           .read(myPostsProvider.notifier)
@@ -426,6 +426,11 @@ class _StatusChip extends StatelessWidget {
 }
 
 /// 完整度档位点（PRD §9.8 三档视觉标记；卡片只给「色点 + 档名」双通道）。
+///
+/// **契约外档位刻意 fail-fast**（[CompletenessLevel.fromApi] 抛 `ApiException.parse`）：
+/// 完整度是发布质量的主信号，给个错色点比当屏报错更糟——用户会据此判断「这条信息
+/// 齐不齐」。风险面已评估：`completeness_level` 是库内 STORED 生成列、契约枚举锁定
+/// 0/1/2，服务端不会送出第三个值；真的送出说明契约或库被改坏，当屏失败是期望行为。
 class _CompletenessDot extends StatelessWidget {
   const _CompletenessDot({required this.level});
 
@@ -652,16 +657,14 @@ String _statusLabel(String apiStatus) => switch (apiStatus) {
 
 /// 状态标配色（图形色 + 承载文字的深色变体，同 design_tokens 的 *-text 约定）。
 ///
+/// 除「在架」「已过期」外（含下架/归档与契约外取值）一律取中性灰：
+/// 它们对用户的差别只在文案，颜色替它们编造差异反而会让灰变成「有含义的颜色」。
+///
 /// 参数：[apiStatus] 契约状态值。
 /// 返回：[(色点/底色, 文字色)]。
 (Color, Color) _statusColors(String apiStatus) => switch (apiStatus) {
   PostApiStatus.active => (Color(AppColors.success), Color(AppColors.successText)),
   PostApiStatus.expired => (Color(AppColors.warning), Color(AppColors.warningText)),
-  PostApiStatus.offline ||
-  PostApiStatus.archived => (
-    Color(AppColors.textPlaceholder),
-    Color(AppColors.textSecondary),
-  ),
   _ => (
     Color(AppColors.textPlaceholder),
     Color(AppColors.textSecondary),
@@ -677,10 +680,7 @@ String _statusLabel(String apiStatus) => switch (apiStatus) {
 /// 返回：[String] 副标题文案。
 String _subtitle(MyPostItemDto item) {
   final publishAt = item.publishAt;
-  final age = publishAt == null ? null : formatRelativeAge(publishAt);
-  final published = age == null
-      ? null
-      : (age == '刚刚' ? '刚刚发布' : '$age发布');
+  final published = publishAt == null ? null : formatRelativePublishAge(publishAt);
   final views = item.viewCount;
   if (views == null) return published ?? '发布时间未知';
   return published == null ? '浏览 $views' : '浏览 $views｜$published';

@@ -23,3 +23,16 @@ String formatRelativeAge(DateTime time) {
   if (d.inDays <= 7) return '${d.inDays} 天前';
   return '${time.month}-${time.day.toString().padLeft(2, '0')}';
 }
+
+/// 发布时间的「…发布」文案（「我的发布」卡片副标题）。
+///
+/// **「刚刚」的特判收在本文件内**：若交给调用方比较上一次的返回值
+/// （`age == '刚刚'`），本文件的展示文案就成了跨文件判据 —— 文案一改（如改成
+/// 「刚发布」），调用方会静默拼出「刚发布发布」，编译期与门禁都无感。
+///
+/// 参数：[time] 发布时间。
+/// 返回：[String] 形如「刚刚发布」/「3 天前发布」/「08-28发布」。
+String formatRelativePublishAge(DateTime time) {
+  final age = formatRelativeAge(time);
+  return age == '刚刚' ? '刚刚发布' : '$age发布';
+}

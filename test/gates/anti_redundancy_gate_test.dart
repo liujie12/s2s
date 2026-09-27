@@ -799,19 +799,14 @@ void main() {
 
     /// `ApiException.parse(` 命中总数基线（判据 C1）：工厂定义 1 + 调用 41。
     ///
-    /// **2026-09-27 校正如实回报**：本条原为 33，但 [127] 前端段合并后实测已
-    /// **40**（= 33 + post_dto 5 + post_detail_provider 1 + contract_json 1），
-    /// 即该轮合并时**本判据就是红的**（该轮只跑了 `flutter analyze`，未跑反冗余
-    /// 门禁，故未被发现）。本轮（[127] 前端段「我的发布」）在实测 40 基础上
-    /// 净增 2（post_dto `_optDateTime` +2、listing_detail `fromApi` +1、
-    /// post_detail_provider 迁出 -1），校正到实测 **42**，并同步
-    /// `api_exception.dart` 文件头清单。
-    /// 历史：32 = 24 + 8（[123] U10：AuthSession.fromJson 2 + AuthRepository
-    /// _parseLoginResult 4 + _parseUserId 2）；原 24 = 23 + 1（[124] B4：
-    /// contract_json.dart 新增 optInt 1；category_dto 的 11 处中 9 处随解析
-    /// 助手迁至 core/contract_json.dart、2 处留守（level 校验 + _optChildren），
-    /// 搬家不减调用点）。新增/删除解析失败抛出点时，与 api_exception.dart
-    /// 文件头清单同改。
+    /// **维护纪律**：改本值必须同改 `api_exception.dart` 文件头的调用点清单
+    /// （人工真源与机器判据配对，任一单独变化都会让该判据失真）。
+    ///
+    /// 明细（2026-09-27 实测）：core/network 9 + contract_json 11 +
+    /// listing_category 2 + listing_detail 1 + discovery_filter 1 +
+    /// category_dto 2 + post_dto 7 + auth_repository 8 = 41。
+    /// 42 = 41 + 工厂定义 1；33 的历史构成见说明文档 §三（[127] 前端段合并后
+    /// 该判据曾静默变红 +7，本轮一并校正；过程不再抄在本注释里）。
     const int parseFactoryTotalBaseline = 42;
 
     test('lib/features/ 无 for/while 循环重试（详设 §14.2，判据 A1）', () {

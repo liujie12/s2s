@@ -29,12 +29,9 @@
 /// AuthRepository._parseLoginResult ×4、_parseUserId ×2）；
 /// 新增解析失败点同走本工厂。
 ///
-/// **2026-09-27 清单校正如实回报**：本条清单与判据 C1 基线在 [127] 前端段
-/// 合并后已漂移 +7（post_dto +5、post_detail_provider +1、contract_json +1），
-/// 即该轮合并时该判据是红的 —— 该轮只跑了 `flutter analyze`、未跑前端反冗余
-/// 门禁，故未被发现。本轮（[127] 前端段「我的发布」）校正到实测值 42 并登记；
-/// 详见 `test/gates/anti_redundancy_gate_test.dart` 的
-/// `parseFactoryTotalBaseline` 注释。
+/// **维护纪律**：本清单与反冗余判据 C1 的 `parseFactoryTotalBaseline` 必须同改
+/// （清单是人工真源、基线是机器判据，两者漂移会让该判据变成永绿豁免）。
+/// 2026-09-27 校正实测值：连工厂定义共 42 处（清单变更过程见说明文档 §三）。
 ///
 /// **循环 import 说明**：见 `api_error_code.dart` 文件头，同一份说明。
 library;
