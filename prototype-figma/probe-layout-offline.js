@@ -3139,17 +3139,25 @@ function allText(root) {
       ['buildPrivacyGate', 'features/privacy/privacy_gate_screen.dart',
        'privacy-gate'],
       ['buildPrivacyDeclined', 'features/privacy/privacy_gate_screen.dart',
-       'privacy-gate⟨受限态⟩']
+       'privacy-gate⟨受限态⟩'],
+      // 2026-09-27 条目 [127] 前端段：「我的发布」页落地后纳入本表。页面的
+      // 五个操作文案（编辑/下架/刷新重发/删除/继续编辑）在码侧 `_actionLabel`
+      // 的穷尽 switch 中逐个出现，其中编辑/删除/继续编辑是 Batch1 降级动作
+      // （点击给「本期内测版暂未开放」说明），文案仍与稿一致故不需备案。
+      ['buildMyPublish', 'features/post/my_publish_screen.dart',
+       'my-publish-screen']
     ];
 
     // **临时降级备案**：码侧因「目标页 M4 未排」而有意偏离稿子的按钮。
     // 与 KNOWN_STAGE_GAPS 同一取向 —— 承认它，并让备案外的任何新偏差立刻报红。
     // value 必须写明「稿侧原文案 + 偏离理由 + 何时改回」。
-    const KNOWN_BTN_DOWNGRADES = {
-      '我的发布': 'publish-success-screen 第二出口：PRD §5.8 明文「默认跳我的发布」，' +
-        '但 my-publish-screen 属 §8.3.1、M4 未排且路由表无此项，' +
-        '码侧暂落 profile 并显示「去「我的」」；该页做出来后改回'
-    };
+    //
+    // 2026-09-27 条目 [127] 前端段：「我的发布」页落地、`publish-success-screen`
+    // 第二出口改回「我的发布」并指向该路由，唯一一项备案已按移除条件删除。
+    // **空表不等于这段代码没用了** —— 它是「新偏差必须显式备案」这条规矩的落点
+    // （同 KNOWN_STAGE_GAPS 的保留理由）；下次码侧再有意偏离稿面文案时，
+    // 上一条断言会因未备案而报红。
+    const KNOWN_BTN_DOWNGRADES = {};
     const btnMismatch = [];
     for (const [fn, rel, pageId] of wiredPages) {
       const src = dartSrc(rel);

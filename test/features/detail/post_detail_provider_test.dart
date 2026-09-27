@@ -62,15 +62,15 @@ void main() {
     });
   });
 
-  group('completenessFromApi（0/1/2 显式映射）', () {
+  group('CompletenessLevel.fromApi（0/1/2 显式映射）', () {
     test('0→red 1→yellow 2→green', () {
-      expect(completenessFromApi(0), CompletenessLevel.red);
-      expect(completenessFromApi(1), CompletenessLevel.yellow);
-      expect(completenessFromApi(2), CompletenessLevel.green);
+      expect(CompletenessLevel.fromApi(0), CompletenessLevel.red);
+      expect(CompletenessLevel.fromApi(1), CompletenessLevel.yellow);
+      expect(CompletenessLevel.fromApi(2), CompletenessLevel.green);
     });
 
     test('非法值抛 parseError（契约外值不静默吞）', () {
-      expect(() => completenessFromApi(3), throwsA(isA<ApiException>()));
+      expect(() => CompletenessLevel.fromApi(3), throwsA(isA<ApiException>()));
     });
   });
 }

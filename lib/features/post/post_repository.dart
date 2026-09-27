@@ -128,14 +128,12 @@ class PostRepository {
     String? status,
     String? interactionId,
   }) async {
+    final query = <String, Object?>{'page': page, 'page_size': pageSize};
+    // 缺省不传 status：契约 required=false，传空串会被服务端判非法值
+    if (status != null) query['status'] = status;
     final response = await _dio.get<Object?>(
       '/posts/mine',
-      queryParameters: <String, Object?>{
-        'page': page,
-        'page_size': pageSize,
-        // 缺省不传 status：契约 required=false，传空串会被服务端判非法值
-        if (status != null) 'status': status,
-      },
+      queryParameters: query,
       options: _interactionOptions(interactionId),
     );
     return MyPostsPageDto.fromJson(response.data);

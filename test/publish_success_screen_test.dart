@@ -120,7 +120,9 @@ void main() {
       );
       expect(home.onPressed, isNotNull);
       final mine = tester.widget<TextButton>(
-        find.widgetWithText(TextButton, '去「我的」'),
+        // [127] 前端段：第二出口已按 PRD §5.8 回归「我的发布」（此前临时降级为
+        // 「去「我的」」指向 profile，因该页当时无路由）
+        find.widgetWithText(TextButton, '我的发布'),
       );
       expect(mine.onPressed, isNotNull);
     });

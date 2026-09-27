@@ -5,7 +5,9 @@
 /// 不散落在各页的 push 调用里。
 ///
 /// M4 范围 = PRD §10.1 中 P0 且属五大闭环的 12 项（说明文档 §2.7）。
-/// 其余页面（收藏 / 设置 / 我的发布等）不在 M4，故本表**刻意不注册**——
+/// [127] 前端段补入 `my-publish-screen`（我的模块降级实现：列表 + 基础操作，
+/// 说明文档 §2.7「🔶 降级实现」），故现为 13 项。
+/// 其余页面（收藏 / 设置等）不在 M4，本表**刻意不注册**——
 /// 注册空壳会让人误以为已实现。
 library;
 
@@ -20,6 +22,7 @@ import '../features/detail/detail_screen.dart';
 import '../features/discovery/list_screen.dart';
 import '../features/map/map_screen.dart';
 import '../features/placeholder/placeholder_screen.dart';
+import '../features/post/my_publish_screen.dart';
 import '../features/privacy/privacy_consent.dart';
 import '../features/privacy/privacy_gate_screen.dart';
 import '../features/publish/ai_confirm_screen.dart';
@@ -53,6 +56,9 @@ class AppRoutes {
   static const String aiConfirm = '/publish/ai-confirm';
   static const String publishSuccess = '/publish/success';
   static const String contact = '/contact/:id';
+
+  // ── 我的模块（Batch1 降级实现：只做列表与基础操作）[127] 前端段 ──
+  static const String myPublish = '/my-publish';
 
   // ── 认证 ──
   static const String trust = '/trust';
@@ -160,6 +166,12 @@ final List<RouteBase> _routes = [
     builder: (context, state) => ContactScreen(
       listingId: int.tryParse(state.pathParameters['id'] ?? '') ?? -1,
     ),
+  ),
+  GoRoute(
+    path: AppRoutes.myPublish,
+    // [127] 前端段：my-publish-screen 落地（此前「我的发布」无此路由，
+    // 发布成功页第二出口只能临时降级到 profile，见 publish_success_screen 注释）。
+    builder: (context, state) => const MyPublishScreen(),
   ),
   GoRoute(
     path: AppRoutes.profile,

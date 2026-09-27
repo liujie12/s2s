@@ -12,18 +12,29 @@
 /// 失败抛出点只准走该工厂，禁止内联
 /// `ApiException(code: ApiErrorCode.parseError, ...)` —— 统一入口保证
 /// message 必经 [_truncateParseMessage] 截断、口径单一（编码规范 §1.1）。
-/// 现有 32 处生产调用点：`core/network` 9 处（`api_error_code.dart` ×1、
-/// `api_client.dart` ×4、`interceptors/auth_refresh_interceptor.dart` ×1、
+/// 现有 41 处生产调用点（连工厂定义自身共 42 处，与反冗余判据 C1 基线同值）：
+/// `core/network` 9 处（`api_error_code.dart` ×1、`api_client.dart` ×4、
+/// `interceptors/auth_refresh_interceptor.dart` ×1、
 /// `interceptors/envelope_interceptor.dart` ×3）、
-/// `core/contract_json.dart` ×10（解析助手，[124] B4 自 category_dto
-/// 上浮 9 处并新增 optInt，搬家不减调用点）、
+/// `core/contract_json.dart` ×11（解析助手，[124] B4 自 category_dto
+/// 上浮并新增 optInt，[127] 又加 optDouble，搬家不减调用点）、
 /// `domain/listing_category.dart` ×2、
+/// `domain/listing_detail.dart` ×1（[127] 前端段：`CompletenessLevel.fromApi`
+/// 自 features/detail 迁入，第二消费方为「我的发布」卡片）、
 /// `features/discovery/discovery_filter.dart` ×1、
 /// `features/category/category_dto.dart` ×2（level 范围校验 1 +
 /// `_optChildren` 1，[124] B1 起 11 处中 9 处已上浮）、
+/// `features/post/post_dto.dart` ×7（`PostDetail` 解析 3 + 时间助手 4）、
 /// `features/auth/auth_repository.dart` ×8（[123] U10：AuthSession.fromJson ×2、
 /// AuthRepository._parseLoginResult ×4、_parseUserId ×2）；
 /// 新增解析失败点同走本工厂。
+///
+/// **2026-09-27 清单校正如实回报**：本条清单与判据 C1 基线在 [127] 前端段
+/// 合并后已漂移 +7（post_dto +5、post_detail_provider +1、contract_json +1），
+/// 即该轮合并时该判据是红的 —— 该轮只跑了 `flutter analyze`、未跑前端反冗余
+/// 门禁，故未被发现。本轮（[127] 前端段「我的发布」）校正到实测值 42 并登记；
+/// 详见 `test/gates/anti_redundancy_gate_test.dart` 的
+/// `parseFactoryTotalBaseline` 注释。
 ///
 /// **循环 import 说明**：见 `api_error_code.dart` 文件头，同一份说明。
 library;

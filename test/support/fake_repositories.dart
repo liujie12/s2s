@@ -11,6 +11,7 @@ import 'package:zhaoyazhao/features/category/category_dto.dart';
 import 'package:zhaoyazhao/features/category/category_repository.dart';
 import 'package:zhaoyazhao/features/post/post_dto.dart';
 import 'package:zhaoyazhao/features/post/post_repository.dart';
+import 'package:zhaoyazhao/nfr_constants.dart';
 
 import 'category_fixtures.dart';
 import 'post_fixtures.dart';
@@ -94,5 +95,63 @@ class FakePostRepository extends PostRepository {
     final error = createErrorToThrow;
     if (error != null) throw error;
     return PostCreatedDto.fromJson(postCreatedPayload());
+  }
+
+  /// fetchMine 返回的列表页；null 用 `myPostsPayload` 构造的默认两形态数据。
+  MyPostsPageDto? mineToReturn;
+
+  /// fetchMine 抛出的异常（列表加载失败形态）；null 走正常返回。
+  Object? mineErrorToThrow;
+
+  /// fetchMine 收到的筛选值（断言页签 → 契约单值映射透传）。
+  String? lastMineStatus;
+
+  /// fetchMine 收到的页码（断言分页：首屏 1、触底 2）。
+  int? lastMinePage;
+
+  /// fetchMine 调用次数（断言切页签/状态变更后确实重拉）。
+  var mineFetchCount = 0;
+
+  /// changeStatus 抛出的异常（乐观锁冲突 40903 形态）；null 走正常返回。
+  Object? changeStatusErrorToThrow;
+
+  /// changeStatus 收到的帖子 ID。
+  int? lastChangePostId;
+
+  /// changeStatus 收到的动作（断言卡片动作 → 契约 action 映射）。
+  String? lastChangeAction;
+
+  /// changeStatus 收到的乐观锁版本号（断言来自列表项而非本地推算）。
+  int? lastChangeVersion;
+
+  @override
+  Future<MyPostsPageDto> fetchMine({
+    int page = 1,
+    int pageSize = NfrApi.pageSizeDefault,
+    String? status,
+    String? interactionId,
+  }) async {
+    mineFetchCount++;
+    lastMinePage = page;
+    lastMineStatus = status;
+    final error = mineErrorToThrow;
+    if (error != null) throw error;
+    final payload = mineToReturn;
+    return payload ?? MyPostsPageDto.fromJson(myPostsPayload());
+  }
+
+  @override
+  Future<PostStatusResultDto> changeStatus(
+    int postId, {
+    required String action,
+    required int version,
+    String? interactionId,
+  }) async {
+    lastChangePostId = postId;
+    lastChangeAction = action;
+    lastChangeVersion = version;
+    final error = changeStatusErrorToThrow;
+    if (error != null) throw error;
+    return PostStatusResultDto.fromJson(postStatusResultPayload());
   }
 }
