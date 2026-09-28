@@ -15,6 +15,17 @@
 /// ② 联系事件落库（§7.7 北极星指标唯一统计点）随成功响应一并完成；
 /// ③ 举报提交走 `POST /posts/{id}/report`。
 ///
+/// **数据源（[128] 代码评审 #2 修复）**：详情取自 [postDetailProvider]（真接口
+/// `GET /posts/{id}`），不再读 mock 的 `listingDetailProvider`——后者与真接口是两套
+/// id 体系，命中 mock 的 id 会渲染 mock 派生的号码并对真实数据里不存在的 id 发请求，
+/// 未命中的真实 id 则只渲染「找不到」，页面在真实数据上根本走不通。
+///
+/// **渠道与脱敏号码在拉取前不可知（契约所限，登记见说明文档 §2.9 DEC-13）**：
+/// 契约 `PostDetail` 不返回 `contact_channel`，且 `contact_mask` 恒 null
+/// （详情不解密是红线，2026-09-26 用户确认）。故未拉取态**不显示任何渠道名与号码字形**，
+/// 按钮文案保持中性；渠道、完整值、剩余次数一律由 `/contact` 的成功结果驱动。
+/// 写死一个渠道或照稿画一串 `138 **** 8888`，等于替服务端许诺它没给过的值。
+///
 /// **剩余次数文案纪律（契约 `ContactInfo.remaining_today` 原文）**：服务端限频有四个
 /// 维度，该字段只反映账号维一个，故文案写「今日剩余 N 次（以实际请求结果为准）」，
 /// 禁用「还可查看 N 次」式的承诺写法；且收到 `42902` 后**立即把本地剩余刷 0** ——
@@ -27,11 +38,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/network/api_error_code.dart';
+import '../../core/network/api_exception.dart';
 import '../../design_tokens.dart';
 import '../../domain/listing_detail.dart';
 import '../../router/app_router.dart';
 import '../auth/auth_repository.dart';
-import '../detail/listing_detail_repository.dart';
+import '../detail/post_detail_provider.dart';
 import 'contact_repository.dart';
 import 'report_reason.dart';
 
@@ -67,12 +80,21 @@ class _ContactScreenState extends ConsumerState<ContactScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final detail = ref.watch(listingDetailProvider(widget.listingId));
+    // 详情走真接口（[128] 代码评审 #2），三态与详情页同一分流口径。
+    return ref
+        .watch(postDetailProvider(widget.listingId))
+        .when(
+          loading: () => const _LoadingScreen(),
+          error: (error, _) => _buildErrorScreen(error),
+          data: (detail) => _buildPage(detail),
+        );
+  }
 
-    if (detail == null) {
-      return const _ContactNotFoundScreen();
-    }
-
+  /// 组装正文（三态中的 data 态）。
+  ///
+  /// 参数：[detail] 真接口映射后的详情域模型。本页只用它的发布者昵称 ——
+  /// 渠道与联系方式一律以 `/contact` 结果为准（见文件头「渠道与脱敏号码」一节）。
+  Widget _buildPage(ListingDetail detail) {
     return Scaffold(
       backgroundColor: Color(AppColors.background),
       appBar: AppBar(
@@ -95,16 +117,15 @@ class _ContactScreenState extends ConsumerState<ContactScreen> {
         children: [
           const _PrivacyNotice(),
           _ContactCard(
-            detail: detail,
             full: _full,
             loading: _loading,
             failure: _failure,
             remainingToday: _remainingToday,
-            onReveal: () => _reveal(detail),
-            onUse: () => _useContact(detail),
+            onReveal: _reveal,
+            onUse: _useContact,
             // 登录成功后自动重试拉取：让用户回到中转页还要再点一次按钮，
             // 等于把「他刚才已经表达过的意图」丢掉了。
-            onLogin: () => _goLoginThenReveal(detail),
+            onLogin: _goLoginThenReveal,
           ),
           const _SafetyTip(),
           _ReportEntry(onTap: _openReportSheet),
@@ -113,25 +134,35 @@ class _ContactScreenState extends ConsumerState<ContactScreen> {
     );
   }
 
+  /// 错误态分流：`41001` → 「该信息已下架或不存在」，其余 → 可重试的加载失败。
+  ///
+  /// 必须先经 [asApiException] 归一（与 `detail_screen._buildErrorScreen` 同因）：
+  /// 信封业务错误在链上以 `DioException(error: ApiException)` 形态到达，
+  /// 直接判 `error is ApiException` 恒为 false，41001 会落到通用错误屏。
+  Widget _buildErrorScreen(Object error) {
+    final apiError = asApiException(error);
+    if (apiError.code == ApiErrorCode.postGone) {
+      return const _ContactNotFoundScreen();
+    }
+    return const _LoadFailedScreen();
+  }
+
   /// 拉取完整联系方式（§12.3 `GET /posts/{id}/contact`）。
   ///
   /// 失败不抛给上层：这一页的失败都是可预期的业务状态（超限、未登录、
-  /// 对方未填、帖子已下架），全部转成页面内提示。让它冒泡成崩溃是把业务规则当成故障。
+  /// 帖子已下架），全部转成页面内提示。让它冒泡成崩溃是把业务规则当成故障。
+  ///
+  /// **已移除「对方未留联系方式」的本地短路**（[128] 代码评审 #2）：它原先读的是
+  /// mock 派生的 `contactMasked`，既与真接口是两套数据，也会把「真帖但 mock 里没有」
+  /// 一律判成「未留」。且 Batch1 该边界本就不可达 —— 发布时 `contact_type` /
+  /// `contact_value` 必填、`post` 三个联系方式列 NOT NULL，不存在没留联系方式的帖子。
+  /// 若日后服务端补出该情形的错误码，应由 `/contact` 的结果驱动并在
+  /// [contactFailureOf] 里接上 `ContactFailure.noContact`（§2.9 DEC-14）。
   ///
   /// **收到 `42902` 时把本地剩余刷 0**（契约 `remaining_today` 的硬要求）：
   /// 该字段只反映账号维，用户完全可能显示「还剩 3 次」而因设备维被拒；
   /// 不刷 0 就会出现「还剩 3 次」与「已达上限」同屏自相矛盾。
-  Future<void> _reveal(ListingDetail detail) async {
-    // §7.8「对方联系方式未填」：详情已知未填时本地短路，不发这次注定
-    // 失败（且会白吃一次限频额度）的请求。
-    if (!detail.hasContact) {
-      setState(() {
-        _failure = ContactFailure.noContact;
-        _loading = false;
-      });
-      return;
-    }
-
+  Future<void> _reveal() async {
     // §7.7「仅登录用户可拉取完整号码」的前置判定。
     // 放在页面而非仓库：仓库扮演的是服务端，服务端只会返回 401，
     // 而「弹登录页」是客户端的职责。真实实现中两侧都要判 ——
@@ -175,13 +206,12 @@ class _ContactScreenState extends ConsumerState<ContactScreen> {
 
   /// 跳登录页，登录成功后自动重试拉取。
   ///
-  /// 参数 [detail] 用于登录回来后继续拉这一条的联系方式。
   /// 登录页返回 true 表示登录成功（见 `login_screen.dart` 的 `pop(true)`）；
   /// 用户直接关掉登录页时返回 null，此时不重试 —— 他刚刚放弃了这个动作。
-  Future<void> _goLoginThenReveal(ListingDetail detail) async {
+  Future<void> _goLoginThenReveal() async {
     final ok = await GoRouter.of(context).push<bool>(AppRoutes.login);
     if (!mounted || ok != true) return;
-    await _reveal(detail);
+    await _reveal();
   }
 
   /// 使用已拉取到的联系方式：手机号外呼，微信号复制。
@@ -189,7 +219,7 @@ class _ContactScreenState extends ConsumerState<ContactScreen> {
   /// §7.8：「点外呼失败（模拟器/Pad 无拨号能力）自动降级为复制手机号到剪贴板」。
   /// **降级必须是自动的而不是弹个错误**：用户的目标是联系上对方，
   /// 报错等于把「换个办法」的责任推回给用户，而他手上已经没有别的办法了。
-  Future<void> _useContact(ListingDetail detail) async {
+  Future<void> _useContact() async {
     final full = _full;
     if (full == null) return;
 
@@ -355,9 +385,13 @@ class _NoticeItem extends StatelessWidget {
 }
 
 /// 联系方式卡片（PRD §7.4.2 中部，仅展示发布时填写的那一种）。
+///
+/// **渠道与号码字形只在 [full] 非空后出现**：契约 `PostDetail` 不返回
+/// `contact_channel`、`contact_mask` 恒 null，故未拉取态显示中性渠道名与占位文案
+/// （§2.9 DEC-13）。这不影响 §7.4.2「不做双卡片并列」——发布时只填一种，
+/// 拉取后这里也只呈现那一种。
 class _ContactCard extends StatelessWidget {
   const _ContactCard({
-    required this.detail,
     required this.full,
     required this.loading,
     required this.failure,
@@ -367,7 +401,6 @@ class _ContactCard extends StatelessWidget {
     required this.onLogin,
   });
 
-  final ListingDetail detail;
   final FullContact? full;
   final bool loading;
   final ContactFailure? failure;
@@ -381,8 +414,10 @@ class _ContactCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isPhone = detail.contactChannel == ContactChannel.phone;
     final revealed = full != null;
+    // 渠道未知时为 null —— 用它驱动图标与渠道名，而不是猜一个默认值。
+    final channel = full?.channel;
+    final isPhone = channel == ContactChannel.phone;
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
@@ -398,13 +433,19 @@ class _ContactCard extends StatelessWidget {
           Row(
             children: [
               Icon(
-                isPhone ? Icons.phone_outlined : Icons.chat_bubble_outline,
+                // 未拉取 → 中性「查看」图标；拉取后按服务端渠道切换。
+                // 猜一个默认渠道会让微信号帖子显示电话图标（用户按拨号去理解）。
+                switch (channel) {
+                  ContactChannel.phone => Icons.phone_outlined,
+                  ContactChannel.wechat => Icons.chat_bubble_outline,
+                  null => Icons.visibility_outlined,
+                },
                 size: 20,
                 color: Color(AppColors.primary),
               ),
               const SizedBox(width: AppSpacing.sm),
               Text(
-                '${detail.contactChannel.label}：',
+                '${channel?.label ?? '联系方式'}：',
                 style: TextStyle(
                   fontSize: AppTypeScale.body.size,
                   color: Color(AppColors.textSecondary),
@@ -412,8 +453,11 @@ class _ContactCard extends StatelessWidget {
               ),
               Expanded(
                 child: Text(
-                  // 未填 → 明确说「未留」，不要显示空白（空白与加载失败无从区分）。
-                  full?.value ?? detail.contactMasked ?? '未留联系方式',
+                  // 未拉取 → 占位文案，不显示任何号码字形：脱敏值在 Batch1 无契约来源
+                  // （详情不解密是红线），画一串 `138 **** 8888` 会与真实号码对不上；
+                  // 留空则与「加载失败」无从区分（§7.4.2 稿面对此有明确取舍：宁可说清
+                  // 「要点一下才给」，也不给假字形）。
+                  full?.value ?? '点击下方按钮查看',
                   style: TextStyle(
                     fontSize: AppTypeScale.h3.size,
                     fontWeight: FontWeight.w700,
@@ -428,10 +472,10 @@ class _ContactCard extends StatelessWidget {
               ),
             ],
           ),
-          if (!revealed && detail.hasContact) ...[
+          if (!revealed) ...[
             const SizedBox(height: AppSpacing.xs),
             Text(
-              isPhone ? '（点击下方按钮，查看完整号码并拨打）' : '（点击下方按钮，查看完整微信号）',
+              '（点击下方按钮，查看完整联系方式）',
               style: TextStyle(
                 fontSize: AppTypeScale.caption.size,
                 color: Color(AppColors.textPlaceholder),
@@ -444,7 +488,6 @@ class _ContactCard extends StatelessWidget {
           ],
           const SizedBox(height: AppSpacing.lg),
           _ActionButton(
-            detail: detail,
             revealed: revealed,
             loading: loading,
             isPhone: isPhone,
@@ -473,7 +516,6 @@ class _ContactCard extends StatelessWidget {
 /// 主行动按钮：未拉取 → 查看完整值；已拉取 → 拨打 / 复制。
 class _ActionButton extends StatelessWidget {
   const _ActionButton({
-    required this.detail,
     required this.revealed,
     required this.loading,
     required this.isPhone,
@@ -481,26 +523,29 @@ class _ActionButton extends StatelessWidget {
     required this.onUse,
   });
 
-  final ListingDetail detail;
   final bool revealed;
   final bool loading;
+
+  /// 渠道是否手机号。**只在 [revealed] 为真时有意义** —— 未拉取时渠道未知
+  /// （契约不返回 `contact_channel`），调用方传 false，且不参与未拉取态文案。
   final bool isPhone;
+
   final VoidCallback onReveal;
   final VoidCallback onUse;
 
   @override
   Widget build(BuildContext context) {
-    // §7.8：对方联系方式未填 → 主按钮禁用。
-    // 禁用而非隐藏：按钮消失会让用户以为页面没加载完，禁用态配合下方
-    // 举报入口才能表达「这条信息缺东西，你可以让他补」。
-    final enabled = detail.hasContact && !loading;
+    // §7.8「对方联系方式未填 → 主按钮禁用」在 Batch1 不可达（发布必填、DDL NOT NULL），
+    // 故不设该前置禁用；真正的门在服务端（未登录 40101 / 限频 429 / 下架 41001），
+    // 由 `_reveal` 把它们翻成页面内提示。禁用而非隐藏的老做法（怕用户以为没加载完）
+    // 在「禁用条件已不存在」后只剩副作用：正常帖子会显示成一个点不动的按钮。
+    final enabled = !loading;
 
-    final label = switch ((detail.hasContact, revealed, isPhone)) {
-      (false, _, _) => '对方未留联系方式',
-      (true, false, true) => '查看完整号码并外呼',
-      (true, false, false) => '查看完整微信号',
-      (true, true, true) => '拨打电话',
-      (true, true, false) => '复制微信号',
+    final label = switch ((revealed, isPhone)) {
+      // 未拉取 → 中性文案：此时不知道是手机号还是微信号，写「号码」对微信号帖是错的。
+      (false, _) => '查看完整联系方式',
+      (true, true) => '拨打电话',
+      (true, false) => '复制微信号',
     };
 
     return SizedBox(
@@ -742,6 +787,69 @@ class _ReportSheetState extends State<_ReportSheet> {
                   ),
                 ),
                 child: const Text('提交举报'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 加载态（详情接口首次拉取中）。
+///
+/// 联系中转页也必须先经详情接口：标题栏要显示「联系 王师傅」，
+/// 而昵称只有详情返回（§7.4.2 稿图），不能先渲染一个占位标题再改。
+class _LoadingScreen extends StatelessWidget {
+  const _LoadingScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Color(AppColors.background),
+      appBar: AppBar(
+        toolbarHeight: 48,
+        backgroundColor: Color(AppColors.surface),
+        elevation: 0,
+        title: const Text('联系'),
+      ),
+      body: const Center(child: CircularProgressIndicator()),
+    );
+  }
+}
+
+/// 加载失败（非 `41001`：网络失败 / 游客详情限频 `42907` / 服务端错误）。
+///
+/// 与「已下架/不存在」分开：前者是「等一下再来」，后者是「这条信息没了」——
+/// 给用户同一个屏会让他在已经不存在的信息上反复重试。
+class _LoadFailedScreen extends StatelessWidget {
+  const _LoadFailedScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Color(AppColors.background),
+      appBar: AppBar(
+        toolbarHeight: 48,
+        backgroundColor: Color(AppColors.surface),
+        elevation: 0,
+        title: const Text('联系'),
+      ),
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.cloud_off_outlined,
+              size: 48,
+              color: Color(AppColors.textPlaceholder),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            Text(
+              '加载失败，请稍后重试',
+              style: TextStyle(
+                fontSize: AppTypeScale.body.size,
+                color: Color(AppColors.textSecondary),
               ),
             ),
           ],

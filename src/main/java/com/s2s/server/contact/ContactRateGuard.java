@@ -84,7 +84,7 @@ public class ContactRateGuard {
             // 读失败放行（详设 §3.4 纪律 3）：防滥用控制不因 Redis 故障升级为全站不可用。
             // 键经脱敏（userId 非 PII，但统一走 mask 习惯，避免日后误将手机号塞进键）。
             log.warn("联系熔断冻结标记读取失败，放行本次请求（详设 §3.4 纪律 3）：key={}",
-                    mask(key), exception);
+                    RateLimitKeys.maskKey(key), exception);
             return;
         }
         if (frozen) {
@@ -175,7 +175,7 @@ public class ContactRateGuard {
         try {
             raw = redisTemplate.opsForValue().get(key);
         } catch (RuntimeException exception) {
-            log.warn("联系剩余次数读取失败，按阈值返回（该字段非承诺值）：key={}", mask(key), exception);
+            log.warn("联系剩余次数读取失败，按阈值返回（该字段非承诺值）：key={}", RateLimitKeys.maskKey(key), exception);
             return RateLimitThresholds.CONTACT_UID_LIMIT_PER_DAY;
         }
         long used = parseCount(raw);
@@ -198,10 +198,10 @@ public class ContactRateGuard {
         try {
             redisTemplate.opsForValue().set(key, "1",
                     Duration.ofSeconds(RateLimitEntries.naturalDayKeyTtlSeconds(today)));
-            log.warn("联系熔断触发，已写当日冻结标记：key={}", mask(key));
+            log.warn("联系熔断触发，已写当日冻结标记：key={}", RateLimitKeys.maskKey(key));
         } catch (RuntimeException exception) {
             log.warn("联系熔断冻结标记写入失败（本次仍拒绝，标记可能未持久）：key={}",
-                    mask(key), exception);
+                    RateLimitKeys.maskKey(key), exception);
         }
     }
 
@@ -221,16 +221,5 @@ public class ContactRateGuard {
             log.warn("联系计数值不可解析，按 0 处理：raw={}", raw);
             return 0;
         }
-    }
-
-    /**
-     * 键脱敏（11 位连续数字段中间 4 位掩码）——与 {@code RateLimiter} 同一习惯，
-     * 防日后键里混入手机号类 PII（编码规范 §4.11）。
-     *
-     * @param key 原始键
-     * @return {@link String} 脱敏后键
-     */
-    private String mask(String key) {
-        return key.replaceAll("(\\d{3})\\d{4}(\\d{4})", "$1****$2");
     }
 }

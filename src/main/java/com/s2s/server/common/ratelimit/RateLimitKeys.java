@@ -308,4 +308,26 @@ public final class RateLimitKeys {
                 date.plusDays(1).atStartOfDay(RateLimitThresholds.ZONE)
         ).getSeconds();
     }
+
+    /**
+     * 对 Redis 键做日志脱敏——「键脱敏」的<b>唯一实现处</b>（编码规范 §1.1 第二处即上浮）。
+     *
+     * <p>掩码键中出现的 11 位连续数字段（手机号）中间 4 位，如
+     * {@code rl:sms:phone:13800138000:1m} → {@code rl:sms:phone:138****8000:1m}，
+     * 防止写失败日志把完整手机号落盘（编码规范 §4.11「日志不得出现完整手机号」）。
+     * userId 通常非 11 位连续数字，不会被误掩；即便命中（极小概率）也只损失可读性，
+     * 无信息泄露。</p>
+     *
+     * <p><b>为什么落在本类</b>：脱敏规则与「键长什么样」是同一份知识（正则命中的正是
+     * 键里的手机号维度段），与本类既有的键拼装、{@link #isValidDeviceId(String)} 同类。
+     * [122] 时由 {@code RateLimiter} 私有持有、[128] 又由 {@code ContactRateGuard}
+     * 私有一份副本——两处逐字相同的正则，收紧脱敏规则时只改一处另一处会静默失效，
+     * 而脱敏是安全红线相关逻辑（[128] 代码评审 #3）。</p>
+     *
+     * @param key 原始 Redis 键
+     * @return {@link String} 脱敏后的键（11 位数字段中间 4 位替换为 {@code ****}）
+     */
+    public static String maskKey(String key) {
+        return key.replaceAll("(\\d{3})\\d{4}(\\d{4})", "$1****$2");
+    }
 }

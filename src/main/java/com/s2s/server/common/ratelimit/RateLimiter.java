@@ -126,7 +126,7 @@ public class RateLimiter {
             } catch (Exception exception) {
                 // Redis 连接失败 / 超时 / 脚本执行失败 —— 记 WARN（脱敏键 + 堆栈），放行该轨
                 log.warn("RateLimiter Redis 操作失败，跳过键 {}——写失败放行，详设 §3.4 纪律 3",
-                        maskKey(entry.key()), exception);
+                        RateLimitKeys.maskKey(entry.key()), exception);
             }
         }
 
@@ -187,19 +187,6 @@ public class RateLimiter {
         }
         String text = value.toString().trim();
         return text.isEmpty() ? 0 : Long.parseLong(text);
-    }
-
-    /**
-     * 对限频键做日志脱敏（[122] review #3 修复）：掩码键中出现的 11 位连续数字段
-     * （手机号）中间 4 位，如 {@code rl:sms:phone:13800138000:1m} → {@code rl:sms:phone:138****8000:1m}。
-     * 防止 SMS 轨写失败日志把完整手机号落盘（编码规范 §4.11「日志不得出现完整手机号」）。
-     * userId 通常非 11 位连续数字，不会被误掩；即便命中（极小概率）也只损失可读性，无信息泄露。
-     *
-     * @param key 原始 Redis 键
-     * @return 脱敏后的键（11 位数字段中间 4 位替换为 {@code ****}）
-     */
-    private static String maskKey(String key) {
-        return key.replaceAll("(\\d{3})\\d{4}(\\d{4})", "$1****$2");
     }
 
     /**

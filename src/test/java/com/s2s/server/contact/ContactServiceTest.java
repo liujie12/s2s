@@ -372,6 +372,32 @@ class ContactServiceTest {
     }
 
     /**
+     * <b>可见性口径与 {@code viewContact} 一致</b>（[128] 代码评审 #4）：对他人不可见
+     * （已下架/过期/归档/隐藏）的帖子 → {@code 41001}，且不落举报行。
+     *
+     * <p>原先 {@code report} 只判「行是否存在」，于是已下架的帖子仍可被举报成功落库，
+     * 而同方法 javadoc 明写 41001 含「对他人不可见」——代码与其自身契约冲突，
+     * 两条链路对同一份可见性给出不一致行为。</p>
+     *
+     * @return void；断言失败即下架内容仍可被举报，可见性口径重新分叉
+     */
+    @Test
+    void reportInvisiblePostIsGone() {
+        Long postId = 1003L;
+        when(contactPostMapper.selectContactRow(postId))
+                .thenReturn(row(postId, encryptedAad(postId), 1, "phone", "archived"));
+
+        assertThatThrownBy(() -> service.report(VIEWER_ID, postId,
+                new ReportRequest("other", null, null)))
+                .isInstanceOf(BizException.class)
+                .extracting(thrown -> ((BizException) thrown).getErrorCode())
+                .isEqualTo(ErrorCode.POST_GONE);
+
+        verify(reportMapper, never()).insert(any(ReportEntity.class));
+        verify(auditLogWriter, never()).write(any());
+    }
+
+    /**
      * 构造帖子行夹具（列名与 {@code ContactPostMapper.xml} 的 SELECT 列集合逐字一致）。
      *
      * @param postId       帖子 ID

@@ -198,6 +198,12 @@ public class ContactService {
         if (row == null) {
             throw BizException.of(ErrorCode.POST_GONE);
         }
+        if (PostStatus.isGoneForOthers((String) row.get("status"))) {
+            // 与 {@link #viewContact} 同一份可见性口径（PostStatus 是状态语义唯一落点）：
+            // 对他人不可见的帖子既不能看联系方式，也不该被举报。两条链路若各判一半，
+            // 同一份口径就会给出两种行为（[128] 代码评审 #4）。
+            throw BizException.of(ErrorCode.POST_GONE);
+        }
         Long reportedUserId = toLong(row.get("user_id"));
         if (reportedUserId == null) {
             throw new IllegalStateException("post " + postId + " 缺 user_id，无法确定被举报人");

@@ -47,6 +47,12 @@ enum ContactFailure {
   postGone('该信息已下架或已过期'),
 
   /// 对方未留联系方式（§7.8 边界）。
+  ///
+  /// **Batch1 无产生路径**（登记见说明文档 §2.9 DEC-14）：发布时
+  /// `contact_type` / `contact_value` 必填、`post` 三个联系方式列 NOT NULL，
+  /// 不存在没留联系方式的帖子，故 [contactFailureOf] 不会产出本项。
+  /// 保留该值是为了让 §7.8 的口径在代码侧仍有落点；服务端若新增对应错误码，
+  /// 在 [contactFailureOf] 里接上即可（页面侧文案位已就绪）。
   noContact('对方未留联系方式，尝试举报让其补充'),
 
   /// 网络或服务端异常。
