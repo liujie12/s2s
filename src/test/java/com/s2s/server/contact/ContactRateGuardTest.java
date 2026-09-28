@@ -34,8 +34,15 @@ class ContactRateGuardTest {
     /** 测试用用户 ID。 */
     private static final Long USER_ID = 42L;
 
-    /** 测试用自然日（固定值，避免跨零点导致断言漂移）。 */
-    private static final LocalDate TODAY = LocalDate.of(2026, 9, 28);
+    /**
+     * 当前自然日：<b>不硬编码日期</b>（[129] 实测踩坑）。
+     *
+     * <p>本类断言了「到次日零点的剩余秒数」（由墙上时钟算出），硬编码日期会在该日零点后
+     * 变成过去日 → 剩余秒数转负、用例必红（2026-09-28 硬编码日期于 09-29 零点失效）。
+     * 取 {@link RateLimitKeys#today()} 而非 {@code LocalDate.now(...)}：时区口径的唯一来源
+     * 是 {@code RateLimitThresholds#ZONE}，测试不另写一份时区。</p>
+     */
+    private static final LocalDate TODAY = RateLimitKeys.today();
 
     private RateLimiter rateLimiter;
     private StringRedisTemplate redisTemplate;
@@ -59,8 +66,12 @@ class ContactRateGuardTest {
     }
 
     /**
-     * 冻结标记存在 → {@code 42903}，且 {@code Retry-After} 为「到次日零点」的正秒数
+     * 冻结标记存在 → {@code 42903}，且 {@code Retry-After} 为「到次日零点」的剩余秒数
      * （自然日语义，跨零点自动解除）。
+     *
+     * <p>断言用「与 {@link RateLimitKeys#secondsUntilEndOfDay(LocalDate)} 相等 + 非负」而非
+     * 「正数」：该值由墙上时钟算出，跨零点前最后一秒内整除后可为 0，写死 {@code isPositive}
+     * 会留下一个每日必现的窄窗抖动。</p>
      *
      * @return void；断言失败即冻结判定或剩余秒数口径错误
      */
@@ -73,7 +84,10 @@ class ContactRateGuardTest {
                 .satisfies(thrown -> {
                     BizException biz = (BizException) thrown;
                     assertThat(biz.getErrorCode()).isEqualTo(ErrorCode.CIRCUIT_BROKEN);
-                    assertThat(biz.getRetryAfterSeconds()).isNotNull().isPositive();
+                    assertThat(biz.getRetryAfterSeconds())
+                            .isNotNull()
+                            .isNotNegative()
+                            .isEqualTo(RateLimitKeys.secondsUntilEndOfDay(TODAY));
                 });
     }
 
