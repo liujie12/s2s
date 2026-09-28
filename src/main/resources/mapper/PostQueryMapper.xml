@@ -63,6 +63,8 @@
                p.type,
                p.leaf_category_id,
                p.title,
+               p.price,
+               p.price_unit,
                p.completeness_level,
                p.status,
                p.status_reason,

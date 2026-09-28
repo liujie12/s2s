@@ -16,6 +16,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/time_format.dart';
 import '../../design_tokens.dart';
 import '../../domain/listing.dart';
 import '../../domain/listing_category.dart';
@@ -266,7 +267,7 @@ class _ListingCard extends StatelessWidget {
                   ],
                   const SizedBox(height: AppSpacing.xs),
                   Text(
-                    '${_formatDistance(meters)} · ${_formatAge(listing.createdAt)}',
+                    '${_formatDistance(meters)} · ${formatRelativeAge(listing.createdAt)}',
                     style: TextStyle(
                       fontSize: AppTypeScale.caption.size,
                       color: Color(AppColors.textSecondary),
@@ -390,16 +391,5 @@ String _formatDistance(double meters) {
   return '${(meters / 1000).toStringAsFixed(1)}km';
 }
 
-/// 发布时间的相对文案。
-///
-/// 用相对时间而非绝对时间戳：列表页要回答的是「这条还新不新」，
-/// 「2 小时前」直接给出答案，「08-28 10:15」还要用户自己算。
-/// 超过 7 天回落到日期 —— 「23 天前」这种表述反而不如日期直观。
-String _formatAge(DateTime createdAt) {
-  final d = DateTime.now().difference(createdAt);
-  if (d.inMinutes < 1) return '刚刚';
-  if (d.inMinutes < 60) return '${d.inMinutes} 分钟前';
-  if (d.inHours < 24) return '${d.inHours} 小时前';
-  if (d.inDays <= 7) return '${d.inDays} 天前';
-  return '${createdAt.month}-${createdAt.day.toString().padLeft(2, '0')}';
-}
+/// 发布时间的相对文案（实现见 `core/time_format.dart` 唯一实现处，
+/// 「我的发布」卡片副标题为第二消费方，按编码规范 §1.1 上浮）。

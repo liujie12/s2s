@@ -9,6 +9,8 @@
 /// 都要查一次映射表，而映射表是最容易过期的文档。
 library;
 
+import 'package:zhaoyazhao/core/network/api_exception.dart';
+
 import 'category_tree.dart';
 import 'listing.dart';
 import 'listing_category.dart';
@@ -28,6 +30,26 @@ enum CompletenessLevel {
 
   /// 档位文案（PRD §9.8 视觉标记列）。
   final String label;
+
+  /// 契约 `completeness_level`(0/1/2) → 本地档位（详细设计 §10.4 语义迁移）。
+  ///
+  /// **为什么收在本枚举上**：详情页（[127]）与「我的发布」卡片（[127] 前端段）
+  /// 两处都要做这次迁移，按编码规范 §1.1「第二处即上浮」从
+  /// `features/detail/post_detail_provider.dart` 迁至此（域模型认得自己的契约值）。
+  ///
+  /// 显式 switch 而非 `CompletenessLevel.values[code]`：契约 `0=红/1=黄/2=绿`，
+  /// 与本地枚举声明序（green/yellow/red）不同名不同序，下标写法会让「看着能跑」
+  /// 的错误实现掩盖语义错位。
+  ///
+  /// 参数：[code] 契约 `post.completeness_level`（0/1/2）。
+  /// 返回：[CompletenessLevel] 本地档位。
+  /// 抛出：[ApiException.parse] 契约外取值时（服务端违约，不猜默认档）。
+  static CompletenessLevel fromApi(int code) => switch (code) {
+    0 => CompletenessLevel.red,
+    1 => CompletenessLevel.yellow,
+    2 => CompletenessLevel.green,
+    _ => throw ApiException.parse('未知 completeness_level: $code'),
+  };
 }
 
 /// 联系方式渠道（PRD §13.2 `post.contact_channel`，§7.4.2 二选一单轨）。

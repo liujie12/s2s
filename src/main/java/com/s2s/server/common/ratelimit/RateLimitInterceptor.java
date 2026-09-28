@@ -1,6 +1,7 @@
 package com.s2s.server.common.ratelimit;
 
 import com.s2s.server.common.web.AuthContext;
+import com.s2s.server.common.web.ClientIp;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.time.LocalDate;
@@ -23,6 +24,10 @@ import org.springframework.web.servlet.HandlerInterceptor;
  * 42907（游客详情限频）的判定依赖鉴权上下文（AuthContext 为空才计数），
  * 必须先鉴权再限流；限流又必须先于幂等（详设 §3.1「限流必先于幂等」——
  * 幂等 SETNX 是更重的操作，先挡掉超限请求节省 Redis 资源）。
+ *
+ * <p><b>「轨 → 计数条目」的换算不在本类</b>：已上浮至 {@link RateLimitEntries}
+ * （[128] 起因：contact 域的复合次序需直调 {@link RateLimiter}，第 2 处消费即抽提，
+ * 编码规范 §1.1）。本类只负责「读注解 → 取维度 → 汇总条目 → 交给计数器」。</p>
  *
  * <p><b>42907 判定点（详设 §3.4 纪律 5 + 特殊性 2）</b>：
  * {@code GUEST_DETAIL_DEV / GUEST_DETAIL_IP} 两轨只在 AuthContext 为空时计数——
@@ -94,11 +99,14 @@ public class RateLimitInterceptor implements HandlerInterceptor {
         LocalDate today = RateLimitKeys.today();
         Long userId = AuthContext.currentUserId(request);
         String deviceId = request.getHeader(DEVICE_ID_HEADER);
-        boolean validDeviceId = RateLimitKeys.isValidDeviceId(deviceId);
-        String ip = getClientIp(request);
+        String ip = ClientIp.of(request);
+        // 维度打包（设备头合法性在 RateLimitEntries.RateLimitDimensions#of 里派生，
+        // 避免「传了 deviceId 却漏算 valid 标记」的偏差）。
+        RateLimitEntries.RateLimitDimensions dimensions =
+                RateLimitEntries.RateLimitDimensions.of(userId, deviceId, ip, today);
 
         for (RateLimitTrack track : annotation.value()) {
-            buildEntriesForTrack(track, userId, deviceId, validDeviceId, ip, today, entries);
+            entries.addAll(RateLimitEntries.forTrack(track, dimensions));
         }
 
         if (entries.isEmpty()) {
@@ -108,104 +116,5 @@ public class RateLimitInterceptor implements HandlerInterceptor {
 
         rateLimiter.incrementAndCheck(entries);
         return true;
-    }
-
-    /**
-     * 为指定轨拼装键并加入 entries 列表。
-     * 本方法是单轨到键的映射中心，集中处理：
-     * <ul>
-     *   <li>渠道级三轨（SMS_PHONE/SMS_IP/LOGIN_FAIL）抛异常拒绝——维度是手机号，
-     *       拦截器拿不到，须业务代码直调 RateLimiter（[122] review #4）；</li>
-     *   <li>游客轨的鉴权判定（已登录 → 跳过）；</li>
-     *   <li>设备轨的格式校验（不合法 → 跳过）；</li>
-     *   <li>多窗口轨（SMS_PHONE 有 1m/1h/1d 三个窗口）逐一加 entries。</li>
-     * </ul>
-     *
-     * @param track        限频轨标识
-     * @param userId       当前用户 ID（可能为 null = 游客）
-     * @param deviceId     设备 ID 头值（可能为 null）
-     * @param validDeviceId 设备 ID 是否合法（KTD14 校验结果）
-     * @param ip           客户端 IP
-     * @param today        当前自然日
-     * @param entries      待填充的条目列表（输出参数）
-     */
-    private void buildEntriesForTrack(RateLimitTrack track, Long userId, String deviceId,
-            boolean validDeviceId, String ip, LocalDate today,
-            List<RateLimiter.RateLimitEntry> entries) {
-        RateLimitTrack.WindowRule[] rules = track.rules();
-        switch (track) {
-            case SMS_PHONE, SMS_IP, LOGIN_FAIL -> throw new IllegalStateException(
-                    "渠道级轨 " + track + " 不能经 @RateLimit 声明（维度是手机号，拦截器读不到），"
-                            + "须业务代码直调 RateLimiter（详设 §3.4 纪律 2）");
-            case CONTACT_UID -> {
-                if (userId != null) {
-                    for (RateLimitTrack.WindowRule rule : rules) {
-                        entries.add(RateLimiter.entry(RateLimitKeys.contactUidDay(userId, today), rule, today));
-                    }
-                }
-            }
-            case CONTACT_DEV -> {
-                if (validDeviceId) {
-                    for (RateLimitTrack.WindowRule rule : rules) {
-                        entries.add(RateLimiter.entry(RateLimitKeys.contactDevDay(deviceId, today), rule, today));
-                    }
-                }
-                // 设备 ID 不合法 → 跳过设备轨（KTD14：防键空间污染，不拒绝请求）
-            }
-            case CONTACT_IP -> {
-                for (RateLimitTrack.WindowRule rule : rules) {
-                    entries.add(RateLimiter.entry(RateLimitKeys.contactIpDay(ip, today), rule, today));
-                }
-            }
-            case CONTACT_BURST -> {
-                if (userId != null) {
-                    for (RateLimitTrack.WindowRule rule : rules) {
-                        entries.add(RateLimiter.entry(RateLimitKeys.contactBurstMinute(userId), rule, today));
-                    }
-                }
-            }
-            case REPORT_UID -> {
-                if (userId != null) {
-                    for (RateLimitTrack.WindowRule rule : rules) {
-                        entries.add(RateLimiter.entry(RateLimitKeys.reportUidDay(userId, today), rule, today));
-                    }
-                }
-            }
-            case TRACK_UID -> {
-                if (userId != null) {
-                    for (RateLimitTrack.WindowRule rule : rules) {
-                        entries.add(RateLimiter.entry(RateLimitKeys.trackUidMinute(userId), rule, today));
-                    }
-                }
-            }
-            case GUEST_DETAIL_DEV -> {
-                // 42907 轨：仅未登录时计数（鉴权后判定，链序保证）
-                if (userId == null && validDeviceId) {
-                    for (RateLimitTrack.WindowRule rule : rules) {
-                        entries.add(RateLimiter.entry(RateLimitKeys.guestDetailDevDay(deviceId, today), rule, today));
-                    }
-                }
-            }
-            case GUEST_DETAIL_IP -> {
-                if (userId == null) {
-                    for (RateLimitTrack.WindowRule rule : rules) {
-                        entries.add(RateLimiter.entry(RateLimitKeys.guestDetailIpDay(ip, today), rule, today));
-                    }
-                }
-            }
-        }
-    }
-
-    /**
-     * 取客户端 IP。{@code forward-headers-strategy: framework}（KTD2）下，
-     * Spring 已把 {@code X-Forwarded-For} 解析进 {@code request.getRemoteAddr()}，
-     * 故直接取 {@code getRemoteAddr()} 即为真实客户端 IP（无代理头时回退直连地址）。
-     *
-     * @param request 当前 HTTP 请求
-     * @return {@link String} 客户端 IP 地址；永不返回 null（空串兜底）
-     */
-    private String getClientIp(HttpServletRequest request) {
-        String ip = request.getRemoteAddr();
-        return ip != null ? ip : "";
     }
 }

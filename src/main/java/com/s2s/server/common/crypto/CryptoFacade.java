@@ -122,11 +122,20 @@ public class CryptoFacade {
     }
 
     /**
-     * 解密：AES-GCM-256 + AAD 校验 + 同步写 {@code audit_log}。
+     * 解密：AES-GCM-256 + AAD 校验。
      *
      * <p>版本号由调用方从 {@code key_version} 列读入后显式传入（详设 §4.1 三列范式）。</p>
      *
      * <p><b>全系统唯一解密入口。</b>新增调用点须评审（详设 §4.3）。</p>
+     *
+     * <p><b>审计留痕不由本类承担（[128] 定案）</b>：详设 §4.3 要求「解密行为同步写
+     * {@code audit_log}」，但 {@code audit_log.operator_id} 是「谁解的密」——那是
+     * 调用方的上下文（当前登录用户），本类拿不到；且 {@code audit_log} 的唯一写入处是
+     * {@code common.audit.AuditLogWriter}（编码规范 §1.2）。故本类保持纯密码学、
+     * 零持久层依赖；<b>调用方必须在同一事务内调 {@code AuditLogWriter#write}</b>
+     * ——Batch1 该唯一调用点是 {@code contact.ContactService#viewContact}。
+     * 早期版本在此处放了一个只打日志的占位实现，[128] 落地时已删除：
+     * 留一个「看起来在写审计其实没写库」的方法，会让合规缺口无法被发现。</p>
      *
      * @param ciphertext 密文（布局 {@code iv || ciphertext}，来自 {@code xxx_enc} 列）
      * @param aad        附加认证数据（必须与加密时逐字一致，否则 GCM 标签校验失败）
@@ -158,8 +167,6 @@ public class CryptoFacade {
             cipher.updateAAD(KeyEncodings.aadBytes(aad));
             byte[] plaintext = cipher.doFinal(encrypted);
 
-            writeAuditLog(keyVersion, aad);
-
             return new String(plaintext, java.nio.charset.StandardCharsets.UTF_8);
         } catch (javax.crypto.AEADBadTagException exception) {
             log.warn("AES-GCM 解密失败：密文被篡改或 AAD 不匹配（keyVersion={}）", keyVersion, exception);
@@ -187,23 +194,5 @@ public class CryptoFacade {
             }
         }
         return null;
-    }
-
-    /**
-     * 写审计日志（详设 §4.3：解密行为必须同步写 {@code audit_log}）。
-     *
-     * <p><b>当前为占位实现</b>：{@code audit_log} 表已在 {@code V1__init_schema.sql} 建好，
-     * 但其 Mapper 属持久层基础设施（随 [123] U2 落地）。待 Mapper 就绪后，
-     * 本方法须改为<b>与解密同事务</b>写库（当前只打日志，不足以应对合规审计）。</p>
-     *
-     * <p>为何不在本单元直接落库：加解密包不应耦合持久层（{@code common.crypto} 无 Mapper 依赖），
-     * 且 Batch1 唯一解密调用点（contact 域）尚未实现，此处不会被执行到。</p>
-     *
-     * @param keyVersion 所用密钥版本号
-     * @param aad        附加认证数据（如 {@code post_id}）
-     */
-    private void writeAuditLog(int keyVersion, String aad) {
-        log.info("CRYPTO_DECRYPT: key_version={}, aad={}", keyVersion, aad);
-        // TODO([123] U2 持久层就绪后)：改为 audit_log 表写入，与解密同事务
     }
 }

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.s2s.server.contact.mapper.ContactPostMapper">
+
+    <!--
+      联系方式密文材料（详设 §5.5.1 第 [5][6] 步；安全 §3「唯一出口」）。
+
+      EXPLAIN 结论：主键等值查询，执行计划唯一可预期 —— type=const、key=PRIMARY、
+      rows=1。本查询含 `contact_value_enc`（VARBINARY 密文）列，必然回表取数，
+      覆盖索引在此不适用；但这是单行主键读取，回表 1 行，不构成性能问题。
+      （主键等值查询无需额外索引设计，故不附 explain 脚本；与 PostQueryMapper 的
+      `selectDetailRow` 同形态。）
+
+      列集合纪律：只出六列，禁 SELECT * —— `address`/`desc` 等列与本次解密无关，
+      顺手带出即扩大敏感数据在进程内的暴露面。
+    -->
+    <select id="selectContactRow" resultType="map">
+        SELECT p.id,
+               p.user_id,
+               p.contact_channel,
+               p.contact_value_enc,
+               p.key_version,
+               p.status
+        FROM post p
+        WHERE p.id = #{postId}
+    </select>
+
+</mapper>

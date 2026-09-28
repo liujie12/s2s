@@ -6,7 +6,7 @@
 #   制造「绿勾但内容为空」的假象——比没有门禁更糟（失效的门禁默认落点是「通过」）。
 #   故部署门禁留在发版机本地，由 deploy.sh 在步骤 4 强制消费其退出码（条目 [111]）。
 #
-# 本流水线三道判据全部只依赖代码与 git 索引，在 runner 上可真实判定：
+# 本流水线四道判据全部只依赖代码与 git 索引，在 runner 上可真实判定：
 #   1. flutter analyze —— 0 error（DevSecOps §7.2）
 #   2. flutter test —— 全量测试全绿，其中包含三组「守门测试」：
 #        test/gates/openapi_contract_gate_test.dart  契约静态守门（14 项）
@@ -18,6 +18,14 @@
 #          判据对象缺失按 FAIL 处理）
 #   3. 版本锁定 —— Flutter 3.41.9（Dart 3.11.5），与 pubspec 的 sdk 约束一致，
 #      禁用 3.44.x+（本机实测锁定版本，版本漂移导致的测试差异不可接受）。
+#   4. 后端 mvn test —— Java 侧单测与静态守门（含 CryptoFacadeCallSiteTest
+#      解密调用点唯一性、MapperScanCoverageTest 装配覆盖、ContactServiceTest
+#      可见性/审计同事务断言）。这些用例全部是 hermetic 单测（standalone
+#      MockMvc + mock/fake，无 @SpringBootTest、无 MySQL/Redis 依赖），
+#      故在 runner 上可真实判定。**2026-09-28 新增（[128] 代码评审 #5）**：
+#      在此之前后端门禁没有 CI 消费方，只在本地手工执行 ——
+#      「判定为真但无消费方」等于没有（docs/solutions/workflow-issues/
+#      gate-exit-code-needs-a-consumer.md 同型）。
 #
 # 四态诚实性：守门测试中无法判定的情形一律 markTestSkipped（如非 git 环境下
 #   的 G-Q2/G-Q3），在 Actions 日志中显式显示为 skipped，而非静默通过。
@@ -74,3 +82,28 @@ jobs:
 
       - name: 全量测试（既有套件 + test/gates 守门 + test/contract 契约样例）
         run: flutter test
+
+  # 判据 4：后端 Java 侧单测与静态守门。
+  # 为什么与前端分开成 job：两套工具链（Maven vs Flutter）无共享缓存，
+  # 合成一个 job 只会让失败定位变难；分开后任一红即整条流水线红。
+  server-test:
+    name: 后端判据（mvn test：单测 + 解密/装配静态守门）
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 JDK 21（对齐 pom.xml 的 maven-compiler-plugin release 21）
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      # 全部用例为 hermetic 单测：不加载 Spring 上下文、不连 MySQL/Redis，
+      # 故无需 docker service。判据对象缺失（如 src/main/java 被移走）
+      # 由测试自身按 FAIL 处理，不静默通过。
+      - name: 后端单测（mvn -B test）
+        run: mvn -B test

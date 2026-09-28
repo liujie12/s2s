@@ -12,7 +12,6 @@ library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/network/api_exception.dart';
 import '../../domain/category_tree.dart';
 import '../../domain/listing.dart';
 import '../../domain/listing_category.dart';
@@ -49,7 +48,7 @@ final postDetailProvider = FutureProvider.family<ListingDetail, int>((
 /// 迁移点（每处都是一次显式转换，禁 values.byName / 算术推导）：
 ///   1. `type`(resource/demand) → [SupplyDemand]（`supplyDemandFromApi`）；
 ///   2. `leaf_category_id` → 五大类 [ListingCategory]（`topCategoryOf` 查表）；
-///   3. `completeness_level`(0/1/2) → [CompletenessLevel]（[completenessFromApi]）；
+///   3. `completeness_level`(0/1/2) → [CompletenessLevel]（[CompletenessLevel.fromApi]）；
 ///   4. `realname_status`(四态) → [Publisher.realNameVerified]（仅 passed 为 true）；
 ///   5. `attributes`(map) → [TemplateField] 有序键值对；
 ///   6. `price`/`price_unit` → [Listing.price]/[priceUnit]。
@@ -89,7 +88,7 @@ ListingDetail postDetailToListingDetail(PostDetailDto dto) {
           ? null
           : dto.author.qualificationBadges.first,
     ),
-    completeness: completenessFromApi(dto.completenessLevel),
+    completeness: CompletenessLevel.fromApi(dto.completenessLevel),
     expireAt: dto.expireAt,
     contactChannel: ContactChannel.phone,
     leafCategoryId: dto.leafCategoryId,
@@ -97,18 +96,6 @@ ListingDetail postDetailToListingDetail(PostDetailDto dto) {
     address: dto.address,
   );
 }
-
-/// 完整度等级：契约 int(0/1/2) → 本地枚举（§10.4 迁移）。
-///
-/// 显式 switch 而非 `CompletenessLevel.values[code]`：契约 `0=红/1=黄/2=绿`，
-/// 与本地枚举声明序（green/yellow/red）不同名不同序，下标写法会让「看着能跑」
-/// 的错误实现掩盖语义错位。
-CompletenessLevel completenessFromApi(int code) => switch (code) {
-  0 => CompletenessLevel.red,
-  1 => CompletenessLevel.yellow,
-  2 => CompletenessLevel.green,
-  _ => throw ApiException.parse('未知 completeness_level: $code'),
-};
 
 /// 动态属性 map → 有序模板字段（§10.4 迁移）。
 ///

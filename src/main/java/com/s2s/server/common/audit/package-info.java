@@ -9,6 +9,12 @@
  *
  * <p>出处：详设 §4（加解密与审计）、可观测 §4、§1.2（包结构清单）。</p>
  *
- * <p>落地说明：组件随条目 [125] 落地，本条目（U-2）仅建包占位。</p>
+ * <p>子包 {@code common.audit.mapper} 承载 {@code AuditLogMapper}：包路径须以
+ * {@code .mapper} 结尾才能被 {@code @MapperScan("com.s2s.server.**.mapper")} 扫到，
+ * 这是启动期硬约束而非风格偏好（[128] code review 实测确证）。</p>
+ *
+ * <p>落地说明：{@code AuditLogWriter}/{@code AuditEntry}/{@code OperatorRole} 随条目
+ * [128] contact 域落地（[125] 仅建本包占位）；本次落地同时删除了 {@code CryptoFacade}
+ * 里的占位审计实现，改由调用方在同事务内调 {@code AuditLogWriter}。</p>
  */
 package com.s2s.server.common.audit;

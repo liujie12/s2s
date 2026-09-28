@@ -4,9 +4,7 @@ import com.s2s.server.common.constants.RateLimitThresholds;
 import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -128,7 +126,7 @@ public class RateLimiter {
             } catch (Exception exception) {
                 // Redis 连接失败 / 超时 / 脚本执行失败 —— 记 WARN（脱敏键 + 堆栈），放行该轨
                 log.warn("RateLimiter Redis 操作失败，跳过键 {}——写失败放行，详设 §3.4 纪律 3",
-                        maskKey(entry.key()), exception);
+                        RateLimitKeys.maskKey(entry.key()), exception);
             }
         }
 
@@ -158,26 +156,12 @@ public class RateLimiter {
     public static RateLimitEntry entry(String key, RateLimitTrack.WindowRule rule, LocalDate today) {
         long windowSeconds = rule.windowSeconds();
         if (windowSeconds == RateLimitThresholds.WINDOW_DAY_SECONDS) {
-            long secondsUntilEndOfDay = secondsUntilEndOfDay(today);
+            long secondsUntilEndOfDay = RateLimitKeys.secondsUntilEndOfDay(today);
             // 键 TTL = 到零点 + 2h 缓冲；Retry-After = 到零点（不含缓冲）
             return new RateLimitEntry(key, secondsUntilEndOfDay + RateLimitThresholds.NATURAL_DAY_TTL_BUFFER_SECONDS,
                     secondsUntilEndOfDay, rule.limit(), rule.overflowCode());
         }
         return new RateLimitEntry(key, windowSeconds, windowSeconds, rule.limit(), rule.overflowCode());
-    }
-
-    /**
-     * 计算自当前时刻到次日零点（Asia/Shanghai 时区）的剩余秒数——自然日窗口
-     * 的「用户可见剩余秒」（Retry-After 真源），不含键 TTL 的 +2h 缓冲。
-     *
-     * @param today 当前自然日（Asia/Shanghai）
-     * @return long 到次日零点的剩余秒数，恒 ≥0
-     */
-    private static long secondsUntilEndOfDay(LocalDate today) {
-        return Duration.between(
-                LocalDateTime.now(RateLimitThresholds.ZONE),
-                today.plusDays(1).atStartOfDay(RateLimitThresholds.ZONE)
-        ).getSeconds();
     }
 
     /**
@@ -203,19 +187,6 @@ public class RateLimiter {
         }
         String text = value.toString().trim();
         return text.isEmpty() ? 0 : Long.parseLong(text);
-    }
-
-    /**
-     * 对限频键做日志脱敏（[122] review #3 修复）：掩码键中出现的 11 位连续数字段
-     * （手机号）中间 4 位，如 {@code rl:sms:phone:13800138000:1m} → {@code rl:sms:phone:138****8000:1m}。
-     * 防止 SMS 轨写失败日志把完整手机号落盘（编码规范 §4.11「日志不得出现完整手机号」）。
-     * userId 通常非 11 位连续数字，不会被误掩；即便命中（极小概率）也只损失可读性，无信息泄露。
-     *
-     * @param key 原始 Redis 键
-     * @return 脱敏后的键（11 位数字段中间 4 位替换为 {@code ****}）
-     */
-    private static String maskKey(String key) {
-        return key.replaceAll("(\\d{3})\\d{4}(\\d{4})", "$1****$2");
     }
 
     /**

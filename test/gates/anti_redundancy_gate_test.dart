@@ -774,12 +774,21 @@ void main() {
     /// 扫描面文件数基线（评审 #10：空目录/扫不到文件时 violations 恒空，
     /// 只断 isEmpty 的守门是假阴性）。新增 Dart 文件只增不减，缩小即说明
     /// 扫描根或枚举方式坏了，必须显式更新基线并说明原因。
+    /// 42 = 39 + [127] 前端段「我的发布」三件（post_status / my_posts_provider /
+    /// my_publish_screen）；39 = 38 + post_detail_provider 之外的一处漂移
+    /// （[127] 前端段合并后实测 39，原基线 38 未同步 —— 该判据为 `>=`，
+    /// 未同步不报红，2026-09-27 一并校正，详见 parseFactoryTotalBaseline 注释）；
     /// 38 = 37 + post_dto + post_repository（[124] B4 precheck 接线）；
     /// 36 = 35 + publish_template_provider.dart（B3 发布模板装配）；
-    /// 35 = 34 + category_tree_provider.dart（B2 分类树状态层）。
-    const int featuresDartFileBaseline = 38;
+    /// 35 = 34 + category_tree_provider.dart（B2 分类树状态层）；
+    /// 43 = 42 + report_reason.dart（[128] 联系域：举报原因的「中文 ↔ 契约值」
+    /// 唯一落点，与 `post_status.dart` 同型）。
+    const int featuresDartFileBaseline = 43;
 
     /// lib/ 全部 Dart 文件数基线（同上，评审 #10）。
+    /// 71 = 67 + [127] 前端段四件（core/time_format + 我的发布三件）；
+    /// 67 = 66 + [127] 详情页接线新增（实测值，原基线 66 未同步 —— 同
+    /// parseFactoryTotalBaseline 注释的漂移说明）；
     /// 66 = 62 + [126] 三处缓存件（grid_id / pin_cache / pin_cache_key）
     /// + token_storage.dart（[123] U10 Token 安全存储）；
     /// 62 = 61 + post 域两文件（post_dto + post_repository，[124] B4）；
@@ -788,16 +797,22 @@ void main() {
     /// 59 = 58 + category_tree_provider.dart（B2 分类树状态层；
     /// 58 = 57 + category_tree_provider；57 = 55 + category_dto +
     /// category_repository，B1 新增）。
-    const int libDartFileBaseline = 66;
+    /// 72 = 71 + report_reason.dart（[128] 联系域，同上）。
+    const int libDartFileBaseline = 72;
 
-    /// `ApiException.parse(` 命中总数基线（判据 C1）：工厂定义 1 + 调用 32。
-    /// 32 = 24 + 8（[123] U10：AuthSession.fromJson 2 + AuthRepository
-    /// _parseLoginResult 4 + _parseUserId 2）。原 24 = 23 + 1（[124] B4：
-    /// contract_json.dart 新增 optInt 1；category_dto 的 11 处中 9 处随解析
-    /// 助手迁至 core/contract_json.dart、2 处留守（level 校验 + _optChildren），
-    /// 搬家不减调用点）。新增/删除解析失败抛出点时，与 api_exception.dart
-    /// 文件头清单同改。
-    const int parseFactoryTotalBaseline = 33;
+    /// `ApiException.parse(` 命中总数基线（判据 C1）：工厂定义 1 + 调用 42。
+    ///
+    /// **维护纪律**：改本值必须同改 `api_exception.dart` 文件头的调用点清单
+    /// （人工真源与机器判据配对，任一单独变化都会让该判据失真）。
+    ///
+    /// 明细（2026-09-28 实测）：core/network 9 + contract_json 11 +
+    /// listing_category 2 + listing_detail 1 + discovery_filter 1 +
+    /// category_dto 2 + post_dto 7 + auth_repository 8 +
+    /// contact_repository 1（[128]：`FullContact.fromJson` 对契约外
+    /// `contact_type` 抛 parseError，不猜成手机号）= 42。
+    /// 43 = 42 + 工厂定义 1；33 的历史构成见说明文档 §三（[127] 前端段合并后
+    /// 该判据曾静默变红 +7，本轮一并校正；过程不再抄在本注释里）。
+    const int parseFactoryTotalBaseline = 43;
 
     test('lib/features/ 无 for/while 循环重试（详设 §14.2，判据 A1）', () {
       // 先断言扫描面非空且不小于基线（部署 §14.5：先断言待判对象存在），

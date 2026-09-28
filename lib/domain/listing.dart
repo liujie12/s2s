@@ -72,14 +72,25 @@ class Listing {
   /// 价格展示文案，由 [price] 与 [priceUnit] 拼出，如「50 元/小时」。
   ///
   /// PRD §5.8 允许价格为空（「面议」），此时返回 null 由调用方决定是否留白。
-  String? get priceLabel {
-    if (price == null) return null;
-    // 去掉整数价格的小数尾巴：「50 元」而不是「50.0 元」。
-    final String amount = price! % 1 == 0
-        ? price!.toInt().toString()
-        : price!.toStringAsFixed(2);
-    return priceUnit == null ? '$amount 元' : '$amount 元/$priceUnit';
-  }
+  String? get priceLabel => formatPriceLabel(price, priceUnit);
+}
+
+/// 价格展示文案（唯一实现处）。
+///
+/// **为什么是顶层函数**：详情页走 [Listing.priceLabel]，「我的发布」卡片
+/// （[127] 前端段）只持有契约 DTO 没有 [Listing] 实例，按编码规范 §1.1
+/// 「第二处即上浮」把拼装逻辑提出，两处共用同一份口径（整数去小数尾巴）。
+///
+/// 参数：[price] 价格数值（元），null = 无价格；[priceUnit] 价格单位。
+/// 返回：[String?] 形如「50 元/小时」；[price] 为 null 时返回 null
+///   ——「面议」是产品文案而非数据格式，由调用方决定，不由本函数携带。
+String? formatPriceLabel(double? price, String? priceUnit) {
+  if (price == null) return null;
+  // 去掉整数价格的小数尾巴：「50 元」而不是「50.0 元」。
+  final String amount = price % 1 == 0
+      ? price.toInt().toString()
+      : price.toStringAsFixed(2);
+  return priceUnit == null ? '$amount 元' : '$amount 元/$priceUnit';
 }
 
 /// 地球平均半径（米）。

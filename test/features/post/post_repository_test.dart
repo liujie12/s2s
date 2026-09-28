@@ -252,4 +252,114 @@ void main() {
       );
     });
   });
+
+  group('fetchMine 我的发布（[127] 前端段）', () {
+    test('成功：分页与状态筛选透传，列表项字段逐项解析', () async {
+      stubGetMyPosts(harness);
+
+      final result = await repo.fetchMine(
+        page: 2,
+        pageSize: 10,
+        status: 'offline',
+      );
+
+      final path = harness.server.lastRequest!.path;
+      expect(path, contains('page=2'));
+      expect(path, contains('page_size=10'));
+      expect(path, contains('status=offline'));
+      expect(result.total, 2);
+      expect(result.page, 1);
+      expect(result.pageSize, 20);
+      expect(result.items, hasLength(2));
+      final first = result.items.first;
+      expect(first.id, 1001);
+      expect(first.type, 'resource');
+      expect(first.title, '九成新实木餐桌转让');
+      // 卡片价格列（PRD §8.3.1）——契约补列后必须真的解析出来
+      expect(first.price, 299.0);
+      expect(first.priceUnit, '元');
+      expect(first.coverMedia?.url, 'https://oss.example.com/m-1.jpg');
+      expect(first.coverMedia?.auditStatus, 'pass');
+      expect(first.completenessLevel, 2);
+      expect(first.status, 'active');
+      expect(first.publishAt, DateTime.utc(2026, 9, 1, 4));
+      expect(first.contactCount, 3);
+      expect(first.version, 1);
+      // 边界形态：面议（双 null）+ 无封面 + 已下架 + 完整度 0
+      expect(result.items[1].price, isNull);
+      expect(result.items[1].coverMedia, isNull);
+      expect(result.items[1].status, 'offline');
+    });
+
+    test('status 缺省不带筛选项（「全部」Tab）', () async {
+      stubGetMyPosts(harness);
+
+      await repo.fetchMine();
+
+      expect(harness.server.lastRequest!.path, isNot(contains('status=')));
+    });
+
+    test('列表项缺 version：抛 parseError（乐观锁入参是契约红线）', () async {
+      final payload = myPostsPayload();
+      final items = payload['items']! as List<Object?>;
+      items[0] = Map<String, Object?>.from(items[0]! as Map)..remove('version');
+      stubGetMyPosts(harness, payload: payload);
+
+      await expectLater(
+        repo.fetchMine(),
+        throwsA(
+          isA<ApiException>()
+              .having((e) => e.code, 'code', ApiErrorCode.parseError),
+        ),
+      );
+    });
+  });
+
+  group('changeStatus 状态变更（[127] 前端段）', () {
+    test('成功：PATCH + body 带 action/version + 幂等键注入', () async {
+      stubChangePostStatus(harness, 1001);
+
+      final result = await repo.changeStatus(
+        1001,
+        action: 'offline',
+        version: 1,
+      );
+
+      final req = harness.server.lastRequest!;
+      expect(req.method, 'PATCH');
+      final body = req.body as Map<String, Object?>;
+      expect(body['action'], 'offline');
+      expect(body['version'], 1);
+      expect(req.header('Idempotency-Key'), isNotNull,
+          reason: 'PATCH 是写接口，幂等键必须随请求发出');
+      expect(result.id, 1001);
+      expect(result.status, 'offline');
+      expect(result.version, 2);
+      expect(result.expireAt, DateTime.utc(2026, 9, 15, 4));
+    });
+
+    test('40903 版本冲突：ApiException(versionConflict) 且不自动重试', () async {
+      harness.stub('PATCH', '/api/v1/posts/1001/status', (req) async {
+        return MockResponse(
+          status: 409,
+          body: ApiEnvelope.failure(40903, '内容已更新，请刷新后重试'),
+        );
+      });
+
+      await expectLater(
+        repo.changeStatus(1001, action: 'offline', version: 1),
+        throwsA(
+          isA<DioException>().having(
+            (e) => e.error,
+            'error 包业务异常',
+            isA<ApiException>()
+                .having((e) => e.code, 'code', ApiErrorCode.versionConflict),
+          ),
+        ),
+      );
+      // 40903 是 forceRefetch（§12.2），不在 RetryInterceptor 可重试集合
+      expect(harness.server.received, hasLength(1),
+          reason: '版本冲突必须由用户重取后再决定，客户端不得自动重放');
+    });
+  });
 }

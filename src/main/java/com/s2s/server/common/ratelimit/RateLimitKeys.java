@@ -34,6 +34,13 @@ public final class RateLimitKeys {
     /** 限频计数键统一前缀。 */
     private static final String KEY_PREFIX = "rl:";
 
+    /**
+     * 熔断冻结标记键统一前缀。与计数键前缀（{@code rl:}）刻意区分：
+     * 冻结标记是「判定结果」而非「计数器」，运维按前缀即可把两类键分开
+     * 排查（如误封申诉时只删 {@code fz:*} 而不动计数）。
+     */
+    private static final String FREEZE_PREFIX = "fz:";
+
     /** 自然日窗口日期格式（yyyyMMdd）。 */
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd");
 
@@ -168,6 +175,26 @@ public final class RateLimitKeys {
         return KEY_PREFIX + "contact:burst:" + userId + ":1m";
     }
 
+    /**
+     * 行 7 · 联系熔断的<b>当日冻结标记</b>键（详设 §3.4 行 7「1min ≥10 次 → 当日冻结」、
+     * 详设 §5.5.1 第 [2] 步「熔断冻结检查（{@code fz:contact:{userId}:{date}} 存在）→ 42903」）。
+     *
+     * <p>与 {@link #contactBurstMinute(Long)} 的分工：后者是 1 分钟滚动窗的<b>计数器</b>
+     * （计数到阈值即刻触发 42903，但窗口滚过后计数自然归零）；本键是<b>判定结果</b>——
+     * 一旦写入，当日余下时间一律 42903，不因 1 分钟窗滑出而复通。缺了本键，
+     * 「当日冻结」会退化成「每分钟最多打 10 次」，与详设口径不符。</p>
+     *
+     * <p>键形 {@code fz:contact:{userId}:{yyyyMMdd}}，无 {@code :1d} 段——冻结标记的
+     * 有效期由写入方按「到次日零点」设定，不在键名里重复表达窗口（详设原文键形即如此）。</p>
+     *
+     * @param userId 用户 ID（账号级维度，Long 类型分维）
+     * @param date   冻结所属自然日（Asia/Shanghai，跨零点自动失效）
+     * @return {@link String} 键形 {@code fz:contact:{userId}:{yyyyMMdd}}
+     */
+    public static String contactFreezeDay(Long userId, LocalDate date) {
+        return FREEZE_PREFIX + "contact:" + userId + ":" + date.format(DATE_FORMAT);
+    }
+
     // ------------------------------------------------------------------
     // 行 8：举报频次（账号维度）
     // ------------------------------------------------------------------
@@ -258,5 +285,49 @@ public final class RateLimitKeys {
      */
     public static LocalDate today() {
         return LocalDate.now(RateLimitThresholds.ZONE);
+    }
+
+    /**
+     * 计算自当前时刻到次日零点（Asia/Shanghai）的剩余秒数——<b>自然日窗口「用户可见
+     * 剩余秒」的唯一计算处</b>（{@code Retry-After} 真源，不含键 TTL 的 +2h 缓冲）。
+     *
+     * <p>[122] 的 {@link RateLimiter} 曾内置本计算（私有），[128] contact 熔断冻结标记
+     * 需要同一算法（冻结键也是自然日语义、也要给出 {@code Retry-After}），
+     * 第 2 处消费即按编码规范 §1.1 上浮到本类——键的过期语义与键的拼装同属「键知识」，
+     * 落在本类比留在计数器里更合适。</p>
+     *
+     * <p>与键 TTL 的差额：键 TTL = 本值 + {@link RateLimitThresholds#NATURAL_DAY_TTL_BUFFER_SECONDS}
+     * （26h 防跨日残留），而 {@code Retry-After} 必须用本值——二者混用会让用户被提示多等 2h。</p>
+     *
+     * @param date 当前自然日（Asia/Shanghai）
+     * @return long 到次日零点的剩余秒数，恒 ≥0
+     */
+    public static long secondsUntilEndOfDay(LocalDate date) {
+        return java.time.Duration.between(
+                java.time.LocalDateTime.now(RateLimitThresholds.ZONE),
+                date.plusDays(1).atStartOfDay(RateLimitThresholds.ZONE)
+        ).getSeconds();
+    }
+
+    /**
+     * 对 Redis 键做日志脱敏——「键脱敏」的<b>唯一实现处</b>（编码规范 §1.1 第二处即上浮）。
+     *
+     * <p>掩码键中出现的 11 位连续数字段（手机号）中间 4 位，如
+     * {@code rl:sms:phone:13800138000:1m} → {@code rl:sms:phone:138****8000:1m}，
+     * 防止写失败日志把完整手机号落盘（编码规范 §4.11「日志不得出现完整手机号」）。
+     * userId 通常非 11 位连续数字，不会被误掩；即便命中（极小概率）也只损失可读性，
+     * 无信息泄露。</p>
+     *
+     * <p><b>为什么落在本类</b>：脱敏规则与「键长什么样」是同一份知识（正则命中的正是
+     * 键里的手机号维度段），与本类既有的键拼装、{@link #isValidDeviceId(String)} 同类。
+     * [122] 时由 {@code RateLimiter} 私有持有、[128] 又由 {@code ContactRateGuard}
+     * 私有一份副本——两处逐字相同的正则，收紧脱敏规则时只改一处另一处会静默失效，
+     * 而脱敏是安全红线相关逻辑（[128] 代码评审 #3）。</p>
+     *
+     * @param key 原始 Redis 键
+     * @return {@link String} 脱敏后的键（11 位数字段中间 4 位替换为 {@code ****}）
+     */
+    public static String maskKey(String key) {
+        return key.replaceAll("(\\d{3})\\d{4}(\\d{4})", "$1****$2");
     }
 }
