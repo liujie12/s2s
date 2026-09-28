@@ -106,6 +106,21 @@ class RateLimitKeysTest {
                 .isEqualTo("rl:contact:burst:77:1m");
     }
 
+    /**
+     * 行 7 · 联系熔断的当日冻结标记键形（[128] 新增；详设 §3.4 行 7 与 §5.5.1 第 [2] 步）。
+     *
+     * <p>断言两点：前缀是 {@code fz:}（与计数键 {@code rl:} 分离，便于误封申诉时
+     * 只删冻结标记而不动计数）、键尾只有日期片无 {@code :1d} 段（详设原文键形即
+     * {@code fz:contact:{userId}:{date}}）。</p>
+     *
+     * @return void；断言失败即冻结键与详设键形漂移，运维按前缀排查会失效
+     */
+    @Test
+    void contactFreezeDayKeyShape() {
+        assertThat(RateLimitKeys.contactFreezeDay(77L, LocalDate.of(2026, 9, 28)))
+                .isEqualTo("fz:contact:77:20260928");
+    }
+
     // ------------------------------------------------------------------
     // 行 8：举报·账号
     // ------------------------------------------------------------------

@@ -4,9 +4,7 @@ import com.s2s.server.common.constants.RateLimitThresholds;
 import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -158,26 +156,12 @@ public class RateLimiter {
     public static RateLimitEntry entry(String key, RateLimitTrack.WindowRule rule, LocalDate today) {
         long windowSeconds = rule.windowSeconds();
         if (windowSeconds == RateLimitThresholds.WINDOW_DAY_SECONDS) {
-            long secondsUntilEndOfDay = secondsUntilEndOfDay(today);
+            long secondsUntilEndOfDay = RateLimitKeys.secondsUntilEndOfDay(today);
             // 键 TTL = 到零点 + 2h 缓冲；Retry-After = 到零点（不含缓冲）
             return new RateLimitEntry(key, secondsUntilEndOfDay + RateLimitThresholds.NATURAL_DAY_TTL_BUFFER_SECONDS,
                     secondsUntilEndOfDay, rule.limit(), rule.overflowCode());
         }
         return new RateLimitEntry(key, windowSeconds, windowSeconds, rule.limit(), rule.overflowCode());
-    }
-
-    /**
-     * 计算自当前时刻到次日零点（Asia/Shanghai 时区）的剩余秒数——自然日窗口
-     * 的「用户可见剩余秒」（Retry-After 真源），不含键 TTL 的 +2h 缓冲。
-     *
-     * @param today 当前自然日（Asia/Shanghai）
-     * @return long 到次日零点的剩余秒数，恒 ≥0
-     */
-    private static long secondsUntilEndOfDay(LocalDate today) {
-        return Duration.between(
-                LocalDateTime.now(RateLimitThresholds.ZONE),
-                today.plusDays(1).atStartOfDay(RateLimitThresholds.ZONE)
-        ).getSeconds();
     }
 
     /**

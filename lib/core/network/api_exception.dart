@@ -12,7 +12,7 @@
 /// 失败抛出点只准走该工厂，禁止内联
 /// `ApiException(code: ApiErrorCode.parseError, ...)` —— 统一入口保证
 /// message 必经 [_truncateParseMessage] 截断、口径单一（编码规范 §1.1）。
-/// 现有 41 处生产调用点（连工厂定义自身共 42 处，与反冗余判据 C1 基线同值）：
+/// 现有 42 处生产调用点（连工厂定义自身共 43 处，与反冗余判据 C1 基线同值）：
 /// `core/network` 9 处（`api_error_code.dart` ×1、`api_client.dart` ×4、
 /// `interceptors/auth_refresh_interceptor.dart` ×1、
 /// `interceptors/envelope_interceptor.dart` ×3）、
@@ -26,12 +26,14 @@
 /// `_optChildren` 1，[124] B1 起 11 处中 9 处已上浮）、
 /// `features/post/post_dto.dart` ×7（`PostDetail` 解析 3 + 时间助手 4）、
 /// `features/auth/auth_repository.dart` ×8（[123] U10：AuthSession.fromJson ×2、
-/// AuthRepository._parseLoginResult ×4、_parseUserId ×2）；
+/// AuthRepository._parseLoginResult ×4、_parseUserId ×2）、
+/// `features/contact/contact_repository.dart` ×1（[128]：`FullContact.fromJson`
+/// 对契约外 `contact_type` 抛 parseError，不猜成手机号）；
 /// 新增解析失败点同走本工厂。
 ///
 /// **维护纪律**：本清单与反冗余判据 C1 的 `parseFactoryTotalBaseline` 必须同改
 /// （清单是人工真源、基线是机器判据，两者漂移会让该判据变成永绿豁免）。
-/// 2026-09-27 校正实测值：连工厂定义共 42 处（清单变更过程见说明文档 §三）。
+/// 2026-09-28 校正实测值：连工厂定义共 43 处（清单变更过程见说明文档 §三）。
 ///
 /// **循环 import 说明**：见 `api_error_code.dart` 文件头，同一份说明。
 library;

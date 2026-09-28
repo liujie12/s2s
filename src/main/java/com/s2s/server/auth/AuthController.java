@@ -7,6 +7,7 @@ import com.s2s.server.auth.dto.SendCodeRequest;
 import com.s2s.server.auth.dto.SendCodeResult;
 import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
+import com.s2s.server.common.web.ClientIp;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -68,7 +69,7 @@ public class AuthController {
     @PostMapping("/auth/sms/send")
     public SendCodeResult sendSmsCode(@Valid @RequestBody SendCodeRequest request,
             HttpServletRequest httpRequest) {
-        return smsService.sendCode(request, httpRequest.getRemoteAddr());
+        return smsService.sendCode(request, ClientIp.of(httpRequest));
     }
 
     /**

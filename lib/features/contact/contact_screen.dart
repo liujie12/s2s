@@ -10,14 +10,15 @@
 /// ② 不做 IM SDK、不做站内文本聊天、不做付费中转通道；
 /// ③ 不做双卡片并列 —— 发布时只填一种联系方式，这里只显示那一种。
 ///
-/// **本期不做的三项（依赖服务端，做了必返工）**：
-/// ① **真实三维限频**（§7.7 账号 30 / 设备 30 / IP 100 每日）：计数必须在
-///    服务端，客户端计数可被清数据绕过。这里只把超限与熔断建成可展示的错误态
-///    （见 [ContactFailure]），让文案与排版能被验收；
-/// ② **联系事件落库**（§7.7 北极星指标唯一统计点）：需 `contact_event` 表；
-/// ③ **举报提交**（§9.10.3 风险分累计）：原因选择面板做出来，提交动作留 TODO。
-///    面板必须做 —— §7.8「对方联系方式未填」的提示文案是「尝试举报让其补充」，
-///    不做面板，那条提示就指向一个不存在的入口。
+/// **[128] 接线后的三项已接真实服务端**（原先的「本期不做」已兑现）：
+/// ① 三维限频与熔断（§7.7 账号 30 / 设备 30 / IP 100 每日 + 1min≥10 熔断）在服务端；
+/// ② 联系事件落库（§7.7 北极星指标唯一统计点）随成功响应一并完成；
+/// ③ 举报提交走 `POST /posts/{id}/report`。
+///
+/// **剩余次数文案纪律（契约 `ContactInfo.remaining_today` 原文）**：服务端限频有四个
+/// 维度，该字段只反映账号维一个，故文案写「今日剩余 N 次（以实际请求结果为准）」，
+/// 禁用「还可查看 N 次」式的承诺写法；且收到 `42902` 后**立即把本地剩余刷 0** ——
+/// 否则「还剩 3 次」与「已达上限」会同时出现在屏幕上。
 library;
 
 import 'package:flutter/material.dart';
@@ -32,6 +33,7 @@ import '../../router/app_router.dart';
 import '../auth/auth_repository.dart';
 import '../detail/listing_detail_repository.dart';
 import 'contact_repository.dart';
+import 'report_reason.dart';
 
 class ContactScreen extends ConsumerStatefulWidget {
   const ContactScreen({super.key, required this.listingId});
@@ -56,6 +58,12 @@ class _ContactScreenState extends ConsumerState<ContactScreen> {
   /// 拉取失败原因。与 [_full] 互斥，但不合并成一个联合类型 ——
   /// 加载中时两者都为 null，是第三种状态。
   ContactFailure? _failure;
+
+  /// 今日剩余可查看次数（仅账号维度，服务端 `remaining_today`）。
+  ///
+  /// null 表示「本次会话尚未成功拉取过」，此时不显示该行 —— 显示一个
+  /// 凭空猜的次数等于向用户承诺一个服务端没给过的值。
+  int? _remainingToday;
 
   @override
   Widget build(BuildContext context) {
@@ -91,6 +99,7 @@ class _ContactScreenState extends ConsumerState<ContactScreen> {
             full: _full,
             loading: _loading,
             failure: _failure,
+            remainingToday: _remainingToday,
             onReveal: () => _reveal(detail),
             onUse: () => _useContact(detail),
             // 登录成功后自动重试拉取：让用户回到中转页还要再点一次按钮，
@@ -98,17 +107,31 @@ class _ContactScreenState extends ConsumerState<ContactScreen> {
             onLogin: () => _goLoginThenReveal(detail),
           ),
           const _SafetyTip(),
-          _ReportEntry(onTap: () => _openReportSheet(detail)),
+          _ReportEntry(onTap: _openReportSheet),
         ],
       ),
     );
   }
 
-  /// 拉取完整联系方式（§12.3 `POST /posts/{id}/contact`）。
+  /// 拉取完整联系方式（§12.3 `GET /posts/{id}/contact`）。
   ///
   /// 失败不抛给上层：这一页的失败都是可预期的业务状态（超限、未登录、
-  /// 对方未填），全部转成页面内提示。让它冒泡成崩溃是把业务规则当成故障。
+  /// 对方未填、帖子已下架），全部转成页面内提示。让它冒泡成崩溃是把业务规则当成故障。
+  ///
+  /// **收到 `42902` 时把本地剩余刷 0**（契约 `remaining_today` 的硬要求）：
+  /// 该字段只反映账号维，用户完全可能显示「还剩 3 次」而因设备维被拒；
+  /// 不刷 0 就会出现「还剩 3 次」与「已达上限」同屏自相矛盾。
   Future<void> _reveal(ListingDetail detail) async {
+    // §7.8「对方联系方式未填」：详情已知未填时本地短路，不发这次注定
+    // 失败（且会白吃一次限频额度）的请求。
+    if (!detail.hasContact) {
+      setState(() {
+        _failure = ContactFailure.noContact;
+        _loading = false;
+      });
+      return;
+    }
+
     // §7.7「仅登录用户可拉取完整号码」的前置判定。
     // 放在页面而非仓库：仓库扮演的是服务端，服务端只会返回 401，
     // 而「弹登录页」是客户端的职责。真实实现中两侧都要判 ——
@@ -129,16 +152,22 @@ class _ContactScreenState extends ConsumerState<ContactScreen> {
     try {
       final full = await ref
           .read(contactRepositoryProvider)
-          .fetchFullContact(postId: widget.listingId, detail: detail);
+          .fetchFullContact(postId: widget.listingId);
       if (!mounted) return;
       setState(() {
         _full = full;
+        // 剩余次数以服务端返回值为准（在日限计数之后读取，已含本次消耗）
+        _remainingToday = full.remainingToday;
         _loading = false;
       });
     } on ContactException catch (e) {
       if (!mounted) return;
       setState(() {
         _failure = e.failure;
+        if (e.failure == ContactFailure.rateLimited) {
+          // 契约硬要求：42902 一律把本地剩余刷 0（且不解释是哪个维度超限）
+          _remainingToday = 0;
+        }
         _loading = false;
       });
     }
@@ -190,7 +219,11 @@ class _ContactScreenState extends ConsumerState<ContactScreen> {
   }
 
   /// 举报原因面板（§7.7 五个原因 / §9.10.3 风险分累计）。
-  void _openReportSheet(ListingDetail detail) {
+  ///
+  /// 提交走 `POST /posts/{id}/report`。**面板里的原因文案与契约值都取自
+  /// [ReportReason]**（唯一落点）：面板显示中文、提交发契约值，
+  /// 两处若各存一份，改一个词就会让提交的原因与运营配置的权重表对不上。
+  void _openReportSheet() {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Color(AppColors.surface),
@@ -198,17 +231,37 @@ class _ContactScreenState extends ConsumerState<ContactScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.xl)),
       ),
       builder: (sheetContext) => _ReportSheet(
-        onSubmit: (reason) {
+        onSubmit: (reason) async {
           Navigator.of(sheetContext).pop();
-          // TODO(接后端): 调 §12.3 `POST /posts/{id}/report` 提交举报，
-          // 进入 §9.10.3 风险分累计。当前仅回显受理提示以验证交互闭环。
-          ScaffoldMessenger.of(context).showSnackBar(
-            // 文案照 §7.8：「已受理，24h 内处理」。
-            const SnackBar(content: Text('已受理，24h 内处理')),
-          );
+          await _submitReport(reason);
         },
       ),
     );
+  }
+
+  /// 提交举报并按结果提示（§7.8「提交后 24 小时内处理」）。
+  ///
+  /// 失败不静默：举报是用户主动发起的维权动作，悄悄失败等于让他以为
+  /// 已经举报成功、坐等处理。每种失败都按服务端语义给对应文案
+  /// （熔断 42903 / 已下架 41001 与网络异常三者对用户的意义不同）。
+  ///
+  /// @param reason 用户选择的原因（枚举值同时携带中文文案与契约值）
+  Future<void> _submitReport(ReportReason reason) async {
+    try {
+      await ref
+          .read(contactRepositoryProvider)
+          .submitReport(widget.listingId, reason: reason);
+      if (!mounted) return;
+      // 文案照 §7.8：「已受理，24h 内处理」。
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('已受理，24h 内处理')),
+      );
+    } on ContactException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.failure.message)),
+      );
+    }
   }
 }
 
@@ -308,6 +361,7 @@ class _ContactCard extends StatelessWidget {
     required this.full,
     required this.loading,
     required this.failure,
+    required this.remainingToday,
     required this.onReveal,
     required this.onUse,
     required this.onLogin,
@@ -317,6 +371,10 @@ class _ContactCard extends StatelessWidget {
   final FullContact? full;
   final bool loading;
   final ContactFailure? failure;
+
+  /// 今日剩余次数（仅账号维度）；null = 本次会话还没拿到服务端值。
+  final int? remainingToday;
+
   final VoidCallback onReveal;
   final VoidCallback onUse;
   final VoidCallback onLogin;
@@ -393,6 +451,19 @@ class _ContactCard extends StatelessWidget {
             onReveal: onReveal,
             onUse: onUse,
           ),
+          if (remainingToday != null) ...[
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              // 文案纪律（契约 `remaining_today` 原文）：只反映账号维一个维度，
+              // 故必须带「以实际请求结果为准」，不用承诺式写法——
+              // 后者在设备维/熔断维度先超限时会当场自我否定。
+              '今日剩余 $remainingToday 次（以实际请求结果为准）',
+              style: TextStyle(
+                fontSize: AppTypeScale.caption.size,
+                color: Color(AppColors.textPlaceholder),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -604,21 +675,21 @@ class _ReportEntry extends StatelessWidget {
 }
 
 /// 举报原因选择面板（§7.7 五个原因）。
+///
+/// 原因清单直接由 [ReportReason] 驱动（`values` 遍历）：面板上的中文与提交用的
+/// 契约值同源，不存在「面板加了第六项但提交映射没跟」的错位。
 class _ReportSheet extends StatefulWidget {
   const _ReportSheet({required this.onSubmit});
 
-  final ValueChanged<String> onSubmit;
+  /// 提交回调：参数为用户选中的原因（枚举值，同时携带中文文案与契约值）。
+  final ValueChanged<ReportReason> onSubmit;
 
   @override
   State<_ReportSheet> createState() => _ReportSheetState();
 }
 
 class _ReportSheetState extends State<_ReportSheet> {
-  /// §7.7 原文五项，顺序与措辞照抄，不自行增删或改写 ——
-  /// 举报原因会进 §9.10.3 风险分权重表，改一个词就对不上运营配置。
-  static const _reasons = ['不实信息', '诈骗', '违规类目', '骚扰', '其他'];
-
-  String? _selected;
+  ReportReason? _selected;
 
   @override
   Widget build(BuildContext context) {
@@ -638,15 +709,15 @@ class _ReportSheetState extends State<_ReportSheet> {
               ),
             ),
             const SizedBox(height: AppSpacing.md),
-            ..._reasons.map(
-              (r) => RadioListTile<String>(
+            ...ReportReason.values.map(
+              (r) => RadioListTile<ReportReason>(
                 value: r,
                 // ignore: deprecated_member_use
                 groupValue: _selected,
                 // ignore: deprecated_member_use
                 onChanged: (v) => setState(() => _selected = v),
                 title: Text(
-                  r,
+                  r.label,
                   style: TextStyle(fontSize: AppTypeScale.body.size),
                 ),
                 contentPadding: EdgeInsets.zero,
