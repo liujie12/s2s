@@ -1,20 +1,25 @@
 /// 鸭圈首页 · 地图页（PRD §6.4.1 / §6.4.2）。
 ///
 /// **地图渲染的两条分支**：
-/// - `AMapInitGuard.canRenderMap()` 为 true → 走高德 `AMapWidget`（待 Key 到位后接入）；
+/// - 已同意隐私协议**且**构建期注入了高德 Key → 走高德 `AMapWidget`；
 /// - 否则 → 走 [FallbackMapCanvas] 降级底图（PRD:1207）。
 ///
-/// 当前恒走降级分支，因为高德 Key 尚未申请（说明文档 M4-0 未闭环）。
-/// 这不是「先凑合」——降级底图本身是 PRD 要求的正式兜底路径，Key 到位后
-/// 两条分支并存，不会有任何一条被删掉。
+/// 降级不是「先凑合」—— 它是 PRD 要求的正式兜底路径，三种情况都会走到：
+/// 未同意协议、未注入 Key、以及将来地图加载失败。真地图接入后两条分支并存，
+/// 不会有任何一条被删掉。
+///
+/// **Pin 的归属**：两条分支都由 [MarkerLayer] 在 Dart 侧叠加绘制，不用高德的
+/// Marker —— 理由见 `_buildAmap` 的注释（投影自持，说明文档 §2119）。
 ///
 /// **布局遵循 §6.4.1 收起口径**：默认只有右上角三点入口 + 左上角摘要胶囊
 /// （约 44px 竖向占用），筛选面板由它们唤起，选完即收。
 library;
 
+import 'package:amap_map/amap_map.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:x_amap_base/x_amap_base.dart';
 
 import '../../design_tokens.dart';
 import '../../domain/listing.dart';
@@ -50,6 +55,16 @@ const double _kClusterGridSize = NfrPerf.clusterGridSizePx;
 /// 默认视野与默认筛选范围对不上，用户会看到「明明筛了 5km 却只显示一小块」。
 const double _kInitialMetersPerPixel = 12;
 
+/// 缩放下限：一像素代表多少米（放到最近）。
+///
+/// 与 [`_kMaxMetersPerPixel`] 成对使用，且**两条分支必须用同一对值**：
+/// 降级底图靠 Dart 自己 clamp，真地图靠 `MinMaxZoomPreference` 换算成 zoom 交给
+/// 原生相机。只夹一边会让 Pin 与底图在边界处错位（状态说 1 m/px、底图却更近）。
+const double _kMinMetersPerPixel = 1;
+
+/// 缩放上限：一像素代表多少米（放到最远）。理由同上。
+const double _kMaxMetersPerPixel = 200;
+
 class MapScreen extends ConsumerStatefulWidget {
   const MapScreen({super.key});
 
@@ -74,6 +89,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   /// 基础类型，详细设计 §10.4.3）。若这里改 `int`，每次点击都要解析一次字符串，
   /// 且解析失败时没有合理的退路。跨到域模型时用 `Listing.id.toString()` 对齐。
   String? _selectedListingId;
+
+  /// 高德地图控制器。仅真地图分支有值（`onMapCreated` 回调里赋值），
+  /// 用于程序化改视角（当前唯一场景：点聚合圈放大）。
+  AMapController? _amapController;
 
   @override
   Widget build(BuildContext context) {
@@ -209,33 +228,114 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   ) {
     // 🔴 上架驳回点：构建 AMapWidget 即触发高德原生 SDK 初始化。
     // 未同意隐私协议时走到这一步就是违规，判据见 amap_init_guard.dart 文件头。
-    final canRenderRealMap = AMapInitGuard.canRenderMap(consent);
+    //
+    // 这里补写一次同意声明：守卫的 _consentApplied 是进程内静态量，冷启动归零，
+    // 而 applyConsent 此前只在协议门点「同意」那一刻被调用 —— 结果「本次会话点过同意」
+    // 能渲染真地图，「上次会话已同意、这次冷启动直接进首页」却永远拿不到真地图。
+    // applyConsent 自身对非 agreed 直接返回且幂等（_consentApplied 短路），
+    // 故在此重复调用无副作用，也不会让未同意的用户碰到 updatePrivacyAgree。
+    AMapInitGuard.applyConsent(consent);
 
-    return GestureDetector(
-      onScaleStart: (_) => _scaleStartMetersPerPixel = _metersPerPixel,
-      onScaleUpdate: (details) => _onScaleUpdate(details, projection),
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          if (canRenderRealMap)
-            // Key 到位后在此接入 AMapWidget。占位为降级底图而非空白，
-            // 是为了让这条分支在 Key 缺失时也有确定的视觉，不会白屏。
-            FallbackMapCanvas(
+    // 真地图需要三件事同时成立：已同意 + 声明已写入 SDK + 构建期注入了 Key。
+    // 缺 Key 时必须退回降级底图：没有 Key 时构建 `AMapWidget` 是**白屏**，而白屏与
+    // 「声明没写」在真机上完全同形（见 amap_init_guard.dart 文件头），
+    // 退回降级底图能让故障可读。
+    final bool useRealMap =
+        AMapInitGuard.canRenderMap(consent) &&
+        AMapInitGuard.ensureSdkInitialized(context);
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        if (useRealMap)
+          _buildAmap()
+        else
+          // 手动手势只挂在降级底图上：降级底图没有原生相机，拖动/缩放得由 Dart
+          // 自己换算。真地图由高德原生接管手势，再套这层会让 Flutter 先截获手势，
+          // 与原生相机互相打架（表现为拖动一顿一顿、缩放回弹）。
+          GestureDetector(
+            onScaleStart: (_) => _scaleStartMetersPerPixel = _metersPerPixel,
+            onScaleUpdate: (details) => _onScaleUpdate(details, projection),
+            child: FallbackMapCanvas(
               projection: projection,
-              notice: '高德地图 Key 未配置，当前为示意底图',
-            )
-          else
-            FallbackMapCanvas(
-              projection: projection,
-              notice: '示意底图 · 位置为相对分布，不代表真实地理位置',
+              // 两种降级原因的文案分开：已同意却只看到「示意底图」时，
+              // 排查者会去怀疑隐私门，而真实原因是没注入 Key。
+              notice: consent == PrivacyConsentStatus.agreed
+                  ? '高德地图 Key 未配置，当前为示意底图'
+                  : '示意底图 · 位置为相对分布，不代表真实地理位置',
             ),
-          MarkerLayer(
-            markers: markers,
-            supplyDemandById: supplyDemandById,
-            selectedListingId: _selectedListingId,
-            onTapMarker: _onTapMarker,
           ),
-        ],
+        MarkerLayer(
+          markers: markers,
+          supplyDemandById: supplyDemandById,
+          selectedListingId: _selectedListingId,
+          onTapMarker: _onTapMarker,
+        ),
+      ],
+    );
+  }
+
+  /// 高德原生地图（Key 已注入且已同意时）。
+  ///
+  /// **Pin 不交给高德的 Marker**：说明文档 §2119 已定「投影自持、不等异步
+  /// `toScreenLocation`」—— 聚合要在每帧布局时同步出坐标，而那个转换走
+  /// platform channel，异步返回会让 Pin 晚一帧、拖动时明显拖影。故本方法只管两件事：
+  /// ① 把 Dart 侧状态换算成初始相机；② 由 [_onCameraMove] 把相机变化同步回状态，
+  /// 供 [MarkerLayer] 复用同一套投影。
+  ///
+  /// 返回：[Widget] 高德地图控件。
+  Widget _buildAmap() {
+    return AMapWidget(
+      // 只在创建平台视图时生效（插件的 `didUpdateWidget` 只更 options，不重设相机），
+      // 故这里传当前状态不会与 onCameraMove 形成「回调 → 重建 → 再设相机」的回环。
+      initialCameraPosition: CameraPosition(
+        target: LatLng(_centerLat, _centerLng),
+        zoom: MapProjection.zoomForMetersPerPixel(_centerLat, _metersPerPixel),
+      ),
+      // 与降级底图共用同一对缩放上下限，避免两条分支能到的范围不一致。
+      minMaxZoomPreference: MinMaxZoomPreference(
+        MapProjection.zoomForMetersPerPixel(_centerLat, _kMaxMetersPerPixel),
+        MapProjection.zoomForMetersPerPixel(_centerLat, _kMinMetersPerPixel),
+      ),
+      onMapCreated: (controller) => _amapController = controller,
+      onCameraMove: _onCameraMove,
+      // 罗盘默认在左上角，会与筛选摘要胶囊叠在一起，故关掉。
+      compassEnabled: false,
+      // 比例尺交给高德自己画：降级底图那条自绘比例尺属 FallbackMapCanvas，
+      // 这条分支不走那个控件，不显式开启就没有比例尺。
+      scaleEnabled: true,
+    );
+  }
+
+  /// 相机变化 → 同步回 Dart 侧状态。
+  ///
+  /// 不在此处回推相机（那会与回调形成回环）：只有「点聚合圈放大」这类程序化改视角
+  /// 的场景需要推，见 [_pushCameraToAmap]。
+  ///
+  /// 参数：
+  /// - [camera]：高德回传的相机位置。
+  void _onCameraMove(CameraPosition camera) {
+    setState(() {
+      _centerLat = camera.target.latitude;
+      _centerLng = camera.target.longitude;
+      // 上下限交给 `MinMaxZoomPreference`（原生相机越不出那个范围），这里不再夹取：
+      // 两侧各夹一次，边界处会出现「状态已到边界、底图还能再走」的错位。
+      _metersPerPixel = MapProjection.metersPerPixelForZoom(
+        _centerLat,
+        camera.zoom,
+      );
+    });
+  }
+
+  /// 把 Dart 侧状态推给高德原生相机。
+  ///
+  /// 只在**程序化改视角**时调用（当前唯一场景：点聚合圈放大 2 倍）。不能在 build 里
+  /// 无条件推 —— 那会与 [onCameraMove] 形成「推 → 回调 → 重建 → 再推」的回环。
+  void _pushCameraToAmap() {
+    _amapController?.moveCamera(
+      CameraUpdate.newLatLngZoom(
+        LatLng(_centerLat, _centerLng),
+        MapProjection.zoomForMetersPerPixel(_centerLat, _metersPerPixel),
       ),
     );
   }
@@ -282,10 +382,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     setState(() {
       if (details.scale != 1.0) {
         // 手势放大 → 看得更近 → 每像素代表的米数变小，故用除法。
-        // 上下限防止缩到路网糊成一片或放大到浮点精度失效。
+        // 上下限防缩到路网糊成一片或放大到浮点精度失效。
         _metersPerPixel = (_scaleStartMetersPerPixel / details.scale).clamp(
-          1.0,
-          200.0,
+          _kMinMetersPerPixel,
+          _kMaxMetersPerPixel,
         );
       }
       // 拖动：把像素位移换回经纬度增量。手指右移 → 视口中心左移，故取负。
@@ -298,6 +398,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 
   void _onTapMarker(MapMarker marker) {
+    bool cameraChanged = false;
     setState(() {
       switch (marker) {
         case SinglePointMarker():
@@ -306,9 +407,16 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           // 点聚合圈放大地图（PRD §6.4.2）。放大 2 倍而非直接展开列表 ——
           // 展开列表会让用户失去空间上下文，而聚合的意义正是空间聚集。
           _selectedListingId = null;
-          _metersPerPixel = (_metersPerPixel / 2).clamp(1.0, 200.0);
+          _metersPerPixel = (_metersPerPixel / 2).clamp(
+            _kMinMetersPerPixel,
+            _kMaxMetersPerPixel,
+          );
+          cameraChanged = true;
       }
     });
+    // 真地图分支的视角由原生相机持有，Dart 侧改了缩放必须推给相机，否则点聚合圈
+    // 「点了没反应」。降级分支没有控制器，这行为空操作。
+    if (cameraChanged) _pushCameraToAmap();
   }
 }
 

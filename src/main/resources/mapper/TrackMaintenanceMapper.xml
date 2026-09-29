@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.s2s.server.track.mapper.TrackMaintenanceMapper">
+
+    <!--
+      月表预建（架构 §8 任务 2；数据库设计 §3.16.1 尾段）。
+
+      必须 CREATE TABLE ... LIKE：LIKE 连索引（含 uk_event_dedup）一并复制；
+      逐列拼 DDL 会漏掉唯一索引，导致下月去重静默失效——表面上一切正常
+      （表在、不报错、只是不再挡住重复），极难归因，故此处形态由测试钉死。
+    -->
+    <update id="createTableLike">
+        CREATE TABLE IF NOT EXISTS ${newTable} LIKE ${templateTable}
+    </update>
+
+    <!--
+      整表删除过期月表（架构 §8 任务 3；数据库设计 §6.5）。
+
+      刻意用 DROP 而非 DELETE：单月表在日均 20 万事件下约 2.3G，
+      DELETE 会产生等量 undo 与 binlog 并把 256MB buffer pool 冲刷干净；
+      DROP 是元数据操作，代价与表大小无关。这是「按月分表」这条设计的存在理由。
+    -->
+    <update id="dropTable">
+        DROP TABLE IF EXISTS ${tableName}
+    </update>
+
+    <!--
+      枚举月表（清理任务与巡检共用）。
+
+      EXPLAIN 结论：information_schema.TABLES 为内存表（MySQL 8 起为数据字典视图），
+      按 TABLE_SCHEMA + TABLE_NAME 过滤，无二级索引可用但行数受库内表数量约束，
+      代价恒定且极小。用 DATABASE() 而非硬编码库名：本语句运行在埋点库会话上，
+      库名真源是连接串（config/FlywayTrackConfig），不在此处复制一份。
+    -->
+    <select id="listMonthTables" resultType="string">
+        SELECT t.TABLE_NAME
+        FROM information_schema.TABLES t
+        WHERE t.TABLE_SCHEMA = DATABASE()
+          AND t.TABLE_NAME LIKE 'track_event\_2%'
+        ORDER BY t.TABLE_NAME
+    </select>
+
+    <!--
+      埋点月表行数合计（可观测 §9.1 阈值 T1 之一）。
+
+      口径逐字对齐 §9.1：SUM(TABLE_ROWS)，只统计埋点库内 track_event_* 表。
+      TABLE_ROWS 是 InnoDB 的统计估算值（非精确计数），阈值判定用它即可——
+      §9.1 原文即以它为检查动作。
+    -->
+    <select id="countEventRows" resultType="long">
+        SELECT COALESCE(SUM(t.TABLE_ROWS), 0)
+        FROM information_schema.TABLES t
+        WHERE t.TABLE_SCHEMA = DATABASE()
+          AND t.TABLE_NAME LIKE 'track_event\_2%'
+    </select>
+
+    <!--
+      埋点库占盘 GB（可观测 §9.1 阈值 T1 之二）。
+
+      §9.1 明写「必须只量埋点库，不能用 df」——df 量的是整盘 40G 使用量，
+      其中含系统、镜像、业务数据等七项，会在埋点只占 2GB 时就误报。
+    -->
+    <select id="storageGb" resultType="double">
+        SELECT COALESCE(SUM(t.DATA_LENGTH + t.INDEX_LENGTH), 0) / 1024 / 1024 / 1024
+        FROM information_schema.TABLES t
+        WHERE t.TABLE_SCHEMA = DATABASE()
+    </select>
+
+    <!--
+      高位分钟数统计（可观测 §9.1 阈值 T2）。
+
+      形态逐字对齐 §9.1：按 ts 分分钟聚合，HAVING 超过每分钟阈值，再数分钟数。
+      窗口起点与每分钟阈值均由任务侧用常量算好传入（本文件不出现裸数字）。
+
+      ts 用客户端采集时刻：§9.1 明写「用 ts 而非 created_at——后者可能因跨月回灌
+      或离线积压失真」。
+    -->
+    <select id="countHighVolumeMinutes" resultType="long">
+        SELECT COUNT(*)
+        FROM (
+            SELECT COUNT(*) AS c
+            FROM ${tableName} e
+            WHERE e.ts &gt; #{since}
+            GROUP BY DATE_FORMAT(e.ts, '%Y%m%d%H%i')
+            HAVING c &gt; #{perMinuteThreshold}
+        ) high_minutes
+    </select>
+
+</mapper>

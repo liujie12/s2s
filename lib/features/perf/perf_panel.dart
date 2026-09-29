@@ -74,31 +74,45 @@ class _PerfPanelState extends ConsumerState<PerfPanel> {
 
     return Material(
       color: Colors.transparent,
-      child: AnimatedContainer(
+      // 折叠态不锁宽度，由内容撑开（过渡交给 AnimatedSize）。
+      //
+      // 【为什么不把 96 调大】胶囊内容是「图标 + P95 读数 + 展开箭头」，读数宽度随
+      // 数值变化（"P95 9.9ms" 与 "P95 145.7ms" 相差约 10px），字体度量又随设备与
+      // 系统字体变。锁死宽度必然在某个读数上溢出 —— 2026-09-29 真机实测折叠态溢出
+      // 5.3px（读数 "P95 45.7ms" 时固定项 85.3px > 可用 80px = 96 − 2×8）。把 96
+      // 调大只是把溢出推给下一个更长的读数，故改为内容驱动。
+      //
+      // 也不能给 AnimatedContainer 直接置 width: null：其隐式 Tween 在「定值 → null」
+      // 过渡时会把 end 置空并插值到 0，胶囊会先缩到不可见再复原，故改用 AnimatedSize。
+      child: AnimatedSize(
         duration: const Duration(milliseconds: 160),
-        width: _expanded ? 232 : 96,
-        padding: const EdgeInsets.all(AppSpacing.sm),
-        decoration: BoxDecoration(
-          // 深色半透明：面板压在地图上，白底卡会与降级底图抢边界。
-          color: Color(AppColors.textPrimary).withValues(alpha: 0.88),
-          borderRadius: BorderRadius.circular(AppRadius.md),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _buildHeader(metrics),
-            if (_expanded) ...[
-              const SizedBox(height: AppSpacing.sm),
-              _buildStats(metrics),
-              const SizedBox(height: AppSpacing.sm),
-              _buildHistogram(metrics),
-              const SizedBox(height: AppSpacing.sm),
-              _buildLevelSwitch(level, metrics),
-              const SizedBox(height: AppSpacing.xs),
-              _buildExportRow(metrics, level),
+        // 面板锚在右下角，故以右下为缩放锚点，展开/收起时视觉不跳动。
+        alignment: Alignment.bottomRight,
+        child: Container(
+          width: _expanded ? 232 : null,
+          padding: const EdgeInsets.all(AppSpacing.sm),
+          decoration: BoxDecoration(
+            // 深色半透明：面板压在地图上，白底卡会与降级底图抢边界。
+            color: Color(AppColors.textPrimary).withValues(alpha: 0.88),
+            borderRadius: BorderRadius.circular(AppRadius.md),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildHeader(metrics),
+              if (_expanded) ...[
+                const SizedBox(height: AppSpacing.sm),
+                _buildStats(metrics),
+                const SizedBox(height: AppSpacing.sm),
+                _buildHistogram(metrics),
+                const SizedBox(height: AppSpacing.sm),
+                _buildLevelSwitch(level, metrics),
+                const SizedBox(height: AppSpacing.xs),
+                _buildExportRow(metrics, level),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -124,7 +138,10 @@ class _PerfPanelState extends ConsumerState<PerfPanel> {
             'P95 ${p95.toStringAsFixed(1)}ms',
             style: _labelStyle(bold: true),
           ),
-          const Spacer(),
+          // Spacer 只在展开态用：那时宽度被锁在 232px，有富余空间可把箭头推到右边缘。
+          // 折叠态由内容撑开，Spacer 会去占满「可用最大宽」（Positioned 给的是整屏宽），
+          // 把胶囊拉成横跨屏幕的横幅，故折叠态只留一个固定间距。
+          if (_expanded) const Spacer() else const SizedBox(width: AppSpacing.xs),
           Icon(
             _expanded ? Icons.expand_less : Icons.expand_more,
             size: 14,

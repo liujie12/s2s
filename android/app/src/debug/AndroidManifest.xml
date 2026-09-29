@@ -4,4 +4,9 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- 仅 debug 构建放行明文 HTTP：真机联调经 `adb reverse tcp:8080 tcp:8080` 连本机后端
+         （http://127.0.0.1:8080）。targetSdk ≥ 28 时 Android 默认禁明文，不放行则请求全失败。
+         本文件只参与 debug 变体，release/生产走 https（NetworkConfig 的 release-https 守卫），
+         故主 manifest 与生产包不受影响。 -->
+    <application android:usesCleartextTraffic="true" />
 </manifest>

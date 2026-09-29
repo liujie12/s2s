@@ -70,6 +70,12 @@ public class AuthService {
     /** 默认搜索半径档（详设 §5.1 user 表默认值 {@code 3}）。 */
     private static final String DEFAULT_RADIUS = "3";
 
+    /** 首次注册的默认昵称前缀（用户 2026-09-29 裁定：昵称 = 前缀 + 手机号后 4 位）。 */
+    private static final String DEFAULT_NICKNAME_PREFIX = "用户";
+
+    /** 默认昵称取手机号末位位数（与 {@link #DEFAULT_NICKNAME_PREFIX} 合成为「用户8000」）。 */
+    private static final int DEFAULT_NICKNAME_PHONE_SUFFIX_LENGTH = 4;
+
     /** Redis 字符串模板（验证码读取、失败计数清除）。 */
     private final StringRedisTemplate redisTemplate;
 
@@ -324,7 +330,7 @@ public class AuthService {
     }
 
     /**
-     * 自动注册：建 {@code user}（脱敏手机号 + 默认实名/半径档）与
+     * 自动注册：建 {@code user}（脱敏手机号 + 默认昵称/实名/半径档）与
      * {@code user_identity}（盲索引 + AEAD 密文 + 版本号，AAD = user_id + identity_type）。
      * 两步在同一事务内（由 {@link #loginBySms} 的 {@code @Transactional} 保证）。
      *
@@ -334,6 +340,7 @@ public class AuthService {
     private UserEntity register(String phone) {
         UserEntity user = new UserEntity();
         user.setPhoneMask(maskPhone(phone));
+        user.setNickname(defaultNickname(phone));
         user.setRealnameStatus(REALNAME_STATUS_NONE);
         user.setDefaultRadius(DEFAULT_RADIUS);
         userMapper.insert(user);
@@ -351,6 +358,21 @@ public class AuthService {
         userIdentityMapper.insert(identity);
 
         return user;
+    }
+
+    /**
+     * 生成首次注册的默认昵称：「用户」+ 手机号后 4 位（如 {@code 用户8000}）。
+     *
+     * <p>为什么在应用层生成而非依赖列默认值：{@code user.nickname} 按设计为
+     * {@code NOT NULL} 且<b>无</b>默认值（数据库设计文档 §3.1），且昵称属对外视图
+     * 白名单字段，必须由注册流程显式给定；口径由用户 2026-09-29 裁定。</p>
+     *
+     * @param phone 手机号明文（已通过契约 {@code ^1[3-9]\d{9}$} 校验，长度恒 11）
+     * @return {@link String} 默认昵称
+     */
+    private String defaultNickname(String phone) {
+        return DEFAULT_NICKNAME_PREFIX
+                + phone.substring(phone.length() - DEFAULT_NICKNAME_PHONE_SUFFIX_LENGTH);
     }
 
     /**

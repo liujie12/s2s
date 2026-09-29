@@ -4,6 +4,8 @@ import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.FilterType;
 
 /**
  * 找鸭找（s2s）后端单体服务启动类。
@@ -29,13 +31,21 @@ import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
  * 扫根包会把各域 service 接口误当 mapper 装配（启动即失败）；{@code **} 通配匹配任意层级
  * mapper 包（当前 auth 域，后续 post/contact 等域 mapper 落位后零改装配成本）。
  *
+ * <p><b>排除 track 包（[129] 定案 A′）</b>：{@code com.s2s.server.track.mapper} 下的 Mapper
+ * 属埋点库（{@code s2s_track}），必须绑到 {@code trackDataSource}；若被本扫描注册，会绑到
+ * {@code @Primary} 的业务库数据源（写错库）。故在此以 {@code excludeFilters} 排除，改由
+ * 埋点库独立会话承载（{@code TrackPersistenceConfig} + {@code TrackPersistence}）。
+ * 排除只收窄注册面，不影响任何既有装配。</p>
+ *
  * <p>启动前提（U-5 起）：业务库/埋点库连接串、Redis 口令与六类凭证全部经环境变量注入
  * （application.yml 的 {@code s2s.secrets.*} 硬占位），缺任一变量启动快速失败且报错点名变量名
  * （编码规范 §3.3）；变量清单见仓库根 .env.example。
  */
 @SpringBootApplication
 @ConfigurationPropertiesScan
-@MapperScan("com.s2s.server.**.mapper")
+@MapperScan(value = "com.s2s.server.**.mapper",
+        excludeFilters = @ComponentScan.Filter(type = FilterType.REGEX,
+                pattern = "com\\.s2s\\.server\\.track\\.mapper\\..*"))
 public class S2sServerApplication {
 
     /**

@@ -10,10 +10,11 @@
  *       真源为 Dart 端 {@code lib/nfr_constants.dart}，本包为 Java 镜像，
  *       值逐值抄录并注 PRD 章节号，靠双端对账测试保证一致
  *       （编码规范 §1.1 第 2 条：跨端镜像双端各有唯一实现处，不算冗余）；</li>
- *   <li>服务端单端口径（如 {@link com.s2s.server.common.constants.RateLimitThresholds}）：
- *       Dart 真源无对应常量类（客户端被禁止本地预测剩余次数，无消费方），
- *       以详设表格为真源直接抄录——此例外已在编码规范 §3.1 登记
- *       （计划 [122] KTD11）。</li>
+ *   <li>服务端单端口径（如 {@link com.s2s.server.common.constants.RateLimitThresholds}、
+ *       {@link com.s2s.server.common.constants.NfrObs}）：Dart 真源无对应常量类
+ *       （限频阈值客户端被禁止本地预测剩余次数、无消费方；重启预热窗口由服务端启动自写、
+ *       客户端不参与），以详设表格 / 可观测性架构方案为真源直接抄录——此例外已在
+ *       编码规范 §3.1 登记（计划 [122] KTD11）。</li>
  * </ul>
  *
  * <p>出处：编码规范 §3.1（常量真源）、详设 §0.1（三条全局硬纪律）、

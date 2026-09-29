@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.s2s.server.track.mapper.TrackEventMapper">
+
+    <!--
+      埋点事件批量写入（详设 §5.8 第 [7] 步；DDL V1__init_track_schema.sql）。
+
+      SQL 形态纪律（由 TrackSqlFormGuardTest 静态守门）：
+        * 必须 ON DUPLICATE KEY UPDATE id = id —— 去重交给唯一索引 uk_event_dedup，
+          「命中即空更新」，不发 VALUES(props) 覆盖；
+        * 严禁 INSERT IGNORE —— 它会把数据截断、非空列插 NULL 一并降级为 warning，
+          等于在写入路径关掉全部数据质量报错；
+        * ts 取客户端上报值 #{e.ts}（月表归属也以它为据），严禁 NOW()/CURRENT_TIMESTAMP
+          —— 用服务端时间会导致 9/30 采集、10/1 上报的事件落错月表。
+
+      表名以 ${tableName} 拼接：service 已按 ^track_event_\d{6}$ 白名单校验后传入，
+      非白名单值降级 track_event_fallback（不会出现任意表名注入）。
+    -->
+    <insert id="batchInsert">
+        INSERT INTO ${tableName} (event_name,
+                                  interaction_id,
+                                  user_id,
+                                  device_id,
+                                  ts,
+                                  props,
+                                  leaf_category_id,
+                                  completeness_level,
+                                  is_ai_assisted,
+                                  grid_id)
+        VALUES
+        <foreach collection="events" item="e" separator=",">
+            (#{e.eventName},
+             #{e.interactionId},
+             #{userId},
+             #{deviceId},
+             #{e.ts},
+             #{e.propsJson},
+             #{e.leafCategoryId},
+             #{e.completenessLevel},
+             #{e.isAiAssisted},
+             #{e.gridId})
+        </foreach>
+        ON DUPLICATE KEY UPDATE id = id
+    </insert>
+
+</mapper>
