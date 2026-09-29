@@ -80,3 +80,9 @@ target/
 # JVM 崩溃日志，排障一次性产物
 hs_err_pid*.log
 replay_pid*.log
+
+# ── 后端运行期日志（条目[130] 联调发现）──
+# `mvn spring-boot:run -Dspring-boot.run.arguments=--logging.file.path=logs`
+# 的落盘目录（logs/s2s-server.log 等）：随进程运行持续追加，含请求明细，
+# 属机器本地运行态而非交付物；正史日志走 SLS，不入库。
+logs/
