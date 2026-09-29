@@ -17,13 +17,33 @@ import '../map/amap_init_guard.dart';
 import 'privacy_consent.dart';
 
 /// 隐私协议门。
-class PrivacyGateScreen extends ConsumerWidget {
+///
+/// **为什么是 StatefulWidget（2026-09-29 真机实测教训，阻断级）**：
+/// 「已拒绝」与「从未询问过」在 Notifier 里同属 [PrivacyConsentStatus.notAgreed]
+/// —— 拒绝刻意不落盘（见 privacy_consent.dart），下次冷启动须重新询问。
+/// 但两者的界面必须相反：前者进受限态，后者必须停在可同意的协议页。
+///
+/// 若直接用 `notAgreed` 选视图，首次启动会在读盘完成的一瞬间由协议页翻成受限态，
+/// 用户来不及点「同意」；而「重新阅读协议」重读盘后仍是 `notAgreed`，界面原地打转。
+/// 实测表现即「一直提示尚未同意隐私政策，卡住进不去」，应用完全不可用。
+/// 故把「已拒绝」降级为**会话内的界面状态**，与「本地存储里有无有效同意记录」解耦，
+/// 后者只由路由（app_router.dart）判定。
+class PrivacyGateScreen extends ConsumerStatefulWidget {
   const PrivacyGateScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final status = ref.watch(privacyConsentProvider);
+  ConsumerState<PrivacyGateScreen> createState() => _PrivacyGateScreenState();
+}
 
+class _PrivacyGateScreenState extends ConsumerState<PrivacyGateScreen> {
+  /// 本会话内用户是否点过「不同意」。
+  ///
+  /// 与 Notifier 的 `notAgreed` 分开持有：它表达的是「这一次用户明确拒绝」，
+  /// 而不是「本地存储里没有有效的同意记录」——两者界面相反，不可合并。
+  bool _declinedThisSession = false;
+
+  @override
+  Widget build(BuildContext context) {
     // PopScope(canPop: false) 而非隐藏返回按钮：安卓物理返回键与手势返回
     // 不受 AppBar 影响，只有在这一层拦截才真正拦得住。
     return PopScope(
@@ -33,13 +53,11 @@ class PrivacyGateScreen extends ConsumerWidget {
         body: SafeArea(
           child: Padding(
             padding: const EdgeInsets.all(AppSpacing.xl),
-            child: status == PrivacyConsentStatus.notAgreed
-                ? _DeclinedView(onReread: () => _showAgreement(context, ref))
-                : _AgreementView(
-                    onAgree: () => _agree(ref),
-                    onDecline: () =>
-                        ref.read(privacyConsentProvider.notifier).decline(),
-                  ),
+            child: _declinedThisSession
+                ? _DeclinedView(
+                    onReread: () => setState(() => _declinedThisSession = false),
+                  )
+                : _AgreementView(onAgree: _agree, onDecline: _decline),
           ),
         ),
       ),
@@ -51,21 +69,16 @@ class PrivacyGateScreen extends ConsumerWidget {
   /// 顺序不可颠倒 —— 声明先写入而落盘失败的话，本次会话按已同意运行，
   /// 但下次冷启动又弹门，用户会认为「我明明同意过」。
   ///
-  /// 参数：
-  /// - [ref]：Riverpod 引用，用于读取 notifier 与最新状态。
-  Future<void> _agree(WidgetRef ref) async {
+  /// 返回：落盘与 SDK 声明均完成后的 Future。
+  Future<void> _agree() async {
     await ref.read(privacyConsentProvider.notifier).agree();
     AMapInitGuard.applyConsent(ref.read(privacyConsentProvider));
   }
 
-  /// 从受限态返回协议阅读态。
-  ///
-  /// 参数：
-  /// - [context]：用于后续接入协议 WebView（M4-4 隐私政策上线后）。
-  /// - [ref]：Riverpod 引用。
-  void _showAgreement(BuildContext context, WidgetRef ref) {
-    // 回到 unknown 会重新触发 _load 读盘，等价于「重新走一遍协议门」。
-    ref.invalidate(privacyConsentProvider);
+  /// 处理用户拒绝：进入本会话的受限态，并同步 Notifier 的未同意态。
+  void _decline() {
+    ref.read(privacyConsentProvider.notifier).decline();
+    setState(() => _declinedThisSession = true);
   }
 }
 

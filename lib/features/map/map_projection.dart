@@ -14,6 +14,14 @@ import 'dart:math' as math;
 /// 赤道处每度纬度对应的米数。
 const double _metersPerDegreeLat = 111320;
 
+/// Web 墨卡托在 zoom=0 时赤道处的地面分辨率（米/像素）。
+///
+/// 高德底图走的是 Web 墨卡托瓦片体系（256px 瓦片、zoom 0 全球一张），故该常数可直接
+/// 用于高德 zoom：`米/像素 = 该常数 × cos(纬度) / 2^zoom`。
+/// 接入真地图时这层换算是必需的：地图页的状态量是 `metersPerPixel`，而相机回传的是
+/// `zoom`，不换算两者就会各说各话（表现为 Pin 与底图随缩放逐渐错位）。
+const double _metersPerPixelAtZoom0 = 156543.03392;
+
 /// 一个视口的投影参数。
 ///
 /// 不可变：投影参数一旦随手可改，就会出现「算 Pin 用的是旧中心、画底图用的是新中心」
@@ -37,6 +45,41 @@ class MapProjection {
 
   /// 视口尺寸（逻辑像素），用于把中心偏移换算成左上角原点坐标。
   final ({double width, double height}) viewportSize;
+
+  /// 高德相机 zoom 的可用下限。
+  static const double minZoom = 3;
+
+  /// 高德相机 zoom 的可用上限。
+  static const double maxZoom = 20;
+
+  /// 高德 zoom（可为小数）→ 该纬度下的地面分辨率（米/像素）。
+  ///
+  /// 参数：
+  /// - [lat]：纬度（GCJ-02）。地面分辨率随纬度收窄，故必须带上。
+  /// - [zoom]：高德相机 zoom。
+  ///
+  /// 返回：该纬度、该 zoom 下 1 逻辑像素代表的米数。
+  static double metersPerPixelForZoom(double lat, double zoom) =>
+      _metersPerPixelAtZoom0 *
+      math.cos(lat * math.pi / 180) /
+      math.pow(2, zoom).toDouble();
+
+  /// 地面分辨率（米/像素）→ 高德 zoom，即上式逆运算。
+  ///
+  /// 参数：
+  /// - [lat]：纬度（GCJ-02）。
+  /// - [metersPerPixel]：1 逻辑像素代表的米数，须为正。
+  ///
+  /// 返回：高德相机 zoom，夹在 [minZoom, maxZoom] 内。
+  static double zoomForMetersPerPixel(double lat, double metersPerPixel) {
+    final double raw =
+        math.log(
+          _metersPerPixelAtZoom0 * math.cos(lat * math.pi / 180) /
+              metersPerPixel,
+        ) /
+        math.ln2;
+    return raw.clamp(minZoom, maxZoom);
+  }
 
   /// 经纬度转视口内像素坐标（原点在视口左上角，y 向下）。
   ///
