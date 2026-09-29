@@ -1,0 +1,217 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.s2s.server.task.mapper.TaskMapper">
+
+    <!--
+      到期帖自动下架（架构 §8 任务 1；详设 §5.3.3 写守卫分流「系统派生变更不守 version」）。
+
+      EXPLAIN 结论：WHERE status + expire_at 两列正好命中 idx_status_expire(status, expire_at)，
+      type=range、key=idx_status_expire，无 filesort（ORDER BY expire_at 即索引次列）。
+
+      为什么 ORDER BY + LIMIT：按 expire_at 升序取最老的 N 条，保证多批收敛时每批都推进
+      （无 ORDER 时 LIMIT 的取舍不确定，极端情况下可能反复取同一批）。
+      为什么 status_reason = 1：库内归因「到期自动下架」，对外由 PostStatus 派生为 expired；
+      本语句不写 version——version 由 @Version 之外的显式语句维护，此处刻意不改，避免与
+      用户并发编辑互相饿死（详设 §5.3.3）。
+    -->
+    <update id="archiveExpiredPosts">
+        UPDATE post
+        SET status = 'archived',
+            status_reason = 1,
+            status_changed_at = #{now}
+        WHERE status = 'active'
+          AND expire_at <![CDATA[ <= ]]> #{now}
+        ORDER BY expire_at
+        LIMIT #{limit}
+    </update>
+
+    <!--
+      审计日志清理（架构 §8 任务 4；保留 180 天为合规下限，不可随盘容量下调）。
+
+      EXPLAIN 结论：audit_log 的两个二级索引为 idx_operator_created(operator_id, created_at)
+      与 idx_target_created(target_type, target_id, created_at)，**最左列都不是 created_at**，
+      故本语句 type=ALL、Extra=Using where（全表扫）。这是刻意的取舍：Batch1 审计量级为
+      千级行（仅用户解密留痕 + 举报），全表扫代价可忽略；不为单条清理语句新增
+      idx_created_at——那会与既有两个复合索引的尾列重复，只增写放大（同 post 表
+      「禁新增索引除非删一个」的容量纪律精神）。
+
+      LIMIT 分批：删除大批行会长时间持锁并膨胀 undo，故按主键序小批推进，由任务侧循环收敛。
+    -->
+    <delete id="deleteAuditLogsBefore">
+        DELETE FROM audit_log
+        WHERE created_at &lt; #{threshold}
+        ORDER BY created_at
+        LIMIT #{limit}
+    </delete>
+
+    <!--
+      软删收藏物删（架构 §8 任务 6；软删 30 天内供误删恢复）。
+
+      EXPLAIN 结论：命中 idx_deleted_at(deleted_at)，type=range、key=idx_deleted_at，
+      Extra=Using index condition；ORDER BY deleted_at 走索引序，无 filesort。
+    -->
+    <delete id="deleteFavoritesBefore">
+        DELETE FROM favorite
+        WHERE deleted_at IS NOT NULL
+          AND deleted_at &lt; #{threshold}
+        ORDER BY deleted_at
+        LIMIT #{limit}
+    </delete>
+
+    <!--
+      待清理注销用户（架构 §8 任务 7；PRD §3.7 注销 7 天冷静期）。
+
+      EXPLAIN 结论：命中 idx_deactivate_at(deactivate_at)，type=range，Extra=Using index；
+      回流 id 后再按主键做两步清理，避免在一条语句里跨三张表（user / user_identity / post）。
+
+      deactivate_at IS NOT NULL 同时承担「未撤回」判定：撤回注销会清空该列
+      （「撤回后数据原封不动」，PRD §9.7），故非空即仍在注销流程中。
+    -->
+    <select id="selectDeactivatingUserIds" resultType="long">
+        SELECT `user`.id
+        FROM `user`
+        WHERE `user`.deactivate_at IS NOT NULL
+          AND `user`.deactivate_at <![CDATA[ <= ]]> #{threshold}
+        ORDER BY `user`.deactivate_at
+    </select>
+
+    <!--
+      按 user_id 删全部身份行（架构 §8 任务 7 核心：不是只删一行）。
+
+      EXPLAIN 结论：命中 idx_user_id(user_id)，type=range 或 index，按 IN 列表逐值定位。
+
+      必须按 user_id 而非手机号：Batch2 起同一 user_id 会挂 wechat 等多行身份，
+      只删 phone 行会留下可登录的残留身份，注销承诺失效（架构 §8 口径说明第 2 条）。
+    -->
+    <delete id="deleteIdentitiesByUserIds">
+        DELETE FROM user_identity
+        WHERE user_id IN
+        <foreach collection="userIds" item="userId" open="(" separator="," close=")">
+            #{userId}
+        </foreach>
+    </delete>
+
+    <!--
+      清空实名结果与手机号掩码（架构 §8 任务 7；数据库设计 §5 第 5 行）。
+
+      EXPLAIN 结论：按主键 IN 定位，type=range、key=PRIMARY。
+
+      置 NULL 而非删 user 行：post 等表按 user_id 引用该账号，帖子需保留可追溯
+      （保留策略 post_archived_keep）；uk_id_card_hash 允许多行 NULL，故置空不冲突。
+      phone_mask 为 NOT NULL 列，置空串（'' 而非 NULL，避免 NULL 约束冲突）。
+    -->
+    <update id="clearUserPersonalData">
+        UPDATE `user`
+        SET real_name_enc = NULL,
+            id_card_hash = NULL,
+            id_card_last4 = NULL,
+            phone_mask = ''
+        WHERE id IN
+        <foreach collection="userIds" item="userId" open="(" separator="," close=")">
+            #{userId}
+        </foreach>
+    </update>
+
+    <!--
+      超时未 commit 的孤儿媒体（架构 §5.1 第 7 条 + §8 任务 9）。
+
+      EXPLAIN 结论：audit_status + created_at 命中 idx_audit_status_created
+      (audit_status, created_at)，type=range；post_id IS NULL 为回表后过滤
+      （该列不在索引内，Extra 会含 Using where）。孤儿行占比极低，回表代价可忽略。
+
+      post_id IS NULL 即「从未 commit」：commit 会回填 post_id 并转审核态，
+      故超时仍为 NULL 即为客户端中途退出的遗留对象。
+    -->
+    <select id="selectPendingMedia" resultType="map">
+        SELECT m.id,
+               m.object_key
+        FROM post_media m
+        WHERE m.audit_status = 'pending'
+          AND m.post_id IS NULL
+          AND m.created_at &lt; #{threshold}
+        ORDER BY m.created_at
+        LIMIT #{limit}
+    </select>
+
+    <!--
+      按主键删媒体登记行（任务 9 第二步：先删 OSS 对象，再删登记）。
+
+      EXPLAIN 结论：按主键 IN 定位，type=range、key=PRIMARY。
+    -->
+    <delete id="deleteMediaByIds">
+        DELETE FROM post_media
+        WHERE id IN
+        <foreach collection="ids" item="mediaId" open="(" separator="," close=")">
+            #{mediaId}
+        </foreach>
+    </delete>
+
+    <!--
+      待清理注销用户名下的帖子 ID（任务 7 第 4 步；用户 2026-09-29 裁定「连帖子一并删除」）。
+
+      EXPLAIN 结论：命中 idx_user_status_created(user_id, status, created_at) 的最左前缀
+      user_id，type=range。只出 id 列，用于后续按 post_id 批量清理媒体。
+
+      为什么不直接用 DELETE ... WHERE user_id IN 一步到位：删帖前必须先取到 post_id 集合，
+      才能连带清理 post_media 与 OSS 对象（登记行是找回对象的唯一凭据，先删登记即失去线索）。
+    -->
+    <select id="selectPostIdsByUserIds" resultType="long">
+        SELECT p.id
+        FROM post p
+        WHERE p.user_id IN
+        <foreach collection="userIds" item="userId" open="(" separator="," close=")">
+            #{userId}
+        </foreach>
+        ORDER BY p.id
+    </select>
+
+    <!--
+      指定帖子的媒体登记（任务 7 第 4 步的前置读取）。
+
+      EXPLAIN 结论：命中 idx_post_id_audit(post_id, audit_status) 的最左前缀 post_id，
+      type=range；只出 id + object_key 两列，不带 size/type 等与本次删除无关的列。
+    -->
+    <select id="selectMediaByPostIds" resultType="map">
+        SELECT m.id,
+               m.object_key
+        FROM post_media m
+        WHERE m.post_id IN
+        <foreach collection="postIds" item="postId" open="(" separator="," close=")">
+            #{postId}
+        </foreach>
+        ORDER BY m.id
+    </select>
+
+    <!--
+      删除指定帖子的媒体登记（任务 7 第 4 步的连带清理）。
+
+      EXPLAIN 结论：命中 idx_post_id_audit 的最左前缀 post_id，type=range。
+    -->
+    <delete id="deleteMediaByPostIds">
+        DELETE FROM post_media
+        WHERE post_id IN
+        <foreach collection="postIds" item="postId" open="(" separator="," close=")">
+            #{postId}
+        </foreach>
+    </delete>
+
+    <!--
+      删除该用户名下全部帖子（任务 7 第 4 步主体；用户 2026-09-29 裁定）。
+
+      EXPLAIN 结论：命中 idx_user_status_created 的最左前缀 user_id，type=range。
+
+      与保留策略 post_archived_keep（下架帖不物理删除，供收藏与申诉追溯）的冲突是**有意为之**：
+      注销属个人信息删除义务（PIPL），优先级高于保留期策略——帖子里的 contact_value_enc
+      是 NOT NULL 列，只要帖子还在，该用户的联系方式就仍可被解密，注销承诺即未履行。
+      该优先级已由用户裁定并登记（说明文档 §2.9）。
+    -->
+    <delete id="deletePostsByUserIds">
+        DELETE FROM post
+        WHERE user_id IN
+        <foreach collection="userIds" item="userId" open="(" separator="," close=")">
+            #{userId}
+        </foreach>
+    </delete>
+
+</mapper>

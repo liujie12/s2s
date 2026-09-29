@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.s2s.server.notify.mapper.NotificationMapper">
+
+    <!--
+      通知分页查询（openapi GET /notifications；详设 §5.6）。
+
+      EXPLAIN 结论（索引 idx_user_type_deleted_created(user_id, type, deleted_at, created_at)）：
+        * type 指定时：三段前缀 user_id + type + deleted_at 全部命中，
+          type=range（type 为等值、deleted_at 为 IS NULL 判定），Extra=Using index condition；
+          ORDER BY created_at DESC 走索引尾列（反向扫描），无 filesort。
+        * type 缺省时：只有最左前缀 user_id 可用（等值），deleted_at/created_at 在索引中
+          不构成连续前缀，故 Extra 含 Using filesort —— 排序在单用户的行集合内进行，
+          单用户通知量级为百级，代价可接受；不为它单独建 (user_id, deleted_at, created_at)
+          索引（与既有索引高度重叠，只增写放大）。
+      `ORDER BY created_at DESC, id DESC` 的 id 兜底列：created_at 为 DATETIME（秒精度），
+      同一秒多条时若无 id 兜底，翻页会出现重复/漏行。
+
+      列集合纪律：只出七列，禁 SELECT * —— notification 无敏感列，但列集合一旦放开，
+      将来新增内部列（如运营备注）会被无声带出到 App 端。
+    -->
+    <select id="selectPage" resultType="map">
+        SELECT n.id,
+               n.type,
+               n.title,
+               n.summary,
+               n.target_id,
+               n.created_at,
+               n.read_at
+        FROM notification n
+        WHERE n.user_id = #{userId}
+          AND n.deleted_at IS NULL
+        <if test="type != null">
+          AND n.type = #{type}
+        </if>
+        ORDER BY n.created_at DESC, n.id DESC
+        LIMIT #{offset}, #{limit}
+    </select>
+
+    <!--
+      总数统计（与 selectPage 同一筛选条件，少一列不改语义）。
+
+      EXPLAIN 结论：type 指定时走 idx_user_type_deleted_created 的三段前缀
+      （Extra=Using index，覆盖索引直接出数，不回表）；type 缺省时退化为
+      user_id 前缀 range + 回表判定 deleted_at —— 单用户行数小，可接受。
+    -->
+    <select id="countByUser" resultType="long">
+        SELECT COUNT(*)
+        FROM notification n
+        WHERE n.user_id = #{userId}
+          AND n.deleted_at IS NULL
+        <if test="type != null">
+          AND n.type = #{type}
+        </if>
+    </select>
+
+    <!--
+      未读总数（跨三 Tab 的角标口径，见 Mapper 接口注释）。
+
+      EXPLAIN 结论：走 idx_user_type_deleted_created 的 user_id 最左前缀，
+      read_at 不在索引中故需回表逐行判定（Extra=Using where）。有意不为「未读」
+      单开索引：Batch1 通知量级为百级，且该查询无排序无分页，回表行数即结果规模。
+    -->
+    <select id="countUnread" resultType="long">
+        SELECT COUNT(*)
+        FROM notification n
+        WHERE n.user_id = #{userId}
+          AND n.read_at IS NULL
+          AND n.deleted_at IS NULL
+    </select>
+
+</mapper>

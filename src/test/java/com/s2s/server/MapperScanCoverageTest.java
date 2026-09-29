@@ -71,6 +71,11 @@ class MapperScanCoverageTest {
      */
     private static final Map<String, String> MANUAL_SESSION_PACKAGES = new LinkedHashMap<>();
 
+    static {
+        MANUAL_SESSION_PACKAGES.put("com.s2s.server.track.mapper",
+                "埋点库独立会话承载（见 TrackPersistenceConfig），不经 @MapperScan");
+    }
+
     /**
      * 断言每个 Mapper 恰被一种机制承载。
      *

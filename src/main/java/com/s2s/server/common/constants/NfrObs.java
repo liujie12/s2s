@@ -28,4 +28,32 @@ public final class NfrObs {
      * 窗口与重启后预热期。消费方：{@code RestartWindowWriter} 以「启动完成时刻 +
      * 本时长」算出 {@code restart_window.end_at}。 */
     public static final long RESTART_WARMUP_MINUTES = 5;
+
+    /** 埋点月表行数迁移阈值（行）。<b>依据源：可观测性架构方案 §9.1 阈值 T1</b>
+     * （「埋点表超 2000 万行」）。消费方：可观测性阈值巡检任务。 */
+    public static final long MIGRATION_TRACK_ROWS = 20_000_000L;
+
+    /** 埋点库占盘迁移阈值（GB）。<b>依据源：可观测性架构方案 §9.1 阈值 T1</b>
+     * （「埋点数据自身占盘超 8GB」）；§9.1 同时明写必须只量埋点库、不得用 {@code df}。
+     * 消费方：可观测性阈值巡检任务。 */
+    public static final double MIGRATION_TRACK_STORAGE_GB = 8.0;
+
+    /** 埋点写入 QPS 迁移阈值（事件/秒）。<b>依据源：可观测性架构方案 §9.1 阈值 T2</b>
+     * （「埋点写入 QPS 持续超 50」）。单分钟计数阈值 = 本值 × 60，由消费方现算，
+     * 不在此预乘（预乘值散落即复制字面量）。消费方：可观测性阈值巡检任务。 */
+    public static final long MIGRATION_TRACK_QPS = 50L;
+
+    /** 高位分钟数门槛（分钟）。<b>依据源：可观测性架构方案 §9.1 阈值 T2</b>
+     * （「该计数 ≥ 60 才算命中」——单分钟峰值不算，取 MAX 会让一次活动或离线回灌误触发）。
+     * 消费方：可观测性阈值巡检任务。 */
+    public static final long MIGRATION_HIGH_VOLUME_MINUTES = 60L;
+
+    /** 迁移阈值的统计窗口（天）。<b>依据源：可观测性架构方案 §9.1 阈值 T2</b>（「近 7 天」）。
+     * 消费方：可观测性阈值巡检任务。 */
+    public static final int MIGRATION_WINDOW_DAYS = 7;
+
+    /** 主看板 SQL 单次执行时长阈值（秒）。<b>依据源：可观测性架构方案 §9.1 阈值 T3</b>
+     * （「单次执行超 10 秒」）。消费方：可观测性阈值巡检任务（当前因看板 SQL 清单
+     * 文件未交付而不可执行，见该任务注释与说明文档 §2.9）。 */
+    public static final long MIGRATION_DASHBOARD_SQL_SECONDS = 10L;
 }
