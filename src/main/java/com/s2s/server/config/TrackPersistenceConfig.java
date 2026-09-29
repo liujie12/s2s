@@ -40,10 +40,10 @@ import org.springframework.core.env.Environment;
  * {@link MybatisPlusProperties}（即 {@code application.yml} 的 {@code mybatis-plus.*} 绑定结果）复制，
  * 不在本类重写一份——否则两套口径会各自漂移（不复制字面量纪律）。</p>
  *
- * <p><b>XML 加载</b>：不显式设置 {@code mapperLocations}，沿用 MyBatis-Plus 默认的
- * {@code classpath*:/mapper/**} 扫描面，故本域 XML 落 {@code src/main/resources/mapper/} 下即可被加载
- * （本域暂无 XML，抽象语句随 P2b 落地；无匹配资源不会导致启动失败——{@code resolveMapperLocations}
- * 对 IOException 返回空数组）。</p>
+ * <p><b>XML 加载</b>：本类手工构造会话，须显式 {@code setMapperLocations}——{@link MybatisSqlSessionFactoryBean}
+ * 自身不设默认扫描面（{@code classpath*:/mapper/**} 的默认值由 {@code MybatisPlusAutoConfiguration} 注入，
+ * 手工构造时不设置则 XML 零加载）。本类复用 {@link MybatisPlusProperties#resolveMapperLocations()}
+ * 与业务库同扫面（[130] 联调首启实证修复）。</p>
  */
 @Configuration
 public class TrackPersistenceConfig {
@@ -93,6 +93,13 @@ public class TrackPersistenceConfig {
             globalConfig.getDbConfig().setIdType(boundGlobalConfig.getDbConfig().getIdType());
         }
         factory.setGlobalConfig(globalConfig);
+
+        // [130] 联调首启修复：MybatisSqlSessionFactoryBean 自身【不】带 mapperLocations 默认值——
+        // classpath*:/mapper/** 的默认扫描面由 MybatisPlusAutoConfiguration 注入，本类手工构造
+        // 会话时不设置则 XML 一条都不加载，TrackEventMapper.batchInsert 报
+        // 「Invalid bound statement (not found)」。口径同源：直接复用 MybatisPlusProperties
+        // 的解析结果（与业务库同扫面，不复制字面量），见类注释「口径同源」。
+        factory.setMapperLocations(mybatisPlusProperties.resolveMapperLocations());
 
         try {
             return new TrackPersistence(factory.getObject());

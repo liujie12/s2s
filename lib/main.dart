@@ -17,6 +17,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/network/api_client.dart';
 import 'design_tokens.dart';
 import 'features/auth/auth_network_wiring.dart';
+import 'features/track/track_wiring.dart';
 import 'router/app_router.dart';
 
 void main() {
@@ -37,13 +38,45 @@ void main() {
 
 /// 应用根组件。
 ///
-/// 用 ConsumerWidget 而非 StatelessWidget：路由表需读取隐私同意状态来
-/// 决定是否强制跳转协议门，故 routerConfig 来自 Provider。
-class ZhaoYaZhaoApp extends ConsumerWidget {
+/// 用 ConsumerStatefulWidget 而非 StatelessWidget：除路由表需读取隐私同意
+/// 状态外，还须在生命周期内挂载埋点链观察者（[TrackLifecycleObserver]），
+/// 把「进后台」「联网恢复」两个触发源接到埋点上报器（[130]）。
+class ZhaoYaZhaoApp extends ConsumerStatefulWidget {
   const ZhaoYaZhaoApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ZhaoYaZhaoApp> createState() => _ZhaoYaZhaoAppState();
+}
+
+class _ZhaoYaZhaoAppState extends ConsumerState<ZhaoYaZhaoApp> {
+  /// 埋点链生命周期观察者（进后台/联网恢复触发上报）。
+  TrackLifecycleObserver? _trackObserver;
+
+  @override
+  void initState() {
+    super.initState();
+    _trackObserver = TrackLifecycleObserver(
+      readController: () => ref.read(trackControllerProvider),
+    )..start();
+  }
+
+  @override
+  void dispose() {
+    _trackObserver?.stop();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // 上报器（FutureProvider）就绪、控制器首次可用时启动 30s 周期触发。
+    // 用 listen 而非在 initState 里读：控制器依赖 path_provider 异步落盘，
+    // initState 时点尚未就绪。
+    ref.listen(trackControllerProvider, (previous, next) {
+      if (previous == null && next != null) {
+        next.startPeriodicFlush();
+      }
+    });
+
     return MaterialApp.router(
       title: '找鸭找',
       routerConfig: ref.watch(routerProvider),
