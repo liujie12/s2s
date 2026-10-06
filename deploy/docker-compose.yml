@@ -141,10 +141,12 @@ services:
       - ./config/app:/opt/s2s/config:ro
     healthcheck:
       # Spring Boot Actuator 健康端点，仅容器内可达。
-      # 用 curl 而非 wget：eclipse-temurin:21-jre-alpine 实测自带 /usr/bin/curl
-      # 但【不含 wget】。用 wget 会让 healthcheck 永远失败，进而卡住依赖它的
-      # caddy（condition: service_healthy），表现为「部署卡在启动阶段」。
-      test: ["CMD-SHELL", "curl -sf http://localhost:8080/actuator/health | grep -q '\"status\":\"UP\"' || exit 1"]
+      # 用 busybox wget 而非 curl：2026-10-06 首次部署实测，本轮所用的
+      # eclipse-temurin:21-jre-alpine【不含 curl】（旧注释称其自带 curl，已过期），
+      # 容器内可用工具实测只有 busybox 与 nc。用不存在的 curl 会让 healthcheck
+      # 永久失败，卡住 depends_on 它的 caddy，表现为「部署卡在启动阶段」。
+      # 换镜像后须先 `docker exec s2s-app sh -c 'command -v curl wget busybox'` 复核。
+      test: ["CMD-SHELL", "busybox wget -qO- http://localhost:8080/actuator/health | grep -q '\"status\":\"UP\"' || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3

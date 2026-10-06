@@ -201,10 +201,12 @@ log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "${LOG_FILE}"; }
 # 说明：必须用 docker exec 而非宿主机 curl localhost:8080 —— staging / prod
 #       的 app 服务【没有】ports 映射（门禁 G1 强制），宿主机上那个端口根本
 #       不存在，用 curl 判定会在正常情况下也报失败。
+#       容器内改用 busybox wget 而非 curl：该基础镜像实测不含 curl（2026-10-06
+#       首次部署实测，见 compose 的 app healthcheck 同处注释）。
 # ---------------------------------------------------------------------------
 check_app_health() {
   docker exec s2s-app \
-    curl -sf http://localhost:8080/actuator/health 2>/dev/null \
+    busybox wget -qO- http://localhost:8080/actuator/health 2>/dev/null \
     | grep -q '"status":"UP"'
 }
 
@@ -364,7 +366,7 @@ if check_app_health; then
   log "[OK] 应用健康检查通过（status: UP）"
 else
   log "[WARN] 健康检查未返回 UP，请人工确认"
-  log "      命令：docker exec s2s-app curl -s http://localhost:8080/actuator/health"
+  log "      命令：docker exec s2s-app busybox wget -qO- http://localhost:8080/actuator/health"
   log "      日志：docker compose -f ${BASE_FILE} -f ${OVERRIDE_FILE} logs app --tail 50"
 fi
 

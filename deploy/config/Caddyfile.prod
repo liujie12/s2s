@@ -21,6 +21,12 @@
     email {$ACME_EMAIL}
     # 关闭 admin API 的默认公开监听，仅本机可访问
     admin localhost:2019
+    # HTTP 端口改到高位：宿主机 80 被系统 nginx 占用（2026-10-06 首次部署实测，
+    # nginx 正服务 implement/gdjt/hefei 等多个 build110.com 子域名，不可停）。
+    # http_port 非 80 时 Caddy 知道标准 HTTP 端口不可用，会跳过 HTTP-01 挑战、
+    # 改用 TLS-ALPN-01（走 443）签发证书，无需 80 端口。
+    # 若要恢复 HTTP→HTTPS 301（门禁 G6），应在宿主机 nginx 侧加跳转块。
+    http_port 8081
 }
 
 # ---------------------------------------------------------------------------
@@ -78,9 +84,10 @@
 }
 
 # ---------------------------------------------------------------------------
-# HTTP 站点 —— 仅用于 301 跳转到 HTTPS
-# 门禁 G6：curl -I http://{域名}/ 必须返回 301
+# HTTP 站点（原用于 301 跳转到 HTTPS，门禁 G6）
+# 2026-10-06 停用：宿主机 80 被系统 nginx 占用，Caddy 改用 http_port 8081 并
+# 仅走 TLS-ALPN-01 签发证书，本块已无实际用途。HTTP→HTTPS 301 改由 nginx 侧承担。
 # ---------------------------------------------------------------------------
-http://{$SITE_DOMAIN} {
-    redir https://{host}{uri} permanent
-}
+# http://{$SITE_DOMAIN} {
+#     redir https://{host}{uri} permanent
+# }

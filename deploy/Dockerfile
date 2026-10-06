@@ -7,9 +7,12 @@
 #
 # 纪律（违反即部署门禁失败）：
 #   1. 运行镜像【禁止】包含 Maven 等构建工具
-#      注：curl 是例外 —— 它是基础镜像 eclipse-temurin:21-jre-alpine 自带的
-#      （实测 /usr/bin/curl 存在，wget 不存在），且 compose 的 healthcheck 依赖它。
-#      不要为了「精简」去删它，删掉后健康检查永远失败，caddy 会一直等不到 app healthy。
+#      注：健康检查用容器内的 busybox wget（2026-10-06 首次部署实测：本基础镜像
+#      【不含】curl，也无 wget 独立命令，仅 busybox 与 nc 可用；旧注释称其自带
+#      curl 已过期）。换镜像版本后须先执行
+#      `docker exec s2s-app sh -c 'command -v curl wget busybox'` 复核可用工具，
+#      再改 compose 的 healthcheck —— 否则 healthcheck 永久失败，caddy 会一直
+#      等不到 app healthy（表现为部署卡死）。
 #   2. 【禁止】COPY .env（见《部署架构设计文档》§7.3 纪律②）
 #   3. 基础镜像必须使用明确 tag，【禁止】latest / RELEASE / 版本范围
 #
@@ -24,6 +27,12 @@
 FROM maven:3.9-eclipse-temurin-21 AS builder
 
 WORKDIR /build
+
+# Maven 国内镜像源：实测服务器直连 Maven Central 超 13 分钟未完成依赖下载，
+# 故注入阿里云 public 镜像（详见 deploy/maven-settings.xml 头注释）。
+# 只影响构建期，不进运行镜像。放在 COPY pom.xml 之前，使镜像源变更不会
+# 连带令依赖层缓存失效。
+COPY deploy/maven-settings.xml /root/.m2/settings.xml
 
 # 先复制依赖描述文件，利用 Docker 层缓存减少重复下载
 COPY pom.xml .

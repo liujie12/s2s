@@ -32,7 +32,12 @@ services:
     # 路径为 ./config/Caddyfile.prod，无需 override 重复声明
     ports:
       - "0.0.0.0:443:443"
-      - "0.0.0.0:80:80"
+      # 80 不绑：宿主机 80 被系统 nginx 占用（2026-10-06 首次部署实测 —— nginx 正
+      # 服务 implement/gdjt/hefei/mg/jy/gh/iot 等多个 build110.com 子域名，不可停）。
+      # 代价：ACME 只能用 TLS-ALPN-01（443）挑战，HTTP-01 不可用；
+      # 「HTTP→HTTPS 301 跳转」（门禁 G6）在 Caddy 侧失效，如需 301，
+      # 应在宿主机 nginx 侧为 s2s.build110.com 新增一条 80 跳转 server 块。
+      # - "0.0.0.0:80:80"
     mem_limit: 64m
 
   # --------------------------------------------------------------------------
