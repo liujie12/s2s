@@ -36,14 +36,17 @@ build/
 # pubspec.lock：应用（非 library）应当入库以锁定依赖版本，故不忽略
 
 # ── Android 构建 ──
-android/.gradle/
-android/local.properties
+# 一律写成 `android/**/` 递归形：同一类生成物在模块子目录（如 android/app/）下会再出现
+# 一份（实测 2026-10-07 build 期间生成 android/app/local.properties 与
+# android/app/.gradle/config.properties），只写根目录那一份会让 L3 出包门禁第 1 步
+# 「构建源码面无未跟踪文件」在每次构建后恒红 —— 而这些文件按 Gradle 自己的声明就
+# 不该进版本库（local.properties 文件头原文：must *NOT* be checked into VCS）。
+android/**/.gradle/
+android/**/local.properties
+android/**/.kotlin/
 android/app/debug/
 android/app/profile/
 android/app/release/
-# .kotlin/ 是 in-process 编译策略（见 gradle.properties）产生的会话缓存，
-# 每次构建重新生成
-android/.kotlin/
 
 # ── 签名密钥（绝不入库）──
 # 正式签名证书泄露等于应用可被伪造，且证书一旦启用不可更换（上架前置手册 P7）
