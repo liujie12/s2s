@@ -305,13 +305,22 @@ echo "=========================================="
 
 # ---------------------------------------------------------------------------
 # 第 1 步：工作区干净
+# 口径（2026-10-07 用户裁定，见说明文档 DEC-22）：
+#   「干净」= ① 已跟踪文件无改动（git status -uno 为空）；② 构建源码面
+#   （lib/ android/ ios/ pubspec.yaml）下无未跟踪文件。
+#   为何不用字面口径「git status 无任何未提交改动」：本机工具链会在代理运行期间
+#   临时物化 .claude/skills/ 等配置目录，未跟踪条目随机出现（实测两次出包均因此
+#   在运行中变脏）—— 那与「日志 commit 是否对应打包代码」无关。
+#   为何仍要单独查源码面：未跟踪文件不属于任何 commit，但**未跟踪的源码会被编译
+#   进产物**（漏 git add 的 lib/xxx.dart 即此情形），故不能只做 -uno。
 # ---------------------------------------------------------------------------
-DIRTY="$(git -C "${REPO}" status --porcelain)"
-if [[ -z "${DIRTY}" ]]; then
-  pass "S1 工作区干净（git status 无未提交改动）"
+TRACKED_DIRTY="$(git -C "${REPO}" status --porcelain --untracked-files=no)"
+UNTRACKED_SRC="$(git -C "${REPO}" status --porcelain --untracked-files=all -- lib android ios pubspec.yaml 2>/dev/null | grep '^??' || true)"
+if [[ -z "${TRACKED_DIRTY}" && -z "${UNTRACKED_SRC}" ]]; then
+  pass "S1 工作区干净（已跟踪文件无改动；构建源码面 lib/ android/ ios/ pubspec.yaml 无未跟踪文件）"
 else
-  fail "S1 工作区有未提交改动，日志中的 commit hash 与实际打包代码不一致，留证失去意义：
-$(echo "${DIRTY}" | sed 's/^/        /')"
+  fail "S1 工作区不干净，日志中的 commit hash 无法对应到打包的代码：
+$(printf '%s\n%s\n' "${TRACKED_DIRTY}" "${UNTRACKED_SRC}" | grep . | sed 's/^/        /')"
 fi
 
 # ---------------------------------------------------------------------------
