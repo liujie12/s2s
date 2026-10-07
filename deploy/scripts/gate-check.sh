@@ -396,25 +396,32 @@ fi
 # --- G9: 日志无明文手机号 ----------------------------------------------------
 echo ""
 echo "[G9] 日志无明文手机号/身份证"
-LOG_DIR="/var/log/app"
-# ⚠ 与 G2 同型的假阴性，不能只判目录存在：目录存在但里面一个 .log 都没有时，
-#   HITS 为空 → else → PASS「日志中无手机号明文」。可是根本没有日志被扫过。
-#   脱敏这类判据尤其危险 —— 服务刚起还没落盘、日志被轮转搬走、挂载点没挂上，
-#   都会呈现为「目录在、文件没有」，而每一次都会得到一个绿色的 PASS。
-#   故必须先确认存在待扫文件，扫描面为空时是 SKIP。
-if [[ ! -d "${LOG_DIR}" ]]; then
-  skip "G9" "日志目录 ${LOG_DIR} 不存在，日志脱敏未判定"
+# 判据形态（2026-10-06 修正）：日志落盘在【容器内】/var/log/app，宿主载体是
+#   命名卷 app_logs（compose: app_logs:/var/log/app），宿主机的 /var/log/app
+#   从不存在 —— 原实现直接扫宿主该路径，在命名卷形态下必然「目录不存在」→ SKIP，
+#   即判据从未真正执行过（首次生产部署实测暴露）。现改为经 `docker exec` 扫
+#   容器内路径（运行镜像为 alpine，busybox 提供 ls/cat）。
+# ⚠ 与 G2 同型的假阴性仍须防：扫描面为空（容器未起 / 尚未落盘 / 日志被轮转）
+#   时必须 SKIP 而非 PASS ——「没扫到」不等于「扫过了且干净」。
+G9_CONTAINER="s2s-app"
+if ! docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^${G9_CONTAINER}$"; then
+  skip "G9" "容器 ${G9_CONTAINER} 未运行，日志脱敏未判定"
 else
-  LOG_FILES=$(find "${LOG_DIR}" -name '*.log' -type f 2>/dev/null | head -1 || true)
+  LOG_FILES=$(docker exec "${G9_CONTAINER}" sh -c 'ls /var/log/app/*.log 2>/dev/null' || true)
   if [[ -z "${LOG_FILES}" ]]; then
-    skip "G9" "${LOG_DIR} 下无 .log 文件，扫描面为空，日志脱敏未判定"
+    skip "G9" "容器内 /var/log/app 下无 .log 文件，扫描面为空，日志脱敏未判定"
   else
     # 检查最近日志中是否有完整的 11 位手机号
-    HITS=$(find "${LOG_DIR}" -name '*.log' -type f -exec grep -EH '1[3-9][0-9]{9}' {} \; 2>/dev/null | head -5 || true)
+    # 判据须带边界（2026-10-06 修正）：裸写 1[3-9][0-9]{9} 会把 UUID 里的数字
+    #   片段误判为手机号 —— 实测 request_id "bd19c1b2-...-315133023584" 的子串
+    #   "15133023584" 命中，使判据在完全合规的日志上稳定报 FAIL（假阳性）。
+    #   要求命中串前后均为【非字母数字】字符，即可排除 UUID / 哈希 / 时间戳。
+    HITS=$(docker exec "${G9_CONTAINER}" sh -c 'cat /var/log/app/*.log 2>/dev/null' \
+      | grep -E '(^|[^0-9A-Za-z])1[3-9][0-9]{9}([^0-9A-Za-z]|$)' | head -5 || true)
     if [[ -n "${HITS}" ]]; then
       fail "日志中发现疑似手机号明文：${HITS}"
     else
-      pass "日志中无手机号明文"
+      pass "容器内日志中无手机号明文"
     fi
   fi
 fi

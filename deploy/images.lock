@@ -17,12 +17,20 @@
 # 格式（每行一条，# 开头为注释）：
 #   <镜像名>:<tag> <digest 或 PENDING>
 #
-# digest 值当前一律为 PENDING：本机尚未执行过 docker pull，
-# 没有任何可信来源可以填入真实哈希。【禁止】凭空编造 sha256 值 ——
-# 假 digest 比没有 digest 更危险：校验脚本会拿它去比对并永远报不一致，
-# 几次之后所有人都会开始无视这个告警，基线就此失效。
+# digest 值已于 2026-10-07 首次填充（首次生产部署实测，环境见
+#   deploy/docs/部署操作手册.md 附录 D）。
 #
-# 首次填充（在能联网 pull 的机器上执行一次即可）：
+# 【来源说明 · 重要】填充时目标服务器无法直连 Docker Hub
+#   （registry-1.docker.io 超时），镜像系经第三方镜像站 docker.1panel.live
+#   拉取后用 docker tag 改为官方名。下列 digest 取自这些本地镜像的
+#   RepoDigests —— 记录的是【实际运行镜像】的内容哈希，故 --verify 在本机可通过。
+#   若日后改从 Docker Hub 官方拉取，须重新核对 digest
+#   （第三方站若为透明代理则一致，若重新打包则不同）。
+#
+# 【禁止】凭空编造 sha256 值 —— 假 digest 比没有 digest 更危险：校验脚本会拿它
+#   去比对并永远报不一致，几次之后所有人都会开始无视这个告警，基线就此失效。
+#
+# 正规填充方式（在能联网 pull 的机器上执行一次即可）：
 #   bash deploy/scripts/image-baseline.sh --refresh
 # 该命令会 pull 全部镜像、读取真实 digest 并就地回写本文件，随后提交入库。
 #
@@ -41,18 +49,18 @@
 # ---------------------------------------------------------------------------
 
 # TLS 终止与反向代理。2.8 系列，不追 2.9（《技术栈选型说明》定案）
-caddy:2.8-alpine PENDING
+caddy:2.8-alpine sha256:af32e97399febea808609119bb21544d0265c58a02836576e32a2d082c262c17
 
 # 关系库。8.4 是 LTS；8.0 已进入 EOL 倒计时，不选
-mysql:8.4 PENDING
+mysql:8.4 sha256:6ea90827b1100f8f2ae306a539f86d2c264a26ed435a2a9f75551dd5c3aeb242
 
 # 缓存与会话。7.4 稳定版，alpine 变体减体积
-redis:7.4-alpine PENDING
+redis:7.4-alpine sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
 
 # ---------------------------------------------------------------------------
 # 构建期镜像（不进运行镜像，但同样锁定 —— 构建工具链变更会改变产物）
 # 与 deploy/Dockerfile 中的 FROM 行必须逐字一致，改一处必须改另一处
 # ---------------------------------------------------------------------------
 
-maven:3.9-eclipse-temurin-21 PENDING
-eclipse-temurin:21-jre-alpine PENDING
+maven:3.9-eclipse-temurin-21 sha256:99e61abcff91a9b1333463bd8451fb18495d6eba9250ac66a338b518f8278320
+eclipse-temurin:21-jre-alpine sha256:51ab5e3302e7141ce665ca3ea85e8b5cd648eafbc3c0c90dd79d6537684e4555
