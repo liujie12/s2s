@@ -805,7 +805,7 @@ void main() {
     /// features/track/track_wiring.dart。
     const int libDartFileBaseline = 78;
 
-    /// `ApiException.parse(` 命中总数基线（判据 C1）：工厂定义 1 + 调用 42。
+    /// `ApiException.parse(` 命中总数基线（判据 C1）：工厂定义 1 + 调用 43。
     ///
     /// **维护纪律**：改本值必须同改 `api_exception.dart` 文件头的调用点清单
     /// （人工真源与机器判据配对，任一单独变化都会让该判据失真）。
@@ -815,9 +815,9 @@ void main() {
     /// category_dto 2 + post_dto 7 + auth_repository 8 +
     /// contact_repository 1（[128]：`FullContact.fromJson` 对契约外
     /// `contact_type` 抛 parseError，不猜成手机号）= 42。
-    /// 43 = 42 + 工厂定义 1；33 的历史构成见说明文档 §三（[127] 前端段合并后
-    /// 该判据曾静默变红 +7，本轮一并校正；过程不再抄在本注释里）。
-    const int parseFactoryTotalBaseline = 43;
+    /// 43 = 42 + city.dart 1（[132]：CityItem.fromJson 对 lat/lng 非 num 抛
+    /// parseError）；44 = 43 + 工厂定义 1。33 的历史构成见说明文档 §三。
+    const int parseFactoryTotalBaseline = 44;
 
     test('lib/features/ 无 for/while 循环重试（详设 §14.2，判据 A1）', () {
       // 先断言扫描面非空且不小于基线（部署 §14.5：先断言待判对象存在），

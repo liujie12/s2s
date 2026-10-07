@@ -28,9 +28,13 @@ import '../../domain/listing_category.dart';
 import '../../domain/listing_category_style.dart';
 import '../../nfr_constants.dart';
 import '../../router/app_router.dart';
+import '../city/city_selector_sheet.dart';
 import '../discovery/discovery_filter.dart';
 import '../discovery/filter_panel.dart';
 import '../discovery/listing_repository.dart';
+import '../location/location_center.dart';
+import '../location/location_guide.dart';
+import '../location/location_permission.dart';
 import '../perf/perf_panel.dart';
 import '../privacy/privacy_consent.dart';
 import 'amap_init_guard.dart';
@@ -94,10 +98,46 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   /// 用于程序化改视角（当前唯一场景：点聚合圈放大）。
   AMapController? _amapController;
 
+  /// 是否已取得过有效定位（首屏骨架屏判定）。
+  bool _located = false;
+
+  /// 连续取点失败次数（§6.8「≥ [NfrLocation.locateFailThreshold] 次 → C 态降级」）。
+  int _locateFailCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // 视口中心从共享参考中心初始化（默认杭州；定位成功/手动选城市会改写）。
+    final center = ref.read(locationCenterProvider);
+    _centerLat = center.lat;
+    _centerLng = center.lng;
+    // 参考中心变化（定位成功取点 / 手动选城市）时，同步视口并推给原生相机。
+    // 用户拖动只改本地 _centerLat/_centerLng，不改 Provider，故此处不会回环。
+    ref.listen(locationCenterProvider, (previous, next) {
+      if (next.lat == _centerLat && next.lng == _centerLng) return;
+      setState(() {
+        _centerLat = next.lat;
+        _centerLng = next.lng;
+      });
+      _pushCameraToAmap();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final consent = ref.watch(privacyConsentProvider);
     final listings = ref.watch(filteredListingsProvider);
+
+    // 定位引导页（PRD §6.4.4 A/B 态）：隐私已同意、未跳过、且权限为 A/B 时，
+    // 全屏引导页取代地图。C 态（已授权但取点失败）不出引导页，走 §6.8 兜底。
+    final phase = ref.watch(locationPermissionProvider);
+    final guideDismissed = ref.watch(locationGuideDismissedProvider);
+    if (consent == PrivacyConsentStatus.agreed &&
+        !guideDismissed &&
+        (phase == LocationPermissionPhase.neverGranted ||
+            phase == LocationPermissionPhase.revoked)) {
+      return const LocationGuide();
+    }
 
     return Scaffold(
       backgroundColor: Color(AppColors.background),
@@ -127,6 +167,20 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           return Stack(
             children: [
               _buildMapBody(consent, projection, markers, supplyDemandById),
+              // 定位前骨架屏（PRD §6.7 `:1305`）：已授权但尚未取到点 → 遮罩 + 提示。
+              if (phase == LocationPermissionPhase.granted &&
+                  !_located &&
+                  _locateFailCount < NfrLocation.locateFailThreshold)
+                const Positioned.fill(child: _LocatingSkeleton()),
+              // C 态降级提示（PRD §6.8 / §6.4.4 C）：连续取点失败 ≥ 阈值 →
+              // 保持默认中心 + 顶部提示 + 手动选城市（不出引导页）。
+              if (_locateFailCount >= NfrLocation.locateFailThreshold)
+                Positioned(
+                  left: AppSpacing.md,
+                  right: AppSpacing.md,
+                  bottom: AppSpacing.md,
+                  child: _LocateFailedBanner(onManualCity: _showManualCity),
+                ),
               const Positioned(
                 left: AppSpacing.lg,
                 top: AppSpacing.md,
@@ -285,6 +339,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   ///
   /// 返回：[Widget] 高德地图控件。
   Widget _buildAmap() {
+    // 只有已授权才启用定位（蓝点 + 取点回调）。A/B 态被引导页取代、手动选城市
+    // 跳过时权限仍非 granted，此时不启蓝点也不听取点回调，避免无权限时白等。
+    final locationGranted =
+        ref.watch(locationPermissionProvider) == LocationPermissionPhase.granted;
+
     return AMapWidget(
       // 只在创建平台视图时生效（插件的 `didUpdateWidget` 只更 options，不重设相机），
       // 故这里传当前状态不会与 onCameraMove 形成「回调 → 重建 → 再设相机」的回环。
@@ -297,6 +356,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         MapProjection.zoomForMetersPerPixel(_centerLat, _kMaxMetersPerPixel),
         MapProjection.zoomForMetersPerPixel(_centerLat, _kMinMetersPerPixel),
       ),
+      // 位置蓝点（PRD §6.4.1「位置 Marker 🟢（自己）」）：交给高德原生绘制，
+      // 不在 Dart 侧自绘 —— 自绘蓝点要跟相机每帧换算坐标，与 Marker 投影同一套
+      // 异步 toScreenLocation 问题。
+      myLocationStyleOptions: MyLocationStyleOptions(locationGranted),
+      onLocationChanged: locationGranted ? _onLocationChanged : null,
       onMapCreated: (controller) => _amapController = controller,
       onCameraMove: _onCameraMove,
       // 罗盘默认在左上角，会与筛选摘要胶囊叠在一起，故关掉。
@@ -305,6 +369,45 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       // 这条分支不走那个控件，不显式开启就没有比例尺。
       scaleEnabled: true,
     );
+  }
+
+  /// 高德定位取点回调（`onLocationChanged`）。
+  ///
+  /// 三件事：
+  /// 1. 无效坐标 → 失败计数 +1，达到 [NfrLocation.locateFailThreshold] 进入 C 态
+  ///    （§6.8：保持默认中心 + 顶部提示 + 手动选城市，不出引导页）；
+  /// 2. 有效坐标 → 写 `location_granted_once` 标记 + 移动共享参考中心
+  ///    （经 [locationCenterProvider]，触发 initState 的 ref.listen 同步视口）；
+  /// 3. 成功后清空失败计数。
+  ///
+  /// 参数：
+  /// - [location]：高德回传的定位信息。
+  void _onLocationChanged(AMapLocation location) {
+    if (!isLocationValid(location)) {
+      _locateFailCount++;
+      if (_locateFailCount >= NfrLocation.locateFailThreshold) {
+        setState(() => _located = false);
+      }
+      return;
+    }
+    setState(() {
+      _locateFailCount = 0;
+      _located = true;
+    });
+    ref.read(locationPermissionProvider.notifier).markGrantedOnce();
+    ref.read(locationCenterProvider.notifier).moveTo(
+          location.latLng.latitude,
+          location.latLng.longitude,
+        );
+  }
+
+  /// C 态「手动选城市」出口：弹出城市选择，选中后移动参考中心。
+  ///
+  /// 返回：选择完成（取消则无操作）。
+  Future<void> _showManualCity() async {
+    final city = await showCitySelectorSheet(context);
+    if (city == null) return;
+    ref.read(locationCenterProvider.notifier).moveTo(city.lat, city.lng);
   }
 
   /// 相机变化 → 同步回 Dart 侧状态。
@@ -615,6 +718,91 @@ class _ListingInfoCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// 定位前骨架屏（PRD §6.7 `:1305`）。
+///
+/// 半透明白遮罩 + 居中「正在定位」提示：定位通常在首帧内返回，遮罩只为
+/// 避免用户先看到默认中心的底图再突然跳到自己位置（闪跳）。
+class _LocatingSkeleton extends StatelessWidget {
+  const _LocatingSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: const Color(AppColors.background).withValues(alpha: 0.7),
+      alignment: Alignment.center,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const CircularProgressIndicator(),
+          const SizedBox(height: AppSpacing.md),
+          Text(
+            '正在获取你的位置…',
+            style: TextStyle(
+              fontSize: AppTypeScale.body.size,
+              color: const Color(AppColors.textSecondary),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// C 态降级提示条（PRD §6.8 / §6.4.4 C）。
+///
+/// 已授权但连续取点失败 ≥ [NfrLocation.locateFailThreshold] 时显示：告知
+/// 已切换默认位置，并给「手动选城市」出口 —— 与 §6.4.4「不得做成必须授权
+/// 才能继续的硬门禁」一致。
+class _LocateFailedBanner extends StatelessWidget {
+  const _LocateFailedBanner({required this.onManualCity});
+
+  final VoidCallback onManualCity;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.sm,
+      ),
+      decoration: BoxDecoration(
+        color: const Color(AppColors.surface),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x1F000000),
+            blurRadius: 8,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.location_off,
+            size: 18,
+            color: const Color(AppColors.textSecondary),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Text(
+              '定位失败，已切换到默认位置',
+              style: TextStyle(
+                fontSize: AppTypeScale.small.size,
+                color: const Color(AppColors.textSecondary),
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: onManualCity,
+            child: const Text('手动选城市'),
+          ),
+        ],
       ),
     );
   }

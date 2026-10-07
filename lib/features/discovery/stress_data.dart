@@ -15,7 +15,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../domain/listing.dart';
 import '../../domain/listing_category.dart';
-import 'listing_repository.dart';
+import '../location/location_center.dart';
 
 /// 压测点数档位。PRD §6.10.1 规定 POC 数据量为「单屏 1 万点、5 万点两档」。
 enum StressLevel {

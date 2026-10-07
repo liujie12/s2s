@@ -387,6 +387,17 @@ class NfrMatch {
   static const int categoryModelMinSamples = 2000;
 }
 
+/// §6.8 定位失败降级阈值（PRD §6.8「定位失败 ≥ 3 次 → 降级」）。
+class NfrLocation {
+  const NfrLocation._();
+
+  /// 连续取点失败达到该次数进入 C 态（§6.4.4 C 态 / §6.8 降级终态）。
+  ///
+  /// 口径：本值专指「已授权但取点失败」的失败计数（§6.8 本行明示），
+  /// 「从未授权」与「曾授权后被关」是权限问题不是失败问题，不计入。
+  static const int locateFailThreshold = 3;
+}
+
 /// §6.10.1 性能降级开关触发条件（预留，本期不实施 —— PRD:2379）。
 class NfrDegrade {
   const NfrDegrade._();

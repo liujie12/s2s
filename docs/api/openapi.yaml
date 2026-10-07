@@ -152,6 +152,8 @@ tags:
     description: 通知与推送（功能域 notify）
   - name: track
     description: 埋点上报（功能域 common）
+  - name: city
+    description: 城市与行政区划（功能域 city，定位兜底「手动选城市」数据源）
 
 security:
   - bearerAuth: []
@@ -561,6 +563,36 @@ paths:
                         $ref: '#/components/schemas/Template'
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /cities:
+    get:
+      tags: [city]
+      summary: 拉取可选城市列表（定位兜底「手动选城市」数据源）
+      operationId: listCities
+      x-batch: Batch1
+      x-domain: city
+      security: []
+      description: |
+        定位三态（PRD §6.4.4）均须提供「手动选择城市」出口，本接口为其数据源。
+
+        当前为试点期静态城市表（单城试点 = 杭州）。选中城市仅用于确定地图中心
+        与 `radius=city` 请求入参，**不在客户端做行政区过滤**（DEC-24）。
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/CitiesResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   # ===========================================================================
@@ -2178,6 +2210,36 @@ components:
           type: array
           description: 子节点。L3 无 children
           items: { $ref: '#/components/schemas/CategoryNode' }
+
+    CityItem:
+      type: object
+      description: 城市条目（定位兜底「手动选城市」数据源）
+      required: [adcode, name, lat, lng]
+      properties:
+        adcode:
+          type: string
+          description: 行政区划代码（稳定标识）
+          example: '330100'
+        name: { type: string, example: 杭州 }
+        lat:
+          type: number
+          format: double
+          description: 城市中心纬度（GCJ-02）
+          example: 30.2741
+        lng:
+          type: number
+          format: double
+          description: 城市中心经度（GCJ-02）
+          example: 120.1551
+
+    CitiesResponse:
+      type: object
+      description: 可选城市列表
+      required: [cities]
+      properties:
+        cities:
+          type: array
+          items: { $ref: '#/components/schemas/CityItem' }
 
     Template:
       type: object

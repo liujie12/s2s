@@ -23,9 +23,9 @@ import '../../domain/listing_category.dart';
 // 色与图标已迁至 style 扩展（详细设计 §10.4.1）。
 import '../../domain/listing_category_style.dart';
 import '../../router/app_router.dart';
+import '../location/location_center.dart';
 import 'discovery_filter.dart';
 import 'filter_panel.dart';
-import 'listing_repository.dart';
 import 'listing_sort.dart';
 
 class ListScreen extends ConsumerWidget {
@@ -202,16 +202,17 @@ class _ListingList extends StatelessWidget {
 }
 
 /// 列表卡片（PRD §6.4.3）。
-class _ListingCard extends StatelessWidget {
+class _ListingCard extends ConsumerWidget {
   const _ListingCard({required this.listing});
 
   final Listing listing;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final center = ref.watch(locationCenterProvider);
     final meters = distanceInMeters(
-      kDefaultCenterLat,
-      kDefaultCenterLng,
+      center.lat,
+      center.lng,
       listing.latitude,
       listing.longitude,
     );

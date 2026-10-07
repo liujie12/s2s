@@ -8,6 +8,7 @@ library;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../domain/listing.dart';
+import '../location/location_center.dart';
 import 'listing_repository.dart';
 
 /// 排序档位。
@@ -129,14 +130,15 @@ int _comparePrice(Listing a, Listing b, {required bool ascending}) {
 final sortedListingsProvider = Provider<List<Listing>>((ref) {
   final listings = ref.watch(filteredListingsProvider);
   final sort = ref.watch(listingSortProvider);
+  final center = ref.watch(locationCenterProvider);
 
   return sortListings(
     listings,
     sort: sort,
     now: DateTime.now(),
     distanceOf: (l) => distanceInMeters(
-      kDefaultCenterLat,
-      kDefaultCenterLng,
+      center.lat,
+      center.lng,
       l.latitude,
       l.longitude,
     ),

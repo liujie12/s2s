@@ -14,15 +14,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../domain/listing.dart';
 import '../../domain/listing_category.dart';
+import '../location/location_center.dart';
 import 'discovery_filter.dart';
 import 'stress_data.dart';
-
-/// 默认地图中心（杭州市中心附近，GCJ-02）。
-///
-/// 定位权限尚未接入（PRD §6.5 第 1 步，属 M4-3 后续），先给一个确定的中心，
-/// 避免地图开在 (0,0) 的几内亚湾。
-const double kDefaultCenterLat = 30.2741;
-const double kDefaultCenterLng = 120.1551;
 
 /// 样例数据的时间基准。
 ///
@@ -140,11 +134,12 @@ final allListingsProvider = Provider<List<Listing>>((ref) {
 
 /// 按当前筛选条件过滤后的信息。
 ///
-/// 距离过滤以 [kDefaultCenterLat]/[kDefaultCenterLng] 为基准点。定位接入后
-/// 改为读用户实际位置 —— 基准点是唯一需要改的地方，过滤逻辑不动。
+/// 距离过滤以 [locationCenterProvider] 为基准点（定位接入后改为读用户实际
+/// 位置/手动选城市，[132]）—— 基准点是唯一随定位变化的地方，过滤逻辑不动。
 final filteredListingsProvider = Provider<List<Listing>>((ref) {
   final listings = ref.watch(allListingsProvider);
   final filter = ref.watch(discoveryFilterProvider);
+  final center = ref.watch(locationCenterProvider);
 
   return listings
       .where((l) {
@@ -159,8 +154,8 @@ final filteredListingsProvider = Provider<List<Listing>>((ref) {
         final int? km = filter.radius.km;
         if (km != null) {
           final double meters = distanceInMeters(
-            kDefaultCenterLat,
-            kDefaultCenterLng,
+            center.lat,
+            center.lng,
             l.latitude,
             l.longitude,
           );
