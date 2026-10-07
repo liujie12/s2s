@@ -10,6 +10,7 @@ library;
 
 import 'dart:ui' as ui;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../../design_tokens.dart';
@@ -18,7 +19,20 @@ import '../../domain/listing_category_style.dart';
 import 'clustering/marker_builder.dart';
 
 /// Marker 图层。
-class MarkerLayer extends StatelessWidget {
+///
+/// **本层不吃指针事件**（2026-10-07 真机缺陷修复）。它盖在底图之上且铺满全屏，
+/// 原先用 `GestureDetector(behavior: HitTestBehavior.opaque)` 做命中，后果是
+/// `RenderStack` 命中本层后**不再向下查找兄弟节点** —— 底图（高德平台视图、
+/// 降级底图画布）从此收不到任何指针，真机上表现为**地图拖不动、缩放不动**，
+/// 且两条分支同时失效（真地图分支此前没在真机跑过，所以一直未暴露）。
+///
+/// 改用 [Listener] + [HitTestBehavior.translucent]：
+/// - `translucent`：命中后仍让命中链继续下探，底图照常收到全部指针事件；
+/// - [Listener] 不是手势识别器、不进手势竞技场，不与底图的原生相机抢手势；
+/// - 绘制层用 [IgnorePointer] 包住：带 painter 的 `CustomPaint` 默认自认命中，
+///   不显式排除的话 `translucent` 也救不回来（详见 build 内注释）；
+/// - 点击改由「单指 + 位移 ≤ [kTouchSlop]」自行判定，拖动与捏合都不会误报选中。
+class MarkerLayer extends StatefulWidget {
   const MarkerLayer({
     super.key,
     required this.markers,
@@ -47,32 +61,13 @@ class MarkerLayer extends StatelessWidget {
   /// 点击回调。传入被点中的 Marker。
   final void Function(MapMarker marker)? onTapMarker;
 
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      // opaque：Marker 之外的空白也要接收点击，否则点空白会穿透到底图的拖动手势，
-      // 表现为「点了没反应，但地图动了一下」。
-      behavior: HitTestBehavior.opaque,
-      onTapUp: (details) {
-        final hit = hitTestMarker(details.localPosition);
-        if (hit != null) onTapMarker?.call(hit);
-      },
-      child: CustomPaint(
-        painter: _MarkerPainter(
-          markers: markers,
-          supplyDemandById: supplyDemandById,
-          selectedListingId: selectedListingId,
-        ),
-        // 铺满父级：CustomPaint 无 child 时默认尺寸为零，画不出任何东西。
-        size: Size.infinite,
-      ),
-    );
-  }
-
   /// 反查点击落在哪个 Marker 上。
   ///
   /// **倒序遍历**：绘制是正序，后画的压在上面，命中判定必须与视觉一致，
   /// 否则用户点到的是被压在下面那个。
+  ///
+  /// 放在 Widget 而非 State 上：它只依赖 [markers] 与 [selectedListingId] 两个
+  /// 入参，不依赖指针账本，留在 Widget 上可被单测直接调用（无需挂载）。
   ///
   /// 返回命中的 Marker；未命中返回 null。
   MapMarker? hitTestMarker(Offset position) {
@@ -86,6 +81,65 @@ class MarkerLayer extends StatelessWidget {
       if (dx * dx + dy * dy <= radius * radius) return m;
     }
     return null;
+  }
+
+  @override
+  State<MarkerLayer> createState() => _MarkerLayerState();
+}
+
+/// [MarkerLayer] 的状态：只持有「判定点击」所需的指针账本，不参与绘制。
+class _MarkerLayerState extends State<MarkerLayer> {
+  /// 本次手势的按下位置；多指期间为 null（见 [Listener.onPointerDown]）。
+  Offset? _downPosition;
+
+  /// 当前按在屏上的手指数。
+  ///
+  /// >1 一律不判点击：捏合缩放期间位移必然超过阈值，本就不会命中；
+  /// 但第二根手指抬起时若按单指判点击，会在地图缩放收尾处误报一次选中。
+  int _activePointers = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    return Listener(
+      // translucent：本层命中后仍让 RenderStack 继续向下查找兄弟节点，
+      // 底图才能照常收到指针事件。改成 opaque 会立刻复现「地图拖不动」。
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: (event) {
+        if (_activePointers == 0) _downPosition = event.localPosition;
+        _activePointers++;
+      },
+      onPointerUp: (event) {
+        _activePointers = _activePointers > 0 ? _activePointers - 1 : 0;
+        final Offset? down = _downPosition;
+        _downPosition = null;
+        // 还有手指按着 → 这是多点手势的其中一根抬起，不是点击。
+        if (_activePointers > 0 || down == null) return;
+        // 位移超过触控抖动阈值 → 是拖动（或缩放收尾的残余位移），不是点击。
+        if ((event.localPosition - down).distance > kTouchSlop) return;
+        final hit = widget.hitTestMarker(event.localPosition);
+        if (hit != null) widget.onTapMarker?.call(hit);
+      },
+      onPointerCancel: (event) {
+        _activePointers = _activePointers > 0 ? _activePointers - 1 : 0;
+        if (_activePointers == 0) _downPosition = null;
+      },
+      // IgnorePointer 不是多余的：`CustomPaint` **一旦带 painter 自己就是命中目标**
+      // （`CustomPainter.hitTest` 默认返回 null，而 `RenderCustomPaint` 把 null 当命中，
+      // 即 `?? true`）。少了这层，Listener 的 hitTestChildren 会返回 true，
+      // Listener 随之返回 true，`RenderStack` 照样停止下探 —— 只换成 translucent
+      // 是修不好的（2026-10-07 实测：带 painter 的 CustomPaint 使底层指针计数归零）。
+      child: IgnorePointer(
+        child: CustomPaint(
+          painter: _MarkerPainter(
+            markers: widget.markers,
+            supplyDemandById: widget.supplyDemandById,
+            selectedListingId: widget.selectedListingId,
+          ),
+          // 铺满父级：CustomPaint 无 child 时默认尺寸为零，画不出任何东西。
+          size: Size.infinite,
+        ),
+      ),
+    );
   }
 }
 
