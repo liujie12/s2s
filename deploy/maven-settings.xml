@@ -1,9 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
   S2S Maven 构建期镜像源配置（仅构建阶段使用，不进运行镜像）
-  ----------------------------------------------------------------------------
+  ============================================================================
   用途：Dockerfile 的 builder 阶段把它复制到 /root/.m2/settings.xml，
         使 mvn 从阿里云 public 仓库而非 Maven Central 拉依赖。
+
+  ⚠ 本文件是 XML：注释内禁止出现两个连续的 ASCII 连字符（0x2D 连写）。
+    XML 规范不允许，Maven 会判定 settings 无法解析并终止构建
+    （实测 2026-10-07：Non-parseable settings ... in comment after two dashes）。
+    分隔线一律用等号（=），不要用连字符。
 
   为什么需要：
     2026-10-06 首次部署实测，服务器直连 Maven Central 执行
