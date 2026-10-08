@@ -54,7 +54,7 @@ void main() {
       expect(postTypesFor(const {SupplyDemand.demand}), const ['demand']);
     });
 
-    test('双选切分为两个单值，且顺序固定 resource 在前（方案 1）', () {
+    test('双选切分为两个值，且顺序固定 resource 在前（pins 拆两次 / search 拼逗号）', () {
       expect(
         postTypesFor(const {SupplyDemand.supply, SupplyDemand.demand}),
         const ['resource', 'demand'],

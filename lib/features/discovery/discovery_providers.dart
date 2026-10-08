@@ -1,12 +1,17 @@
 /// 探索页数据 Provider（[126] 前端段）：地图图钉与列表检索的异步装配。
 ///
-/// **供需双选 = 两次并发请求**（2026-10-08 用户裁定「方案 1」）：契约
-/// `post_type` 只收单值，而 PRD §6.4.1 允许「资源+需求」都选，故 [PinsQuery]/[SearchQuery]
-/// 持的是 `postTypes` 列表（切分规则见 `discovery_query.dart` 的 `postTypesFor`），
-/// 本层负责并发发出并合并结果。
+/// **供需双选有两种形态**（2026-10-08 二次裁定「方案 B」，取代原「方案 1」）：
+/// - `/map/pins` 的 `post_type` **只收单值** → 地图侧由本层**并发发两次请求**
+///   并合并 pins/total（见 `pinsProvider`）；
+/// - `/posts/search` 的 `post_type` 已扩为 **1–2 个** → 列表侧**单次**请求
+///   （逗号多值），排序与分页由服务端全局处理（见 `searchPagerProvider`）。
 ///
-/// 合并**不需要按 id 去重**：每次请求各带一个互斥的单值 `post_type`，而一条帖子的
-/// `type` 是 ENUM 单值，两个结果集在构造上就不相交。加去重是给不可能发生的情况写代码。
+/// [PinsQuery]/[SearchQuery] 持的都是 `postTypes` 列表（切分规则见
+/// `discovery_query.dart` 的 `postTypesFor`），但只有地图侧才需要两次请求。
+///
+/// 地图侧合并**不需要按 id 去重**：每次请求各带一个互斥的单值 `post_type`，而一条
+/// 帖子的 `type` 是 ENUM 单值，两个结果集在构造上就不相交。加去重是给不可能
+/// 发生的情况写代码。
 library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';

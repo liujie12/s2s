@@ -1,7 +1,10 @@
 /// 探索页 Provider 测试（[126] 前端段）。
 ///
-/// 重点锁定「供需双选 = 两个并发单值请求」这条 2026-10-08 用户裁定的方案 1：
-/// 请求条数、各自的 post_type、以及合并结果（pins 拼接 + total 相加）。
+/// 供需双选有两种形态，各钉一条（2026-10-08 二次裁定「方案 B」，取代原方案 1）：
+/// - `pinsProvider`（`/map/pins` 只收单值）→ **两个并发单值请求**：断言请求条数、
+///   各自的 `post_type`、以及合并结果（pins 拼接 + total 相加）；
+/// - `searchPagerProvider`（`/posts/search` 收 1–2 个多值）→ **单次**请求：
+///   断言 `post_type` 为一个逗号串，而非拆成两次。
 library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
