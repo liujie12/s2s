@@ -12,12 +12,13 @@
 /// 失败抛出点只准走该工厂，禁止内联
 /// `ApiException(code: ApiErrorCode.parseError, ...)` —— 统一入口保证
 /// message 必经 [_truncateParseMessage] 截断、口径单一（编码规范 §1.1）。
-/// 现有 43 处生产调用点（连工厂定义自身共 44 处，与反冗余判据 C1 基线同值）：
+/// 现有 53 处生产调用点（连工厂定义自身共 54 处，与反冗余判据 C1 基线同值）：
 /// `core/network` 9 处（`api_error_code.dart` ×1、`api_client.dart` ×4、
 /// `interceptors/auth_refresh_interceptor.dart` ×1、
 /// `interceptors/envelope_interceptor.dart` ×3）、
-/// `core/contract_json.dart` ×11（解析助手，[124] B4 自 category_dto
-/// 上浮并新增 optInt，[127] 又加 optDouble，搬家不减调用点）、
+/// `core/contract_json.dart` ×15（解析助手，[124] B4 自 category_dto
+/// 上浮并新增 optInt，[127] 又加 optDouble，[126] 前端段新增
+/// requireDateTime/optDateTime 时间助手 ×4，搬家不减调用点）、
 /// `domain/listing_category.dart` ×2、
 /// `domain/listing_detail.dart` ×1（[127] 前端段：`CompletenessLevel.fromApi`
 /// 自 features/detail 迁入，第二消费方为「我的发布」卡片）、
@@ -30,13 +31,17 @@
 /// `features/contact/contact_repository.dart` ×1（[128]：`FullContact.fromJson`
 /// 对契约外 `contact_type` 抛 parseError，不猜成手机号）、
 /// `features/city/city.dart` ×1（[132]：`CityItem.fromJson` 对 lat/lng 非 num
-/// 抛 parseError）；
+/// 抛 parseError）、
+/// `features/discovery/map_dto.dart` ×6（[126] 前端段：pins 紧凑行/列序/列数
+/// 校验 3、clusters 缺坐标 1、单元格读取助手 2）；
 /// 新增解析失败点同走本工厂。
 ///
 /// **维护纪律**：本清单与反冗余判据 C1 的 `parseFactoryTotalBaseline` 必须同改
 /// （清单是人工真源、基线是机器判据，两者漂移会让该判据变成永绿豁免）。
 /// 2026-09-28 校正实测值：连工厂定义共 43 处（清单变更过程见说明文档 §三）。
 /// 2026-10-07 增 1 处：连工厂定义共 44 处（[132] city 域 CityItem.fromJson）。
+/// 2026-10-08 增 10 处：连工厂定义共 54 处（[126] 前端段 contract_json 时间
+/// 助手 ×4 + discovery/map_dto.dart ×6）。
 ///
 /// **循环 import 说明**：见 `api_error_code.dart` 文件头，同一份说明。
 library;

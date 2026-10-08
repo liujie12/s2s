@@ -21,17 +21,25 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:x_amap_base/x_amap_base.dart';
 
+import '../../core/cache/grid_id.dart';
+import '../../core/network/api_error_code.dart';
+import '../../core/network/api_exception.dart';
 import '../../design_tokens.dart';
+import '../../domain/category_tree.dart';
 import '../../domain/listing.dart';
 import '../../domain/listing_category.dart';
 // 色与图标已迁至 style 扩展（详细设计 §10.4.1）。
 import '../../domain/listing_category_style.dart';
+import '../../domain/listing_detail.dart';
 import '../../nfr_constants.dart';
 import '../../router/app_router.dart';
 import '../city/city_selector_sheet.dart';
+import '../detail/post_detail_provider.dart';
 import '../discovery/discovery_filter.dart';
+import '../discovery/discovery_providers.dart';
+import '../discovery/discovery_query.dart';
 import '../discovery/filter_panel.dart';
-import '../discovery/listing_repository.dart';
+import '../discovery/map_dto.dart';
 import '../location/location_center.dart';
 import '../location/location_guide.dart';
 import '../location/location_permission.dart';
@@ -131,7 +139,23 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       _pushCameraToAmap();
     });
     final consent = ref.watch(privacyConsentProvider);
-    final listings = ref.watch(filteredListingsProvider);
+    // 探索数据源：真后端 `/map/pins`（[126] 前端段切入；此前读的是本地 mock 样例，
+    // 而详情页读真后端 —— 两者 ID 空间不通，正是「详情看不了」的根因）。
+    // 五要素随筛选态与视口变化；`PinsQuery` 实现值相等，故同一组合只发一次。
+    final filter = ref.watch(discoveryFilterProvider);
+    final pinsQuery = PinsQuery(
+      leafCategoryIds: leafCategoryIdsFor(filter.categories),
+      postTypes: postTypesFor(filter.supplyDemand),
+      radius: toApiRadius(filter.radius),
+      gridId: gridIdOf(_centerLng, _centerLat),
+      // 分类树版本号取本地常量真源（随包发布，与服务端不一致时契约只回 stale 标记、
+      // 不报错，故落后是降级而非故障）。
+      categoryVersion: categoryTreeVersion,
+      lng: _centerLng,
+      lat: _centerLat,
+      zoom: MapProjection.zoomForMetersPerPixel(_centerLat, _metersPerPixel),
+    );
+    final pinsAsync = ref.watch(pinsProvider(pinsQuery));
 
     // 定位引导页（PRD §6.4.4 A/B 态）：隐私已同意、未跳过、且权限为 A/B 时，
     // 全屏引导页取代地图。C 态（已授权但取点失败）不出引导页，走 §6.8 兜底。
@@ -158,15 +182,19 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               height: constraints.maxHeight,
             ),
           );
-          final markers = _buildMarkersFor(listings, projection);
+          // 数据态：加载中/失败时 pinList 为空，底图照常渲染（不阻塞），
+          // 状态另行以角标提示（见下方 _PinsStatusChip）。
+          final pinList = pinsAsync.asData?.value.pins ?? const <MapPinDto>[];
+          final markers = _buildMarkersFor(pinList, projection);
           // 供需查表在此建一次，而不是让 MarkerLayer 每画一个 Marker 就
           // firstWhere 一遍 —— 后者是 O(n²)，5 万点档位下会被真机测成
           // 「CustomPaint 画不动」，从而把优化引向完全错误的方向。
-          // 键用 l.id.toString()：Marker 层的标识是 String（§10.4.3），
-          // 而 Listing.id 是 int，键类型必须与查表方 marker.listingId 一致，
+          // 键用 id.toString()：Marker 层的标识是 String（§10.4.3），
+          // 而 pin id 是 int，键类型必须与查表方 marker.listingId 一致，
           // 否则 containsKey 永远为 false —— 而那是个 info 级提示，不报错。
           final supplyDemandById = {
-            for (final l in listings) l.id.toString(): l.supplyDemand,
+            for (final p in pinList)
+              p.id.toString(): supplyDemandFromCompact(p.typeCode),
           };
 
           return Stack(
@@ -191,6 +219,19 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 top: AppSpacing.md,
                 child: _FilterSummaryChip(),
               ),
+              // 探索数据态（[126]）：加载中/失败必须可见 —— 否则「附近没有信息」
+              // 与「数据没回来」在用户眼里完全同形，而两者的处置方式相反。
+              if (pinsAsync.isLoading || pinsAsync.hasError)
+                Positioned(
+                  left: AppSpacing.lg,
+                  top: AppSpacing.md + 40,
+                  child: _PinsStatusChip(
+                    text: pinsAsync.hasError ? '加载失败 · 点击重试' : '正在加载附近信息…',
+                    onTap: pinsAsync.hasError
+                        ? () => ref.invalidate(pinsProvider(pinsQuery))
+                        : null,
+                  ),
+                ),
               const Positioned(
                 right: AppSpacing.lg,
                 top: AppSpacing.md,
@@ -217,9 +258,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   right: AppSpacing.md,
                   bottom: AppSpacing.md,
                   child: _ListingInfoCard(
-                    listing: listings.firstWhere(
-                      (l) => l.id.toString() == _selectedListingId,
-                    ),
+                    // 选中态存的是 Marker 层的 String 标识（§10.4.3），
+                    // 拉详情要 int —— 解析收敛在此一处（与 detail 路由同一口径）。
+                    listingId: int.tryParse(_selectedListingId!) ?? -1,
+                    centerLat: _centerLat,
+                    centerLng: _centerLng,
                     onClose: () => setState(() => _selectedListingId = null),
                   ),
                 ),
@@ -469,23 +512,23 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   /// 而缓存本身要维护失效逻辑。POC-A 实测 5 万点聚合 4.7ms，占 300ms 预算 1.6%，
   /// 当前百来条的量级更无优化必要。
   List<MapMarker> _buildMarkersFor(
-    List<Listing> listings,
+    List<MapPinDto> pins,
     MapProjection projection,
   ) {
-    final points = listings
-        .map((l) {
-          final p = projection.toPixel(l.latitude, l.longitude);
+    final points = pins
+        .map((p) {
+          final pixel = projection.toPixel(p.lat, p.lng);
           return ClusterPoint(
-            // ClusterPoint.id 是本地分桶标识（String），Listing.id 为服务端 int64，
+            // ClusterPoint.id 是本地分桶标识（String），服务端帖子 ID 为 int64，
             // 故此处显式转字符串；反向回传时须转回 int（详细设计 §10.4.3）。
-            id: l.id.toString(),
-            x: p.x,
-            y: p.y,
-            // 样例数据只有大类没有叶子类目，故叶子 ID 记 0 表示「本地样例、无叶子」。
-            // 接入 /map/pins 后此处改为服务端下发的 category_id，
-            // topCategory 则改为 topCategoryOf(category_id)。
-            leafCategoryId: 0,
-            topCategory: l.category,
+            id: p.id.toString(),
+            x: pixel.x,
+            y: pixel.y,
+            // 服务端下发的就是叶子类目 ID（`category_id` 列，如 10101）。
+            leafCategoryId: p.leafCategoryId,
+            // 一级大类由叶子 ID 经分类树查表得出，**不做算术推导**；
+            // 查不到返回 null，渲染层用中性配色（§16.4 版本落后是预期内状态）。
+            topCategory: topCategoryOf(p.leafCategoryId),
           );
         })
         .toList(growable: false);
@@ -644,18 +687,37 @@ class _ListViewEntryButton extends StatelessWidget {
 }
 
 /// 点击单点 Marker 后的信息卡（PRD §6.4.2）。
-class _ListingInfoCard extends StatelessWidget {
-  const _ListingInfoCard({required this.listing, required this.onClose});
+///
+/// **标题与价格按需拉取**（2026-10-08 用户裁定）：`/map/pins` 是紧凑格式，
+/// 按设计只有 id/坐标/类目/供需/完整度，**没有标题与价格**；而 PRD §6.4.2 要求
+/// 卡片展示二者。补法是点开时拉一次 `GET /posts/{id}`（与详情页同一数据源），
+/// 而不是往紧凑格式里加字段 —— 那会破坏它「压体积」的存在前提。
+class _ListingInfoCard extends ConsumerWidget {
+  const _ListingInfoCard({
+    required this.listingId,
+    required this.centerLat,
+    required this.centerLng,
+    required this.onClose,
+  });
 
-  final Listing listing;
+  /// 帖子 ID；选中态解析失败为 -1，与 detail 路由同口径（走「信息不存在」）。
+  final int listingId;
+
+  /// 距离基准点（当前视口中心）。
+  final double centerLat;
+  final double centerLng;
+
   final VoidCallback onClose;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final detailAsync = ref.watch(postDetailProvider(listingId));
+    final ListingCategory? category = detailAsync.asData?.value.listing.category;
+
     return GestureDetector(
       // 整卡可点进详情（PRD §7.5 旅程第 1 步）。整卡而非只给一个小按钮：
       // 卡片本身就是「这条信息」的代表，用户的直觉是点它。
-      onTap: () => context.push('/detail/${listing.id}'),
+      onTap: () => context.push('/detail/$listingId'),
       behavior: HitTestBehavior.opaque,
       child: Container(
         padding: const EdgeInsets.all(AppSpacing.md),
@@ -673,62 +735,23 @@ class _ListingInfoCard extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // 类目未就绪（加载中/失败）时用中性底色 + 通用图钉 —— 不用灰块，
+            // 灰块会被读成「图没加载出来」。
             Container(
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                color: listing.category.color,
+                color: category?.color ?? Color(AppColors.border),
                 shape: BoxShape.circle,
               ),
               child: Icon(
-                listing.category.icon,
+                category?.icon ?? Icons.place,
                 size: 20,
                 color: Color(AppColors.surface),
               ),
             ),
             const SizedBox(width: AppSpacing.md),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    listing.title,
-                    style: TextStyle(
-                      fontSize: AppTypeScale.h3.size,
-                      fontWeight: FontWeight.w600,
-                      color: Color(AppColors.textPrimary),
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.xs),
-                  Text(
-                    '${listing.supplyDemand.label} · ${listing.category.label}'
-                    '${listing.priceLabel == null ? '' : ' · ${listing.priceLabel}'}',
-                    style: TextStyle(
-                      fontSize: AppTypeScale.small.size,
-                      color: Color(AppColors.textSecondary),
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.xs),
-                  Row(
-                    children: [
-                      Text(
-                        '查看详情',
-                        style: TextStyle(
-                          fontSize: AppTypeScale.small.size,
-                          fontWeight: FontWeight.w600,
-                          color: Color(AppColors.primary),
-                        ),
-                      ),
-                      Icon(
-                        Icons.chevron_right,
-                        size: 16,
-                        color: Color(AppColors.primary),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
+            Expanded(child: _buildBody(detailAsync)),
             IconButton(
               onPressed: onClose,
               icon: const Icon(Icons.close, size: 18),
@@ -737,6 +760,128 @@ class _ListingInfoCard extends StatelessWidget {
               color: Color(AppColors.textSecondary),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  /// 卡片正文三态（loading / error / data）。
+  ///
+  /// 返回：(标题, 副标题, 是否显示「查看详情」)。
+  Widget _buildBody(AsyncValue<ListingDetail> async) {
+    final (String title, String subtitle, bool showHint) = async.when(
+      loading: () => ('加载中…', '正在获取该条信息', false),
+      error: (error, _) {
+        // 41001 = 已下架/不存在，是用户的预期结果而非故障，文案与详情页同口径。
+        if (asApiException(error).code == ApiErrorCode.postGone) {
+          return ('该信息已下架或不存在', '看看附近其它信息', false);
+        }
+        return ('信息加载失败', '请稍后重试', false);
+      },
+      data: (detail) {
+        final listing = detail.listing;
+        final double meters = distanceInMeters(
+          centerLat,
+          centerLng,
+          listing.latitude,
+          listing.longitude,
+        );
+        // 1km 内用米（取整到 10m）：与列表卡片同一口径，避免两处距离写法不一致。
+        final String distance = meters < 1000
+            ? '${(meters / 10).round() * 10}m'
+            : '${(meters / 1000).toStringAsFixed(1)}km';
+        final String price = listing.priceLabel == null
+            ? ''
+            : ' · ${listing.priceLabel}';
+        return (
+          listing.title,
+          '${listing.supplyDemand.label} · ${listing.category.label} · $distance$price',
+          true,
+        );
+      },
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: TextStyle(
+            fontSize: AppTypeScale.h3.size,
+            fontWeight: FontWeight.w600,
+            color: Color(AppColors.textPrimary),
+          ),
+        ),
+        const SizedBox(height: AppSpacing.xs),
+        Text(
+          subtitle,
+          style: TextStyle(
+            fontSize: AppTypeScale.small.size,
+            color: Color(AppColors.textSecondary),
+          ),
+        ),
+        if (showHint) ...[
+          const SizedBox(height: AppSpacing.xs),
+          Row(
+            children: [
+              Text(
+                '查看详情',
+                style: TextStyle(
+                  fontSize: AppTypeScale.small.size,
+                  fontWeight: FontWeight.w600,
+                  color: Color(AppColors.primary),
+                ),
+              ),
+              Icon(
+                Icons.chevron_right,
+                size: 16,
+                color: Color(AppColors.primary),
+              ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// 探索数据态角标（[126]）：加载中 / 加载失败（可点重试）。
+///
+/// 用小角标而非全屏遮罩：底图与已到手的 Pin 仍可用，遮罩会把「还能看」
+/// 变成「什么都看不了」，代价大于收益。
+class _PinsStatusChip extends StatelessWidget {
+  const _PinsStatusChip({required this.text, this.onTap});
+
+  final String text;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.md,
+          vertical: AppSpacing.sm,
+        ),
+        decoration: BoxDecoration(
+          color: Color(AppColors.surface),
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x1F000000),
+              blurRadius: 8,
+              offset: Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Text(
+          text,
+          style: TextStyle(
+            fontSize: AppTypeScale.small.size,
+            color: Color(AppColors.textSecondary),
+          ),
         ),
       ),
     );

@@ -63,6 +63,8 @@
                p.l2_category_id,
                p.title,
                p.`desc` AS summary,
+               p.price,
+               p.price_unit,
                p.lng,
                p.lat,
                p.completeness_level,

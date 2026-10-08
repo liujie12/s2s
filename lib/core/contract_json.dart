@@ -178,3 +178,46 @@ List<String>? optStringList(
         ),
   ];
 }
+
+/// 取必填 RFC3339 时间字段。
+///
+/// 参数：[map] 父对象；[key] 契约键；[owner] 契约类型名。
+/// 返回：[DateTime] 解析结果。
+/// 抛出：[ApiException.parse] 缺失、非 String、或非合法 ISO8601 时（含实际值）。
+DateTime requireDateTime(Map<String, Object?> map, String key, String owner) {
+  final value = map[key];
+  if (value is! String) {
+    throw ApiException.parse(
+      '$owner.$key 缺失或非 String，实际: $value',
+    );
+  }
+  final parsed = DateTime.tryParse(value);
+  if (parsed == null) {
+    throw ApiException.parse(
+      '$owner.$key 非合法 ISO8601 时间，实际: $value',
+    );
+  }
+  return parsed;
+}
+
+/// 取可选 RFC3339 时间字段（缺失/JSON null 均为 null）。
+///
+/// 参数：[map] 父对象；[key] 契约键；[owner] 契约类型名。
+/// 返回：[DateTime?] 解析结果；缺失为 null。
+/// 抛出：[ApiException.parse] 出现但非 String、或非合法 ISO8601 时（含实际值）。
+DateTime? optDateTime(Map<String, Object?> map, String key, String owner) {
+  final value = map[key];
+  if (value == null) return null;
+  if (value is! String) {
+    throw ApiException.parse(
+      '$owner.$key 应为 String 或 null，实际: $value',
+    );
+  }
+  final parsed = DateTime.tryParse(value);
+  if (parsed == null) {
+    throw ApiException.parse(
+      '$owner.$key 非合法 ISO8601 时间，实际: $value',
+    );
+  }
+  return parsed;
+}

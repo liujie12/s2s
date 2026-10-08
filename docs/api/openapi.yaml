@@ -1257,10 +1257,23 @@ paths:
         - name: sort
           in: query
           required: false
-          description: 排序方式，缺省 distance
+          description: |
+            排序方式，缺省 `distance`。
+
+            - `distance`：距视野中心近者优先（默认）
+            - `publish_time`：发布时间新者优先
+            - `completeness`：完整度档位高者优先，同档按发布时间新者优先
+            - `composite`：综合 = 距离与新鲜度各半（归一化后加权，上界取
+              距离 20km / 时效 7 天，与客户端 `_compositeScore` 同口径）
+            - `price_asc`：价格升序
+            - `price_desc`：价格降序
+
+            **无价格（`price = null`，「面议」）的条目在两种价格排序中一律排末尾**
+            （升序降序皆然）：把 null 当 0 会让「免费/面议」在升序里霸占首屏，
+            当极大值则会在降序里霸屏 —— 两个方向都沉底才符合「不参与价格比较」。
           schema:
             type: string
-            enum: [distance, publish_time, completeness]
+            enum: [distance, publish_time, completeness, composite, price_asc, price_desc]
             default: distance
       responses:
         '200':
@@ -2517,6 +2530,8 @@ components:
         title: { type: string }
         summary: { type: string, nullable: true, description: 描述摘要 }
         cover_url: { type: string, nullable: true, description: 仅 audit_status=pass 的封面 }
+        price: { type: number, format: double, nullable: true, description: 价格（元）；null=面议。PRD §6.4.3 要求列表卡片展示价格，故下发 }
+        price_unit: { type: string, nullable: true, description: 价格单位（取模板 price_units 之一）；price 为 null 时无意义 }
         lng: { type: number, format: double }
         lat: { type: number, format: double }
         distance_m: { type: integer, format: int32, nullable: true }

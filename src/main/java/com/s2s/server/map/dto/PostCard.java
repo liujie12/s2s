@@ -3,6 +3,7 @@ package com.s2s.server.map.dto;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import com.s2s.server.common.dto.AuthorBrief;
+import java.math.BigDecimal;
 import java.time.Instant;
 
 /**
@@ -19,9 +20,12 @@ import java.time.Instant;
  * @param title             标题
  * @param summary           描述摘要
  * @param coverUrl          封面 URL（可空）
+ * @param price             价格（元，可空 = 面议）。PRD §6.4.3 要求列表卡片展示价格，
+ *                          且 `price_asc`/`price_desc` 排序需要该值，故随卡片下发
+ * @param priceUnit         价格单位（可空；price 为 null 时无意义）
  * @param lng               GCJ-02 经度
  * @param lat               GCJ-02 纬度
- * @param distanceM         距视野中心距离（米，可空；仅 distance 排序时有值）
+ * @param distanceM         距视野中心距离（米，可空）
  * @param completenessLevel 完整度档位（0/1/2）
  * @param publishAt         发布时间
  * @param author            作者摘要
@@ -35,6 +39,8 @@ public record PostCard(
         String title,
         String summary,
         String coverUrl,
+        BigDecimal price,
+        String priceUnit,
         Double lng,
         Double lat,
         Integer distanceM,

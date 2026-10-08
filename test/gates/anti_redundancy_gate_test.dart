@@ -810,14 +810,17 @@ void main() {
     /// **维护纪律**：改本值必须同改 `api_exception.dart` 文件头的调用点清单
     /// （人工真源与机器判据配对，任一单独变化都会让该判据失真）。
     ///
-    /// 明细（2026-09-28 实测）：core/network 9 + contract_json 11 +
+    /// 明细（2026-09-28 实测，2026-10-08 更新）：core/network 9 +
+    /// contract_json 15（[126] 前端段：新增 requireDateTime/optDateTime ×4）+
     /// listing_category 2 + listing_detail 1 + discovery_filter 1 +
     /// category_dto 2 + post_dto 7 + auth_repository 8 +
     /// contact_repository 1（[128]：`FullContact.fromJson` 对契约外
-    /// `contact_type` 抛 parseError，不猜成手机号）= 42。
-    /// 43 = 42 + city.dart 1（[132]：CityItem.fromJson 对 lat/lng 非 num 抛
-    /// parseError）；44 = 43 + 工厂定义 1。33 的历史构成见说明文档 §三。
-    const int parseFactoryTotalBaseline = 44;
+    /// `contact_type` 抛 parseError，不猜成手机号）= 46。
+    /// 47 = 46 + city.dart 1（[132]：CityItem.fromJson 对 lat/lng 非 num 抛
+    /// parseError）；53 = 47 + discovery/map_dto.dart 6（[126] 前端段：
+    /// pins 紧凑行/列序/列数校验 3 + clusters 1 + 单元格助手 2）；
+    /// 54 = 53 + 工厂定义 1。33 的历史构成见说明文档 §三。
+    const int parseFactoryTotalBaseline = 54;
 
     test('lib/features/ 无 for/while 循环重试（详设 §14.2，判据 A1）', () {
       // 先断言扫描面非空且不小于基线（部署 §14.5：先断言待判对象存在），

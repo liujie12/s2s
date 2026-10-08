@@ -12,23 +12,34 @@ import '../location/location_center.dart';
 import 'listing_repository.dart';
 
 /// 排序档位。
+///
+/// 每个档位携带契约 `sort` 值（[apiValue]）：2026-10-08 起**排序由服务端承担**
+/// （契约 `sort` 由三值扩展为六值），故 UI 档位必须逐值映射到契约值，
+/// 不能把枚举名直接传上去。
 enum ListingSort {
-  /// 综合：距离与新鲜度的加权。PRD 未定义权重，本期实现见 [_compositeScore]。
-  composite('综合'),
+  /// 综合：距离与新鲜度各半（归一化上界 20km / 7 天）。
+  /// 服务端实现见 `MapService.compositeScore`，与本地 [_compositeScore] 同口径。
+  composite('综合', 'composite'),
 
   /// 距离近优先。PRD §6.4.3 标注为默认。
-  distance('距离'),
+  distance('距离', 'distance'),
 
   /// 发布时间新优先。
-  newest('最新'),
+  newest('最新', 'publish_time'),
 
-  priceAsc('价格 ↑'),
+  priceAsc('价格 ↑', 'price_asc'),
 
-  priceDesc('价格 ↓');
+  priceDesc('价格 ↓', 'price_desc');
 
-  const ListingSort(this.label);
+  const ListingSort(this.label, this.apiValue);
 
   final String label;
+
+  /// 契约 `sort` 值（openapi `/posts/search`）。
+  ///
+  /// 注意 UI 名与契约名并不同名：「最新」在契约里是 `publish_time`，
+  /// 直接传 `newest` 会被服务端判非法值回 `40001`。
+  final String apiValue;
 }
 
 class ListingSortNotifier extends Notifier<ListingSort> {

@@ -16,8 +16,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/cache/grid_id.dart';
 import '../../core/time_format.dart';
 import '../../design_tokens.dart';
+import '../../domain/category_tree.dart';
 import '../../domain/listing.dart';
 import '../../domain/listing_category.dart';
 // 色与图标已迁至 style 扩展（详细设计 §10.4.1）。
@@ -25,15 +27,37 @@ import '../../domain/listing_category_style.dart';
 import '../../router/app_router.dart';
 import '../location/location_center.dart';
 import 'discovery_filter.dart';
+import 'discovery_providers.dart';
+import 'discovery_query.dart';
 import 'filter_panel.dart';
 import 'listing_sort.dart';
+import 'map_dto.dart';
 
 class ListScreen extends ConsumerWidget {
   const ListScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final listings = ref.watch(sortedListingsProvider);
+    // 探索数据源：真后端 `/posts/search`（[126] 前端段；此前读本地 mock 样例）。
+    // 筛选与排序**都是接口入参**：分类/供需/半径/关键词下推服务端，排序由服务端
+    // 承担（2026-10-08 契约 sort 扩为六值），故本页不再做本地 filter/sort。
+    final filter = ref.watch(discoveryFilterProvider);
+    final sort = ref.watch(listingSortProvider);
+    final center = ref.watch(locationCenterProvider);
+    final query = SearchQuery(
+      leafCategoryIds: leafCategoryIdsFor(filter.categories),
+      postTypes: postTypesFor(filter.supplyDemand),
+      radius: toApiRadius(filter.radius),
+      // 列表页没有视口，网格取参考中心 —— 与服务端「按网格 + 半径扩邻域」的
+      // 过滤方式一致（半径决定往外扩几圈）。
+      gridId: gridIdOf(center.lng, center.lat),
+      categoryVersion: categoryTreeVersion,
+      lng: center.lng,
+      lat: center.lat,
+      keyword: filter.keyword.isEmpty ? null : filter.keyword,
+      sort: sort.apiValue,
+    );
+    final pageAsync = ref.watch(searchPagerProvider(query));
 
     return Scaffold(
       backgroundColor: Color(AppColors.background),
@@ -43,15 +67,41 @@ class ListScreen extends ConsumerWidget {
           // 面板与排序条固定在顶部，不随列表滚动：它们是当前结果集的控制器，
           // 滚到第 50 条时想换个排序还得先滚回顶部，是很常见的体验缺陷。
           const FilterPanel(elevated: false),
-          const _SortBar(),
+          _SortBar(count: pageAsync.asData?.value.total),
           const Divider(height: 1),
-          Expanded(
-            child: listings.isEmpty
-                ? const _EmptyState()
-                : _ListingList(listings: listings),
-          ),
+          Expanded(child: _buildBody(ref, pageAsync, query)),
         ],
       ),
+    );
+  }
+
+  /// 结果区三态（loading / error / data）。
+  ///
+  /// 空态与加载态必须分开：空结果要回显筛选条件并提供「扩大到全城」，
+  /// 而加载中是等数据 —— 两者都画成空白时，用户会把「还没回来」读成「没有内容」。
+  Widget _buildBody(
+    WidgetRef ref,
+    AsyncValue<SearchPageState> async,
+    SearchQuery query,
+  ) {
+    if (async.hasError && !async.isLoading) {
+      return _LoadFailedState(
+        onRetry: () => ref.invalidate(searchPagerProvider(query)),
+      );
+    }
+    final page = async.asData?.value;
+    if (page == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (page.items.isEmpty) return const _EmptyState();
+    return _ListingList(
+      cards: page.items,
+      hasMore: page.hasMore,
+      isLoadingMore: page.isLoadingMore,
+      moreError: page.moreError,
+      // 读 notifier 而非 watch：翻页是命令、不是渲染输入。
+      onLoadMore: () =>
+          ref.read(searchPagerProvider(query).notifier).loadMore(),
     );
   }
 
@@ -99,12 +149,14 @@ class ListScreen extends ConsumerWidget {
 
 /// 排序条 + 结果计数（PRD §6.4.3 排序五档）。
 class _SortBar extends ConsumerWidget {
-  const _SortBar();
+  const _SortBar({required this.count});
+
+  /// 命中总数（由列表页从 `searchProvider` 传入）；加载中为 null。
+  final int? count;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final current = ref.watch(listingSortProvider);
-    final count = ref.watch(sortedListingsProvider).length;
 
     return Container(
       color: Color(AppColors.surface),
@@ -116,7 +168,7 @@ class _SortBar extends ConsumerWidget {
       child: Row(
         children: [
           Text(
-            '$count 条',
+            count == null ? '…' : '$count 条',
             style: TextStyle(
               fontSize: AppTypeScale.small.size,
               color: Color(AppColors.textSecondary),
@@ -184,41 +236,150 @@ class _SortChip extends StatelessWidget {
   }
 }
 
+/// 列表 + 无限滚动底部行。
 class _ListingList extends StatelessWidget {
-  const _ListingList({required this.listings});
+  const _ListingList({
+    required this.cards,
+    required this.hasMore,
+    required this.isLoadingMore,
+    required this.moreError,
+    required this.onLoadMore,
+  });
 
-  final List<Listing> listings;
+  final List<PostCardDto> cards;
+  final bool hasMore;
+  final bool isLoadingMore;
+  final Object? moreError;
+  final VoidCallback onLoadMore;
 
   @override
   Widget build(BuildContext context) {
-    // ListView.builder 而非 ListView(children:)：压测档位下有 5 万条，
+    // ListView.builder 而非 ListView(children:)：结果集可能很大，
     // 后者会一次性构建全部卡片。
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-      itemCount: listings.length,
-      itemBuilder: (context, i) => _ListingCard(listing: listings[i]),
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        // 提前一屏触发：等真的滚到底再加载，用户必然看到一次空等。
+        if (notification.metrics.extentAfter < _loadMoreTriggerExtent &&
+            hasMore &&
+            !isLoadingMore) {
+          onLoadMore();
+        }
+        // 返回 false：继续向上冒泡，不吞掉滚动通知。
+        return false;
+      },
+      child: ListView.builder(
+        padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+        // 多一项承载底部行（加载中 / 没有更多 / 失败重试）。
+        itemCount: cards.length + 1,
+        itemBuilder: (context, i) {
+          if (i == cards.length) {
+            return _LoadMoreRow(
+              hasMore: hasMore,
+              isLoadingMore: isLoadingMore,
+              hasError: moreError != null,
+              onRetry: onLoadMore,
+            );
+          }
+          return _ListingCard(card: cards[i]);
+        },
+      ),
     );
   }
 }
 
-/// 列表卡片（PRD §6.4.3）。
-class _ListingCard extends ConsumerWidget {
-  const _ListingCard({required this.listing});
+/// 触底加载的提前量（逻辑像素）：约半屏，兼顾「提前」与「不乱发请求」。
+const double _loadMoreTriggerExtent = 400;
 
-  final Listing listing;
+/// 无限滚动底部行。
+class _LoadMoreRow extends StatelessWidget {
+  const _LoadMoreRow({
+    required this.hasMore,
+    required this.isLoadingMore,
+    required this.hasError,
+    required this.onRetry,
+  });
+
+  final bool hasMore;
+  final bool isLoadingMore;
+  final bool hasError;
+  final VoidCallback onRetry;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final center = ref.watch(locationCenterProvider);
-    final meters = distanceInMeters(
-      center.lat,
-      center.lng,
-      listing.latitude,
-      listing.longitude,
-    );
+  Widget build(BuildContext context) {
+    if (hasError) {
+      // 只有「下一页失败」会走到这里；上面已加载的条目保持可见，不清屏。
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
+        child: Center(
+          child: TextButton(
+            onPressed: onRetry,
+            child: const Text('这一页没加载出来，点击重试'),
+          ),
+        ),
+      );
+    }
+    if (isLoadingMore) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: AppSpacing.lg),
+        child: Center(
+          child: SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      );
+    }
+    if (!hasMore) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
+        child: Center(
+          child: Text(
+            '没有更多了',
+            style: TextStyle(
+              fontSize: AppTypeScale.caption.size,
+              color: Color(AppColors.textPlaceholder),
+            ),
+          ),
+        ),
+      );
+    }
+    // 还有下一页但尚未触发加载：留出与底部行等高的空白，
+    // 避免加载完成时列表高度突变把滚动位置顶回去。
+    return const SizedBox(height: AppSpacing.xl);
+  }
+}
+
+/// 列表卡片（PRD §6.4.3）。
+///
+/// 数据来自 `/posts/search` 的 `PostCard`：距离由服务端算好随卡片下发
+/// （`distance_m`，2026-10-08 起一律下发），故本卡不必再持有基准中心。
+class _ListingCard extends StatelessWidget {
+  const _ListingCard({required this.card});
+
+  final PostCardDto card;
+
+  @override
+  Widget build(BuildContext context) {
+    // 大类由叶子 ID 查分类树（不做算术推导）；查不到为 null，色块走中性态
+    // ——§16.4 版本落后是预期内状态，不应把该条丢弃。
+    final ListingCategory? category = topCategoryOf(card.leafCategoryId ?? -1);
+    final SupplyDemand supplyDemand = supplyDemandFromApi(card.type);
+    final String? priceLabel = formatPriceLabel(card.price, card.priceUnit);
+    final String? age = card.publishAt == null
+        ? null
+        : formatRelativeAge(card.publishAt!);
+    final String? distanceLabel = card.distanceM == null
+        ? null
+        : _formatDistance(card.distanceM!.toDouble());
+    final List<String> meta = [?distanceLabel, ?age];
+    final List<String> breadcrumb = [
+      if (category != null) category.label,
+      supplyDemand.label,
+    ];
 
     return GestureDetector(
-      onTap: () => context.push('/detail/${listing.id}'),
+      onTap: () => context.push('/detail/${card.id}'),
       behavior: HitTestBehavior.opaque,
       child: Container(
         margin: const EdgeInsets.symmetric(
@@ -233,17 +394,14 @@ class _ListingCard extends ConsumerWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _CategoryBadge(
-              category: listing.category,
-              supplyDemand: listing.supplyDemand,
-            ),
+            _CategoryBadge(category: category, supplyDemand: supplyDemand),
             const SizedBox(width: AppSpacing.md),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    listing.title,
+                    card.title,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
@@ -253,10 +411,10 @@ class _ListingCard extends ConsumerWidget {
                       height: 1.35,
                     ),
                   ),
-                  if (listing.priceLabel != null) ...[
+                  if (priceLabel != null) ...[
                     const SizedBox(height: AppSpacing.xs),
                     Text(
-                      listing.priceLabel!,
+                      priceLabel,
                       style: TextStyle(
                         fontSize: AppTypeScale.body.size,
                         fontWeight: FontWeight.w600,
@@ -266,19 +424,21 @@ class _ListingCard extends ConsumerWidget {
                       ),
                     ),
                   ],
-                  const SizedBox(height: AppSpacing.xs),
-                  Text(
-                    '${_formatDistance(meters)} · ${formatRelativeAge(listing.createdAt)}',
-                    style: TextStyle(
-                      fontSize: AppTypeScale.caption.size,
-                      color: Color(AppColors.textSecondary),
+                  if (meta.isNotEmpty) ...[
+                    const SizedBox(height: AppSpacing.xs),
+                    Text(
+                      meta.join(' · '),
+                      style: TextStyle(
+                        fontSize: AppTypeScale.caption.size,
+                        color: Color(AppColors.textSecondary),
+                      ),
                     ),
-                  ),
+                  ],
                   const SizedBox(height: AppSpacing.xs),
                   Text(
                     // 面包屑本应两级（PRD §6.4.3），二级分类属 §7.4.1 模板字段，
                     // 尚未建模。先出一级，二级到位后在此处补 ' / 二级名'。
-                    '${listing.category.label} · ${listing.supplyDemand.label}',
+                    breadcrumb.join(' · '),
                     style: TextStyle(
                       fontSize: AppTypeScale.caption.size,
                       color: Color(AppColors.textPlaceholder),
@@ -294,6 +454,39 @@ class _ListingCard extends ConsumerWidget {
   }
 }
 
+/// 列表加载失败态（与空态分开：失败要能重试，空结果要能放宽条件）。
+class _LoadFailedState extends StatelessWidget {
+  const _LoadFailedState({required this.onRetry});
+
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.cloud_off,
+            size: 48,
+            color: Color(AppColors.textPlaceholder),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Text(
+            '信息加载失败',
+            style: TextStyle(
+              fontSize: AppTypeScale.body.size,
+              color: Color(AppColors.textSecondary),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          TextButton(onPressed: onRetry, child: const Text('重试')),
+        ],
+      ),
+    );
+  }
+}
+
 /// 左侧分类色块（PRD §6.4.3：大类色方块 + 资源/需求态图标）。
 ///
 /// 与地图 Marker 同一套配色规则（§6.4.2）：资源＝分类色实心配白图标，
@@ -302,26 +495,39 @@ class _ListingCard extends ConsumerWidget {
 class _CategoryBadge extends StatelessWidget {
   const _CategoryBadge({required this.category, required this.supplyDemand});
 
-  final ListingCategory category;
+  /// 一级大类；null = 本地分类树查不到（版本落后，§16.4 预期内状态）。
+  /// 此时走中性配色而**不丢弃该条** —— 丢一条会让用户以为平台没有这条信息。
+  final ListingCategory? category;
+
   final SupplyDemand supplyDemand;
 
   @override
   Widget build(BuildContext context) {
     final isSupply = supplyDemand == SupplyDemand.supply;
+    final Color? accent = category?.color;
     return Container(
       width: 44,
       height: 44,
       decoration: BoxDecoration(
-        color: isSupply ? category.color : Color(AppColors.background),
+        color: isSupply && accent != null
+            ? accent
+            : Color(AppColors.background),
         borderRadius: BorderRadius.circular(AppRadius.md),
-        border: isSupply ? null : Border.all(color: category.color, width: 1.5),
+        border: isSupply && accent != null
+            ? null
+            : Border.all(
+                color: accent ?? Color(AppColors.border),
+                width: 1.5,
+              ),
       ),
       child: Icon(
-        category.icon,
+        category?.icon ?? Icons.place,
         size: 22,
-        // 需求态用 deepColor：分类原色在浅灰底上对比度不足
+        // 需求态/中性态用深色：分类原色在浅灰底上对比度不足
         // （design_tokens.dart:74）。
-        color: isSupply ? Color(AppColors.surface) : category.deepColor,
+        color: isSupply && accent != null
+            ? Color(AppColors.surface)
+            : (category?.deepColor ?? Color(AppColors.textSecondary)),
       ),
     );
   }
