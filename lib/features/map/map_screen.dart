@@ -91,6 +91,20 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   double _metersPerPixel = _kInitialMetersPerPixel;
 
+  /// 请求视口 —— 与上面三个**渲染视口**字段刻意分开。
+  ///
+  /// `PinsQuery` 的 family 键含 `lng/lat/zoom`，而渲染视口在拖动中**每帧**都变。
+  /// 若请求直接读渲染视口，一次拖动会发出上百个请求（每个都带 3s 读超时）：
+  /// Marker 永远停在「正在加载」，且请求洪水会触发服务端限流 → 表现为「加载
+  /// 很慢」并最终「加载失败」。
+  ///
+  /// 渲染视口**不能**改成只更新一次：Pin 是 Flutter 覆盖层、投影自持
+  /// （见 [_buildAmap] 注释），不逐帧重投影拖动时会明显拖影。
+  /// 故两个诉求各留一条路：渲染每帧更新，请求只在手势结束那一刻同步。
+  double _fetchLat = kDefaultCenterLat;
+  double _fetchLng = kDefaultCenterLng;
+  double _fetchMetersPerPixel = _kInitialMetersPerPixel;
+
   /// 缩放手势开始时的基准，用于把相对缩放比换算成绝对值。
   double _scaleStartMetersPerPixel = _kInitialMetersPerPixel;
 
@@ -119,6 +133,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final center = ref.read(locationCenterProvider);
     _centerLat = center.lat;
     _centerLng = center.lng;
+    // 请求视口同源初始化：若只同步渲染视口，首帧会按「字段默认值（杭州）」发一次
+    // 请求，而参考中心若已被手动选城市改过，这次请求就是白发的。
+    _fetchLat = center.lat;
+    _fetchLng = center.lng;
     // ⚠ 参考中心的监听【不能】注册在这里：Riverpod 的 ref.listen 在 initState 中
     // 不生效（debug 下断言报错，release 下断言被剥离 → 静默失效）。注册点见 build()。
     // 2026-10-08 实测教训：[132] 首版写在此处，表现为「取点成功（171 个定位点）但
@@ -137,6 +155,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         _centerLng = next.lng;
       });
       _pushCameraToAmap();
+      // 同时同步请求视口：不能只依赖 onCameraMoveEnd —— 定位居中是最核心的
+      // 路径，若插件在该次程序化移动后不回调，请求会停在默认中心。
+      // 与后续 onCameraMoveEnd 重复同步无副作用：`PinsQuery` 值相等 → 同键 → 不发请求。
+      _syncFetchViewport();
     });
     final consent = ref.watch(privacyConsentProvider);
     // 探索数据源：真后端 `/map/pins`（[126] 前端段切入；此前读的是本地 mock 样例，
@@ -147,13 +169,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       leafCategoryIds: leafCategoryIdsFor(filter.categories),
       postTypes: postTypesFor(filter.supplyDemand),
       radius: toApiRadius(filter.radius),
-      gridId: gridIdOf(_centerLng, _centerLat),
+      gridId: gridIdOf(_fetchLng, _fetchLat),
       // 分类树版本号取本地常量真源（随包发布，与服务端不一致时契约只回 stale 标记、
       // 不报错，故落后是降级而非故障）。
       categoryVersion: categoryTreeVersion,
-      lng: _centerLng,
-      lat: _centerLat,
-      zoom: MapProjection.zoomForMetersPerPixel(_centerLat, _metersPerPixel),
+      // lng/lat/zoom 取**请求视口**而非渲染视口，见 `_fetchLat` 的注释。
+      lng: _fetchLng,
+      lat: _fetchLat,
+      zoom: MapProjection.zoomForMetersPerPixel(_fetchLat, _fetchMetersPerPixel),
     );
     final pinsAsync = ref.watch(pinsProvider(pinsQuery));
 
@@ -358,6 +381,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           GestureDetector(
             onScaleStart: (_) => _scaleStartMetersPerPixel = _metersPerPixel,
             onScaleUpdate: (details) => _onScaleUpdate(details, projection),
+            // 降级底图没有原生相机，故没有 onCameraMoveEnd；若不同步，这条路
+            // 仍会退化成「每帧一个请求」的老问题。
+            onScaleEnd: (_) => _syncFetchViewport(),
             child: FallbackMapCanvas(
               projection: projection,
               // 两种降级原因的文案分开：已同意却只看到「示意底图」时，
@@ -411,6 +437,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       onLocationChanged: locationGranted ? _onLocationChanged : null,
       onMapCreated: (controller) => _amapController = controller,
       onCameraMove: _onCameraMove,
+      // 手势结束才同步请求视口 → 一次拖动只发一次请求。
+      // 用插件原生回调而非自写 debounce 计时器：不引入「多久算停」的魔法时长。
+      onCameraMoveEnd: _onCameraMoveEnd,
       // 罗盘默认在左上角，会与筛选摘要胶囊叠在一起，故关掉。
       compassEnabled: false,
       // 比例尺交给高德自己画：降级底图那条自绘比例尺属 FallbackMapCanvas，
@@ -490,6 +519,29 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         _centerLat,
         camera.zoom,
       );
+    });
+  }
+
+  /// 相机静止后同步请求视口，触发一次 `/map/pins`。
+  ///
+  /// 参数：[camera] 高德回传的静止相机位置。
+  void _onCameraMoveEnd(CameraPosition camera) {
+    setState(() {
+      _fetchLat = camera.target.latitude;
+      _fetchLng = camera.target.longitude;
+      _fetchMetersPerPixel = MapProjection.metersPerPixelForZoom(
+        _fetchLat,
+        camera.zoom,
+      );
+    });
+  }
+
+  /// 把当前渲染视口同步为请求视口（降级底图手势结束、定位居中时调用）。
+  void _syncFetchViewport() {
+    setState(() {
+      _fetchLat = _centerLat;
+      _fetchLng = _centerLng;
+      _fetchMetersPerPixel = _metersPerPixel;
     });
   }
 

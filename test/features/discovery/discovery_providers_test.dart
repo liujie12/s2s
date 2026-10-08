@@ -73,6 +73,16 @@ void main() {
         zoom: 14.5,
       );
 
+  SearchQuery searchQueryWith(List<String> postTypes) => SearchQuery(
+        leafCategoryIds: const [10101],
+        postTypes: postTypes,
+        radius: '5',
+        gridId: '26701_6727',
+        categoryVersion: '2026-08-31.1',
+        lng: 120.1551,
+        lat: 30.2741,
+      );
+
   group('pinsProvider', () {
     test('双选：发两次请求（各带单值 post_type），合并 pins 与 total', () async {
       stubPinsByPostType();
@@ -111,6 +121,59 @@ void main() {
       expect(harness.server.received, isEmpty);
       expect(merged.pins, isEmpty);
       expect(merged.total, 0);
+    });
+  });
+
+  group('searchPagerProvider', () {
+    test('双选：只发一次请求，post_type 为逗号多值（排序与分页才是全局的）', () async {
+      harness.stub('GET', '/api/v1/posts/search', (req) async {
+        return MockResponse(
+          body: ApiEnvelope.success(
+            data: {
+              'items': <Object?>[],
+              'total': 0,
+              'page': 1,
+              'page_size': 20,
+            },
+          ),
+        );
+      });
+
+      await container.read(
+        searchPagerProvider(searchQueryWith(const ['resource', 'demand'])).future,
+      );
+
+      // 若哪天又改回「拆两次单值请求」，这里会拿到 2 与 'demand' 而失败。
+      expect(harness.server.received, hasLength(1));
+      expect(
+        Uri.parse(harness.server.received.single.path)
+            .queryParameters['post_type'],
+        'resource,demand',
+      );
+    });
+  });
+
+  group('PinsQuery 值相等（请求去重的前提）', () {
+    test('同视口两次构造相等 —— 相机静止后重复同步不会多发请求', () {
+      expect(
+        queryWith(const ['resource', 'demand']),
+        queryWith(const ['resource', 'demand']),
+      );
+    });
+
+    test('视口不同即不等 —— 否则换了区域也不会重新取数', () {
+      final other = PinsQuery(
+        leafCategoryIds: const [10101],
+        postTypes: const ['resource', 'demand'],
+        radius: '5',
+        gridId: '26701_6727',
+        categoryVersion: '2026-08-31.1',
+        lng: 120.26,
+        lat: 30.2741,
+        zoom: 14.5,
+      );
+
+      expect(queryWith(const ['resource', 'demand']), isNot(other));
     });
   });
 }
