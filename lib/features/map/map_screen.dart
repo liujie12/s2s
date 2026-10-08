@@ -111,8 +111,17 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final center = ref.read(locationCenterProvider);
     _centerLat = center.lat;
     _centerLng = center.lng;
-    // 参考中心变化（定位成功取点 / 手动选城市）时，同步视口并推给原生相机。
-    // 用户拖动只改本地 _centerLat/_centerLng，不改 Provider，故此处不会回环。
+    // ⚠ 参考中心的监听【不能】注册在这里：Riverpod 的 ref.listen 在 initState 中
+    // 不生效（debug 下断言报错，release 下断言被剥离 → 静默失效）。注册点见 build()。
+    // 2026-10-08 实测教训：[132] 首版写在此处，表现为「取点成功（171 个定位点）但
+    // 相机永不移动、蓝点落在视口外」。
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // 参考中心变化（定位成功取点 / 手动选城市）→ 同步视口 + 推给原生相机。
+    // 必须注册在 build（initState 中 ref.listen 无效，见 initState 处注释）。
+    // 用户拖动只改本地 _centerLat/_centerLng、不改 Provider，故不构成回环。
     ref.listen(locationCenterProvider, (previous, next) {
       if (next.lat == _centerLat && next.lng == _centerLng) return;
       setState(() {
@@ -121,10 +130,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       });
       _pushCameraToAmap();
     });
-  }
-
-  @override
-  Widget build(BuildContext context) {
     final consent = ref.watch(privacyConsentProvider);
     final listings = ref.watch(filteredListingsProvider);
 
@@ -390,15 +395,22 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       }
       return;
     }
+    // 只有首个有效点写入参考中心（口径：2026-10-08 裁定「仅首点居中一次」）。
+    // 若每个点都写，参考中心会以 5–8s 的节奏变化，经 build() 中的 ref.listen 把
+    // 用户拖动后的视角反复拽回定位点。代价是数据层中心冻结在首点上 —— 可接受，
+    // 因为首点已足以判定「用户所在城市/商圈」，后续精度提升对 5km 筛选无实质影响。
+    final isFirstFix = !_located;
     setState(() {
       _locateFailCount = 0;
       _located = true;
     });
     ref.read(locationPermissionProvider.notifier).markGrantedOnce();
-    ref.read(locationCenterProvider.notifier).moveTo(
-          location.latLng.latitude,
-          location.latLng.longitude,
-        );
+    if (isFirstFix) {
+      ref.read(locationCenterProvider.notifier).moveTo(
+            location.latLng.latitude,
+            location.latLng.longitude,
+          );
+    }
   }
 
   /// C 态「手动选城市」出口：弹出城市选择，选中后移动参考中心。
