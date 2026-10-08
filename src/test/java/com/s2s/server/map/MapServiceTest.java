@@ -167,12 +167,27 @@ class MapServiceTest {
         when(mapper.selectSearchPosts(any(), any(), any(), any())).thenReturn(rows);
 
         SearchPostsResponse resp = mapService.searchPosts(
-                List.of(10101), "resource", "3", "0_0", "2026-08-31.1",
+                List.of(10101), List.of("resource"), "3", "0_0", "2026-08-31.1",
                 120.15, 30.28, null, "publish_time", 2, 20);
 
         assertEquals(25, resp.total());
         assertEquals(5, resp.items().size());
         assertEquals(2, resp.page());
         assertFalse(resp.categoryVersionStale());
+    }
+
+    /**
+     * 场景：`/posts/search` 的 `post_type` 多值上界为 2 → 传 3 个回 40001。
+     *
+     * <p>2026-10-08 `post_type` 由单值扩为 1–2 个。上界必须是硬判定：PRD §6.4.1
+     * 只有资源/需求两态，第 3 个值只可能是参数拼错，而拼错的代价是**静默地
+     * 少查一类**（`IN` 里多一个不存在的值不报错），故在入口挡住。</p>
+     */
+    @Test
+    void 供需态超过两个回40001() {
+        BizException ex = assertThrows(BizException.class, () -> mapService.searchPosts(
+                List.of(10101), List.of("resource", "demand", "resource"), "3", "0_0",
+                "2026-08-31.1", 120.15, 30.28, null, "distance", 1, 20));
+        assertEquals(ErrorCode.PARAM_INVALID, ex.getErrorCode());
     }
 }

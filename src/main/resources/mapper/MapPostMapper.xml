@@ -82,7 +82,8 @@
         </if>
         AND p.leaf_category_id IN
         <foreach collection="leafCategoryIds" item="c" open="(" separator="," close=")">#{c}</foreach>
-        AND p.type = #{type}
+        AND p.type IN
+        <foreach collection="postTypes" item="t" open="(" separator="," close=")">#{t}</foreach>
         <if test="keyword != null and keyword != ''">
             AND (p.title LIKE CONCAT('%', #{keyword}, '%')
                  OR p.`desc` LIKE CONCAT('%', #{keyword}, '%'))

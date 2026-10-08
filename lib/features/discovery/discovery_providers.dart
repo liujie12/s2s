@@ -222,12 +222,11 @@ class SearchQuery {
       );
 }
 
-/// 合并后的单页检索结果（内部中间态，对外暴露的是 [SearchPageState]）。
+/// 单页检索结果（内部中间态，对外暴露的是 [SearchPageState]）。
 ///
-/// ⚠ **分页语义（已知近似）**：双选时两次请求各自按自己的
-/// `post_type` 过滤后取同一页，合并结果**不等于**「并集的第 N 页」。
-/// 双选下的严格分页需要服务端支持多值 `post_type`（另一条口径），
-/// 本期取近似：`total` 为两侧之和，翻页游标用 [SearchPageState.nextPage]。
+/// 2026-10-08 起**双选只走一次查询**（契约 `post_type` 扩为 1–2 个，服务端以
+/// `IN` 完成），故排序与分页都是全局的 —— 此前「双选时并集 ≠ 第 N 页」的近似
+/// 已随该改动消失。
 class MergedSearchPage {
   /// 构造合并结果。
   const MergedSearchPage({
@@ -295,8 +294,8 @@ class SearchPageState {
   /// 是否还有下一页。
   ///
   /// 按「已加载条数 < total」判定，**不用「本页返回条数 == pageSize」**：
-  /// 双选时每次请求各自返回的条数之和常等于 pageSize，用后者会在第一页就
-  /// 误判「没有更多」。
+  /// 当 `total` 恰为 `pageSize` 的整数倍时最后一页仍是满页，用后者会多请求一次
+  /// 空页（并让底部行在「没有更多」与「加载中」之间闪一下）。
   bool get hasMore => items.length < total;
 
   /// 复制并覆盖部分字段。
@@ -382,38 +381,39 @@ class SearchPager extends AsyncNotifier<SearchPageState> {
     }
   }
 
-  /// 取某一页（双选时并发两次请求再合并）。
+  /// 取某一页（双选**一次查询**，由服务端 `IN` 完成）。
+  ///
+  /// 2026-10-08 契约把 `post_type` 由单值扩为 1–2 个，本方法随之从「并发两次
+  /// 请求再拼接」改为单次请求。理由：排序与分页都是**全局**语义，拆两次再拼接
+  /// 会让「价格降序」在端上表现为「先全部资源、再全部需求」，且分页游标无法对齐。
   ///
   /// 参数：[page] 页码（从 1 起）。
-  /// 返回：合并后的单页结果。
+  /// 返回：该页结果（服务端已按 `sort` 排好序）。
   Future<MergedSearchPage> _fetchPage(int page) async {
     // 供需都不选 = 没有可看的内容，直接给空结果（契约五要素缺一即 40001）。
     if (query.postTypes.isEmpty) return const MergedSearchPage.empty();
 
     final repo = ref.read(mapRepositoryProvider);
-    final results = await Future.wait([
-      for (final postType in query.postTypes)
-        repo.searchPosts(
-          categoryIds: query.leafCategoryIds,
-          postType: postType,
-          radius: query.radius,
-          gridId: query.gridId,
-          categoryVersion: query.categoryVersion,
-          lng: query.lng,
-          lat: query.lat,
-          keyword: query.keyword,
-          sort: query.sort,
-          page: page,
-          pageSize: query.pageSize,
-        ),
-    ]);
+    final result = await repo.searchPosts(
+      categoryIds: query.leafCategoryIds,
+      postTypes: query.postTypes,
+      radius: query.radius,
+      gridId: query.gridId,
+      categoryVersion: query.categoryVersion,
+      lng: query.lng,
+      lat: query.lat,
+      keyword: query.keyword,
+      sort: query.sort,
+      page: page,
+      pageSize: query.pageSize,
+    );
 
     return MergedSearchPage(
-      items: [for (final r in results) ...r.items],
-      total: results.fold(0, (sum, r) => sum + r.total),
-      page: results.first.page,
-      pageSize: results.first.pageSize,
-      categoryVersionStale: results.any((r) => r.categoryVersionStale),
+      items: result.items,
+      total: result.total,
+      page: result.page,
+      pageSize: result.pageSize,
+      categoryVersionStale: result.categoryVersionStale,
     );
   }
 }

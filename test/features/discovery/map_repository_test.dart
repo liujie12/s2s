@@ -130,7 +130,7 @@ void main() {
 
       final page = await repo.searchPosts(
         categoryIds: const [10101],
-        postType: 'resource',
+        postTypes: const ['resource'],
         radius: 'city',
         gridId: '26701_6727',
         categoryVersion: '2026-08-31.1',
@@ -144,6 +144,7 @@ void main() {
 
       final query = Uri.parse(harness.server.lastRequest!.path).queryParameters;
       expect(query['category_ids'], '10101');
+      expect(query['post_type'], 'resource');
       expect(query['radius'], 'city');
       expect(query['keyword'], '服务员');
       expect(query['sort'], 'distance');
@@ -152,6 +153,37 @@ void main() {
 
       expect(page.items.single.title, '餐饮门店招服务员');
       expect(page.page, 2);
+    });
+
+    test('供需双选：一个请求带两个值（逗号拼接），而非拆成两次请求', () async {
+      harness.stub('GET', '/api/v1/posts/search', (req) async {
+        return MockResponse(
+          body: ApiEnvelope.success(
+            data: {
+              'items': <Object?>[],
+              'total': 0,
+              'page': 1,
+              'page_size': 20,
+            },
+          ),
+        );
+      });
+
+      await repo.searchPosts(
+        categoryIds: const [10101],
+        postTypes: const ['resource', 'demand'],
+        radius: '5',
+        gridId: '26701_6727',
+        categoryVersion: '2026-08-31.1',
+        lng: 120.1551,
+        lat: 30.2741,
+      );
+
+      final query = Uri.parse(harness.server.lastRequest!.path).queryParameters;
+      // 契约 `style: form, explode: false`：两个值合成**一个**逗号参数。
+      // 若仍按老实现拆成两次单值请求，这里会拿到 'demand'（最后一次）而失败 ——
+      // 这条断言就是 2026-10-08 由「双选两次请求」改为「一次查询」的验收证据。
+      expect(query['post_type'], 'resource,demand');
     });
 
     test('可选项缺省时不出现在 query（空串会被服务端判非法值）', () async {
@@ -170,7 +202,7 @@ void main() {
 
       await repo.searchPosts(
         categoryIds: const [10101],
-        postType: 'demand',
+        postTypes: const ['demand'],
         radius: '5',
         gridId: '26701_6727',
         categoryVersion: '2026-08-31.1',

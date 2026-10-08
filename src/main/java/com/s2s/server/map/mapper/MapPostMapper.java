@@ -70,7 +70,7 @@ public interface MapPostMapper {
      *
      * @param gridIds        网格集合（null 表示全城）
      * @param leafCategoryIds 叶子类目 ID 集合
-     * @param type           供需态
+     * @param postTypes      供需态集合（1–2 个；多值走一次查询，排序与分页才是全局的）
      * @param keyword        关键词（可空）
      * @return 候选行集合（列名：id/type/leaf_category_id/l2_category_id/title/summary/
      *         lng/lat/completeness_level/publish_at/author_id/nickname/avatar_url/realname_status）
@@ -78,6 +78,6 @@ public interface MapPostMapper {
     List<Map<String, Object>> selectSearchPosts(
             @Param("gridIds") List<String> gridIds,
             @Param("leafCategoryIds") List<Integer> leafCategoryIds,
-            @Param("type") String type,
+            @Param("postTypes") List<String> postTypes,
             @Param("keyword") String keyword);
 }

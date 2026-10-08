@@ -1228,7 +1228,22 @@ paths:
         - name: post_type
           in: query
           required: true
-          schema: { $ref: '#/components/schemas/PostTypeEnum' }
+          description: |
+            供需态，**1–2 个**（PRD §6.4.1 允许「资源 ○ 需求」都选）。
+
+            多值必须走**一次**查询（服务端 `IN` + 在结果集上统一排序与分页）：
+            排序与分页都是全局语义，若拆成两次请求再由客户端拼接，「价格降序」
+            在端上会表现为「先全部资源、再全部需求」，且分页游标无法对齐。
+
+            **`/map/pins` 刻意保持单值**：它返回的是无序点集，两次请求的并集
+            与顺序无关，拆分不影响正确性，故不为此扩大改动面。
+          style: form
+          explode: false
+          schema:
+            type: array
+            minItems: 1
+            maxItems: 2
+            items: { $ref: '#/components/schemas/PostTypeEnum' }
         - name: radius
           in: query
           required: true

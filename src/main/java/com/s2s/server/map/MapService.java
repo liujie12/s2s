@@ -143,10 +143,11 @@ public class MapService {
      * @param pageSize        每页条数（缺省/上限见 NfrApi）
      * @return 分页列表检索响应
      */
-    public SearchPostsResponse searchPosts(List<Integer> categoryIds, String postType, String radius,
+    public SearchPostsResponse searchPosts(List<Integer> categoryIds, List<String> postTypes,
+            String radius,
             String gridId, String categoryVersion, Double lng, Double lat,
             String keyword, String sort, Integer page, Integer pageSize) {
-        validateSearchParams(categoryIds, postType, radius, gridId, categoryVersion, lng, lat, sort);
+        validateSearchParams(categoryIds, postTypes, radius, gridId, categoryVersion, lng, lat, sort);
 
         List<String> gridIds = expandGridCells(gridId, radius);
         boolean stale = categoryService.isVersionStale(categoryVersion);
@@ -156,7 +157,7 @@ public class MapService {
         int resolvedPageSize = pageSize == null ? NfrApi.PAGE_SIZE_DEFAULT : pageSize;
 
         List<Map<String, Object>> rows = mapPostMapper.selectSearchPosts(
-                gridIds, categoryIds, postType, normalizedKeyword);
+                gridIds, categoryIds, postTypes, normalizedKeyword);
         // 用可变 ArrayList 承载，sortCards 需原地排序（Stream.toList() 返回不可变列表）。
         List<PostCard> cards = new ArrayList<>(
                 rows.stream().map(row -> toCard(row, lng, lat)).toList());
@@ -184,7 +185,8 @@ public class MapService {
      */
     private void validatePinsParams(List<Integer> categoryIds, String postType, String radius,
             String gridId, String categoryVersion, Double lng, Double lat, Double zoom) {
-        validateFiveElements(categoryIds, postType, radius, gridId, categoryVersion);
+        validateFiveElements(categoryIds, radius, gridId, categoryVersion);
+        validatePostType(postType);
         if (lng == null || lat == null || zoom == null) {
             throw BizException.of(ErrorCode.PARAM_INVALID);
         }
@@ -194,7 +196,7 @@ public class MapService {
      * 校验 /posts/search 入参（与 /map/pins 共用五要素，另校验排序枚举）。
      *
      * @param categoryIds     分类 ID 列表
-     * @param postType        供需态
+     * @param postTypes       供需态（1–2 个）
      * @param radius          半径档
      * @param gridId          坐标网格
      * @param categoryVersion 分类树版本号
@@ -202,9 +204,10 @@ public class MapService {
      * @param lat             视野中心纬度
      * @param sort            排序方式
      */
-    private void validateSearchParams(List<Integer> categoryIds, String postType, String radius,
+    private void validateSearchParams(List<Integer> categoryIds, List<String> postTypes, String radius,
             String gridId, String categoryVersion, Double lng, Double lat, String sort) {
-        validateFiveElements(categoryIds, postType, radius, gridId, categoryVersion);
+        validateFiveElements(categoryIds, radius, gridId, categoryVersion);
+        validatePostTypes(postTypes);
         if (lng == null || lat == null) {
             throw BizException.of(ErrorCode.PARAM_INVALID);
         }
@@ -214,20 +217,19 @@ public class MapService {
     }
 
     /**
-     * 校验缓存键五要素（分类 ID/供需态/半径档/坐标网格/数据版本号），任一缺失回 40001。
+     * 校验缓存键四要素（分类 ID/半径档/坐标网格/数据版本号），任一缺失回 40001。
+     *
+     * <p>供需态**不在本方法内**：`/map/pins` 收单值、`/posts/search` 收 1–2 个，
+     * 两者的判定不同，各自调用 {@link #validatePostType} / {@link #validatePostTypes}。</p>
      *
      * @param categoryIds     分类 ID 列表
-     * @param postType        供需态
      * @param radius          半径档
      * @param gridId          坐标网格
      * @param categoryVersion 分类树版本号
      */
-    private void validateFiveElements(List<Integer> categoryIds, String postType, String radius,
+    private void validateFiveElements(List<Integer> categoryIds, String radius,
             String gridId, String categoryVersion) {
         if (categoryIds == null || categoryIds.isEmpty()) {
-            throw BizException.of(ErrorCode.PARAM_INVALID);
-        }
-        if (postType == null || !POST_TYPES.contains(postType)) {
             throw BizException.of(ErrorCode.PARAM_INVALID);
         }
         if (radius == null || !RADIUS_VALUES.contains(radius)) {
@@ -238,6 +240,36 @@ public class MapService {
         }
         if (categoryVersion == null || categoryVersion.isBlank()) {
             throw BizException.of(ErrorCode.PARAM_INVALID);
+        }
+    }
+
+    /**
+     * 校验供需态单值（`/map/pins`）。
+     *
+     * @param postType 供需态
+     */
+    private void validatePostType(String postType) {
+        if (postType == null || !POST_TYPES.contains(postType)) {
+            throw BizException.of(ErrorCode.PARAM_INVALID);
+        }
+    }
+
+    /**
+     * 校验供需态集合（`/posts/search`）：1–2 个，逐个须在枚举内。
+     *
+     * <p>上界锁 2 而非「≥1 即可」：PRD §6.4.1 只有资源/需求两态，放行第 3 个值
+     * 只可能是调用方拼错参数，而拼错的代价是**静默地少查一类**，不如入口挡住。</p>
+     *
+     * @param postTypes 供需态集合
+     */
+    private void validatePostTypes(List<String> postTypes) {
+        if (postTypes == null || postTypes.isEmpty() || postTypes.size() > 2) {
+            throw BizException.of(ErrorCode.PARAM_INVALID);
+        }
+        for (String postType : postTypes) {
+            if (!POST_TYPES.contains(postType)) {
+                throw BizException.of(ErrorCode.PARAM_INVALID);
+            }
         }
     }
 

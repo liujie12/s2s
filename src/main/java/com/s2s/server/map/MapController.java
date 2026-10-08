@@ -63,14 +63,14 @@ public class MapController {
      * 列表检索（与地图同源筛选条件，返回带完整卡片字段的分页列表）。
      *
      * @param categoryIds     分类 ID 列表
-     * @param postType        供需态
+     * @param postTypes       供需态（1–2 个；多值走一次查询，排序与分页才是全局的）
      * @param radius          半径档
      * @param gridId          坐标网格
      * @param categoryVersion 分类树版本号
      * @param lng             视野中心经度
      * @param lat             视野中心纬度
      * @param keyword         关键词（可空）
-     * @param sort            排序方式（distance/publish_time/completeness，缺省 distance）
+     * @param sort            排序方式（六值，缺省 distance；见 openapi `/posts/search`）
      * @param page            页码（从 1 起）
      * @param pageSize        每页条数
      * @return {@link SearchPostsResponse}
@@ -78,7 +78,7 @@ public class MapController {
     @GetMapping("/posts/search")
     public SearchPostsResponse searchPosts(
             @RequestParam(name = "category_ids", required = false) List<Integer> categoryIds,
-            @RequestParam(name = "post_type", required = false) String postType,
+            @RequestParam(name = "post_type", required = false) List<String> postTypes,
             @RequestParam(required = false) String radius,
             @RequestParam(name = "grid_id", required = false) String gridId,
             @RequestParam(name = "category_version", required = false) String categoryVersion,
@@ -88,7 +88,7 @@ public class MapController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) Integer page,
             @RequestParam(name = "page_size", required = false) Integer pageSize) {
-        return mapService.searchPosts(categoryIds, postType, radius, gridId, categoryVersion,
+        return mapService.searchPosts(categoryIds, postTypes, radius, gridId, categoryVersion,
                 lng, lat, keyword, sort, page, pageSize);
     }
 }

@@ -83,7 +83,7 @@ class MapRepository {
   /// 抛出：[ApiException] 信封业务错误/解析失败。
   Future<SearchPostsPageDto> searchPosts({
     required List<int> categoryIds,
-    required String postType,
+    required List<String> postTypes,
     required String radius,
     required String gridId,
     required String categoryVersion,
@@ -97,7 +97,9 @@ class MapRepository {
   }) async {
     final query = <String, Object?>{
       'category_ids': categoryIds.join(','),
-      'post_type': postType,
+      // 多值逗号拼接，与 category_ids 同一写法（契约 `style: form, explode: false`）：
+      // 双选必须走一次查询，排序与分页才是全局的。
+      'post_type': postTypes.join(','),
       'radius': radius,
       'grid_id': gridId,
       'category_version': categoryVersion,
