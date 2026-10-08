@@ -379,16 +379,24 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   /// 高德定位取点回调（`onLocationChanged`）。
   ///
   /// 三件事：
-  /// 1. 无效坐标 → 失败计数 +1，达到 [NfrLocation.locateFailThreshold] 进入 C 态
+  /// 1. 无效定位 → 失败计数 +1，达到 [NfrLocation.locateFailThreshold] 进入 C 态
   ///    （§6.8：保持默认中心 + 顶部提示 + 手动选城市，不出引导页）；
-  /// 2. 有效坐标 → 写 `location_granted_once` 标记 + 移动共享参考中心
-  ///    （经 [locationCenterProvider]，触发 initState 的 ref.listen 同步视口）；
+  /// 2. 有效定位 → 写 `location_granted_once` 标记 + 移动共享参考中心
+  ///    （经 [locationCenterProvider]，由 build() 中的 ref.listen 同步视口）；
   /// 3. 成功后清空失败计数。
+  ///
+  /// 有效性由 [isUsableLocationFix] 判定 —— **不用插件 `amap_map` 的
+  /// `isLocationValid`**：后者只判「范围内 + accuracy ≥ 0」，会把定位不可用时回传的
+  /// `(0, 0)` 当成有效定位（后果详见该函数注释）。
   ///
   /// 参数：
   /// - [location]：高德回传的定位信息。
   void _onLocationChanged(AMapLocation location) {
-    if (!isLocationValid(location)) {
+    if (!isUsableLocationFix(
+      lat: location.latLng.latitude,
+      lng: location.latLng.longitude,
+      accuracy: location.accuracy,
+    )) {
       _locateFailCount++;
       if (_locateFailCount >= NfrLocation.locateFailThreshold) {
         setState(() => _located = false);

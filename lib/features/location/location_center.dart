@@ -54,3 +54,34 @@ final locationCenterProvider =
     NotifierProvider<LocationCenterNotifier, LocationCenter>(
       LocationCenterNotifier.new,
     );
+
+/// 判定高德回传的一次定位是否可用（PRD §6.8）。
+///
+/// **不能用插件 `amap_map` 的 `isLocationValid`**：它的判据只有「经纬度在范围内 +
+/// `accuracy >= 0`」，于是定位不可用时回传的 `(0, 0)` 会被判为**有效**。2026-10-08
+/// 真机实测的连锁后果：
+/// 1. `_located` 被置真 → 取点前骨架屏提前消失；
+/// 2. 按「仅首点居中一次」把相机移到 `(0, 0)`（几内亚湾，无瓦片）→ **地图整片空白**；
+/// 3. 首点只认一次 ⇒ 后续真实定位**不会**纠正 → 空白不自愈（只能重启 App）；
+/// 4. 失败计数不累积 ⇒ **C 态降级永不触发**，与 PRD §6.8「≥3 次失败 → 基站+商圈兜底，
+///    不用城市中心假值」且「全程不留空白页」直接冲突。
+///
+/// 参数：
+/// - [lat]：纬度（GCJ-02）；
+/// - [lng]：经度（GCJ-02）；
+/// - [accuracy]：水平精度（米）。高德以 0 表示「未测到精度」，同样按无效计。
+///
+/// 返回：true 表示坐标可信，可用于「取点成功」判定与居中。
+bool isUsableLocationFix({
+  required double lat,
+  required double lng,
+  required double accuracy,
+}) {
+  // 零坐标：高德在定位不可用时回传 (0,0)，落点是几内亚湾，不是任何用户的真实位置。
+  if (lat == 0 && lng == 0) return false;
+  // 零精度：没有真实测距结果，不能据此认定「取点成功」。
+  if (accuracy <= 0) return false;
+  // 经纬度范围与插件判据保持一致，避免坐标系错乱的脏数据被当成有效点。
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return false;
+  return true;
+}
