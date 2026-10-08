@@ -1,9 +1,8 @@
 /// 定位中心点（PRD §6.4.1 / §6.7）。
 ///
-/// 首页地图与列表的「距离」统一以此中心为基准（4 处基准点：listing_repository
-/// 距离过滤 / listing_sort 排序 / list_screen 距离显示 / map_screen 视口中心）。
-/// 定位接入前（[132] 之前）这 4 处各自硬编码默认中心；接入后统一读
-/// [locationCenterProvider]，中心点只有一个来源，避免四处漂移。
+/// 首页地图与列表的「距离」统一以此中心为基准（2 处基准点：list_screen
+/// 距离显示 / map_screen 视口中心）。定位接入前（[132] 之前）各处硬编码默认
+/// 中心；接入后统一读 [locationCenterProvider]，中心点只有一个来源，避免漂移。
 ///
 /// 中心点默认取杭州（[kDefaultCenterLat]/[kDefaultCenterLng]），在定位成功取点
 /// 或用户手动选城市后被替换。

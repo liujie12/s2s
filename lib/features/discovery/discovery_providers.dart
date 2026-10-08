@@ -18,6 +18,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'map_dto.dart';
 import 'map_repository.dart';
+import 'stress_data.dart';
 
 /// 地图图钉请求参数（值相等即复用，故实现 ==/hashCode）。
 class PinsQuery {
@@ -125,6 +126,20 @@ final pinsProvider = FutureProvider.autoDispose.family<MergedPins, PinsQuery>((
   query,
 ) async {
   if (query.postTypes.isEmpty) return const MergedPins.empty();
+
+  // POC-B 短路注入（[139]）：压测档位开启时不调 /map/pins，直接用压测图钉
+  // 组装 MergedPins(mode=pin)。地图「投影→聚合→绘制」全链照跑，帧指标测的
+  // 就是真实渲染在 1 万/5 万 点下的表现 —— 这正是 POC-B 要压的那条路径。
+  final stress = ref.watch(stressLevelProvider);
+  if (stress != StressLevel.off) {
+    return MergedPins(
+      mode: 'pin',
+      pins: buildStressPins(stress.pointCount),
+      clusters: const [],
+      total: stress.pointCount,
+      categoryVersionStale: false,
+    );
+  }
 
   final repo = ref.watch(mapRepositoryProvider);
   final results = await Future.wait([

@@ -13,13 +13,12 @@ import 'dart:math' as math;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../domain/listing.dart';
-import '../../domain/listing_category.dart';
 import '../location/location_center.dart';
+import 'map_dto.dart';
 
 /// 压测点数档位。PRD §6.10.1 规定 POC 数据量为「单屏 1 万点、5 万点两档」。
 enum StressLevel {
-  /// 关闭压测，用样例数据（105 条）。
+  /// 关闭压测，走真实后端数据（`pinsProvider` 调 `/map/pins`）。
   off(0, '关闭'),
 
   /// PRD §14.6 的单次渲染上限档，也是降级开关触发后的目标值。
@@ -46,13 +45,20 @@ class StressLevelNotifier extends Notifier<StressLevel> {
   void set(StressLevel level) => state = level;
 }
 
-/// 压测数据 ID 起始值。
+/// 压测图钉 ID 起始值。
 ///
-/// 与样例数据（`listing_repository.dart`，从 1 起、量级为数十）刻意留出
-/// 足够间隔，避免两批数据同时存在时 ID 相撞。
+/// 刻意取大值（1000000），与真实帖子 ID 段（种子脚本 9001–9030、真实增长从
+/// 小值起）留出足够间隔，避免压测图钉与真实数据 ID 相撞。
 const int _kStressIdBase = 1000000;
 
-/// 按档位生成压测数据。
+/// 压测图钉的叶子类目 ID（§2.4 三级树中的真实叶子）。
+///
+/// 混排五个大类：若地图未来按类目着色/分类聚合，五类都要被画到，只用一类
+/// 会掩盖「分类相关」的绘制开销。取值：工作 10202 / 房屋 20103 / 车辆 30101 /
+/// 生活 40102 / 服务 50101。
+const List<int> _kStressLeafCategoryIds = <int>[10202, 20103, 30101, 40102, 50101];
+
+/// 按档位生成压测图钉（地图渲染的实际数据模型 [MapPinDto]）。
 ///
 /// **分布用聚集而非均匀**：POC-A 已证明聚集分布才是聚合算法的最坏情况
 /// （说明文档条目 [63]，×5.72 vs 均匀的 ×3.21）。渲染侧同理 —— 点扎堆时
@@ -61,7 +67,11 @@ const int _kStressIdBase = 1000000;
 ///
 /// **固定随机种子**：同一档位每次生成同样的点，两次测量的差异才能归因到
 /// 代码改动而不是数据变化。
-List<Listing> buildStressListings(int count) {
+///
+/// 返回 [MapPinDto] 列表（而非旧域模型 `Listing`）：POC-B 走 `pinsProvider`
+/// 短路注入（[139]），注入点消费的是地图渲染同款的 `MapPinDto`，不再经
+/// 旧 mock 链 `allListingsProvider`。
+List<MapPinDto> buildStressPins(int count) {
   if (count == 0) return const [];
   final random = math.Random(20260828);
 
@@ -82,27 +92,16 @@ List<Listing> buildStressListings(int count) {
     // 0.0045 度 ≈ 500m：热点内扩散半径小于聚合网格对应的地理尺度，
     // 才能真正形成深桶。扩散过大就退化成均匀分布，压不到最坏情况。
     const double spreadDeg = 0.0045;
-    return Listing(
-      // id 为 int（详细设计 §10.4.3）。压测段从 1000000 起编，与样例段
-      // （listing_repository.dart，从 1 起）刻意不重叠，理由见那一处注释。
+    return MapPinDto(
       id: _kStressIdBase + i,
-      title: '压测数据 $i',
-      category:
-          ListingCategory.values[random.nextInt(ListingCategory.values.length)],
-      supplyDemand: random.nextDouble() < 0.65
-          ? SupplyDemand.supply
-          : SupplyDemand.demand,
-      latitude: hotspot.lat + (random.nextDouble() - 0.5) * spreadDeg,
-      longitude: hotspot.lng + (random.nextDouble() - 0.5) * spreadDeg,
-      // 时间也错开：压测若要覆盖列表页，「最新」排序对 5 万条全相同的时间
-      // 会退化成原序，测不出排序本身的开销。
-      createdAt: DateTime(
-        2026,
-        8,
-        28,
-        12,
-      ).subtract(Duration(minutes: random.nextInt(7 * 24 * 60))),
-      price: null,
+      lng: hotspot.lng + (random.nextDouble() - 0.5) * spreadDeg,
+      lat: hotspot.lat + (random.nextDouble() - 0.5) * spreadDeg,
+      leafCategoryId:
+          _kStressLeafCategoryIds[i % _kStressLeafCategoryIds.length],
+      // 供需混排（0=resource / 1=demand）：图标/着色的两条分支都要被画到。
+      typeCode: i.isEven ? 0 : 1,
+      // 完整度三档混排（0/1/2）：若未来按完整度着色，三档都要被画到。
+      completenessLevel: i % 3,
     );
   }, growable: false);
 }

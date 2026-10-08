@@ -8,8 +8,6 @@ library;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../domain/listing.dart';
-import '../location/location_center.dart';
-import 'listing_repository.dart';
 
 /// 排序档位。
 ///
@@ -133,25 +131,3 @@ int _comparePrice(Listing a, Listing b, {required bool ascending}) {
   if (pb == null) return -1;
   return ascending ? pa.compareTo(pb) : pb.compareTo(pa);
 }
-
-/// 筛选并排序后的列表（列表页直接消费）。
-///
-/// 建在 [filteredListingsProvider] 之上而不是替换它：地图页只要筛选不要排序，
-/// 两页共用一个 Provider 会让地图页也承担排序开销。
-final sortedListingsProvider = Provider<List<Listing>>((ref) {
-  final listings = ref.watch(filteredListingsProvider);
-  final sort = ref.watch(listingSortProvider);
-  final center = ref.watch(locationCenterProvider);
-
-  return sortListings(
-    listings,
-    sort: sort,
-    now: DateTime.now(),
-    distanceOf: (l) => distanceInMeters(
-      center.lat,
-      center.lng,
-      l.latitude,
-      l.longitude,
-    ),
-  );
-});
