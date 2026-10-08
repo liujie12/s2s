@@ -355,6 +355,47 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# 第 3 步（续）：ref.listen 不得出现在 initState 内
+# ---------------------------------------------------------------------------
+# 依据：2026-10-08 真机缺陷（说明文档同日条目）。Riverpod 的 ref.listen 在
+# widget 的 initState 中不生效 —— debug 构建会断言报错，而 release 构建断言被
+# 剥离，于是【静默失效】：监听从未注册、回调永不触发。
+#
+# 固化为判据的理由与本门禁既有原则一致：该缺陷在 debug 与 release 下都跑得通、
+# 都打印成功，差别只落在「地图相机有没有动」这类运行时行为上，没有任何自动
+# 检出手段。上一轮真实代价是「取点成功（171 个定位点）但地图永不移动」，且
+# 同一坑还让「手动选城市」失效。
+#
+# 判据：对 lib/ 下每个 .dart 文件，先用花括号配对取出 initState 方法体，
+# 再判体内是否出现 ref.listen(。行级 grep 不够 —— 它无法区分「在 initState 内」
+# 与「在别的 build 方法内」，而后者的 ref.listen 是完全正确的写法（main.dart:74）。
+# ---------------------------------------------------------------------------
+REF_LISTEN_HITS="$(find "${REPO}/lib" -name '*.dart' -print0 2>/dev/null \
+  | xargs -0 awk '
+      BEGIN { inb = 0; depth = 0 }
+      {
+        if (!inb && $0 ~ /[^A-Za-z_.]initState[[:space:]]*\([[:space:]]*\)/) {
+          inb = 1; depth = 0
+        }
+        if (inb) {
+          if ($0 ~ /ref\.listen[[:space:]]*\(/) { print FILENAME ":" FNR }
+          n = length($0)
+          for (i = 1; i <= n; i++) {
+            c = substr($0, i, 1)
+            if (c == "{") { depth++ }
+            else if (c == "}") { depth--; if (depth <= 0) { inb = 0; break } }
+          }
+        }
+      }' 2>/dev/null || true)"
+if [[ -z "${REF_LISTEN_HITS}" ]]; then
+  pass "S3-Listen lib/ 无「initState 内调用 ref.listen」（Riverpod 在该处不生效，release 下静默失效）"
+else
+  fail "S3-Listen lib/ 存在「initState 内调用 ref.listen」，该监听在 release 构建中不会生效：
+$(printf '%s\n' "${REF_LISTEN_HITS}" | sed 's/^/        /')
+        修法：把 ref.listen 移到 build()；仅在 initState 做 ref.read + 显式状态同步。"
+fi
+
+# ---------------------------------------------------------------------------
 # 第 4/5/6 步：分析 / 测试 / 构建（Windows 侧 flutter）
 # ---------------------------------------------------------------------------
 if [[ "${SKIP_BUILD}" -eq 1 ]]; then
