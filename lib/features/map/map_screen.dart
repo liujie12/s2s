@@ -15,6 +15,8 @@
 /// （约 44px 竖向占用），筛选面板由它们唤起，选完即收。
 library;
 
+import 'dart:math' as math;
+
 import 'package:amap_map/amap_map.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -76,6 +78,12 @@ const double _kMinMetersPerPixel = 1;
 
 /// 缩放上限：一像素代表多少米（放到最远）。理由同上。
 const double _kMaxMetersPerPixel = 200;
+
+/// 赤道处每度纬度对应的米数（全城档「缩小视野」把 pin 外接框换算成米制尺寸用）。
+///
+/// 与 `map_projection.dart` 内部同值，此处为独立常量：投影层把它当实现细节私有，
+/// 地图页不 import 其私有符号，故各自声明（地理常数，非阈值/TTL 类红线口径）。
+const double _kMetersPerDegreeLat = 111320;
 
 class MapScreen extends ConsumerStatefulWidget {
   const MapScreen({super.key});
@@ -219,6 +227,20 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             for (final p in pinList)
               p.id.toString(): supplyDemandFromCompact(p.typeCode),
           };
+          // G-138-1：有 pin 却全部投影在视口外 → 提示「视野外还有 N 条」。
+          // 用「pinList 非空 + 无可见 marker」而非「total > 0」：mode=cluster 时
+          // 服务端回 clusters[]、pinList 为空，此时不是「屏外有点」而是「还没接
+          // cluster 渲染」（[126] 遗留），不该弹这条提示。
+          final int pinsTotal = pinsAsync.asData?.value.total ?? 0;
+          final bool hasVisibleMarker = markers.any(
+            (m) =>
+                m.x >= 0 &&
+                m.x <= constraints.maxWidth &&
+                m.y >= 0 &&
+                m.y <= constraints.maxHeight,
+          );
+          final bool allOffScreen =
+              pinsAsync.asData != null && pinList.isNotEmpty && !hasVisibleMarker;
 
           return Stack(
             children: [
@@ -253,6 +275,19 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     onTap: pinsAsync.hasError
                         ? () => ref.invalidate(pinsProvider(pinsQuery))
                         : null,
+                  ),
+                )
+              else if (allOffScreen)
+                Positioned(
+                  left: AppSpacing.lg,
+                  top: AppSpacing.md + 40,
+                  child: _PinsStatusChip(
+                    text: '视野外还有 $pinsTotal 条，缩小地图查看',
+                    onTap: () => _zoomOutToShowAll(
+                      viewportWidth: constraints.maxWidth,
+                      viewportHeight: constraints.maxHeight,
+                      pins: pinList,
+                    ),
                   ),
                 ),
               const Positioned(
@@ -555,6 +590,92 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         LatLng(_centerLat, _centerLng),
         MapProjection.zoomForMetersPerPixel(_centerLat, _metersPerPixel),
       ),
+    );
+  }
+
+  /// 缩小视野到覆盖当前半径档（G-138-1 角标的点击出口）。
+  ///
+  /// 半径档（1/3/5/10 km）把半径圆直径装进视口较短边；全城档无半径概念，
+  /// 改为把返回 pin 的外接框装进视口（中心移到外接框中心）。两者都只改
+  /// [_metersPerPixel]（及全城档的中心），不触筛选态 —— 缩小视野不等于改筛选。
+  ///
+  /// 上限夹在 [NfrPerf.clusterModeSwitchMetersPerPixel]（pin 模式上限）而非
+  /// [_kMaxMetersPerPixel]：超过它服务端回 `mode=cluster`，而地图当前不渲染
+  /// `clusters[]`（[126] 遗留），缩过头会直接空图 —— 比「看不到点」更糟。
+  /// 代价是 10km/全城只能缩到 pin 上限、可能仍有屏外点，由角标文案承担告知。
+  void _zoomOutToShowAll({
+    required double viewportWidth,
+    required double viewportHeight,
+    required List<MapPinDto> pins,
+  }) {
+    final SearchRadius radius = ref.read(discoveryFilterProvider).radius;
+    double targetLat = _centerLat;
+    double targetLng = _centerLng;
+    double targetMetersPerPixel;
+
+    if (radius.km != null) {
+      // 半径圆直径（2r）装进较短边：短边方向刚好容纳整个圆。
+      final double shortSide = math.min(viewportWidth, viewportHeight);
+      targetMetersPerPixel = 2 * radius.km! * 1000 / shortSide;
+    } else {
+      final bbox = _fitPinsBbox(pins, viewportWidth, viewportHeight);
+      targetLat = bbox.lat;
+      targetLng = bbox.lng;
+      targetMetersPerPixel = bbox.metersPerPixel;
+    }
+
+    setState(() {
+      _centerLat = targetLat;
+      _centerLng = targetLng;
+      _metersPerPixel = targetMetersPerPixel.clamp(
+        _kMinMetersPerPixel,
+        NfrPerf.clusterModeSwitchMetersPerPixel,
+      );
+      // 同步请求视口：缩小视野后立即按新视野拉一次 pins。
+      _fetchLat = _centerLat;
+      _fetchLng = _centerLng;
+      _fetchMetersPerPixel = _metersPerPixel;
+    });
+    _pushCameraToAmap();
+  }
+
+  /// 计算能装下全部返回 pin 的视口（全城档「缩小视野」用）。
+  ///
+  /// 返回：(中心纬度, 中心经度, 米/像素)。pin 为空时退化为当前视口（防御分支，
+  /// 正常路径由 `allOffScreen` 保证 pin 非空）。
+  ({double lat, double lng, double metersPerPixel}) _fitPinsBbox(
+    List<MapPinDto> pins,
+    double viewportWidth,
+    double viewportHeight,
+  ) {
+    if (pins.isEmpty) {
+      return (lat: _centerLat, lng: _centerLng, metersPerPixel: _metersPerPixel);
+    }
+    double minLat = pins.first.lat;
+    double maxLat = pins.first.lat;
+    double minLng = pins.first.lng;
+    double maxLng = pins.first.lng;
+    for (final p in pins) {
+      if (p.lat < minLat) minLat = p.lat;
+      if (p.lat > maxLat) maxLat = p.lat;
+      if (p.lng < minLng) minLng = p.lng;
+      if (p.lng > maxLng) maxLng = p.lng;
+    }
+    final double centerLat = (minLat + maxLat) / 2;
+    final double centerLng = (minLng + maxLng) / 2;
+    // 纬向跨度（米）与经向跨度（米，乘 cos 纬度）。经向漏乘 cos 会在高纬被高估。
+    final double latMeters = (maxLat - minLat) * _kMetersPerDegreeLat;
+    final double lngMeters = (maxLng - minLng) *
+        _kMetersPerDegreeLat *
+        math.cos(centerLat * math.pi / 180);
+    final double mppByWidth = viewportWidth > 0 ? lngMeters / viewportWidth : 0;
+    final double mppByHeight =
+        viewportHeight > 0 ? latMeters / viewportHeight : 0;
+    return (
+      lat: centerLat,
+      lng: centerLng,
+      // 取两方向中较严（米/像素更大）的那个，确保外接框整框都装得下。
+      metersPerPixel: math.max(mppByWidth, mppByHeight),
     );
   }
 
