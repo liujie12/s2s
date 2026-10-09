@@ -10,6 +10,7 @@ import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zhaoyazhao/features/map/map_projection.dart';
+import 'package:zhaoyazhao/nfr_constants.dart';
 
 void main() {
   /// 上海人民广场附近纬度，与地图页默认中心同量级。
@@ -88,12 +89,18 @@ void main() {
   });
 
   test('纯拖动时「平移 ≡ 重算」：拖动中降级渲染的立足点', () {
-    // 精算视口比屏幕每边大一圈余量（NfrPerf.pinDragMarginViewports = 0.5）。
+    // 精算视口 = 屏 + 每边 NfrPerf.pinDragMarginViewports×屏（从常量推导，
+    // 常量一改本测试即跟着覆盖新尺寸）。
+    const double kMargin = NfrPerf.pinDragMarginViewports;
+    const ({double width, double height}) kExpanded = (
+      width: 390 * (1 + 2 * kMargin),
+      height: 780 * (1 + 2 * kMargin),
+    );
     const MapProjection rendered = MapProjection(
       centerLat: kLat,
       centerLng: 121.4737,
       metersPerPixel: 12,
-      viewportSize: (width: 780, height: 1560),
+      viewportSize: kExpanded,
     );
     // 相机向东北各平移约半屏：经度按 cos(纬度) 折算，否则东西向会有系统性偏差。
     const double dLatMeters = 4000;
@@ -137,7 +144,7 @@ void main() {
       // y 分量是严格常量位移，应当精确相等。
       expect(a.y + offsetY, closeTo(b.y, 1e-9));
       // x 分量冻结了精算时的 cos(纬度)，南北向拖动会有微漂。按最坏情况
-      // （点位于精算视口边缘、约 390px 处）估算应远小于 1 像素 ——
+      // （点位于精算视口边缘）估算应远小于 1 像素 ——
       // 这正是 panDeltaTo 文档承诺的界；超了说明冻结策略需要改。
       expect(a.x + offsetX, closeTo(b.x, 0.5));
     }
