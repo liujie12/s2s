@@ -16,6 +16,7 @@ library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../perf/layer_switch_recorder.dart';
 import 'map_dto.dart';
 import 'map_repository.dart';
 import 'stress_data.dart';
@@ -149,19 +150,30 @@ final pinsProvider = FutureProvider.autoDispose.family<MergedPins, PinsQuery>((
   }
 
   final repo = ref.watch(mapRepositoryProvider);
-  final results = await Future.wait([
-    for (final postType in query.postTypes)
-      repo.fetchPins(
-        categoryIds: query.leafCategoryIds,
-        postType: postType,
-        radius: query.radius,
-        gridId: query.gridId,
-        categoryVersion: query.categoryVersion,
-        lng: query.lng,
-        lat: query.lat,
-        zoom: query.zoom,
-      ),
-  ]);
+  // 图层切换耗时的网络段（[140] / PRD §6.10）：只在有活跃切换会话时打点。
+  // 视口变化（拖动/缩放结束）也会走到这里，但那时没有会话，begin/endNet 是空操作
+  // —— 「拖动重取」不是图层切换，本就不该计入 300ms 判据。
+  final recorder = ref.read(layerSwitchRecorderProvider);
+  recorder.beginNet();
+  final List<PinsCompactDto> results;
+  try {
+    results = await Future.wait([
+      for (final postType in query.postTypes)
+        repo.fetchPins(
+          categoryIds: query.leafCategoryIds,
+          postType: postType,
+          radius: query.radius,
+          gridId: query.gridId,
+          categoryVersion: query.categoryVersion,
+          lng: query.lng,
+          lat: query.lat,
+          zoom: query.zoom,
+        ),
+    ]);
+  } finally {
+    // 失败也要收段，否则网络段会一直跑到下一次收尾，把整段耗时算成网络耗时。
+    recorder.endNet();
+  }
 
   return MergedPins(
     mode: results.first.mode,

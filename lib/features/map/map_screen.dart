@@ -45,6 +45,7 @@ import '../discovery/map_dto.dart';
 import '../location/location_center.dart';
 import '../location/location_guide.dart';
 import '../location/location_permission.dart';
+import '../perf/layer_switch_recorder.dart';
 import '../perf/perf_panel.dart';
 import '../privacy/privacy_consent.dart';
 import 'amap_init_guard.dart';
@@ -221,6 +222,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           // Marker 走「拖动中降级渲染」：能复用就只平移，超出余量才精算。
           final frame = _markerLayerFrame(pinList, projection, derived);
           final markers = frame.markers;
+          // 图层切换耗时（[140]）：必须在 markers 算好之后调用 —— 渲染段的起点
+          // 是「新分类的 Pin 已排好、这一帧即将绘制」。
+          _measureLayerSwitchRender(pinsAsync);
           final supplyDemandById = derived.supplyDemandById;
           // G-138-1：有 pin 却全部投影在视口外 → 提示「视野外还有 N 条」。
           // 用「pinList 非空 + 无可见 marker」而非「total > 0」：mode=cluster 时
@@ -312,7 +316,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   left: AppSpacing.md,
                   right: AppSpacing.md,
                   bottom: AppSpacing.md,
-                  child: FilterPanel(),
+                  // 只有地图页把分类切换计为图层切换耗时（[140]）：列表页复用同一
+                  // 控件但没有 Pin 渲染终点，量不出这条链路（见 FilterPanel 的注释）。
+                  child: FilterPanel(measureLayerSwitch: true),
                 ),
               if (_selectedListingId != null)
                 Positioned(
@@ -791,11 +797,17 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       metersPerPixel: screen.metersPerPixel,
       viewportSize: (width: expanded.width, height: expanded.height),
     );
+    // 图层切换耗时的聚合段（[140] / PRD §6.10）：只属于「新数据首次聚合」。
+    // 拖动中每帧都会走到这里（像素尺度变了必须重算），但 recorder 对一个会话
+    // 只记第一次，故后续帧的重算不会把聚合段越拉越长。
+    final recorder = ref.read(layerSwitchRecorderProvider);
+    recorder.beginAgg();
     final List<MapMarker> markers = _buildMarkersFor(
       pins,
       expandedProjection,
       derived,
     );
+    recorder.endAgg();
     _renderedProjection = expandedProjection;
     _renderedMarkers = markers;
     _renderedPins = pins;
@@ -804,6 +816,44 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       offset: Offset(-margin.dx, -margin.dy),
       layerSize: expanded,
     );
+  }
+
+  /// 图层切换耗时的渲染段与收尾（[140] / PRD §6.10）。
+  ///
+  /// **两个口径要点**：
+  /// - 终点是「Pin **首屏绘制完成**」而非「build 结束」，故收尾放进
+  ///   `addPostFrameCallback` —— 它在该帧绘制结束后才跑；
+  /// - 只有「新数据首次上屏」那一帧才算：`pinsProvider` 在会话期间处于
+  ///   loading（新 family 键 → 新 provider 实例），故 `hasValue` 首次为真的那一帧
+  ///   正是本次切换的数据到达帧。`markRenderStart` 与 `finish` 都按会话只生效一次。
+  ///
+  /// 无活跃会话时（拖动结束触发的视口重取）整个方法直接返回。
+  ///
+  /// 参数：[pinsAsync] 当前图钉异步态。
+  void _measureLayerSwitchRender(AsyncValue<MergedPins> pinsAsync) {
+    final recorder = ref.read(layerSwitchRecorderProvider);
+    final int? sessionId = recorder.activeSessionId;
+    if (sessionId == null) return;
+
+    if (pinsAsync.hasError) {
+      // 数据没回来：本次切换未走完。不记渲染段（没有可绘制的 Pin）。
+      recorder.finish(
+        sessionId: sessionId,
+        outcome: LayerSwitchOutcome.failed,
+      );
+      return;
+    }
+    // 仍在加载：等数据到达的那一帧。
+    if (!pinsAsync.hasValue) return;
+
+    recorder.markRenderStart();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // 跨帧后会话可能已被新切换取代 —— finish 会按 sessionId 自行作废。
+      recorder.finish(
+        sessionId: sessionId,
+        outcome: LayerSwitchOutcome.success,
+      );
+    });
   }
 
   /// 上一帧派生量对应的 `pinList` 引用（引用相同即复用，见 [_derivedFor]）。

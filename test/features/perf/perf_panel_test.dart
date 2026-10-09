@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zhaoyazhao/features/perf/frame_metrics.dart';
+import 'package:zhaoyazhao/features/perf/layer_switch_recorder.dart';
 import 'package:zhaoyazhao/features/perf/perf_panel.dart';
 
 void main() {
@@ -112,5 +113,58 @@ void main() {
     await tapHeader(); // 第 7 次：展开态 + 达阈值，应解锁
     expect(find.text('1 万点'), findsOneWidget, reason: '连点 7 次后档位行必须可用');
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('展开态：显示图层切换 P95 与四段分解（[140]）', (tester) async {
+    tester.view.physicalSize = const Size(1080, 2340);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+
+    final metrics = FrameMetrics()..addSampleMs(12.0);
+    addTearDown(metrics.stop);
+
+    // 造一条 success 样本：start → 渲染段 → 收尾。
+    final switches = LayerSwitchRecorder();
+    switches.start();
+    switches.markRenderStart();
+    switches.finish(
+      sessionId: switches.activeSessionId!,
+      outcome: LayerSwitchOutcome.success,
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          frameMetricsProvider.overrideWithValue(metrics),
+          layerSwitchRecorderProvider.overrideWithValue(switches),
+        ],
+        child: const MaterialApp(
+          home: Scaffold(
+            body: Stack(
+              children: [
+                Positioned(right: 12, bottom: 12, child: PerfPanel()),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+
+    // 展开：面板初始为收起态，点一次标题即展开。
+    await tester.tap(find.text('P95 12.0ms'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('图层切换 (ms)'), findsOneWidget);
+    expect(find.text('切换 P95'), findsOneWidget);
+    expect(find.text('缓/网/聚/绘'), findsOneWidget);
+    expect(find.text('切换样本'), findsOneWidget);
+    expect(
+      tester.takeException(),
+      isNull,
+      reason: '新增读数行不得让展开态溢出（该面板压在真机地图角上）',
+    );
   });
 }

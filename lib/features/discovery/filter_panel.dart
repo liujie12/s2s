@@ -13,17 +13,30 @@ import '../../design_tokens.dart';
 import '../../domain/listing_category.dart';
 // 色与图标已迁至 style 扩展（详细设计 §10.4.1）。
 import '../../domain/listing_category_style.dart';
+import '../perf/layer_switch_recorder.dart';
 import 'discovery_filter.dart';
 
 /// 筛选面板本体。
 class FilterPanel extends ConsumerWidget {
-  const FilterPanel({super.key, this.elevated = true});
+  const FilterPanel({
+    super.key,
+    this.elevated = true,
+    this.measureLayerSwitch = false,
+  });
 
   /// 是否自带白底与阴影。
   ///
   /// 地图页把它浮在底图上，须有底与影才看得清；列表页把它嵌在已是白底的
   /// 顶部区域内，再叠一层白底加阴影会出现「卡中卡」的视觉断层。
   final bool elevated;
+
+  /// 是否把分类切换计为一次「图层切换」耗时（[140]）。
+  ///
+  /// **只有地图页为 true**：轴② 量的是「该分类的 Pin 在地图上完成首屏绘制」的
+  /// 端到端耗时（PRD §6.10），而列表页既没有地图也没有 Pin 渲染，同样的点击
+  /// 在那里等不到渲染终点 —— 会话会永远收不了尾，只能等下一次切换把它记成
+  /// `cancelled`，白占一条假样本。
+  final bool measureLayerSwitch;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -44,17 +57,17 @@ class FilterPanel extends ConsumerWidget {
               ]
             : null,
       ),
-      child: const Column(
+      child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _RadiusRow(),
-          SizedBox(height: AppSpacing.md),
-          _SupplyDemandRow(),
-          SizedBox(height: AppSpacing.md),
-          _CategoryRow(),
-          SizedBox(height: AppSpacing.md),
-          _LegendRow(),
+          const _RadiusRow(),
+          const SizedBox(height: AppSpacing.md),
+          const _SupplyDemandRow(),
+          const SizedBox(height: AppSpacing.md),
+          _CategoryRow(measureLayerSwitch: measureLayerSwitch),
+          const SizedBox(height: AppSpacing.md),
+          const _LegendRow(),
         ],
       ),
     );
@@ -118,12 +131,21 @@ class _SupplyDemandRow extends ConsumerWidget {
 
 /// 分类行（PRD §6.4.1：全部 工作 房屋 车辆 生活 服务）。
 class _CategoryRow extends ConsumerWidget {
-  const _CategoryRow();
+  const _CategoryRow({required this.measureLayerSwitch});
+
+  /// 是否把本行的点击计为一次图层切换（见 [FilterPanel.measureLayerSwitch]）。
+  final bool measureLayerSwitch;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final filter = ref.watch(discoveryFilterProvider);
     final notifier = ref.read(discoveryFilterProvider.notifier);
+
+    /// 记一次图层切换的**起点**（[140] / PRD §6.10）：胶囊 `onTap` 即「手指离开
+    /// 分类 Tab」的那一刻，与口径起点一致。
+    void markSwitchStart() {
+      if (measureLayerSwitch) ref.read(layerSwitchRecorderProvider).start();
+    }
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
@@ -137,7 +159,13 @@ class _CategoryRow extends ConsumerWidget {
                 _PillButton(
                   label: '全部',
                   selected: filter.isAllCategories,
-                  onTap: notifier.clearCategories,
+                  // 已是「全部」时再点不改变筛选态 —— 不算一次切换，也不能开新会话：
+                  // 否则会记下一条「零耗时」的假样本，把 P95 白拉低。
+                  onTap: () {
+                    if (filter.isAllCategories) return;
+                    markSwitchStart();
+                    notifier.clearCategories();
+                  },
                 ),
                 ...ListingCategory.values.map((c) {
                   final on = filter.categories.contains(c);
@@ -150,7 +178,11 @@ class _CategoryRow extends ConsumerWidget {
                       // （design_tokens.dart:74）。
                       selectedColor: c.deepColor,
                       icon: c.icon,
-                      onTap: () => notifier.toggleCategory(c),
+                      // 点已选中的分类会取消选中 —— 筛选态同样改变，仍是一次切换。
+                      onTap: () {
+                        markSwitchStart();
+                        notifier.toggleCategory(c);
+                      },
                     ),
                   );
                 }),

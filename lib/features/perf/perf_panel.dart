@@ -13,8 +13,16 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../design_tokens.dart';
+import '../../nfr_constants.dart';
 import '../discovery/stress_data.dart';
 import 'frame_metrics.dart';
+import 'layer_switch_recorder.dart';
+
+/// 达标色（绿）：帧 P95 ≤16ms 与图层切换 P95 ≤300ms 共用。
+const Color _kPassColor = Color(0xFF4ADE80);
+
+/// 未达标 / 无数据色（琥珀）。
+const Color _kWarnColor = Color(0xFFFBBF24);
 
 /// 全局帧采样器。
 ///
@@ -98,6 +106,7 @@ class _PerfPanelState extends ConsumerState<PerfPanel> {
   @override
   Widget build(BuildContext context) {
     final metrics = ref.read(frameMetricsProvider);
+    final switches = ref.read(layerSwitchRecorderProvider);
     final level = ref.watch(stressLevelProvider);
 
     return Material(
@@ -135,9 +144,12 @@ class _PerfPanelState extends ConsumerState<PerfPanel> {
                 const SizedBox(height: AppSpacing.sm),
                 _buildHistogram(metrics),
                 const SizedBox(height: AppSpacing.sm),
+                // 图层切换读数（[140]）：轴② 判据 A 的唯一应用内出口。
+                _buildLayerSwitch(switches),
+                const SizedBox(height: AppSpacing.sm),
                 // 档位行默认不渲染（防用户误触换上假数据）：见 _onHeaderTap。
                 if (_stressUnlocked) ...[
-                  _buildLevelSwitch(level, metrics),
+                  _buildLevelSwitch(level, metrics, switches),
                   const SizedBox(height: AppSpacing.xs),
                 ],
                 _buildExportRow(metrics, level),
@@ -162,7 +174,7 @@ class _PerfPanelState extends ConsumerState<PerfPanel> {
           Icon(
             pass ? Icons.check_circle : Icons.speed,
             size: 14,
-            color: pass ? const Color(0xFF4ADE80) : const Color(0xFFFBBF24),
+            color: pass ? _kPassColor : _kWarnColor,
           ),
           const SizedBox(width: AppSpacing.xs),
           Text(
@@ -232,8 +244,8 @@ class _PerfPanelState extends ConsumerState<PerfPanel> {
                     child: Container(
                       // 超预算的桶用警示色：读图时不必再去对照分桶边界。
                       color: e.key.startsWith('≤') || e.key.startsWith('8–')
-                          ? const Color(0xFF4ADE80)
-                          : const Color(0xFFFBBF24),
+                          ? _kPassColor
+                          : _kWarnColor,
                     ),
                   ),
                 ),
@@ -254,8 +266,13 @@ class _PerfPanelState extends ConsumerState<PerfPanel> {
   }
 
   /// 切档位同时清零采样：不清零则新档位的数据被上一档稀释，
-  /// 而两档对比正是 POC 的产出。
-  Widget _buildLevelSwitch(StressLevel current, FrameMetrics metrics) {
+  /// 而两档对比正是 POC 的产出。帧与图层切换两套样本一起清 —— 两者都是
+  /// 「同一档位下的读数」，混档会让两档的对照失效。
+  Widget _buildLevelSwitch(
+    StressLevel current,
+    FrameMetrics metrics,
+    LayerSwitchRecorder switches,
+  ) {
     return Wrap(
       spacing: AppSpacing.xs,
       runSpacing: AppSpacing.xs,
@@ -265,6 +282,7 @@ class _PerfPanelState extends ConsumerState<PerfPanel> {
           onTap: () {
             ref.read(stressLevelProvider.notifier).set(level);
             metrics.reset();
+            switches.reset();
           },
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
@@ -304,6 +322,60 @@ class _PerfPanelState extends ConsumerState<PerfPanel> {
           Text('复制 JSON', style: _labelStyle(size: 10)),
         ],
       ),
+    );
+  }
+
+  /// 图层切换读数（[140] / 判据 A：P95 ≤300ms）。
+  ///
+  /// **只统计 success 会话**：`cancelled`（被后一次切换取代）与 `failed` 按
+  /// 可观测性 §6.1 **不进 P95 分母**，但计数必须看得见 —— 否则「P95 很漂亮」
+  /// 可能只是样本被排除光了。
+  ///
+  /// 四段顺序固定为 缓存 / 网络 / 聚合 / 渲染：P95 超标时先看是哪一段顶上去的，
+  /// 四段的优化手段完全不同（缓存 TTL / 接口 / Dart 算法 / 绘制批次）。
+  ///
+  /// 参数：[switches] 图层切换记录器。
+  Widget _buildLayerSwitch(LayerSwitchRecorder switches) {
+    final bool hasData = switches.successCount > 0;
+    final double p95 = switches.p95Ms;
+    final bool pass = hasData && p95 <= NfrPerf.layerSwitchP95Ms;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('图层切换 (ms)', style: _labelStyle(size: 9)),
+        Row(
+          children: [
+            Icon(
+              pass ? Icons.check_circle : Icons.swap_horiz,
+              size: 12,
+              color: pass ? _kPassColor : _kWarnColor,
+            ),
+            const SizedBox(width: AppSpacing.xs),
+            Text('切换 P95', style: _labelStyle(size: 10)),
+            const SizedBox(width: AppSpacing.xs),
+            Text(
+              hasData ? p95.toStringAsFixed(1) : '—',
+              style: _labelStyle(size: 10, bold: true),
+            ),
+          ],
+        ),
+        // 「缓存」段当前恒为 0：pins 路径无本地缓存（缺口见 recorder 文件头）。
+        _statLine(
+          '缓/网/聚/绘',
+          hasData
+              ? '${switches.cacheP95Ms.toStringAsFixed(0)}/'
+                  '${switches.netP95Ms.toStringAsFixed(0)}/'
+                  '${switches.aggP95Ms.toStringAsFixed(0)}/'
+                  '${switches.renderP95Ms.toStringAsFixed(0)}'
+              : '—',
+        ),
+        _statLine(
+          '切换样本',
+          '${switches.successCount} 成/'
+          '${switches.cancelledCount} 取/'
+          '${switches.failedCount} 败',
+        ),
+      ],
     );
   }
 
