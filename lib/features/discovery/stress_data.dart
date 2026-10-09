@@ -13,7 +13,6 @@ import 'dart:math' as math;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../location/location_center.dart';
 import 'map_dto.dart';
 
 /// 压测点数档位。PRD §6.10.1 规定 POC 数据量为「单屏 1 万点、5 万点两档」。
@@ -68,10 +67,22 @@ const List<int> _kStressLeafCategoryIds = <int>[10202, 20103, 30101, 40102, 5010
 /// **固定随机种子**：同一档位每次生成同样的点，两次测量的差异才能归因到
 /// 代码改动而不是数据变化。
 ///
-/// 返回 [MapPinDto] 列表（而非旧域模型 `Listing`）：POC-B 走 `pinsProvider`
-/// 短路注入（[139]），注入点消费的是地图渲染同款的 `MapPinDto`，不再经
-/// 旧 mock 链 `allListingsProvider`。
-List<MapPinDto> buildStressPins(int count) {
+/// **中心必须由调用方传入当前请求视口中心**（2026-10-09 修 H-1）：压测点若写死
+/// 某个城市，而设备不在那座城，屏上就一条都看不到 —— 真机表现为角标「视野外
+/// 还有 N 条」，测出来的只是「Pin 全在屏外」的管线成本，**漏掉真实上屏的绘制 /
+/// 光栅开销**，结论会系统性偏乐观（详见说明文档 H-1 条与 PRD §6.10.1 的口径限制）。
+///
+/// 参数：
+/// - [count]：点数；传 0 返回空表（对应「关闭」档不走本函数）；
+/// - [centerLat] / [centerLng]：热点分布中心（GCJ-02），取**当前请求视口中心**。
+///
+/// 返回：[MapPinDto] 列表。POC-B 走 `pinsProvider` 短路注入（[139]），注入点
+/// 消费的就是地图渲染同款模型，不再经旧 mock 链 `allListingsProvider`。
+List<MapPinDto> buildStressPins(
+  int count, {
+  required double centerLat,
+  required double centerLng,
+}) {
   if (count == 0) return const [];
   final random = math.Random(20260828);
 
@@ -82,8 +93,8 @@ List<MapPinDto> buildStressPins(int count) {
   final List<({double lat, double lng})> hotspots = List.generate(
     hotspotCount,
     (_) => (
-      lat: kDefaultCenterLat + (random.nextDouble() - 0.5) * 0.08,
-      lng: kDefaultCenterLng + (random.nextDouble() - 0.5) * 0.08,
+      lat: centerLat + (random.nextDouble() - 0.5) * 0.08,
+      lng: centerLng + (random.nextDouble() - 0.5) * 0.08,
     ),
   );
 

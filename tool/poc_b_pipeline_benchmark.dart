@@ -221,7 +221,11 @@ void main() {
         '\tDart小计\t优化后Dart\t降幅\t绘制\tMarker数');
 
     for (final count in [500, 2000, 10000, 50000]) {
-      final pins = buildStressPins(count);
+      final pins = buildStressPins(
+        count,
+        centerLat: kDefaultCenterLat,
+        centerLng: kDefaultCenterLng,
+      );
 
       // 纯投影（诊断段，结果丢弃）。
       final double tProject = _timeIt(() {

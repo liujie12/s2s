@@ -134,7 +134,14 @@ final pinsProvider = FutureProvider.autoDispose.family<MergedPins, PinsQuery>((
   if (stress != StressLevel.off) {
     return MergedPins(
       mode: 'pin',
-      pins: buildStressPins(stress.pointCount),
+      // 中心取**当前请求视口中心**而非写死默认中心：否则压测点会落在别的城市、
+      // 屏上一条都看不到，测出来只是「Pin 全在屏外」的管线成本（修 H-1）。
+      // 视口在相机停稳时更新（见 `_syncFetchViewport`），故一次拖动结束即重新居中。
+      pins: buildStressPins(
+        stress.pointCount,
+        centerLat: query.lat,
+        centerLng: query.lng,
+      ),
       clusters: const [],
       total: stress.pointCount,
       categoryVersionStale: false,

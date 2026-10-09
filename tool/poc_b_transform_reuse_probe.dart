@@ -148,7 +148,11 @@ void main() {
     print('');
 
     for (final count in [10000, 50000]) {
-      final pins = buildStressPins(count);
+      final pins = buildStressPins(
+        count,
+        centerLat: kDefaultCenterLat,
+        centerLng: kDefaultCenterLng,
+      );
       final markerCount = _buildMarkers(pins, projection).length;
 
       // 场景①：现状口径 —— 每帧重建 Marker，且无 RepaintBoundary。
