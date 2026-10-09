@@ -101,6 +101,36 @@ class MapProjection {
     );
   }
 
+  /// 纯拖动时，把本投影下算好的像素坐标平移到 [next] 视口所需的位移。
+  ///
+  /// **数学依据**：见 [toPixel] 的公式 —— 纬度分量 `(lat − centerLat) × 常数`，
+  /// 经度分量 `(lng − centerLng) × 常数`，都是**中心的一阶线性项**。故中心变化时，
+  /// 每个点的像素位移是**同一个常量**，整层 Marker 只需平移，不必逐点重算。
+  /// 这正是「拖动中降级渲染」的立足点（`tool/poc_b_transform_reuse_probe.dart`
+  /// 已实测：复用后每帧 paint 调用 30→1 次）。
+  ///
+  /// ⚠️ **只在 [metersPerPixel] 相同时成立**：缩放会改变像素尺度，平移无法表达，
+  /// 调用方必须改为重算。此约束由 assert 兜住，避免误用后 Pin 与底图错位。
+  ///
+  /// 经度方向用**本投影**的 `cos(centerLat)` 冻结换算：南北向拖动会让该值微变，
+  /// 但一屏位移（约 5km）内的相对误差约 4×10⁻⁴，折到屏边缘不足 1 像素，且下次
+  /// 精算即归零，故不值得为此逐点重算。
+  ///
+  /// 参数：[next] 变化后的投影。
+  /// 返回：位移 `(dx, dy)`，加到本投影下的像素坐标上即得 [next] 视口下的坐标。
+  ({double dx, double dy}) panDeltaTo(MapProjection next) {
+    assert(
+      metersPerPixel == next.metersPerPixel,
+      '缩放变化时像素尺度也变，不能用平移近似，调用方应重算 Marker',
+    );
+    final double kLng = _metersPerDegreeLat * math.cos(centerLat * math.pi / 180);
+    return (
+      dx: (centerLng - next.centerLng) * kLng / metersPerPixel,
+      // 屏幕 y 轴向下、纬度向北为正，故与 x 反向（同 [toPixel] 的取负）。
+      dy: (next.centerLat - centerLat) * _metersPerDegreeLat / metersPerPixel,
+    );
+  }
+
   /// 按 [metersPerPixel] 换算出的比例尺文案（如「500m」），供底图右下角标注。
   ///
   /// 取一个接近 60 像素宽的「整齐」距离档位 —— 比例尺标的若是 137m 这种数字，

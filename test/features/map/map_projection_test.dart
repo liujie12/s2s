@@ -71,4 +71,91 @@ void main() {
     expect(MapProjection.zoomForMetersPerPixel(kLat, 1e-6), 20);
     expect(MapProjection.zoomForMetersPerPixel(kLat, 1e9), 3);
   });
+
+  /// 与地图页一致的屏幕视口（逻辑像素）。
+  const ({double width, double height}) kViewport = (width: 390, height: 780);
+
+  test('同一投影之间位移为零', () {
+    const MapProjection p = MapProjection(
+      centerLat: kLat,
+      centerLng: 121.4737,
+      metersPerPixel: 12,
+      viewportSize: kViewport,
+    );
+    final d = p.panDeltaTo(p);
+    expect(d.dx, 0);
+    expect(d.dy, 0);
+  });
+
+  test('纯拖动时「平移 ≡ 重算」：拖动中降级渲染的立足点', () {
+    // 精算视口比屏幕每边大一圈余量（NfrPerf.pinDragMarginViewports = 0.5）。
+    const MapProjection rendered = MapProjection(
+      centerLat: kLat,
+      centerLng: 121.4737,
+      metersPerPixel: 12,
+      viewportSize: (width: 780, height: 1560),
+    );
+    // 相机向东北各平移约半屏：经度按 cos(纬度) 折算，否则东西向会有系统性偏差。
+    const double dLatMeters = 4000;
+    const double dLngMeters = 3000;
+    final MapProjection current = MapProjection(
+      centerLat: kLat + dLatMeters / 111320,
+      centerLng:
+          121.4737 +
+          dLngMeters / (111320 * math.cos(kLat * math.pi / 180)),
+      metersPerPixel: 12,
+      viewportSize: kViewport,
+    );
+
+    final d = rendered.panDeltaTo(current);
+
+    // 精算视口的原点与屏幕原点相差一个「余量」：`panDeltaTo` 只算相机变化带来的
+    // 位移，视口尺寸差异要另外补。精算层坐标 + (d − margin) 才是屏幕坐标 ——
+    // 这正是 `_markerLayerFrame` 返回的 offset，漏补这一项 Pin 会整体偏半个余量。
+    final double marginX =
+        (rendered.viewportSize.width - current.viewportSize.width) / 2;
+    final double marginY =
+        (rendered.viewportSize.height - current.viewportSize.height) / 2;
+    final double offsetX = d.dx - marginX;
+    final double offsetY = d.dy - marginY;
+
+    // 取精算视口的四角与中心做样本：这是位移误差可能最大的位置。
+    for (final ({double lat, double lng}) sample in [
+      (lat: kLat, lng: 121.4737),
+      (
+        lat: kLat + 4000 / 111320,
+        lng: 121.4737 + 3000 / (111320 * math.cos(kLat * math.pi / 180)),
+      ),
+      (lat: kLat - 4000 / 111320, lng: 121.4737),
+      (
+        lat: kLat,
+        lng: 121.4737 - 3000 / (111320 * math.cos(kLat * math.pi / 180)),
+      ),
+    ]) {
+      final a = rendered.toPixel(sample.lat, sample.lng);
+      final b = current.toPixel(sample.lat, sample.lng);
+      // y 分量是严格常量位移，应当精确相等。
+      expect(a.y + offsetY, closeTo(b.y, 1e-9));
+      // x 分量冻结了精算时的 cos(纬度)，南北向拖动会有微漂。按最坏情况
+      // （点位于精算视口边缘、约 390px 处）估算应远小于 1 像素 ——
+      // 这正是 panDeltaTo 文档承诺的界；超了说明冻结策略需要改。
+      expect(a.x + offsetX, closeTo(b.x, 0.5));
+    }
+  });
+
+  test('缩放变化时禁用平移近似：误用会被 assert 拦下', () {
+    const MapProjection p = MapProjection(
+      centerLat: kLat,
+      centerLng: 121.4737,
+      metersPerPixel: 12,
+      viewportSize: kViewport,
+    );
+    const MapProjection zoomed = MapProjection(
+      centerLat: kLat,
+      centerLng: 121.4737,
+      metersPerPixel: 6,
+      viewportSize: kViewport,
+    );
+    expect(() => p.panDeltaTo(zoomed), throwsAssertionError);
+  });
 }

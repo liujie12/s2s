@@ -218,26 +218,37 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           final pinList = pinsAsync.asData?.value.pins ?? const <MapPinDto>[];
           // pins 派生量按**引用**记忆化，避免随每一帧重算（见 [_PinsDerived]）。
           final derived = _derivedFor(pinList);
-          final markers = _buildMarkersFor(pinList, projection, derived);
+          // Marker 走「拖动中降级渲染」：能复用就只平移，超出余量才精算。
+          final frame = _markerLayerFrame(pinList, projection, derived);
+          final markers = frame.markers;
           final supplyDemandById = derived.supplyDemandById;
           // G-138-1：有 pin 却全部投影在视口外 → 提示「视野外还有 N 条」。
           // 用「pinList 非空 + 无可见 marker」而非「total > 0」：mode=cluster 时
           // 服务端回 clusters[]、pinList 为空，此时不是「屏外有点」而是「还没接
           // cluster 渲染」（[126] 遗留），不该弹这条提示。
           final int pinsTotal = pinsAsync.asData?.value.total ?? 0;
+          // 判据须带上本帧平移量：Marker 坐标属于「精算视口」（比屏每边大一圈余量），
+          // 不补平移会把余量里那些**屏外**的点误判成可见，使该出的角标不出。
           final bool hasVisibleMarker = markers.any(
             (m) =>
-                m.x >= 0 &&
-                m.x <= constraints.maxWidth &&
-                m.y >= 0 &&
-                m.y <= constraints.maxHeight,
+                m.x + frame.offset.dx >= 0 &&
+                m.x + frame.offset.dx <= constraints.maxWidth &&
+                m.y + frame.offset.dy >= 0 &&
+                m.y + frame.offset.dy <= constraints.maxHeight,
           );
           final bool allOffScreen =
               pinsAsync.asData != null && pinList.isNotEmpty && !hasVisibleMarker;
 
           return Stack(
             children: [
-              _buildMapBody(consent, projection, markers, supplyDemandById),
+              _buildMapBody(
+                consent,
+                projection,
+                markers,
+                supplyDemandById,
+                frame.offset,
+                frame.layerSize,
+              ),
               // 定位前骨架屏（PRD §6.7 `:1305`）：已授权但尚未取到点 → 遮罩 + 提示。
               if (phase == LocationPermissionPhase.granted &&
                   !_located &&
@@ -373,11 +384,21 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 
   /// 地图主体：按合规守卫结果二选一。
+  ///
+  /// 参数：
+  /// - [consent]：隐私协议状态（决定能否初始化高德原生 SDK）；
+  /// - [projection]：屏幕视口投影（底图用）；
+  /// - [markers]：本帧要画的 Marker（坐标属于精算视口，见 [_markerLayerFrame]）；
+  /// - [supplyDemandById]：Marker 供需查表；
+  /// - [markerOffset]：Marker 坐标 → 屏幕坐标的平移量；
+  /// - [markerLayerSize]：Marker 坐标系画布尺寸（= 精算视口尺寸）。
   Widget _buildMapBody(
     PrivacyConsentStatus consent,
     MapProjection projection,
     List<MapMarker> markers,
     Map<String, SupplyDemand> supplyDemandById,
+    Offset markerOffset,
+    Size markerLayerSize,
   ) {
     // 🔴 上架驳回点：构建 AMapWidget 即触发高德原生 SDK 初始化。
     // 未同意隐私协议时走到这一步就是违规，判据见 amap_init_guard.dart 文件头。
@@ -421,11 +442,31 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   : '示意底图 · 位置为相对分布，不代表真实地理位置',
             ),
           ),
-        MarkerLayer(
-          markers: markers,
-          supplyDemandById: supplyDemandById,
-          selectedListingId: _selectedListingId,
-          onTapMarker: _onTapMarker,
+        // 拖动中降级渲染（见 [_markerLayerFrame]）：
+        // - 精算层坐标原点在「屏左上角 − margin」，故整体按 [markerOffset] 平移；
+        // - 尺寸须用 [markerLayerSize]（比屏每边大一圈余量）。若留成 Stack 的紧约束，
+        //   会被夹回屏大小，余量里的 Pin 直接被裁掉 —— 表现为拖动时屏边缺 Pin；
+        // - 超出屏幕的部分由 Stack 默认的 `Clip.hardEdge` 裁掉，无需另加 ClipRect。
+        //
+        // `RepaintBoundary` **必须夹在 Transform 之内**：这样拖动中只有 Transform 变化时
+        // 子树不重画（`tool/poc_b_transform_reuse_probe.dart` 实测 30 帧只画 1 次，
+        // 每帧 6.76ms → 0.89ms）。挪到 Transform 之外，这层优化立刻失效。
+        Positioned(
+          left: 0,
+          top: 0,
+          width: markerLayerSize.width,
+          height: markerLayerSize.height,
+          child: Transform.translate(
+            offset: markerOffset,
+            child: RepaintBoundary(
+              child: MarkerLayer(
+                markers: markers,
+                supplyDemandById: supplyDemandById,
+                selectedListingId: _selectedListingId,
+                onTapMarker: _onTapMarker,
+              ),
+            ),
+          ),
         ),
       ],
     );
@@ -669,6 +710,99 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       lng: centerLng,
       // 取两方向中较严（米/像素更大）的那个，确保外接框整框都装得下。
       metersPerPixel: math.max(mppByWidth, mppByHeight),
+    );
+  }
+
+  /// 上一帧**精算**出的 Marker 及其配套信息（拖动降级渲染的复用依据）。
+  MapProjection? _renderedProjection;
+  List<MapMarker>? _renderedMarkers;
+  List<MapPinDto>? _renderedPins;
+
+  /// 每边预精算余量（像素）。
+  ///
+  /// 参数：[screen] 屏幕视口投影。
+  /// 返回：横向、纵向各自外扩的像素数。
+  Offset _dragMargin(MapProjection screen) => Offset(
+    screen.viewportSize.width * NfrPerf.pinDragMarginViewports,
+    screen.viewportSize.height * NfrPerf.pinDragMarginViewports,
+  );
+
+  /// 精算视口的尺寸 = 屏 + 每边余量。
+  ///
+  /// 参数：[screen] 屏幕视口投影。
+  /// 返回：Marker 坐标系的画布尺寸。
+  Size _expandedSize(MapProjection screen) {
+    final Offset margin = _dragMargin(screen);
+    return Size(
+      screen.viewportSize.width + margin.dx * 2,
+      screen.viewportSize.height + margin.dy * 2,
+    );
+  }
+
+  /// 装配本帧的 Marker 层：能复用就只平移，否则精算一次。
+  ///
+  /// **为什么可以只平移**：`MapProjection.toPixel` 对经纬度是仿射的，纯拖动时
+  /// 每个点的像素位移是同一常量（证明见 [MapProjection.panDeltaTo]），故整层
+  /// Marker 平移即等价于重算。POC-B 实测 1 万点拖动帧 P95 = 31.2ms，其中单帧
+  /// Dart 四段（建点表 / 聚合 / 建Marker / 重建查表）均 O(n) 且占比均衡 ——
+  /// 只平移就把这四段整体省掉，这是「1 万/5 万点达标」唯一可行的路线。
+  ///
+  /// **精算视口为什么外扩 margin**：外扩一圈后，精算一次即可覆盖「再拖动不超过
+  /// margin」的整段过程；位移一旦超出 margin，屏边就会出现本该有却缺失的 Pin，
+  /// 故那时必须重算。
+  ///
+  /// 参数：
+  /// - [pins]：当前图钉（引用变化即数据变了，必须重算）；
+  /// - [screen]：屏幕视口投影；
+  /// - [derived]：pins 派生量（见 [_PinsDerived]）。
+  ///
+  /// 返回：[_MarkerFrame]。
+  _MarkerFrame _markerLayerFrame(
+    List<MapPinDto> pins,
+    MapProjection screen,
+    _PinsDerived derived,
+  ) {
+    final Offset margin = _dragMargin(screen);
+    final MapProjection? rendered = _renderedProjection;
+    final Size expanded = _expandedSize(screen);
+
+    // 复用条件：同一批 pins + 同一缩放 + 同一视口尺寸 + 位移仍在余量内。
+    // 缩放必须排除：像素尺度变了，平移表达不了（[MapProjection.panDeltaTo] 有 assert）。
+    if (rendered != null &&
+        identical(_renderedPins, pins) &&
+        rendered.metersPerPixel == screen.metersPerPixel &&
+        rendered.viewportSize.width == expanded.width &&
+        rendered.viewportSize.height == expanded.height) {
+      final delta = rendered.panDeltaTo(screen);
+      if (delta.dx.abs() <= margin.dx && delta.dy.abs() <= margin.dy) {
+        return (
+          markers: _renderedMarkers!,
+          // 精算层的坐标原点在「屏左上角 − margin」，故先补回 margin，再叠拖动位移。
+          offset: Offset(delta.dx - margin.dx, delta.dy - margin.dy),
+          layerSize: expanded,
+        );
+      }
+    }
+
+    // 精算：以当前相机为中心、视口外扩 margin，重算一次并记住它。
+    final MapProjection expandedProjection = MapProjection(
+      centerLat: screen.centerLat,
+      centerLng: screen.centerLng,
+      metersPerPixel: screen.metersPerPixel,
+      viewportSize: (width: expanded.width, height: expanded.height),
+    );
+    final List<MapMarker> markers = _buildMarkersFor(
+      pins,
+      expandedProjection,
+      derived,
+    );
+    _renderedProjection = expandedProjection;
+    _renderedMarkers = markers;
+    _renderedPins = pins;
+    return (
+      markers: markers,
+      offset: Offset(-margin.dx, -margin.dy),
+      layerSize: expanded,
     );
   }
 
@@ -1095,6 +1229,13 @@ class _PinsStatusChip extends StatelessWidget {
     );
   }
 }
+
+/// 一帧的 Marker 层装配结果（见 [_MapScreenState._markerLayerFrame]）。
+///
+/// - [markers]：要画的 Marker；
+/// - [offset]：Marker 坐标 → 屏幕坐标的平移量（含余量偏移与拖动位移）；
+/// - [layerSize]：Marker 坐标系的画布尺寸（即精算视口尺寸）。
+typedef _MarkerFrame = ({List<MapMarker> markers, Offset offset, Size layerSize});
 
 /// 一帧内反复用到的 pins 派生量（按 `pinList` 引用记忆化）。
 ///
