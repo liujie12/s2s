@@ -16,7 +16,7 @@
 --
 -- 数据设计（全部可与 SQL 逐位核对）：
 --   * 作者：user id = 9500（本脚本自建，幂等）；
---   * 帖子：500 条，id 固定 9501–9600（幂等重跑靠先删该段）；
+--   * 帖子：500 条，id 固定 9501–10000（幂等重跑靠先删该段）；
 --   * 坐标：经度 120.150000 + k*1e-6（k=0..499 → 120.150000–120.150499），
 --           纬度 30.276000  + k*1e-6（k=0..499 → 30.276000–30.276499）；
 --           这 500 个坐标【全部落在同一网格】 grid_id = 26700_6728：
@@ -34,7 +34,7 @@
 -- 已知取舍：
 --   * contact_value_enc 插占位 X'00'：该列 NOT NULL 且需 AEAD 密文，造不出真密文。
 --     /map/pins 不消费该列，无影响；
---   * 显式指定 id 会把 post 表 AUTO_INCREMENT 抬到 9601（与 seed-demo-post.sql 同性质），
+--   * 显式指定 id 会把 post 表 AUTO_INCREMENT 抬到 10001（与 seed-demo-post.sql 同性质），
 --     用户 id 会把 user 表抬到 9501。这是「可确定性回滚」的代价，非缺陷。
 --
 -- 执行方式（服务器上，DB 端口不对外，只能经容器执行）：
@@ -42,7 +42,7 @@
 --     --default-character-set=utf8mb4 "$MYSQL_DATABASE" < seed-map-pins-volume.sql
 --
 -- 回滚（验收取完证据后应执行，使 [144] 的采集窗口回到业务数据状态）：
---   DELETE FROM post WHERE id BETWEEN 9501 AND 9600;
+--   DELETE FROM post WHERE id BETWEEN 9501 AND 10000;
 --   DELETE FROM `user` WHERE id = 9500;
 --   （等价于本脚本第 1 段，直接重跑本脚本亦会先清后灌）
 -- =============================================================================
@@ -63,7 +63,7 @@ DROP TEMPORARY TABLE IF EXISTS tmp_seed_db_assert;
 -- -----------------------------------------------------------------------------
 -- 1. 幂等清空本脚本的数据段（只动固定 id 段，不碰任何其它行）
 -- -----------------------------------------------------------------------------
-DELETE FROM post WHERE id BETWEEN 9501 AND 9600;
+DELETE FROM post WHERE id BETWEEN 9501 AND 10000;
 DELETE FROM `user` WHERE id = 9500;
 
 -- -----------------------------------------------------------------------------
@@ -152,10 +152,10 @@ DROP TEMPORARY TABLE IF EXISTS tmp_seed_pins;
 -- 5. 自检（执行后应看到 pins=500、单一网格、单类目、单类型）
 -- -----------------------------------------------------------------------------
 SELECT 'seed 完成' AS step,
-       (SELECT COUNT(*) FROM post WHERE id BETWEEN 9501 AND 9600)          AS seeded_pins,
-       (SELECT COUNT(DISTINCT grid_id) FROM post WHERE id BETWEEN 9501 AND 9600) AS distinct_grids,
-       (SELECT MIN(grid_id) FROM post WHERE id BETWEEN 9501 AND 9600)      AS grid_id,
+       (SELECT COUNT(*) FROM post WHERE id BETWEEN 9501 AND 10000)          AS seeded_pins,
+       (SELECT COUNT(DISTINCT grid_id) FROM post WHERE id BETWEEN 9501 AND 10000) AS distinct_grids,
+       (SELECT MIN(grid_id) FROM post WHERE id BETWEEN 9501 AND 10000)      AS grid_id,
        (SELECT COUNT(*) FROM post
-         WHERE id BETWEEN 9501 AND 9600
+         WHERE id BETWEEN 9501 AND 10000
            AND status = 'active' AND expire_at > NOW()
            AND leaf_category_id = 10101 AND type = 'resource')             AS hit_by_pins_query;
