@@ -325,39 +325,71 @@ class _PerfPanelState extends ConsumerState<PerfPanel> {
     );
   }
 
-  /// 图层切换读数（[140] / 判据 A：P95 ≤300ms）。
+  /// 一行「状态图标 + 标签 + 粗体读数」。
   ///
-  /// **只统计 success 会话**：`cancelled`（被后一次切换取代）与 `failed` 按
-  /// 可观测性 §6.1 **不进 P95 分母**，但计数必须看得见 —— 否则「P95 很漂亮」
-  /// 可能只是样本被排除光了。
+  /// 参数：
+  /// - [pass]：是否达标（决定图标与颜色）；
+  /// - [label]：左列标签；
+  /// - [value]：读数（粗体）。
   ///
-  /// 四段顺序固定为 缓存 / 网络 / 聚合 / 渲染：P95 超标时先看是哪一段顶上去的，
-  /// 四段的优化手段完全不同（缓存 TTL / 接口 / Dart 算法 / 绘制批次）。
+  /// 返回：[Widget] 一行的部件。
+  Widget _metricRow({
+    required bool pass,
+    required String label,
+    required String value,
+  }) {
+    return Row(
+      children: [
+        Icon(
+          pass ? Icons.check_circle : Icons.swap_horiz,
+          size: 12,
+          color: pass ? _kPassColor : _kWarnColor,
+        ),
+        const SizedBox(width: AppSpacing.xs),
+        Text(label, style: _labelStyle(size: 10)),
+        const SizedBox(width: AppSpacing.xs),
+        Text(value, style: _labelStyle(size: 10, bold: true)),
+      ],
+    );
+  }
+
+  /// 图层切换读数（[140]）。
+  ///
+  /// **判据在前、SLA 与分解在后**：
+  /// - `轴② 占比` 是**台阶判定依据**（`duration_ms ≤300 且 success` 的会话占比，
+  ///   阶段目标 ≥`NorthStar.layerLoadTargetByPhase`）—— 这是北极星那条线；
+  /// - `切换 P95` 是**工程 SLA**（≤`NfrPerf.layerSwitchP95Ms`），两者 2026-09-02
+  ///   已定案拆开，不可用其一推另一（P95 达标要求 ≥95% 会话达标，比占比严得多）；
+  /// - `缓/网/聚/绘` 是四段分解（诊断用：这四段的优化手段完全不同）；
+  /// - `切换样本` 的 成/取/败 必须可见 —— 否则「占比很漂亮」可能只是样本被排除光了。
   ///
   /// 参数：[switches] 图层切换记录器。
   Widget _buildLayerSwitch(LayerSwitchRecorder switches) {
     final bool hasData = switches.successCount > 0;
     final double p95 = switches.p95Ms;
-    final bool pass = hasData && p95 <= NfrPerf.layerSwitchP95Ms;
+    // 轴② 阶段目标取**当前批次档**。本键随 §0.2.2 台阶推进而更换，故从真源
+    // map 取值、不写死 0.6；批次推进时这里与产品目标一起改。
+    final double axis2Target = NorthStar.layerLoadTargetByPhase['batch1']!;
+    final double axis2 = switches.layerLoadSuccessRatio;
+    final bool axis2Pass = hasData && axis2 >= axis2Target;
+    final bool p95Pass = hasData && p95 <= NfrPerf.layerSwitchP95Ms;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('图层切换 (ms)', style: _labelStyle(size: 9)),
-        Row(
-          children: [
-            Icon(
-              pass ? Icons.check_circle : Icons.swap_horiz,
-              size: 12,
-              color: pass ? _kPassColor : _kWarnColor,
-            ),
-            const SizedBox(width: AppSpacing.xs),
-            Text('切换 P95', style: _labelStyle(size: 10)),
-            const SizedBox(width: AppSpacing.xs),
-            Text(
-              hasData ? p95.toStringAsFixed(1) : '—',
-              style: _labelStyle(size: 10, bold: true),
-            ),
-          ],
+        Text('图层切换', style: _labelStyle(size: 9)),
+        _metricRow(
+          pass: axis2Pass,
+          label: '轴② 占比',
+          value: hasData
+              ? '${(axis2 * 100).toStringAsFixed(0)}% '
+                  '(${switches.layerLoadSuccessCount}/${switches.successCount})'
+              : '—',
+        ),
+        _metricRow(
+          pass: p95Pass,
+          label: '切换 P95',
+          value: hasData ? '${p95.toStringAsFixed(1)}ms' : '—',
         ),
         // 「缓存」段当前恒为 0：pins 路径无本地缓存（缺口见 recorder 文件头）。
         _statLine(
@@ -366,7 +398,7 @@ class _PerfPanelState extends ConsumerState<PerfPanel> {
               ? '${switches.cacheP95Ms.toStringAsFixed(0)}/'
                   '${switches.netP95Ms.toStringAsFixed(0)}/'
                   '${switches.aggP95Ms.toStringAsFixed(0)}/'
-                  '${switches.renderP95Ms.toStringAsFixed(0)}'
+                  '${switches.renderP95Ms.toStringAsFixed(0)} ms'
               : '—',
         ),
         _statLine(

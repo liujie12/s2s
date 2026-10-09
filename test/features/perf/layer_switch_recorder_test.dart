@@ -158,4 +158,64 @@ void main() {
     expect(recorder.sampleCount, 2);
     expect(recorder.successCount, 2);
   });
+
+  test('轴② 占比：无样本记 0，全达标记 1', () {
+    final recorder = LayerSwitchRecorder();
+    expect(recorder.layerLoadSuccessCount, 0);
+    expect(recorder.layerLoadSuccessRatio, 0);
+
+    recorder.start();
+    recorder.finish(
+      sessionId: recorder.activeSessionId!,
+      outcome: LayerSwitchOutcome.success,
+    );
+    expect(recorder.layerLoadSuccessCount, 1);
+    expect(recorder.layerLoadSuccessRatio, 1.0);
+  });
+
+  test('轴② 占比：超 300ms 的会话不计入分子（与 P95 是两条不同的线）', () async {
+    final recorder = LayerSwitchRecorder();
+
+    // 慢会话：整段 >300ms（判据线）。用真实等待而非伪造读数 —— duration 必须独立测。
+    recorder.start();
+    final int slow = recorder.activeSessionId!;
+    await Future<void>.delayed(const Duration(milliseconds: 350));
+    recorder.finish(sessionId: slow, outcome: LayerSwitchOutcome.success);
+
+    // 快会话：≈0ms。
+    recorder.start();
+    recorder.finish(
+      sessionId: recorder.activeSessionId!,
+      outcome: LayerSwitchOutcome.success,
+    );
+
+    expect(recorder.successCount, 2);
+    expect(recorder.layerLoadSuccessCount, 1, reason: '只有快会话 ≤300ms');
+    expect(recorder.layerLoadSuccessRatio, closeTo(0.5, 1e-9));
+  });
+
+  test('轴② 占比：cancelled / failed 不进分母（§6.1 口径）', () {
+    final recorder = LayerSwitchRecorder();
+
+    // cancelled：未收尾就再切一次。
+    recorder.start();
+    recorder.start();
+    recorder.finish(
+      sessionId: recorder.activeSessionId!,
+      outcome: LayerSwitchOutcome.success,
+    );
+
+    // failed：数据没回来。
+    recorder.start();
+    recorder.finish(
+      sessionId: recorder.activeSessionId!,
+      outcome: LayerSwitchOutcome.failed,
+    );
+
+    expect(recorder.successCount, 1);
+    expect(recorder.cancelledCount, 1);
+    expect(recorder.failedCount, 1);
+    expect(recorder.layerLoadSuccessCount, 1);
+    expect(recorder.layerLoadSuccessRatio, 1.0, reason: '分母只含 success');
+  });
 }

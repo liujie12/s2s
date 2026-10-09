@@ -157,7 +157,9 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
-    expect(find.text('图层切换 (ms)'), findsOneWidget);
+    expect(find.text('图层切换'), findsOneWidget);
+    // 判据（轴② 占比）与工程 SLA（切换 P95）两条线都必须可读且分列。
+    expect(find.text('轴② 占比'), findsOneWidget);
     expect(find.text('切换 P95'), findsOneWidget);
     expect(find.text('缓/网/聚/绘'), findsOneWidget);
     expect(find.text('切换样本'), findsOneWidget);

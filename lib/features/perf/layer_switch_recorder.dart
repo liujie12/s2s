@@ -40,6 +40,7 @@ import 'dart:collection';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/track/layer_switch_timer.dart';
+import '../../nfr_constants.dart';
 
 /// 一次图层切换的收尾方式。
 ///
@@ -220,7 +221,29 @@ class LayerSwitchRecorder {
   ///
   /// 判据 A 的分母口径（可观测性 §6.1）：`cancelled` 是用户改变意图、`failed`
   /// 是交互没走完，两者都不进 P95 分母。无样本时返回 0。
+  ///
+  /// ⚠ **本值是工程 SLA（P95 ≤`NfrPerf.layerSwitchP95Ms`），不是轴② 的判据。**
+  /// 轴② 要的是「单次 ≤300ms 的会话**占比**」，见 [layerLoadSuccessRatio]。
+  /// 两者在 2026-09-02 已定案拆开（`NorthStar.layerLoadTargetByPhase` 的注释）。
   double get p95Ms => _p95(_success.map((s) => s.durationMs).toList());
+
+  /// 轴② 的分子：success 且整段 `≤NfrPerf.layerSwitchP95Ms` 的会话数。
+  ///
+  /// 口径（PRD §0.2 / 可观测性 §6.1）：**单次布尔判定** —— 一次切换只要
+  /// `result = success` 且 `duration_ms ≤ 300` 即算成功，不做分布统计。
+  /// 阈值与 [p95Ms] 是**同一个 300 的两种角色**：这里是单次判据的线，那里是
+  /// 分布 SLA 的线，故共用常量而不各写一遍。
+  int get layerLoadSuccessCount => _success
+      .where((s) => s.durationMs <= NfrPerf.layerSwitchP95Ms)
+      .length;
+
+  /// 轴②「分类图层加载成功率」= 达标会话数 ÷ success 会话数。
+  ///
+  /// 分母口径：只含 success（`cancelled` / `failed` 按 §6.1 不进分母）。
+  /// 与阶段目标的比较（`NorthStar.layerLoadTargetByPhase`）由消费方做 ——
+  /// 当前阶段取哪一档是产品决定，不写死在采集层。无 success 样本时返回 0。
+  double get layerLoadSuccessRatio =>
+      successCount == 0 ? 0 : layerLoadSuccessCount / successCount;
 
   /// 缓存段 P95（毫秒）。无缓存实现时恒为 0。
   double get cacheP95Ms => _p95(_success.map((s) => s.tCacheMs).toList());
