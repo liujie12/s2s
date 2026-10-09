@@ -38,6 +38,34 @@ class PerfPanel extends ConsumerStatefulWidget {
 class _PerfPanelState extends ConsumerState<PerfPanel> {
   bool _expanded = false;
 
+  /// 档位行是否已解锁。默认 false：见 [_onHeaderTap] 的理由。
+  bool _stressUnlocked = false;
+
+  /// 标题累计连点次数（用于解锁档位行）。
+  int _headerTaps = 0;
+
+  /// 连点标题解锁档位行所需的次数。
+  ///
+  /// 取 Android「开发者选项」同款惯例（连点版本号 7 次）：既不会被误触撞到，
+  /// 又是个有据可循的约定，不需要自创一套隐藏手势。
+  static const int _kStressUnlockTaps = 7;
+
+  /// 标题点击：展开 / 收起，并累计连点次数以解锁档位行。
+  ///
+  /// **为什么档位行要加锁**：档位切换会把地图换上 1 万 / 5 万条**假数据**。内测包里
+  /// 若一点即生效，用户误触后看到的是「地图上凭空多出一堆点」，而这种假象不会报错、
+  /// 只会被当成真实缺陷上报（表现为「数据错了」，而非「我误触了压测开关」）。
+  /// 故档位行默认不渲染，须连点标题解锁；埋点与面板本身仍常驻（PRD:1371 要求
+  /// 与上线埋点为同一套代码，不得为交付而删）。
+  void _onHeaderTap() {
+    setState(() {
+      _expanded = !_expanded;
+      if (!_stressUnlocked && ++_headerTaps >= _kStressUnlockTaps) {
+        _stressUnlocked = true;
+      }
+    });
+  }
+
   /// 面板每秒刷新一次，用「上次刷新时间」节流而不是起 Timer：
   /// Timer 在页面不可见时仍会触发 setState，白白产生帧，污染的正是要测的数。
   DateTime _lastRefresh = DateTime.fromMillisecondsSinceEpoch(0);
@@ -107,8 +135,11 @@ class _PerfPanelState extends ConsumerState<PerfPanel> {
                 const SizedBox(height: AppSpacing.sm),
                 _buildHistogram(metrics),
                 const SizedBox(height: AppSpacing.sm),
-                _buildLevelSwitch(level, metrics),
-                const SizedBox(height: AppSpacing.xs),
+                // 档位行默认不渲染（防用户误触换上假数据）：见 _onHeaderTap。
+                if (_stressUnlocked) ...[
+                  _buildLevelSwitch(level, metrics),
+                  const SizedBox(height: AppSpacing.xs),
+                ],
                 _buildExportRow(metrics, level),
               ],
             ],
@@ -123,7 +154,7 @@ class _PerfPanelState extends ConsumerState<PerfPanel> {
     final double p95 = metrics.p95Ms;
     final bool pass = p95 <= kFrameBudgetMs && metrics.sampleCount > 0;
     return GestureDetector(
-      onTap: () => setState(() => _expanded = !_expanded),
+      onTap: _onHeaderTap,
       behavior: HitTestBehavior.opaque,
       child: Row(
         mainAxisSize: MainAxisSize.min,

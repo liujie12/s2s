@@ -1405,7 +1405,7 @@ POC 拆为**算法级（POC-A）与定标级（POC-B）两级**，二者回答�
 
 - `lib/features/perf/frame_metrics.dart` —— `addTimingsCallback` 采集 `FrameTiming.totalSpan`，产出 P50/P95/P99、Max、>16ms 掉帧率与六桶直方图，可导出 JSON；
 - `lib/features/perf/perf_panel.dart` —— 应用内面板，折叠态直显 P95，一键复制 JSON 到剪贴板（不写外部存储，免权限适配）；
-- `lib/features/discovery/stress_data.dart` —— 四档压测数据（关闭 / 500 / 1 万 / 5 万），聚集分布（POC-A 已证其为最坏情况），在 `pinsProvider` 处**短路注入**（`buildStressPins`），与真实渲染走同一条「投影 → 聚合 → 绘制」链路；档位入口不受 `kDebugMode` 限制，故 release 包可测。（原「走 `allListingsProvider`」已于 [139] 随 mock 链删除而失效。）
+- `lib/features/discovery/stress_data.dart` —— 四档压测数据（关闭 / 500 / 1 万 / 5 万），聚集分布（POC-A 已证其为最坏情况），在 `pinsProvider` 处**短路注入**（`buildStressPins`），与真实渲染走同一条「投影 → 聚合 → 绘制」链路；档位入口不受 `kDebugMode` 限制，故 release 包可测，**但档位行默认不渲染**：档位切换会换上 1 万/5 万条**假数据**，内测用户误触后只会当成「数据错了」上报，故须**连点面板标题 7 次**（Android 开发者选项同款惯例）才显示档位行（2026-10-09 用户裁定）。**埋点与面板本身仍常驻** —— PRD:1383 要求采集与上线埋点为同一套代码，不得为交付而删。（原「走 `allListingsProvider`」已于 [139] 随 mock 链删除而失效。）
 
 **POC-B 中端机实测（2026-10-09，首次真机出数）**：设备 Redmi 21091116C（天玑920 / Android 13 / RAM 5.6GB，属「中端」档）；**持续拖动 30s** 后读面板（静置读数不可用 —— 地图静止几乎不产帧，读到的是闲置帧，实测样本仅 115–779 帧且抖动大）：
 

@@ -449,8 +449,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         // - 超出屏幕的部分由 Stack 默认的 `Clip.hardEdge` 裁掉，无需另加 ClipRect。
         //
         // `RepaintBoundary` **必须夹在 Transform 之内**：这样拖动中只有 Transform 变化时
-        // 子树不重画（`tool/poc_b_transform_reuse_probe.dart` 实测 30 帧只画 1 次，
-        // 每帧 6.76ms → 0.89ms）。挪到 Transform 之外，这层优化立刻失效。
+        // 子树不重画（一次性探针实测 30 帧只画 1 次、每帧 6.76→0.89ms；
+        // 探针已删、结论见说明文档），挪到 Transform 之外这层优化立刻失效。
         Positioned(
           left: 0,
           top: 0,

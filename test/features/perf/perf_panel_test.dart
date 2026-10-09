@@ -84,4 +84,33 @@ void main() {
 
     expect(tester.takeException(), isNull, reason: '展开态含直方图等更多内容，同样不得溢出');
   });
+
+  testWidgets('档位行默认隐藏，连点标题 7 次才解锁（防误触换上假数据）', (tester) async {
+    await pumpPanelAtPhoneSize(tester, p95Ms: 12.0);
+
+    // 注意：初始为收起态，故**奇数次**点击才是展开态。断言必须落在展开态上，
+    // 否则「没看到档位」会被「已收起」污染，测不出真正想测的隐藏。
+    Future<void> tapHeader() async {
+      await tester.tap(find.text('P95 12.0ms'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+    }
+
+    await tapHeader(); // 1 次：展开，未解锁
+    expect(
+      find.text('1 万点'),
+      findsNothing,
+      reason: '档位行默认不得渲染 —— 它会换上 1 万/5 万假数据，误触后表现为「数据错了」',
+    );
+
+    for (int i = 0; i < 4; i++) {
+      await tapHeader(); // 累计 5 次：展开态、仍未达解锁阈值
+    }
+    expect(find.text('1 万点'), findsNothing, reason: '未达 7 次不得解锁');
+
+    await tapHeader(); // 第 6 次
+    await tapHeader(); // 第 7 次：展开态 + 达阈值，应解锁
+    expect(find.text('1 万点'), findsOneWidget, reason: '连点 7 次后档位行必须可用');
+    expect(tester.takeException(), isNull);
+  });
 }
