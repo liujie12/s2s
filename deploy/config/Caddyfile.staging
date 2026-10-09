@@ -32,6 +32,14 @@
         protocols tls1.2 tls1.3
     }
 
+    # 响应压缩 —— 全站唯一开启点，所有响应强制 gzip
+    # 依据：《系统总体架构设计文档》§6.3「所有响应强制 gzip」、§10.1 体积红线
+    #       （/map/pins gzip 后 ≤10KB、原始 ≤24KB）
+    # 纪律：只在此处开一次 —— Spring 侧【不得】再开 server.compression，
+    #       否则双重压缩且 Content-Encoding 语义冲突。
+    # 三套环境 Caddyfile 必须一致（本项与 prod / dev 完全相同）。
+    encode gzip
+
     # 反向代理到 Spring Boot 应用容器
     reverse_proxy app:8080 {
         header_up X-Real-IP {remote_host}
