@@ -41,8 +41,9 @@
 #   3. 基础镜像一律使用明确 tag 且三环境完全一致，【禁止】latest / RELEASE / 版本范围。
 #      镜像 tag 与 digest 台账见 deploy/images.lock，校验命令见 scripts/image-baseline.sh。
 #      三环境共用同一镜像基线是「dev 能过 prod 也能过」的前提，不得按环境分叉。
-#   4. mem_limit 由各环境 override 定义。staging / prod 之和不得超过 1414m，
+#   4. mem_limit 由各环境 override 定义。staging / prod 之和不得超过 1732m，
 #      见《部署架构设计文档》§3.1 内存预算表。改任一值必须同步改该表。
+#      （2026-10-09 [142]：mysql 由 450m 放宽至 768m，合计 1414m → 1732m。）
 #
 # 语法校验：bash deploy/scripts/env-up.sh <env> --config-only
 # ============================================================================
@@ -161,7 +162,7 @@ services:
 
   # --------------------------------------------------------------------------
   # MySQL 8.4 LTS（Batch1）
-  # 内存预算 450MB（innodb_buffer_pool_size 256M，见 config/my.cnf）
+  # 内存预算 768MB（innodb_buffer_pool_size 256M，见 config/my.cnf；[142] 由 450MB 放宽）
   # staging / prod 无 ports: 映射；dev 映射 3306 供本地客户端连接
   # --------------------------------------------------------------------------
   mysql:
