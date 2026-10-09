@@ -216,17 +216,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           // 数据态：加载中/失败时 pinList 为空，底图照常渲染（不阻塞），
           // 状态另行以角标提示（见下方 _PinsStatusChip）。
           final pinList = pinsAsync.asData?.value.pins ?? const <MapPinDto>[];
-          final markers = _buildMarkersFor(pinList, projection);
-          // 供需查表在此建一次，而不是让 MarkerLayer 每画一个 Marker 就
-          // firstWhere 一遍 —— 后者是 O(n²)，5 万点档位下会被真机测成
-          // 「CustomPaint 画不动」，从而把优化引向完全错误的方向。
-          // 键用 id.toString()：Marker 层的标识是 String（§10.4.3），
-          // 而 pin id 是 int，键类型必须与查表方 marker.listingId 一致，
-          // 否则 containsKey 永远为 false —— 而那是个 info 级提示，不报错。
-          final supplyDemandById = {
-            for (final p in pinList)
-              p.id.toString(): supplyDemandFromCompact(p.typeCode),
-          };
+          // pins 派生量按**引用**记忆化，避免随每一帧重算（见 [_PinsDerived]）。
+          final derived = _derivedFor(pinList);
+          final markers = _buildMarkersFor(pinList, projection, derived);
+          final supplyDemandById = derived.supplyDemandById;
           // G-138-1：有 pin 却全部投影在视口外 → 提示「视野外还有 N 条」。
           // 用「pinList 非空 + 无可见 marker」而非「total > 0」：mode=cluster 时
           // 服务端回 clusters[]、pinList 为空，此时不是「屏外有点」而是「还没接
@@ -679,32 +672,74 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     );
   }
 
+  /// 上一帧派生量对应的 `pinList` 引用（引用相同即复用，见 [_derivedFor]）。
+  List<MapPinDto>? _derivedPins;
+  _PinsDerived? _derivedCache;
+
+  /// 取 pins 的派生量，`pins` 与上次同一引用时直接复用。
+  ///
+  /// 参数：[pins] 当前图钉列表。
+  /// 返回：[_PinsDerived]。
+  ///
+  /// **为什么按引用而不是按值判**：拖动地图时请求视口刻意不动（见 `_fetchLat`
+  /// 注释），故 `pinsProvider` 不重发请求、`pinsAsync` 的数据在整段拖动里是**同一个
+  /// List 实例** —— 引用相同即「数据没变」，缓存全程命中。相机停稳后
+  /// `_syncFetchViewport` 换视口，引用随之改变，此时重建一次是应当付的成本。
+  _PinsDerived _derivedFor(List<MapPinDto> pins) {
+    final cached = _derivedCache;
+    if (cached != null && identical(_derivedPins, pins)) return cached;
+
+    final topCategoryByLeafId = <int, ListingCategory?>{};
+    for (final p in pins) {
+      // 用 containsKey 而非「取值为 null 就当没缓存」：大类本身可空
+      // （分类树版本落后时查不到，§16.4 属预期内），null 不能区分两者。
+      if (!topCategoryByLeafId.containsKey(p.leafCategoryId)) {
+        topCategoryByLeafId[p.leafCategoryId] = topCategoryOf(p.leafCategoryId);
+      }
+    }
+
+    final derived = _PinsDerived(
+      ids: List<String>.generate(pins.length, (i) => pins[i].id.toString()),
+      // 键用 id 字符串而非 int：Marker 层的标识是 String（§10.4.3），键类型必须与
+      // 查表方 `marker.listingId` 一致，否则 `containsKey` 永远为 false ——
+      // 而那是个 info 级提示，不报错。
+      supplyDemandById: {
+        for (final p in pins)
+          p.id.toString(): supplyDemandFromCompact(p.typeCode),
+      },
+      topCategoryByLeafId: topCategoryByLeafId,
+    );
+    _derivedPins = pins;
+    _derivedCache = derived;
+    return derived;
+  }
+
   /// 经纬度 → 像素 → 网格聚合 → 阈值判定 → Marker。
   ///
-  /// 每帧重算而不做缓存：投影一变（拖动/缩放）像素坐标全变，缓存命中率接近零，
-  /// 而缓存本身要维护失效逻辑。POC-A 实测 5 万点聚合 4.7ms，占 300ms 预算 1.6%，
-  /// 当前百来条的量级更无优化必要。
+  /// **几何部分每帧重算，派生常量走缓存**：投影一变（拖动/缩放）像素坐标全变，
+  /// 缓存命中率接近零，故 [ClusterPoint] 表与聚合必须每帧重算；而「叶子→大类」
+  /// 查表与 id 转串**只依赖数据、不依赖相机**，已收进 [_PinsDerived] 按引用缓存。
   List<MapMarker> _buildMarkersFor(
     List<MapPinDto> pins,
     MapProjection projection,
+    _PinsDerived derived,
   ) {
-    final points = pins
-        .map((p) {
-          final pixel = projection.toPixel(p.lat, p.lng);
-          return ClusterPoint(
-            // ClusterPoint.id 是本地分桶标识（String），服务端帖子 ID 为 int64，
-            // 故此处显式转字符串；反向回传时须转回 int（详细设计 §10.4.3）。
-            id: p.id.toString(),
-            x: pixel.x,
-            y: pixel.y,
-            // 服务端下发的就是叶子类目 ID（`category_id` 列，如 10101）。
-            leafCategoryId: p.leafCategoryId,
-            // 一级大类由叶子 ID 经分类树查表得出，**不做算术推导**；
-            // 查不到返回 null，渲染层用中性配色（§16.4 版本落后是预期内状态）。
-            topCategory: topCategoryOf(p.leafCategoryId),
-          );
-        })
-        .toList(growable: false);
+    final points = List<ClusterPoint>.generate(pins.length, (i) {
+      final p = pins[i];
+      final pixel = projection.toPixel(p.lat, p.lng);
+      return ClusterPoint(
+        // ClusterPoint.id 是本地分桶标识（String），服务端帖子 ID 为 int64；
+        // 字符串随 pins 在 [_PinsDerived.ids] 里预计算，不在此逐帧分配。
+        id: derived.ids[i],
+        x: pixel.x,
+        y: pixel.y,
+        // 服务端下发的就是叶子类目 ID（`category_id` 列，如 10101）。
+        leafCategoryId: p.leafCategoryId,
+        // 一级大类由叶子 ID 经分类树查表得出，**不做算术推导**；
+        // 查表结果按叶子 ID 去重缓存（见 [_derivedFor]）。
+        topCategory: derived.topCategoryByLeafId[p.leafCategoryId],
+      );
+    }, growable: false);
 
     final clusters = clusterByGrid(points, gridSize: _kClusterGridSize);
     return buildMarkers(
@@ -1059,6 +1094,32 @@ class _PinsStatusChip extends StatelessWidget {
       ),
     );
   }
+}
+
+/// 一帧内反复用到的 pins 派生量（按 `pinList` 引用记忆化）。
+///
+/// **为什么值得缓存**：POC-B 分项实测（`tool/poc_b_pipeline_benchmark.dart`）显示，
+/// 5 万点时单帧 Dart 开销约 25ms，其中「重建供需查表」单独 6.6ms，「建点表」8.8ms
+/// 里的大头是 `topCategoryOf` 查表与 `id.toString()` 分配 —— 三者都只依赖 pins、
+/// **不依赖相机**，却原本随每一帧重算。拖动时每秒几十帧，这是纯浪费。
+class _PinsDerived {
+  const _PinsDerived({
+    required this.ids,
+    required this.supplyDemandById,
+    required this.topCategoryByLeafId,
+  });
+
+  /// 与 pins 同序的 id 字符串（省掉每帧数万次 `int.toString()` 分配）。
+  final List<String> ids;
+
+  /// 供需查表（MarkerLayer 据此画实心/空心图与 ? 角标）。
+  final Map<String, SupplyDemand> supplyDemandById;
+
+  /// 叶子类目 ID → 一级大类（查分类树）。
+  ///
+  /// 按叶子去重后通常只有几条，故缓存的是「叶子→大类」而非逐 pin。
+  /// 值可空（查询不到时），判命中须用 `containsKey`。
+  final Map<int, ListingCategory?> topCategoryByLeafId;
 }
 
 /// 定位前骨架屏（PRD §6.7 `:1305`）。
