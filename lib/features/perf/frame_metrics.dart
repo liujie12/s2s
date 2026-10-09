@@ -30,8 +30,13 @@ const double kFrameBudgetMs = NfrPerf.frameBudgetMs;
 /// 帧耗时采样器。
 ///
 /// 采集的是 `FrameTiming.totalSpan` —— 从帧被调度到光栅化结束的总时长。
-/// 不用 `buildDuration` 单项：用户感知的卡顿是整帧的，只看 build 会漏掉
-/// 光栅化侧的开销，而本项目的 Marker 恰恰是画布绘制、开销主要落在光栅化。
+/// 判据用整帧而非 `buildDuration` 单项：用户感知的卡顿是整帧的，只看 build 会漏掉
+/// 光栅化侧的开销，而本项目的 Marker 恰恰是画布绘制。
+///
+/// **同时并行记录 `buildDuration` 与 `rasterDuration`**（2026-10-09 加）：整帧读数
+/// 只说明「慢」，不说明「贵在哪条线程」。两者一摆开就能定性 —— 若光栅 P50 远高于
+/// UI P50，则贵在光栅化/合成，此时优化 Dart 侧（投影、聚合、分配）**一律无效**，
+/// 会把投入引向错误方向。这正是 POC-B 定位瓶颈所需的最小分解。
 class FrameMetrics {
   FrameMetrics({this.capacity = 2000});
 
@@ -43,6 +48,12 @@ class FrameMetrics {
   final int capacity;
 
   final Queue<double> _samples = Queue<double>();
+
+  /// UI 线程耗时样本（`FrameTiming.buildDuration`：build + layout + paint）。
+  final Queue<double> _buildSamples = Queue<double>();
+
+  /// 光栅线程耗时样本（`FrameTiming.rasterDuration`）。
+  final Queue<double> _rasterSamples = Queue<double>();
 
   /// 累计观测帧数（不受 [capacity] 限制，用于说明样本的代表性）。
   int _totalFrames = 0;
@@ -72,6 +83,8 @@ class FrameMetrics {
   /// POC 要对比的东西。
   void reset() {
     _samples.clear();
+    _buildSamples.clear();
+    _rasterSamples.clear();
     _totalFrames = 0;
     _totalJankFrames = 0;
   }
@@ -79,7 +92,11 @@ class FrameMetrics {
   /// 引擎回调：一次可能带回多帧的数据，故须遍历。
   void _onTimings(List<FrameTiming> timings) {
     for (final t in timings) {
-      addSampleMs(t.totalSpan.inMicroseconds / 1000.0);
+      addSampleMs(
+        t.totalSpan.inMicroseconds / 1000.0,
+        buildMs: t.buildDuration.inMicroseconds / 1000.0,
+        rasterMs: t.rasterDuration.inMicroseconds / 1000.0,
+      );
     }
   }
 
@@ -87,12 +104,23 @@ class FrameMetrics {
   ///
   /// 公开而非私有，是为了让统计逻辑能被单测直接喂数据。走 `FrameTiming` 构造
   /// 假样本需要拼六个时间戳，测试会变成在验证「我拼对了没有」而不是分位算得对不对。
+  ///
+  /// 参数：
+  /// - [ms]：整帧耗时（`totalSpan`）；
+  /// - [buildMs] / [rasterMs]：UI 线程与光栅线程耗时；不传时记 0（表示「未提供」）。
   @visibleForTesting
-  void addSampleMs(double ms) {
+  void addSampleMs(double ms, {double buildMs = 0, double rasterMs = 0}) {
     _totalFrames++;
     if (ms > kFrameBudgetMs) _totalJankFrames++;
-    _samples.addLast(ms);
-    if (_samples.length > capacity) _samples.removeFirst();
+    _push(_samples, ms);
+    _push(_buildSamples, buildMs);
+    _push(_rasterSamples, rasterMs);
+  }
+
+  /// 入队并按 [capacity] 淘汰最旧样本。
+  void _push(Queue<double> queue, double value) {
+    queue.addLast(value);
+    if (queue.length > capacity) queue.removeFirst();
   }
 
   int get totalFrames => _totalFrames;
@@ -104,13 +132,27 @@ class FrameMetrics {
       _totalFrames == 0 ? 0 : _totalJankFrames / _totalFrames;
 
   /// 指定分位的帧耗时（毫秒）。[percentile] 取 0–100。
+  double percentileMs(double percentile) => _percentile(_samples, percentile);
+
+  /// UI 线程耗时（build + layout + paint）的指定分位（毫秒）。
+  ///
+  /// 与 [percentileMs] 对着读即可定性瓶颈：整帧高而本项低 → 贵在光栅化 / 合成，
+  /// 此时优化 Dart 侧（投影、聚合、分配）无效。
+  double buildPercentileMs(double percentile) =>
+      _percentile(_buildSamples, percentile);
+
+  /// 光栅线程耗时的指定分位（毫秒）。读法见 [buildPercentileMs]。
+  double rasterPercentileMs(double percentile) =>
+      _percentile(_rasterSamples, percentile);
+
+  /// 对一组样本取最近秩分位。
   ///
   /// 用「排序后按下标取值」的最近秩法，不做插值：POC 要的是量级判断，
   /// 插值带来的零点几毫秒差异改变不了「达标 / 不达标」的结论，却会让
   /// 不同工具算出的数字对不上、徒增解释成本。
-  double percentileMs(double percentile) {
-    if (_samples.isEmpty) return 0;
-    final sorted = _samples.toList()..sort();
+  static double _percentile(Queue<double> samples, double percentile) {
+    if (samples.isEmpty) return 0;
+    final sorted = samples.toList()..sort();
     // 最近秩法 ceil(p/100 × N) - 1。用 ceil 而非 round：round 会让 P50 在
     // 偶数样本下取到中位数偏高的那一个（100 样本时 49.5 → 50，即第 51 个值），
     // 与「P50 是中位数」的直觉不符，读数时容易被当成实现出错。
@@ -121,6 +163,14 @@ class FrameMetrics {
   double get p50Ms => percentileMs(50);
   double get p95Ms => percentileMs(95);
   double get p99Ms => percentileMs(99);
+
+  /// UI 线程 P50 / P95（毫秒）。
+  double get buildP50Ms => buildPercentileMs(50);
+  double get buildP95Ms => buildPercentileMs(95);
+
+  /// 光栅线程 P50 / P95（毫秒）。
+  double get rasterP50Ms => rasterPercentileMs(50);
+  double get rasterP95Ms => rasterPercentileMs(95);
 
   double get maxMs =>
       _samples.isEmpty ? 0 : _samples.reduce((a, b) => a > b ? a : b);
@@ -169,6 +219,11 @@ class FrameMetrics {
       'p95Ms': double.parse(p95Ms.toStringAsFixed(2)),
       'p99Ms': double.parse(p99Ms.toStringAsFixed(2)),
       'maxMs': double.parse(maxMs.toStringAsFixed(2)),
+      // UI 线程 / 光栅线程分解：定位瓶颈用（见类注释）。
+      'buildP50Ms': double.parse(buildP50Ms.toStringAsFixed(2)),
+      'buildP95Ms': double.parse(buildP95Ms.toStringAsFixed(2)),
+      'rasterP50Ms': double.parse(rasterP50Ms.toStringAsFixed(2)),
+      'rasterP95Ms': double.parse(rasterP95Ms.toStringAsFixed(2)),
       'histogram': histogram(),
     });
   }

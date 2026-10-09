@@ -159,6 +159,10 @@ class _PerfPanelState extends ConsumerState<PerfPanel> {
         _statLine('P50', '${metrics.p50Ms.toStringAsFixed(1)}ms'),
         _statLine('P99', '${metrics.p99Ms.toStringAsFixed(1)}ms'),
         _statLine('Max', '${metrics.maxMs.toStringAsFixed(1)}ms'),
+        // UI / 光栅分解：定位瓶颈用 —— 整帧高而「光栅」高说明贵在光栅化/合成，
+        // 此时优化 Dart 侧无效；反之才是 Dart 侧的问题。
+        _statLine('UI P50', '${metrics.buildP50Ms.toStringAsFixed(1)}ms'),
+        _statLine('光栅 P50', '${metrics.rasterP50Ms.toStringAsFixed(1)}ms'),
         _statLine(
           '超 16ms',
           '${(metrics.jankRatio * 100).toStringAsFixed(1)}%'
