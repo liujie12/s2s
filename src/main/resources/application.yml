@@ -138,3 +138,12 @@ s2s:
     # 真 SDK 路径的 endpoint/bucket（mock=false 时必填；dev 桩不消费）
     endpoint: ${OSS_ENDPOINT:}
     bucket: ${OSS_BUCKET:}
+  # --- 可观测性定时任务的输入路径（[148]）---
+  observability:
+    # 定时任务 #8 的 T3 判据要读的主看板 SQL 清单路径（《可观测性架构方案》§9.1.1）。
+    # 默认值 = 运行镜像内路径（deploy/Dockerfile 把 docs/architecture/dashboard_queries.sql
+    # 拷到 WORKDIR /opt/s2s 下的 observability/ 目录）；本机直跑时该文件通常不存在
+    # → T3 如实记 SKIP（SKIP 不是 PASS）。本机需验证时可用
+    # DASHBOARD_SQL_PATH=docs/architecture/dashboard_queries.sql 覆盖。
+    # 带默认值占位不匹配 .env.example 双向核对正则，故不进该模板（非密钥本地默认路径）。
+    dashboard-sql-path: ${DASHBOARD_SQL_PATH:/opt/s2s/observability/dashboard_queries.sql}

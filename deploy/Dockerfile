@@ -63,6 +63,14 @@ WORKDIR /opt/s2s
 # 镜像内【禁止】出现 .env 文件
 COPY --from=builder /build/target/*.jar ./app.jar
 
+# 主看板 SQL 清单（[148]；《可观测性架构方案》§9.1.1）：
+# 定时任务 #8 的 T3 判据要读「已交付的单一文件」并逐条计时，故把它拷进镜像，
+# 以保持【单文件、无副本】（2026-10-10 用户裁定「拷进镜像」）。
+# 目标目录相对 WORKDIR /opt/s2s → 运行期路径 = /opt/s2s/observability/dashboard_queries.sql，
+# 与 Spring 侧 s2s.observability.dashboard-sql-path 的默认值一致。
+# 注意：这不是源码/密钥，不触碰「镜像禁 COPY .env」纪律（部署 G2 仍须 PASS）。
+COPY docs/architecture/dashboard_queries.sql ./observability/dashboard_queries.sql
+
 # 创建日志目录并授权给非 root 用户
 RUN mkdir -p /var/log/app && chown -R s2s:s2s /var/log/app /opt/s2s
 

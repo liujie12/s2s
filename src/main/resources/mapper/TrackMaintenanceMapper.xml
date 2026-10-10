@@ -87,4 +87,16 @@
         ) high_minutes
     </select>
 
+    <!--
+      T3 主看板 SQL 执行（[148]；可观测架构方案 §9.1 T3 / §9.1.1）。
+
+      整条语句以 ${sql} 拼入：判定对象是已交付的静态清单文件
+      （docs/architecture/dashboard_queries.sql，非外部输入），其中可变片段
+      （当月月表名、经白名单校验的重启窗口时刻）由任务侧收敛后传入；
+      调用方另以「仅允许单条 SELECT」兜底。理由详见 Mapper 方法注释。
+    -->
+    <select id="executeDashboardQuery" resultType="map">
+        ${sql}
+    </select>
+
 </mapper>

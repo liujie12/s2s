@@ -1,6 +1,7 @@
 package com.s2s.server.track.mapper;
 
 import java.util.List;
+import java.util.Map;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
@@ -86,4 +87,21 @@ public interface TrackMaintenanceMapper {
     Long countHighVolumeMinutes(@Param("tableName") String tableName,
             @Param("since") java.time.LocalDateTime since,
             @Param("perMinuteThreshold") long perMinuteThreshold);
+
+    /**
+     * 在埋点库执行一条 T3 主看板 SQL 并返回结果行（[148]；可观测架构方案 §9.1 T3 / §9.1.1）。
+     *
+     * <p><b>为什么这里只能整条 {@code ${}} 拼入、而不改写成固定 XML 语句</b>：T3 的判定对象是
+     * <b>已交付的单一文件</b> {@code docs/architecture/dashboard_queries.sql}——要逐条计时
+     * 「清单里的原句」。把它固化成 XML 语句，就丢掉了「文件改了、判定跟着改」这条唯一对价。
+     * 语句来源是<b>打包进镜像的静态文件</b>（非外部输入）；其中的可变片段仅两处，均由任务侧收敛：
+     * 月表名由 {@code TrackTableNames} 按 {@code ^track_event_\d{6}$} 生成，重启窗口时刻经
+     * {@code yyyy-MM-dd HH:mm:ss} 白名单复校后注入。形态与同域表名 {@code ${tableName}}
+     * 同属「拼的是自己生成/校验过的片段」（编码规范 §6「SQL 注入防护：禁 {@code ${}} 接外部输入」）。
+     * 调用方另以「仅允许单条 SELECT」兜底：语句被改成非查询即拒绝执行。</p>
+     *
+     * @param sql 已替换占位符的单条 SELECT 语句（任务侧构造并校验）
+     * @return {@link List} 结果行（列名 → 值）；T3 只计时，不消费行内容
+     */
+    List<Map<String, Object>> executeDashboardQuery(@Param("sql") String sql);
 }
