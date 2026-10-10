@@ -145,7 +145,7 @@ class _PerfPanelState extends ConsumerState<PerfPanel> {
                 _buildHistogram(metrics),
                 const SizedBox(height: AppSpacing.sm),
                 // 图层切换读数（[140]）：轴② 判据 A 的唯一应用内出口。
-                _buildLayerSwitch(switches),
+                _buildLayerSwitch(switches, level),
                 const SizedBox(height: AppSpacing.sm),
                 // 档位行默认不渲染（防用户误触换上假数据）：见 _onHeaderTap。
                 if (_stressUnlocked) ...[
@@ -363,8 +363,12 @@ class _PerfPanelState extends ConsumerState<PerfPanel> {
   /// - `缓/网/聚/绘` 是四段分解（诊断用：这四段的优化手段完全不同）；
   /// - `切换样本` 的 成/取/败 必须可见 —— 否则「占比很漂亮」可能只是样本被排除光了。
   ///
-  /// 参数：[switches] 图层切换记录器。
-  Widget _buildLayerSwitch(LayerSwitchRecorder switches) {
+  /// 参数：
+  /// - [switches]：图层切换记录器；
+  /// - [level]：当前压测档位 —— 非「关闭」档时须标注「轴② 无区分度」
+  ///   （压测档走 `pinsProvider` 短路注入、网络段恒 0，占比恒 ≈100%，
+  ///   2026-10-09 裁定 B′）。
+  Widget _buildLayerSwitch(LayerSwitchRecorder switches, StressLevel level) {
     final bool hasData = switches.successCount > 0;
     final double p95 = switches.p95Ms;
     // 轴② 阶段目标取**当前批次档**。本键随 §0.2.2 台阶推进而更换，故从真源
@@ -386,6 +390,19 @@ class _PerfPanelState extends ConsumerState<PerfPanel> {
                   '(${switches.layerLoadSuccessCount}/${switches.successCount})'
               : '—',
         ),
+        // 压测档（500 点 / 1 万 / 5 万）走短路注入、网络段恒 0，故占比恒 ≈100%：
+        // 该读数**不具区分度**，不能当闸门（2026-10-09 裁定 B′）。保留读数但
+        // 必须在面板上标注，否则后人会把 100% 误读成「该档达标」。
+        if (level != StressLevel.off)
+          Padding(
+            padding: const EdgeInsets.only(left: AppSpacing.md, bottom: 1),
+            child: Text(
+              '压测档 · 网络段=0，轴②无区分度',
+              style: _labelStyle(
+                size: 9,
+              ).copyWith(color: Color(AppColors.surface).withValues(alpha: 0.6)),
+            ),
+          ),
         _metricRow(
           pass: p95Pass,
           label: '切换 P95',
