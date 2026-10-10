@@ -159,7 +159,11 @@ fi
 log "[1/3] 从 ${MYSQL_CONTAINER} 取 CA 证书（只取公钥证书，不碰 ca-key.pem）"
 
 mkdir -p "${CERT_DIR}"
-chmod 700 "${CERT_DIR}"
+# ⚠ 755 而非 700（2026-10-10 实测踩坑）：app 容器以非 root（s2s）运行，
+#   它需要【遍历目录】才能打开里面的文件 —— 只把 .p12 设成 644 不够，
+#   父目录若为 700/root，容器侧连 ls 都是 Permission denied，
+#   app 会因读不到信任库而启动失败。目录内无任何机密（只有公开 CA 证书），755 安全。
+chmod 755 "${CERT_DIR}"
 
 if ! docker exec "${MYSQL_CONTAINER}" sh -c "test -s ${CA_IN_CONTAINER}" 2>/dev/null; then
   log "[ERROR] 容器内 ${CA_IN_CONTAINER} 不存在或为空"
