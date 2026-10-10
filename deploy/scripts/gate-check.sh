@@ -29,10 +29,14 @@
 #   原实现无条件记 PASS，等于把「没查」写成「查过且合格」，比 SKIP 更坏。
 #
 # 环境分级（§14.5）：
-#   G1（数据面端口暴露）在 dev 下降级 —— dev 刻意映射 3306/6379 到
-#   127.0.0.1 以便本地连库，见 docker-compose.dev.yml。staging/prod 仍强制 FAIL。
-#   除 G1 外所有检查项三环境判据完全一致：门禁一旦按环境放水，
-#   staging 通过就不再能代表 prod 能过，整套多环境的意义也就没了。
+#   G1（数据面端口暴露）按环境给白名单 —— 2026-10-10 修订：
+#     dev     = 3306 / 6379 / 8080（必须绑 127.0.0.1，由 G1b 兜底）
+#     staging = 无（保持零映射）
+#     prod    = 3316 / 6389 / 7080（用户裁定放开的直连端口，见说明文档 §2.9 DEC-28）
+#   白名单外的任何 published 端口仍判 FAIL。门禁一旦按环境放水，
+#   staging 通过就不再能代表 prod 能过 —— 故 prod 的白名单是**独立声明**的，
+#   刻意不从 compose 派生（派生等于自己给自己发证：改暴露面时门禁跟着一起改）。
+#   除 G1 外所有检查项三环境判据完全一致。
 #
 # 退出码：0 = 全部判定且通过；1 = 存在 FAIL；2 = 无 FAIL 但存在 SKIP（判定不完整）
 # ============================================================================
@@ -105,8 +109,18 @@ echo "  目标环境：${ENV_NAME}"
 echo "=========================================="
 echo ""
 
-# --- G1: Compose 无数据面端口映射 --------------------------------------------
-echo "[G1] Compose 无数据面端口映射"
+# --- G1: 数据面端口映射须在环境白名单内 --------------------------------------
+# 判据（2026-10-10 修订）：不再「禁止一切映射」，改为「按环境白名单」——
+# 白名单外的任何 published 端口仍判 FAIL，故本项拦的依然是「未经审定的新暴露面」，
+# 而不是把门禁关掉。改白名单 = 改一处安全口径，须同步
+# 《部署架构设计文档》§5.1 与 说明文档 §2.9。
+echo "[G1] 数据面端口映射在白名单内（逐环境）"
+case "${ENV_NAME}" in
+  dev)     G1_ALLOWED="3306 6379 8080" ;;
+  staging) G1_ALLOWED="" ;;
+  prod)    G1_ALLOWED="3316 6389 7080" ;;
+  *)       G1_ALLOWED="" ;;
+esac
 # 用 docker compose config 展开后的规范化输出判定，而不是 grep 原始 yml：
 # 原始 yml 里 ports: 那一行不含服务名，grep 无法区分它属于哪个服务。
 # 用 awk 替代 python3 以避免依赖问题（ECS 上可能未安装 python3）。
@@ -128,38 +142,34 @@ if command -v docker >/dev/null 2>&1; then
     fail "docker compose config 执行失败，无法判定端口暴露面（先修 compose 语法）"
   else
     for svc in app mysql redis; do
-      # awk 逐服务定位：服务块以 2 空格缩进的键开始，块内 ports: 为 4 空格缩进，
-      # published: 出现在 ports 块内即视为该服务对外映射了端口。
+      # awk 逐服务定位：服务块以 2 空格缩进的键开始，块内 ports: 为 4 空格缩进；
+      # 取该块内每条 published: 的值（去引号）逐个输出，交由下方与白名单比对。
       PUB=$(echo "${COMPOSE_CONFIG}" | awk -v svc="${svc}:" '
         /^  [a-zA-Z]/ { current = $1; in_ports = 0 }
         current == svc {
           if ($0 ~ /^    ports:/)          { in_ports = 1; next }
           if ($0 ~ /^    [a-zA-Z]/)        { in_ports = 0 }
-          if (in_ports && $0 ~ /published:/) { found = 1 }
+          if (in_ports && $0 ~ /published:/) {
+            v = $2; gsub(/"/, "", v); if (v != "") print v
+          }
         }
-        END { print found + 0 }
       ')
-      if [[ "${PUB}" != "0" ]]; then
-        G1_VIOLATION="${G1_VIOLATION} ${svc}"
-      fi
+      for p in ${PUB}; do
+        # 白名单为空时展开为 "  "，与任何端口都不匹配 ⇒ 自动退化为「零映射」判据。
+        if [[ " ${G1_ALLOWED} " != *" ${p} "* ]]; then
+          G1_VIOLATION="${G1_VIOLATION} ${svc}:${p}"
+        fi
+      done
     done
   fi
   if [[ "${G1_DECIDED}" -eq 0 ]]; then
     :   # 已在上方记 FAIL，不再重复判定
   elif [[ -n "${G1_VIOLATION}" ]]; then
-    if [[ "${ENV_NAME}" == "dev" ]]; then
-      # dev 的映射是刻意设计（绑定 127.0.0.1，见 docker-compose.dev.yml 头部），
-      # 不计入 FAIL；但仍打印出来，防止有人把这份 override 抄到 staging。
-      # 这里记 PASS 是成立的：判据确实执行了，只是 dev 的判据本身不同（§14.5），
-      # 且其合法性由 G1b 硬拦兜底。
-      echo "  [INFO] dev 环境刻意映射数据面端口：${G1_VIOLATION}"
-      echo "         这些映射必须绑定 127.0.0.1，且【禁止】复制到 staging/prod。"
-      pass "dev 环境端口映射符合预期（判据按 §14.5 降级，合法性由 G1b 兜底）"
-    else
-      fail "数据面服务出现端口映射：${G1_VIOLATION}"
-    fi
+    fail "出现白名单外的数据面端口映射：${G1_VIOLATION}（${ENV_NAME} 白名单：${G1_ALLOWED:-无}）—— 若属有意放开，须先裁定并同步本白名单与《部署架构设计文档》§5.1"
+  elif [[ -n "${G1_ALLOWED}" ]]; then
+    pass "数据面映射均在 ${ENV_NAME} 白名单内：${G1_ALLOWED}"
   else
-    pass "app / mysql / redis 均无端口映射，仅 Caddy 对外暴露 80/443"
+    pass "app / mysql / redis 均无端口映射（${ENV_NAME} 白名单为空），仅 Caddy 对外暴露 80/443"
   fi
 else
   skip "G1" "docker 未安装，端口暴露面未判定"
@@ -173,7 +183,11 @@ echo "[G1b] dev 端口映射绑定 127.0.0.1"
 if [[ "${ENV_NAME}" != "dev" ]]; then
   # 原实现用 if [[ dev ]] 把整段（含标题）包住，staging/prod 下这一项在输出里
   # 完全不出现。读日志的人无从分辨「这项不适用」与「这项被人删了」。
-  not_applicable "G1b" "${ENV_NAME} 环境本就不允许任何数据面端口映射（由 G1 硬拦），无映射可校验绑定地址"
+  case "${ENV_NAME}" in
+    staging) not_applicable "G1b" "staging 的 G1 白名单为空（不允许任何数据面端口映射），无映射可校验绑定地址" ;;
+    prod)    not_applicable "G1b" "prod 的直连映射刻意绑定 0.0.0.0（2026-10-10 裁定），绑定地址不作为 prod 判据；prod 的实际防线是安全组源 IP 白名单（见说明文档 §2.9 DEC-28）" ;;
+    *)       not_applicable "G1b" "${ENV_NAME} 环境不适用" ;;
+  esac
 elif [[ -z "${COMPOSE_CONFIG:-}" ]]; then
   skip "G1b" "无法获取 compose 展开结果（见 G1），端口绑定地址未判定"
 else
