@@ -71,6 +71,11 @@ windows/flutter/ephemeral/
 # 新同事 clone 后就没有任何可参照的变量清单。
 deploy/env/.env*
 !deploy/env/.env*.example
+# MySQL CA 信任库（2026-10-10 DEC-05 收紧引入）：
+# 由 scripts/build-mysql-ca-truststore.sh 从运行中的 MySQL 容器取出 CA 生成。
+# 内含的只是公开 CA 证书，但它是「本环境 mysql_data 卷」的产物 ——
+# 换机器/换卷即失效，属运行期产物，不入库。
+deploy/certs/
 # 兼容历史路径（早期方案把 .env 放在 deploy/ 根下）
 .env
 # env-up.sh 的当前环境记账文件，属机器本地状态
