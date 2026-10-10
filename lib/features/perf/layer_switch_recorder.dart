@@ -23,16 +23,20 @@
 ///   - `duration_ms` **独立测**，不是四段相加；四段各自独立，**任何一段都不得
 ///     由 `duration_ms` 减出**（[LayerSwitchTimer] 已按此实现并有单测锁定）。
 ///
-/// **本文件不做的三件事**（[140] 范围外，已登记缺口）：
+/// **本文件不做的两件事**（[140] 范围外，已登记缺口）：
 ///   1. **不上报** `layer_switch` 12 字段（组装 `LayerSwitchProps` 入队走
 ///      `features/track/`）—— 那还要接 `interaction_id` 透传、`network_type`
 ///      与 `mem_peak_mb` 平台通道；
-///   2. **不测缓存段**：pins 路径当前无本地缓存（`core/cache/pin_cache.dart`
-///      无调用方），故 `tCacheMs` 恒为 0（§17.2「未命中/无缓存则为 0」）；
-///   3. **不做四段恒等式校验**：`abs(四段和 - duration) ≤1ms` 是**埋点数据质量**
+///   2. **不做四段恒等式校验**：`abs(四段和 - duration) ≤1ms` 是**埋点数据质量**
 ///      校验（§17.2），而本采集的段与段之间存在真实间隙（provider 派发、
 ///      Riverpod 通知、帧调度），恒等式在此不成立也无意义；待上报任务在
 ///      管线侧执行。
+///
+/// **缓存段（[146] 起已接线）**：`pinsProvider` 在查本地 Pin 缓存前后调
+/// [LayerSwitchRecorder.beginCache] / [endCache]，故 `tCacheMs` 不再恒 0。
+/// ⚠ 缓存查找是内存 Map 命中，实测常在亚毫秒，整数 ms 口径下仍会读作 0 ——
+/// 故「本次是否整段命中缓存」另以 [LayerSwitchSample.cacheHit] 计数（见
+/// [cacheHitCount] / [cacheConsultedCount]），面板据此出数，不靠 ms 读数区分。
 library;
 
 import 'dart:collection';
@@ -69,6 +73,8 @@ class LayerSwitchSample {
   /// - [tNetMs]：`/map/pins` 往返；压测档位短路/缓存命中为 0；
   /// - [tAggMs]：Dart 侧聚合；
   /// - [tRenderMs]：Pin 首屏绘制；
+  /// - [cacheHit]：本次是否**整段命中**本地 Pin 缓存（即走过缓存查找且未发
+  ///   网络请求）；**null = 本次未查缓存**（压测档短路注入），不计入命中率；
   /// - [outcome]：收尾方式。
   const LayerSwitchSample({
     required this.durationMs,
@@ -76,6 +82,7 @@ class LayerSwitchSample {
     required this.tNetMs,
     required this.tAggMs,
     required this.tRenderMs,
+    required this.cacheHit,
     required this.outcome,
   });
 
@@ -93,6 +100,9 @@ class LayerSwitchSample {
 
   /// 渲染段耗时（毫秒）。
   final int tRenderMs;
+
+  /// 本次是否整段命中本地 Pin 缓存；null 表示本次未查缓存（压测档）。
+  final bool? cacheHit;
 
   /// 收尾方式。
   final LayerSwitchOutcome outcome;
@@ -149,6 +159,15 @@ class LayerSwitchRecorder {
     _aggMeasured = false;
     _renderScheduled = false;
   }
+
+  /// 进入缓存段（查本地 Pin 缓存）。无活跃会话时无操作。
+  ///
+  /// [146] 接线点：`pinsProvider` 在查缓存前后调用；未查缓存（压测档短路注入）
+  /// 时不调用，故该档的样本 [LayerSwitchSample.cacheHit] 记 null、不污染命中率。
+  void beginCache() => _timer?.beginCache();
+
+  /// 结束缓存段。无活跃会话时无操作。
+  void endCache() => _timer?.endCache();
 
   /// 进入网络段（`/map/pins` 往返）。无活跃会话时无操作。
   void beginNet() => _timer?.beginNet();
@@ -216,6 +235,19 @@ class LayerSwitchRecorder {
 
   /// failed 样本数（数据没回来，不计入 P95 分母）。
   int get failedCount => _countOf(LayerSwitchOutcome.failed);
+
+  /// 查过本地缓存的 success 会话数（命中率的分母；压测档不查缓存、不计入）。
+  ///
+  /// [146]：缓存查找是内存 Map 命中，整数 ms 下 `tCacheMs` 常读作 0，
+  /// 故「缓存是否真的在起作用」靠本计数与 [cacheHitCount] 出数，而非 ms 读数。
+  int get cacheConsultedCount =>
+      _success.where((s) => s.cacheHit != null).length;
+
+  /// 整段命中本地缓存的 success 会话数（[LayerSwitchSample.cacheHit] == true）。
+  ///
+  /// 「整段命中」= 走过缓存查找且未发网络请求；双选下一半命中一半未命中记作
+  /// 未命中（该次仍发了网络请求）。
+  int get cacheHitCount => _success.where((s) => s.cacheHit ?? false).length;
 
   /// 整段耗时的 P95（毫秒），**只统计 success 会话**。
   ///
@@ -291,6 +323,9 @@ class LayerSwitchRecorder {
           tNetMs: timer.tNetMs,
           tAggMs: timer.tAggMs,
           tRenderMs: timer.tRenderMs,
+          // 整段命中 = 查过缓存且没发网络请求；没查缓存（压测档）记 null，
+          // 与「查了但没命中」区分开，避免压测档把命中率拉成 0。
+          cacheHit: timer.cacheMeasured ? !timer.netMeasured : null,
           outcome: outcome,
         ),
       );

@@ -408,7 +408,9 @@ class _PerfPanelState extends ConsumerState<PerfPanel> {
           label: '切换 P95',
           value: hasData ? '${p95.toStringAsFixed(1)}ms' : '—',
         ),
-        // 「缓存」段当前恒为 0：pins 路径无本地缓存（缺口见 recorder 文件头）。
+        // 「缓存」段自 [146] 起已接线（pins 路径接了本地 Pin 缓存）。⚠ 缓存查找是
+        // 内存命中，整数 ms 下常读作 0；故「缓存是否在起作用」以 命中/查过 计数出数，
+        // 不靠 ms 读数区分。查过=0 说明本档未查缓存（压测档短路注入），记「—」。
         _statLine(
           '缓/网/聚/绘',
           hasData
@@ -417,6 +419,12 @@ class _PerfPanelState extends ConsumerState<PerfPanel> {
                   '${switches.aggP95Ms.toStringAsFixed(0)}/'
                   '${switches.renderP95Ms.toStringAsFixed(0)} ms'
               : '—',
+        ),
+        _statLine(
+          '缓存命中',
+          switches.cacheConsultedCount == 0
+              ? '—'
+              : '${switches.cacheHitCount}/${switches.cacheConsultedCount}',
         ),
         _statLine(
           '切换样本',

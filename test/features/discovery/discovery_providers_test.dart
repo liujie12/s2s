@@ -9,7 +9,10 @@ library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zhaoyazhao/core/cache/pin_cache.dart';
+import 'package:zhaoyazhao/core/cache/pin_cache_key.dart';
 import 'package:zhaoyazhao/features/discovery/discovery_providers.dart';
+import 'package:zhaoyazhao/features/discovery/map_dto.dart';
 import 'package:zhaoyazhao/features/discovery/map_repository.dart';
 
 import '../../support/api_envelope.dart';
@@ -65,10 +68,10 @@ void main() {
     });
   }
 
-  PinsQuery queryWith(List<String> postTypes) => PinsQuery(
+  PinsQuery queryWith(List<String> postTypes, {String radius = '5'}) => PinsQuery(
         leafCategoryIds: const [10101],
         postTypes: postTypes,
-        radius: '5',
+        radius: radius,
         gridId: '26701_6727',
         categoryVersion: '2026-08-31.1',
         lng: 120.1551,
@@ -124,6 +127,102 @@ void main() {
       expect(harness.server.received, isEmpty);
       expect(merged.pins, isEmpty);
       expect(merged.total, 0);
+    });
+  });
+
+  group('pinsProvider 本地缓存（[146]）', () {
+    /// 直接向缓存预置一条值，返回其键（便于断言 stale 后是否被清）。
+    String seedCache(PinsQuery q, String postType, int id) {
+      final key = buildPinCacheKey(
+        leafCategoryIds: q.leafCategoryIds,
+        postType: postType,
+        radius: q.radius,
+        gridId: q.gridId,
+        categoryVersion: q.categoryVersion,
+      );
+      container.read(pinCacheProvider).put(key, PinsCompactDto.fromJson(pinsPayload(id)));
+      return key;
+    }
+
+    test('命中本地缓存：不发请求，直接用缓存值', () async {
+      stubPinsByPostType();
+      final q = queryWith(const ['resource']);
+      seedCache(q, 'resource', 9);
+
+      final merged = await container.read(pinsProvider(q).future);
+
+      expect(harness.server.received, isEmpty);
+      expect(merged.pins.single.id, 9);
+    });
+
+    test('未命中：发请求并回写缓存；同键再取即命中', () async {
+      stubPinsByPostType();
+      final q = queryWith(const ['resource']);
+
+      await container.read(pinsProvider(q).future);
+      expect(harness.server.received, hasLength(1));
+
+      // 让 Provider 重跑：缓存已回写，应命中且不再发请求。
+      container.invalidate(pinsProvider(q));
+      final merged = await container.read(pinsProvider(q).future);
+
+      expect(harness.server.received, hasLength(1), reason: '第二次应整段命中缓存');
+      expect(merged.pins.single.id, 1);
+    });
+
+    test('五要素变化（半径档不同）→ 不同键，重新请求', () async {
+      stubPinsByPostType();
+
+      await container
+          .read(pinsProvider(queryWith(const ['resource'], radius: '5')).future);
+      await container
+          .read(pinsProvider(queryWith(const ['resource'], radius: '3')).future);
+
+      expect(harness.server.received, hasLength(2));
+    });
+
+    test('双选：一份命中一份未命中 —— 只补发未命中的那一次', () async {
+      stubPinsByPostType();
+      final q = queryWith(const ['resource', 'demand']);
+      seedCache(q, 'resource', 9);
+
+      final merged = await container.read(pinsProvider(q).future);
+
+      expect(harness.server.received, hasLength(1));
+      expect(
+        Uri.parse(harness.server.received.single.path)
+            .queryParameters['post_type'],
+        'demand',
+      );
+      expect(merged.pins.map((p) => p.id), containsAll(const [9, 2]));
+      expect(merged.total, 2);
+    });
+
+    test('category_version_stale：全清缓存且不回写本次结果（§16.4）', () async {
+      harness.stub('GET', '/api/v1/map/pins', (req) async {
+        return MockResponse(
+          body: ApiEnvelope.success(
+            data: {...pinsPayload(1), 'category_version_stale': true},
+          ),
+        );
+      });
+      final q = queryWith(const ['resource']);
+      // 放一条**别的键**的旧值：本次是未命中（走了网络），stale 时必须把它一并清掉。
+      final oldKey = seedCache(queryWith(const ['resource'], radius: '3'), 'resource', 7);
+
+      final merged = await container.read(pinsProvider(q).future);
+      final cache = container.read(pinCacheProvider);
+
+      expect(merged.categoryVersionStale, isTrue);
+      expect(cache.get(oldKey), isNull, reason: 'stale 触发全清');
+      final ownKey = buildPinCacheKey(
+        leafCategoryIds: q.leafCategoryIds,
+        postType: 'resource',
+        radius: q.radius,
+        gridId: q.gridId,
+        categoryVersion: q.categoryVersion,
+      );
+      expect(cache.get(ownKey), isNull, reason: '本次结果不得回写');
     });
   });
 

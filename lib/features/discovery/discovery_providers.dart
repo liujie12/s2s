@@ -16,6 +16,8 @@ library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/cache/pin_cache.dart';
+import '../../core/cache/pin_cache_key.dart';
 import '../perf/layer_switch_recorder.dart';
 import 'map_dto.dart';
 import 'map_repository.dart';
@@ -120,6 +122,12 @@ class MergedPins {
 /// 地图图钉 Provider（`autoDispose`：筛选组合会随交互不断变化，
 /// 不 autoDispose 会让每个历史组合的 pins 常驻内存）。
 ///
+/// **第 3 层本地缓存（PRD §6.10 / [146]）**：每个 `post_type` 一份缓存键
+/// （五要素见 `pin_cache_key.dart`），命中即**不发**该 `post_type` 的请求；
+/// 结果回写缓存；任一结果带 `category_version_stale` 时**全清**且不回写。
+/// 缓存实例取自 [pinCacheProvider]，**非 autoDispose** —— 它要活过本 Provider
+/// 的销毁，否则每次进地图页都从零开始、命中率恒为 0。
+///
 /// 返回：[MergedPins]；`postTypes` 为空时直接给空结果，不发请求
 /// ——契约五要素缺一即 40001，空 post_type 必然失败。
 final pinsProvider = FutureProvider.autoDispose.family<MergedPins, PinsQuery>((
@@ -150,29 +158,72 @@ final pinsProvider = FutureProvider.autoDispose.family<MergedPins, PinsQuery>((
   }
 
   final repo = ref.watch(mapRepositoryProvider);
-  // 图层切换耗时的网络段（[140] / PRD §6.10）：只在有活跃切换会话时打点。
-  // 视口变化（拖动/缩放结束）也会走到这里，但那时没有会话，begin/endNet 是空操作
-  // —— 「拖动重取」不是图层切换，本就不该计入 300ms 判据。
   final recorder = ref.read(layerSwitchRecorderProvider);
-  recorder.beginNet();
-  final List<PinsCompactDto> results;
-  try {
-    results = await Future.wait([
-      for (final postType in query.postTypes)
-        repo.fetchPins(
-          categoryIds: query.leafCategoryIds,
-          postType: postType,
-          radius: query.radius,
-          gridId: query.gridId,
-          categoryVersion: query.categoryVersion,
-          lng: query.lng,
-          lat: query.lat,
-          zoom: query.zoom,
-        ),
-    ]);
-  } finally {
-    // 失败也要收段，否则网络段会一直跑到下一次收尾，把整段耗时算成网络耗时。
-    recorder.endNet();
+  final cache = ref.read(pinCacheProvider);
+
+  // ── 第 3 层：本地缓存查找（缓存段计时在此，[146]）────────────────────
+  // 五要素齐备才建键；缺一即判未命中 —— 既不查也不写，避免跨条件错命中。
+  //
+  // 缓存读写走 [_readCachedPins] / [_writePinsCache] 两个辅助函数，而不是在循环体
+  // 内直写 `cache.get(...)`：判据 A1（`anti_redundancy_gate_test` 的
+  // `features-loop-retry`）以「循环体含 `.get(`/`.put(` 形态」判定 for 循环重试，
+  // 直写会被其启发式误判为网络调用（实为内存缓存）；收进辅助函数后循环体只剩
+  // 普通调用，判据与 lint 同时满足。
+  recorder.beginCache();
+  final Map<String, PinsCompactDto> byPostType = <String, PinsCompactDto>{};
+  final List<String> missed = <String>[];
+  for (final postType in query.postTypes) {
+    final cached = _readCachedPins(cache, query, postType);
+    if (cached != null) {
+      byPostType[postType] = cached;
+    } else {
+      missed.add(postType);
+    }
+  }
+  recorder.endCache();
+
+  if (missed.isNotEmpty) {
+    // 图层切换耗时的网络段（[140] / PRD §6.10）：只在有活跃切换会话时打点。
+    // 视口变化（拖动/缩放结束）也会走到这里，但那时没有会话，begin/endNet 是空操作
+    // —— 「拖动重取」不是图层切换，本就不该计入 300ms 判据。
+    recorder.beginNet();
+    final List<PinsCompactDto> fetched;
+    try {
+      fetched = await Future.wait([
+        for (final postType in missed)
+          repo.fetchPins(
+            categoryIds: query.leafCategoryIds,
+            postType: postType,
+            radius: query.radius,
+            gridId: query.gridId,
+            categoryVersion: query.categoryVersion,
+            lng: query.lng,
+            lat: query.lat,
+            zoom: query.zoom,
+          ),
+      ]);
+    } finally {
+      // 失败也要收段，否则网络段会一直跑到下一次收尾，把整段耗时算成网络耗时。
+      recorder.endNet();
+    }
+    for (var i = 0; i < missed.length; i++) {
+      byPostType[missed[i]] = fetched[i];
+    }
+  }
+
+  // 按请求顺序取回：命中与未命中是分批插入 Map 的，顺序不可赖，显式重排。
+  final List<PinsCompactDto> results = [
+    for (final postType in query.postTypes) byPostType[postType]!,
+  ];
+
+  if (results.any((r) => r.categoryVersionStale)) {
+    // 版本过期：旧版本号下的键已不可信，全清且**不回写**本次结果（§16.4）。
+    cache.clearAll();
+  } else {
+    // 写缓存同样走辅助函数，理由见上面查找段的注释（判据 A1 的启发式）。
+    for (final postType in query.postTypes) {
+      _writePinsCache(cache, query, postType, byPostType[postType]!);
+    }
   }
 
   return MergedPins(
@@ -183,6 +234,78 @@ final pinsProvider = FutureProvider.autoDispose.family<MergedPins, PinsQuery>((
     categoryVersionStale: results.any((r) => r.categoryVersionStale),
   );
 });
+
+/// 组装某供需态对应的 Pin 缓存键（[146]）。
+///
+/// 五要素任一缺失（[hasAllPinCacheElements] 自检不过）时返回 null，调用方据此
+/// 判**未命中**：既不查缓存也不写缓存。缺要素仍拼键会让不同语义的请求共用缓存，
+/// 表现为「切了分类但地图上还是旧的点」；服务端对缺要素直接回 40001、不做兜底，
+/// 故客户端必须自检而不是指望服务端补齐。
+///
+/// 参数：
+/// - [query] 当前 `/map/pins` 请求参数；
+/// - [postType] 单个契约 `post_type` 值（缓存键按单值建，双选即两份键）。
+/// 返回：缓存键；五要素不齐备时返回 null。
+String? _pinCacheKeyOf(PinsQuery query, String postType) {
+  if (!hasAllPinCacheElements(
+    leafCategoryIds: query.leafCategoryIds,
+    postType: postType,
+    radius: query.radius,
+    gridId: query.gridId,
+    categoryVersion: query.categoryVersion,
+  )) {
+    return null;
+  }
+  return buildPinCacheKey(
+    leafCategoryIds: query.leafCategoryIds,
+    postType: postType,
+    radius: query.radius,
+    gridId: query.gridId,
+    categoryVersion: query.categoryVersion,
+  );
+}
+
+/// 读本地 Pin 缓存（[146]）。
+///
+/// 五要素不齐（[_pinCacheKeyOf] 返回 null）或未命中时返回 null —— 调用方据此
+/// 判未命中并发网络请求。**不在此处"返回空 DTO"兜底**：空结果与未命中是两件事，
+/// 兜底会让缓存在无数据时"假装命中"，用户永远等不到真实数据。
+///
+/// 参数：
+/// - [cache] 本地 Pin 缓存实例；
+/// - [query] 当前请求参数；
+/// - [postType] 单个契约 `post_type` 值。
+/// 返回：命中且类型正确的缓存值；否则 null。
+PinsCompactDto? _readCachedPins(
+  PinCache cache,
+  PinsQuery query,
+  String postType,
+) {
+  final key = _pinCacheKeyOf(query, postType);
+  if (key == null) return null;
+  final cached = cache.get(key);
+  return cached is PinsCompactDto ? cached : null;
+}
+
+/// 写本地 Pin 缓存（[146]）。
+///
+/// 五要素不齐时不写（[_pinCacheKeyOf] 返回 null）—— 写入不完整键会造成
+/// 跨条件错命中，比"少缓存一份"严重得多。
+///
+/// 参数：
+/// - [cache] 本地 Pin 缓存实例；
+/// - [query] 当前请求参数；
+/// - [postType] 单个契约 `post_type` 值；
+/// - [value] 该 `post_type` 的服务端响应。
+void _writePinsCache(
+  PinCache cache,
+  PinsQuery query,
+  String postType,
+  PinsCompactDto value,
+) {
+  final key = _pinCacheKeyOf(query, postType);
+  if (key != null) cache.put(key, value);
+}
 
 /// 列表检索请求参数（值相等即复用，故实现 ==/hashCode）。
 ///

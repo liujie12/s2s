@@ -36,8 +36,9 @@ void main() {
     expect(recorder.netP95Ms, greaterThanOrEqualTo(10));
     expect(recorder.aggP95Ms, greaterThanOrEqualTo(10));
     expect(recorder.renderP95Ms, greaterThanOrEqualTo(10));
-    // 缓存段无实现，恒为 0（§17.2「未命中为 0」）。
+    // 本会话未查缓存（只走了网络），故缓存段仍记 0（§17.2「未开始为 0」）。
     expect(recorder.cacheP95Ms, 0);
+    expect(recorder.cacheConsultedCount, 0);
     // 整段独立测：不小于任一单段。
     expect(recorder.p95Ms, greaterThanOrEqualTo(recorder.netP95Ms));
   });
@@ -45,6 +46,8 @@ void main() {
   test('无活跃会话时所有打点均为空操作（拖动重取不得被计入）', () {
     final recorder = LayerSwitchRecorder();
 
+    recorder.beginCache();
+    recorder.endCache();
     recorder.beginNet();
     recorder.endNet();
     recorder.beginAgg();
@@ -54,6 +57,71 @@ void main() {
 
     expect(recorder.sampleCount, 0);
     expect(recorder.hasActiveSession, isFalse);
+  });
+
+  group('缓存段与命中计数（[146]）', () {
+    test('整段命中：缓存段有读数、命中计数 +1、网络段为 0', () async {
+      final recorder = LayerSwitchRecorder();
+      recorder.start();
+      final int id = recorder.activeSessionId!;
+
+      recorder.beginCache();
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      recorder.endCache();
+      // 命中即不发网络请求：不调 beginNet/endNet。
+
+      recorder.finish(sessionId: id, outcome: LayerSwitchOutcome.success);
+
+      expect(recorder.cacheP95Ms, greaterThanOrEqualTo(10));
+      expect(recorder.netP95Ms, 0);
+      expect(recorder.cacheConsultedCount, 1);
+      expect(recorder.cacheHitCount, 1);
+    });
+
+    test('查了缓存但未命中：仍走网络，计未命中（不进命中数）', () {
+      final recorder = LayerSwitchRecorder();
+      recorder.start();
+      final int id = recorder.activeSessionId!;
+
+      recorder.beginCache();
+      recorder.endCache();
+      recorder.beginNet();
+      recorder.endNet();
+
+      recorder.finish(sessionId: id, outcome: LayerSwitchOutcome.success);
+
+      expect(recorder.cacheConsultedCount, 1);
+      expect(recorder.cacheHitCount, 0);
+    });
+
+    test('未查缓存（压测档短路注入）：不计入命中率分母', () {
+      final recorder = LayerSwitchRecorder();
+      recorder.start();
+      recorder.finish(
+        sessionId: recorder.activeSessionId!,
+        outcome: LayerSwitchOutcome.success,
+      );
+
+      expect(recorder.cacheConsultedCount, 0);
+      expect(recorder.cacheHitCount, 0);
+    });
+
+    test('cancelled / failed 不进命中率分母（与轴② 同一口径）', () {
+      final recorder = LayerSwitchRecorder();
+
+      // failed：查过缓存且走了网络，但不进分母。
+      recorder.start();
+      final int failedId = recorder.activeSessionId!;
+      recorder.beginCache();
+      recorder.endCache();
+      recorder.beginNet();
+      recorder.endNet();
+      recorder.finish(sessionId: failedId, outcome: LayerSwitchOutcome.failed);
+
+      expect(recorder.failedCount, 1);
+      expect(recorder.cacheConsultedCount, 0);
+      expect(recorder.cacheHitCount, 0);
+    });
   });
 
   test('聚合段一个会话只记第一次（拖动中每帧重算不得累加）', () async {

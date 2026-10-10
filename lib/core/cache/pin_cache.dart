@@ -6,9 +6,19 @@
 /// 本就不需要跨进程存活，且 §10.2.1 明确 Pin 缓存**不放 `shared_preferences`**
 /// （那是同步全量加载，会拖慢启动）。
 ///
+/// **TTL 分档口径（2026-09-02 定案，禁回退为按类目层级分档）**：Pin 集合 TTL 是
+/// 单一档 [NfrCache.pinSetTtlSec]（60s），**不按「大类/二级/三级」分 1h·15min·5min**。
+/// 原按层级分档的写法（PRD §6.10 原表）已推翻：五要素缓存键中没有任何一项随
+/// 「帖子集合变化」而变（版本号只随运营改分类树变），按层级分档会让新发布最长
+/// 1h 别人看不见、已下架 Pin 最长 1h 仍在图上，与 §9.10.3「风险分≥60 自动下架 +
+/// 4h 工单 SLA」的治理承诺直接冲突。1h/15min/5min 三档保留给**静态数据**
+/// （见 [NfrCache.staticL1TtlSec] 等，非本类）。
+///
 /// 收到服务端 `category_version_stale: true` 后调用 [clearAll] 全清——旧版本号
 /// 下的键已不可信（前端设计 §16.4）。
 library;
+
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../nfr_constants.dart';
 
@@ -70,3 +80,11 @@ class PinCache {
   /// 全清缓存（收到 `category_version_stale` 后调用）。
   void clearAll() => _entries.clear();
 }
+
+/// Pin 集合缓存的全局单例（[146]：此前 `PinCache` 建成但**无调用方**，
+/// 故缓存段恒 0、命中类会话不存在）。
+///
+/// **不能 autoDispose**：缓存要在「地图页切走 → 重建」之间存活，随监听者销毁
+/// 等于每次进页面都从零开始，命中率恒为 0 —— 正是本条要消除的状态。
+/// 不落盘的取舍见文件头（§10.2.1 禁 `shared_preferences`）。
+final pinCacheProvider = Provider<PinCache>((ref) => PinCache());

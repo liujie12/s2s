@@ -88,6 +88,18 @@ class LayerSwitchTimer {
   /// 第二段：网络往返耗时（毫秒）；未开始（如缓存命中）记 0。
   int get tNetMs => _netStarted ? _net.elapsedMilliseconds : 0;
 
+  /// 本次会话是否量过缓存段（`beginCache` 被调用过）。
+  ///
+  /// 供 [`LayerSwitchRecorder`] 判定「本次切换是否走过本地缓存查找」——
+  /// 压测档（短路注入）不查缓存，故不与真实档混算缓存命中率（[146]）。
+  bool get cacheMeasured => _cacheStarted;
+
+  /// 本次会话是否量过网络段（`beginNet` 被调用过）。
+  ///
+  /// 全程命中缓存时不走网络，本值为 false —— 它与 [cacheMeasured] 合起来
+  /// 即「整段命中」的判据（命中过缓存且没发网络请求）。
+  bool get netMeasured => _netStarted;
+
   /// 第三段：聚合耗时（毫秒）；未开始（服务端预聚合）记 0。
   int get tAggMs => _aggStarted ? _agg.elapsedMilliseconds : 0;
 
