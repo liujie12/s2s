@@ -109,8 +109,35 @@ fi
 MYSQL_SSL_MODE="$(grep -oP '^MYSQL_SSL_MODE=\K.*' "${ENV_FILE}" 2>/dev/null || true)"
 TRUSTSTORE_PASSWORD="$(grep -oP '^MYSQL_TLS_TRUSTSTORE_PASSWORD=\K.*' "${ENV_FILE}" 2>/dev/null || true)"
 
-: "${MYSQL_SSL_MODE:?[ERROR] ${ENV_FILE} 中缺少 MYSQL_SSL_MODE（本仓库期望 VERIFY_CA）}"
-: "${TRUSTSTORE_PASSWORD:?[ERROR] ${ENV_FILE} 中缺少 MYSQL_TLS_TRUSTSTORE_PASSWORD}"
+# ---------------------------------------------------------------------------
+# 函数：require_env_var
+# 功能：断言某个 env 变量已从 .env 文件读到非空值；缺失时【不只报「缺少」】——
+#       实测 2026-10-10 踩过「.env 末行无换行符 ⇒ `echo >>` 把新变量并到上一行」
+#       的坑（表现为 `SLS_LOGSTORE=MYSQL_SSL_MODE=VERIFY_CA` 一行），此时变量名
+#       确实不存在，但光看「缺少」二字无从定位。故把该变量名在文件中的实际
+#       出现情况原样打印，让「被并到上一行」这种形态自证。
+# 参数：$1 — 变量名（用于报错与检索）；$2 — 已读到的值
+# 返回：值非空返回 0；为空则打印诊断并 exit 1
+# ---------------------------------------------------------------------------
+require_env_var() {
+  local name="$1"
+  local value="$2"
+
+  if [[ -n "${value}" ]]; then
+    return 0
+  fi
+
+  log "[ERROR] ${ENV_FILE} 中缺少 ${name}"
+  log "        该变量名在文件中的实际出现情况（行号:整行）："
+  grep -n "${name}" "${ENV_FILE}" 2>/dev/null | sed 's/^/          /' || true
+  log "        ⚠ 若某行形如「其它变量名=${name}=值」，说明文件末行没有换行符，"
+  log "          `echo >>` 追加时被并到了上一行 —— 拆成两行即可，"
+  log "          并顺带复核那个被并进去的变量是否被写坏。"
+  exit 1
+}
+
+require_env_var "MYSQL_SSL_MODE" "${MYSQL_SSL_MODE}"
+require_env_var "MYSQL_TLS_TRUSTSTORE_PASSWORD" "${TRUSTSTORE_PASSWORD}"
 
 if [[ "${MYSQL_SSL_MODE}" != "VERIFY_CA" ]]; then
   log "[WARN] MYSQL_SSL_MODE=${MYSQL_SSL_MODE}（非 VERIFY_CA）——信任库仍会生成，但当前连接不校验证书链"
@@ -180,23 +207,42 @@ rm -f "${P12_FILE}"
 
 # ---------------------------------------------------------------------------
 # 函数：run_keytool
-# 功能：用探测到的 keytool 执行一次命令。host 模式直接调用；容器模式把
-#       ${CERT_DIR} 挂到 /certs 并以 root 运行 —— 否则 app 镜像的非 root
-#       USER（s2s）无法往宿主目录写文件
-# 参数：$* — 传给 keytool 的参数（容器模式下路径用 /certs/...）
+# 功能：用探测到的 keytool 执行一次命令。
+#       ⚠ 路径口径（2026-10-10 实测踩坑后修正）：调用方一律传【宿主】路径；
+#       容器模式内部再把 ${CERT_DIR} 前缀翻译成容器内挂载点 /certs。
+#       原实现把 /certs/... 写死在调用处，宿主机恰好装了 JDK 时（KEYTOOL_MODE=host）
+#       会把容器路径喂给宿主 keytool，报
+#       `FileNotFoundException: /certs/ca.pem` —— 只在「宿主有 keytool」的机器上暴露。
+#       容器模式以 root（--user 0）运行：否则 app 镜像的非 root USER（s2s）
+#       无法往宿主目录写文件。
+# 参数：$* — 传给 keytool 的参数（宿主路径形式）
 # 返回：keytool 的退出码
 # ---------------------------------------------------------------------------
+CONTAINER_CERT_DIR="/certs"
+
 run_keytool() {
   case "${KEYTOOL_MODE}" in
-    host)          keytool "$@" ;;
-    app-image)     docker run --rm --user 0 -v "${CERT_DIR}:/certs" --entrypoint keytool "${APP_IMAGE}" "$@" ;;
-    builder-image) docker run --rm --user 0 -v "${CERT_DIR}:/certs" --entrypoint keytool "${KEYTOOL_BUILDER_IMAGE}" "$@" ;;
+    host)
+      keytool "$@"
+      ;;
+    app-image|builder-image)
+      local image="${APP_IMAGE}"
+      [[ "${KEYTOOL_MODE}" == "builder-image" ]] && image="${KEYTOOL_BUILDER_IMAGE}"
+      # 逐参数把宿主路径前缀替换为容器内挂载点
+      local translated=()
+      local arg
+      for arg in "$@"; do
+        translated+=("${arg//${CERT_DIR}/${CONTAINER_CERT_DIR}}")
+      done
+      docker run --rm --user 0 -v "${CERT_DIR}:${CONTAINER_CERT_DIR}" \
+        --entrypoint keytool "${image}" "${translated[@]}"
+      ;;
   esac
 }
 
 run_keytool -importcert -noprompt -alias mysql-ca \
-  -file /certs/ca.pem \
-  -keystore /certs/mysql-ca.p12 \
+  -file "${CA_FILE}" \
+  -keystore "${P12_FILE}" \
   -storetype PKCS12 \
   -storepass "${TRUSTSTORE_PASSWORD}"
 
@@ -209,7 +255,7 @@ if [[ ! -s "${P12_FILE}" ]]; then
 fi
 
 # 期望：含 1 个 trustedCertEntry（条目类型若是 PrivateKeyEntry 说明拿错了文件）
-run_keytool -list -keystore /certs/mysql-ca.p12 -storetype PKCS12 \
+run_keytool -list -keystore "${P12_FILE}" -storetype PKCS12 \
   -storepass "${TRUSTSTORE_PASSWORD}" | sed 's/^/        /'
 
 # 644 而非 600：app 容器以非 root 读取；内含只有公开 CA 证书
