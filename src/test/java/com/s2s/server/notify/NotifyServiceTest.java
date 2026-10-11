@@ -2,10 +2,12 @@ package com.s2s.server.notify;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -195,6 +197,39 @@ class NotifyServiceTest {
 
         assertThat(response.unreadCount()).isEqualTo(7L);
         verify(mapper).countUnread(USER_ID);
+    }
+
+    /**
+     * 标记已读（全部）：{@code ids} 为 {@code null} → {@code markAllRead}，返回置位行数。
+     *
+     * @return void；断言失败即「全部已读」走错路径
+     */
+    @Test
+    @DisplayName("标记已读：ids 为 null → 全部已读")
+    void markReadAll() {
+        when(mapper.markAllRead(eq(USER_ID), any())).thenReturn(3);
+
+        assertThat(service.markRead(USER_ID, null).updated()).isEqualTo(3);
+        verify(mapper).markAllRead(eq(USER_ID), any());
+        verify(mapper, never()).markReadByIds(any(), any(), any());
+    }
+
+    /**
+     * 标记已读（按 id）：{@code ids} 非空 → {@code markReadByIds}；空列表亦按「全部已读」处理
+     * （避免前端漏传 ids 时静默标记 0 条）。
+     *
+     * @return void；断言失败即空列表被当成「标记 0 条」
+     */
+    @Test
+    @DisplayName("标记已读：ids 非空按 id；空列表视同全部")
+    void markReadByIds() {
+        when(mapper.markReadByIds(eq(USER_ID), any(), any())).thenReturn(2);
+        assertThat(service.markRead(USER_ID, List.of(1L, 2L)).updated()).isEqualTo(2);
+        verify(mapper).markReadByIds(eq(USER_ID), eq(List.of(1L, 2L)), any());
+
+        when(mapper.markAllRead(eq(USER_ID), any())).thenReturn(0);
+        service.markRead(USER_ID, List.of());
+        verify(mapper).markAllRead(eq(USER_ID), any());
     }
 
     /**

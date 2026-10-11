@@ -1,5 +1,6 @@
 package com.s2s.server.notify.mapper;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import org.apache.ibatis.annotations.Mapper;
@@ -8,8 +9,8 @@ import org.apache.ibatis.annotations.Param;
 /**
  * 通知域读 Mapper（[129]；DDL {@code V1__init_schema.sql} 的 {@code notification} 表）。
  *
- * <p>Batch1 只有查询（详设 §5.6：标记已读与推送偏好为 Batch2），故本 Mapper 只读不写，
- * 三个查询各自出必要的列，绝不 {@code SELECT *}。</p>
+ * <p>Batch1 只读；[B2-11] 起追加「标记已读」两条写语句（{@code POST /notifications/read}，
+ * 推送偏好仍为 Batch2 占位）。查询各自出必要的列，绝不 {@code SELECT *}。</p>
  *
  * <p><b>软删口径</b>：所有查询一律带 {@code deleted_at IS NULL}——软删行对用户不存在，
  * 该条件写在 SQL 里而非 Java 过滤（否则分页 {@code total} 会把已删行算进去）。</p>
@@ -50,4 +51,24 @@ public interface NotificationMapper {
      * @return long 未读（{@code read_at IS NULL} 且未软删）条数
      */
     long countUnread(@Param("userId") Long userId);
+
+    /**
+     * 标记该用户「全部未读」为已读（PRD §8.3.3「全部已读」按钮）。
+     *
+     * @param userId 接收者 user_id
+     * @param readAt 已读时刻（由 service 传入，口径统一可测）
+     * @return int 实际置位行数（幂等：无未读行时为 0）
+     */
+    int markAllRead(@Param("userId") Long userId, @Param("readAt") LocalDateTime readAt);
+
+    /**
+     * 按 id 批量标记已读（限定归属当前用户，防越权标记他人通知）。
+     *
+     * @param userId 接收者 user_id
+     * @param ids    通知 ID 列表（非空，调用方保证）
+     * @param readAt 已读时刻
+     * @return int 实际置位行数
+     */
+    int markReadByIds(@Param("userId") Long userId, @Param("ids") List<Long> ids,
+            @Param("readAt") LocalDateTime readAt);
 }

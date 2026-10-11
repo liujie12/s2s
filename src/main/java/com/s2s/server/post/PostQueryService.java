@@ -19,14 +19,15 @@ import com.s2s.server.post.entity.PostMediaEntity;
 import com.s2s.server.post.mapper.PostMediaMapper;
 import com.s2s.server.post.mapper.PostQueryMapper;
 import java.math.BigDecimal;
-import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Service;
+
+import static com.s2s.server.common.jdbc.JdbcRowValues.toInstant;
+import static com.s2s.server.common.jdbc.JdbcRowValues.toInteger;
+import static com.s2s.server.common.jdbc.JdbcRowValues.toLong;
 
 /**
  * post 域读服务（[127]；详设 §5.3.3 状态机段 + openapi {@code GET /posts/{id}}、
@@ -313,33 +314,4 @@ public class PostQueryService {
         }
     }
 
-    /**
-     * 把 JDBC 取回的数值列统一转 {@link Long}。
-     *
-     * @param value 列值（{@code Long}/{@code Integer}/其他 {@code Number} 或 null）
-     * @return {@link Long}；非数值或 null 时返回 {@code null}
-     */
-    private Long toLong(Object value) {
-        return value instanceof Number number ? number.longValue() : null;
-    }
-
-    /**
-     * 把 JDBC 取回的数值列统一转 {@link Integer}。
-     *
-     * @param value 列值（{@code Integer}/{@code Long} 或 null）
-     * @return {@link Integer}；非数值或 null 时返回 {@code null}
-     */
-    private Integer toInteger(Object value) {
-        return value instanceof Number number ? number.intValue() : null;
-    }
-
-    /**
-     * 把 JDBC 取回的时间列转 UTC {@link Instant}（与 [125] 出参口径一致）。
-     *
-     * @param value 列值（{@code LocalDateTime} 或 null）
-     * @return {@link Instant}；null 时返回 {@code null}
-     */
-    private Instant toInstant(Object value) {
-        return value instanceof LocalDateTime dateTime ? dateTime.toInstant(ZoneOffset.UTC) : null;
-    }
 }

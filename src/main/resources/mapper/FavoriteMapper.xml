@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.s2s.server.post.mapper.FavoriteMapper">
+
+    <!-- 帖子存在性（收藏前置校验）。只查主键，不 JOIN。 -->
+    <select id="countPostById" resultType="int">
+        SELECT COUNT(*)
+        FROM post
+        WHERE id = #{postId}
+    </select>
+
+    <!--
+      收藏（幂等写）。ON DUPLICATE KEY UPDATE 命中唯一键 uk_user_post(user_id, post_id)：
+        新建 → 1 行；已软删 → 复活 deleted_at=NULL；已在收藏态 → 0 行（值未变）。
+      不写 create_at / 不显式给 deleted_at（列有 DEFAULT CURRENT_TIMESTAMP / NULL）。
+    -->
+    <insert id="upsertFavorite">
+        INSERT INTO favorite (user_id, post_id)
+        VALUES (#{userId}, #{postId})
+        ON DUPLICATE KEY UPDATE deleted_at = NULL
+    </insert>
+
+    <!--
+      取消收藏（软删）。deleted_at IS NULL 条件：重复取消不再刷新时间戳（幂等）。
+      走索引 idx_user_deleted(user_id, deleted_at)。
+    -->
+    <update id="softDeleteFavorite">
+        UPDATE favorite
+        SET deleted_at = #{deletedAt}
+        WHERE user_id = #{userId}
+          AND post_id = #{postId}
+          AND deleted_at IS NULL
+    </update>
+
+    <!--
+      总数（与 selectPage 同筛选条件）。JOIN post 仅为按供需态筛选——JOIN 用主键，
+      代价可忽略；不加 p.deleted_at 条件（post 无软删列，下架帖仍在库里可被收藏）。
+    -->
+    <select id="countByUser" resultType="long">
+        SELECT COUNT(*)
+        FROM favorite f
+        JOIN post p ON f.post_id = p.id
+        WHERE f.user_id = #{userId}
+          AND f.deleted_at IS NULL
+        <if test="type != null">
+          AND p.type = #{type}
+        </if>
+    </select>
+
+    <!--
+      分页（收藏时间倒序，同秒按 f.id 倒序稳定）。
+      索引：idx_user_deleted(user_id, deleted_at) 命中 user_id 前缀 + deleted_at IS NULL，
+      排序按 f.created_at 需 filesort —— 单用户收藏量级为百级，可接受，不单开索引。
+      列集合：只出卡片所需列，禁 SELECT *。status_reason 供 Java 侧 PostStatus.toApi 派生对外状态。
+    -->
+    <select id="selectPage" resultType="map">
+        SELECT f.post_id,
+               p.type,
+               p.leaf_category_id,
+               p.l2_category_id,
+               p.title,
+               p.price,
+               p.price_unit,
+               p.completeness_level,
+               p.status,
+               p.status_reason,
+               p.created_at,
+               f.created_at AS favorite_at
+        FROM favorite f
+        JOIN post p ON f.post_id = p.id
+        WHERE f.user_id = #{userId}
+          AND f.deleted_at IS NULL
+        <if test="type != null">
+          AND p.type = #{type}
+        </if>
+        ORDER BY f.created_at DESC, f.id DESC
+        LIMIT #{offset}, #{limit}
+    </select>
+
+</mapper>

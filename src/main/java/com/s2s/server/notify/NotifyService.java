@@ -5,21 +5,23 @@ import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
 import com.s2s.server.notify.dto.NotificationItem;
 import com.s2s.server.notify.dto.NotificationTarget;
+import com.s2s.server.notify.dto.NotificationReadResult;
 import com.s2s.server.notify.dto.NotificationsResponse;
 import com.s2s.server.notify.mapper.NotificationMapper;
-import java.time.Instant;
 import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Service;
 
+import static com.s2s.server.common.jdbc.JdbcRowValues.toInstant;
+import static com.s2s.server.common.jdbc.JdbcRowValues.toLong;
+
 /**
  * 通知域读服务（[129]；详设 §5.6；openapi {@code GET /notifications}）。
  *
- * <p>Batch1 <b>只有查询</b>：标记已读（{@code POST /notifications/read}）与推送偏好为 Batch2
- * 契约占位，本域不落任何写路径。</p>
+ * <p>Batch1 只有查询；[B2-11] 起追加「标记已读」（{@code POST /notifications/read}）；
+ * 推送偏好（{@code PATCH /notifications/settings}）仍为 Batch2 占位。</p>
  *
  * <p>契约到库内的三处口径（本类完成，不在 Mapper 或 Controller 里写第二次）：
  * <ol>
@@ -134,23 +136,21 @@ public class NotifyService {
     }
 
     /**
-     * 把 JDBC 取回的数值列统一转 {@link Long}。
+     * 标记通知已读（全部或按 id）。
      *
-     * @param value 列值（{@code Number} 或 null）
-     * @return {@link Long}；非数值或 null 时返回 {@code null}
-     */
-    private Long toLong(Object value) {
-        return value instanceof Number number ? number.longValue() : null;
-    }
-
-    /**
-     * 把 JDBC 取回的时间列转 UTC {@link Instant}（口径同 {@code PostQueryService}：入库
-     * {@code LocalDateTime}、出参 UTC {@code Instant}）。
+     * <p>{@code ids} 缺省或为空 = 标记该用户「全部未读」（PRD §8.3.3）；否则只标记所列 id，
+     * 且 SQL 以 {@code user_id} 限定归属，防越权标记他人通知。{@code read_at IS NULL} 条件
+     * 使重复标记幂等。</p>
      *
-     * @param value 列值（{@code LocalDateTime} 或 null）
-     * @return {@link Instant}；null 时返回 {@code null}
+     * @param userId 当前登录用户 ID（调用方保证非 null）
+     * @param ids    待标记的通知 ID；{@code null} 或空表示「全部未读」
+     * @return {@link NotificationReadResult}
      */
-    private Instant toInstant(Object value) {
-        return value instanceof LocalDateTime dateTime ? dateTime.toInstant(ZoneOffset.UTC) : null;
+    public NotificationReadResult markRead(Long userId, List<Long> ids) {
+        LocalDateTime readAt = LocalDateTime.now();
+        int updated = ids == null || ids.isEmpty()
+                ? notificationMapper.markAllRead(userId, readAt)
+                : notificationMapper.markReadByIds(userId, ids, readAt);
+        return new NotificationReadResult(updated);
     }
 }

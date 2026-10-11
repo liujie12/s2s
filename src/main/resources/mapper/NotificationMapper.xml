@@ -70,4 +70,30 @@
           AND n.deleted_at IS NULL
     </select>
 
+    <!--
+      标记全部未读为已读（POST /notifications/read，ids 缺省/空）。read_at IS NULL 条件
+      使重复标记幂等（不刷新已读时间戳）。走 idx_user_type_deleted_created 的 user_id 前缀。
+    -->
+    <update id="markAllRead">
+        UPDATE notification
+        SET read_at = #{readAt}
+        WHERE user_id = #{userId}
+          AND read_at IS NULL
+          AND deleted_at IS NULL
+    </update>
+
+    <!--
+      按 id 批量标记已读（限定 user_id：防越权标记他人通知）。user_id 与 id 双条件，
+      命中主键/索引；read_at IS NULL 保证幂等。
+    -->
+    <update id="markReadByIds">
+        UPDATE notification
+        SET read_at = #{readAt}
+        WHERE user_id = #{userId}
+          AND read_at IS NULL
+          AND deleted_at IS NULL
+          AND id IN
+          <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </update>
+
 </mapper>

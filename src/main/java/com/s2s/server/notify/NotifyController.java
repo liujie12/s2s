@@ -3,14 +3,19 @@ package com.s2s.server.notify;
 import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
 import com.s2s.server.common.web.AuthContext;
+import com.s2s.server.notify.dto.NotificationReadRequest;
+import com.s2s.server.notify.dto.NotificationReadResult;
 import com.s2s.server.notify.dto.NotificationsResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 通知域控制器（[129]；详设 §5.6；openapi {@code GET /notifications}）。
+ * 通知域控制器（[129]/[B2-11]；详设 §5.6；openapi {@code GET /notifications}、
+ * {@code POST /notifications/read}）。
  *
  * <p><b>强制登录态</b>：通知是「发给谁」的强归属数据，未登录 → {@code 40101}
  * （照 contact / track 域的 {@code requireUserId} 写法）。用户标识只取登录态，
@@ -54,6 +59,22 @@ public class NotifyController {
             HttpServletRequest httpRequest) {
         Long userId = requireUserId(httpRequest);
         return notifyService.list(userId, type, page, pageSize);
+    }
+
+    /**
+     * 标记通知已读（全部或按 id）。
+     *
+     * @param request     请求体；{@code null} 或 {@code ids} 为空 = 全部已读
+     * @param httpRequest 当前请求（取登录态）
+     * @return {@link NotificationReadResult}
+     * @throws BizException {@code 40101} 未登录
+     */
+    @PostMapping("/notifications/read")
+    public NotificationReadResult markNotificationsRead(
+            @RequestBody(required = false) NotificationReadRequest request,
+            HttpServletRequest httpRequest) {
+        Long userId = requireUserId(httpRequest);
+        return notifyService.markRead(userId, request == null ? null : request.ids());
     }
 
     /**

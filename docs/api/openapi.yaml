@@ -995,23 +995,49 @@ paths:
       x-batch: Batch2
       x-domain: post
       description: |
-        占位。Batch2 交付。`favorite` 表唯一键 `uk_user_post`，
-        取消后重新收藏走 `ON DUPLICATE KEY UPDATE` 复活行而非插新行。
+        收藏帖子（幂等）。`favorite` 表唯一键 `uk_user_post`，重复收藏走
+        `INSERT ... ON DUPLICATE KEY UPDATE deleted_at = NULL` 复活行而非插新行
+        （取消后重新收藏同路径）。帖子不存在回 `41001`。强制登录态（`40101`）。
       parameters:
         - $ref: '#/components/parameters/PostIdPath'
       responses:
-        '200': { description: 占位，Batch2 交付 }
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/FavoriteResult' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '410': { $ref: '#/components/responses/Gone' }
+        '500': { $ref: '#/components/responses/InternalError' }
     delete:
       tags: [post]
       summary: 取消收藏
       operationId: unfavoritePost
       x-batch: Batch2
       x-domain: post
-      description: 占位。Batch2 交付。取消收藏记录由定时任务 30 天后清理。
+      description: |
+        取消收藏（幂等软删）。置 `deleted_at`，由定时任务 30 天后物删
+        （PRD §8.7「取消收藏误操作可恢复」）；对未收藏/不存在的帖子亦返回成功。
       parameters:
         - $ref: '#/components/parameters/PostIdPath'
       responses:
-        '200': { description: 占位，Batch2 交付 }
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/FavoriteResult' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
 
   /favorites:
     get:
@@ -1021,10 +1047,10 @@ paths:
       x-batch: Batch2
       x-domain: post
       description: |
-        占位。Batch2 交付。
-        路径口径 2026-10-11 裁定为 `/favorites?type=`（对齐 PRD §13；原占位路径 `/posts/favorites`
-        会与同域模板路由 `/posts/{post_id}` 构成字面量/模板竞争，故更正）。
+        我的收藏列表。路径口径 2026-10-11 裁定为 `/favorites?type=`（对齐 PRD §13；原占位路径
+        `/posts/favorites` 会与同域模板路由 `/posts/{post_id}` 构成字面量/模板竞争，故更正）。
         排序：按收藏时间倒序（最近收藏在前）；不设收藏上限，分页翻取。
+        取消收藏为软删，30 天后物删。强制登录态（`40101`）。
       parameters:
         - name: type
           in: query
@@ -1037,7 +1063,19 @@ paths:
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/PageSizeParam'
       responses:
-        '200': { description: 占位，Batch2 交付 }
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/FavoritesResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
 
   /posts/draft:
     get:
@@ -1647,9 +1685,28 @@ paths:
       operationId: markNotificationsRead
       x-batch: Batch2
       x-domain: notify
-      description: 占位。Batch2 交付。
+      description: |
+        标记通知已读。请求体 `{ ids: [...] }`：`ids` 缺省或为空数组 = 标记该用户「全部未读」
+        为已读（PRD §8.3.3「全部已读」按钮）；非空 = 只标记所列 id（且限定归属当前用户）。
+        `read_at` 只对未读行置位（重复标记幂等）。强制登录态（`40101`）。
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NotificationReadRequest' }
       responses:
-        '200': { description: 占位，Batch2 交付 }
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/NotificationReadResult' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
 
   /notifications/settings:
     patch:
@@ -2719,6 +2776,66 @@ components:
         completeness_level: { $ref: '#/components/schemas/CompletenessLevelEnum' }
         publish_at: { type: string, format: date-time }
         author: { $ref: '#/components/schemas/AuthorBrief' }
+
+    FavoriteResult:
+      type: object
+      description: 收藏 / 取消收藏结果（幂等写，返回操作后的状态）
+      required: [favorited]
+      properties:
+        favorited:
+          type: boolean
+          description: true=已收藏（POST 收藏），false=已取消（DELETE 取消）
+
+    FavoriteItem:
+      type: object
+      description: |
+        我的收藏列表项：他人视角的帖子卡 + 收藏时间。媒体只出 `audit_status=pass`
+        的封面；不含完整联系方式。列表按 `favorite_at` 倒序。
+      required: [post_id, type, title, completeness_level, status, favorite_at]
+      properties:
+        post_id: { type: integer, format: int64 }
+        type: { $ref: '#/components/schemas/PostTypeEnum' }
+        leaf_category_id: { type: integer, format: int32 }
+        l2_category_id: { type: integer, format: int32 }
+        title: { type: string }
+        price: { type: number, format: double, nullable: true, description: 价格（元）；null=面议。PRD §8.3.2 卡片展示 }
+        price_unit: { type: string, nullable: true, description: 价格单位；price 为 null 时无意义 }
+        cover_media: { $ref: '#/components/schemas/MediaItem' }
+        completeness_level: { $ref: '#/components/schemas/CompletenessLevelEnum' }
+        status: { $ref: '#/components/schemas/PostStatusEnum' }
+        publish_at: { type: string, format: date-time }
+        favorite_at: { type: string, format: date-time, description: 收藏时间（列表排序键） }
+
+    FavoritesResponse:
+      type: object
+      description: 我的收藏分页响应（`GET /favorites` 的 `data`）
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/FavoriteItem' }
+        total: { type: integer, format: int64 }
+        page: { type: integer, format: int32 }
+        page_size: { type: integer, format: int32 }
+
+    NotificationReadRequest:
+      type: object
+      description: 标记通知已读请求体；`ids` 缺省或空数组 = 标记全部未读为已读
+      properties:
+        ids:
+          type: array
+          description: 待标记的通知 ID；缺省或空数组表示「全部未读」
+          items: { type: integer, format: int64 }
+
+    NotificationReadResult:
+      type: object
+      description: 标记通知已读结果
+      required: [updated]
+      properties:
+        updated:
+          type: integer
+          format: int32
+          description: 实际置为已读的行数（幂等：无未读行可标记时回 0）
 
     # ---------- 地图（紧凑格式） ----------
 
