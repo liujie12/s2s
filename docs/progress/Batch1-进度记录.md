@@ -1,4 +1,4 @@
-# Batch1 进度记录（2026-08-10 → 2026-10-11）
+# Batch1 进度记录（2026-08-10 → 2026-10-12）
 
 > **分册说明**：时间线**不拆**（开发与部署条目同册按时间序）。本册体量大，**先读册首索引定位**，再跳对应条目；部署/发版类条目另见 [部署与发版记录.md](file:///d:/developer/code/aicoding/s2s/deploy/docs/部署与发版记录.md)（仅索引摘要，原文仍在本册）。
 
@@ -139,6 +139,7 @@
 - 2026-10-11（三项阻塞裁定：收藏契约 · B2-4 批次归属 · 算法备案）
 - 2026-10-11（DEC-32/DEC-33 裁定落地：favorite 归 contact 域 · 新建 user_setting 表）
 - 2026-10-11（[B2-11]「我的」页实装 · 后端三域 + 前端四页）
+- 2026-10-12（[B2-11] 续：trust 页转真 + 媒体上传链路本体 + 发布/资质/详情三处接线）
 
 ---
 
@@ -6323,6 +6324,38 @@ printf '\nMYSQL_SSL_MODE=VERIFY_CA\nMYSQL_TLS_TRUSTSTORE_PASSWORD=%s\n' \
   2. 4 个新写接口已按门禁声明 `Idempotency-Key`，但**未加 `@Idempotent` 注解** —— 因四端点天然幂等（upsert / `read_at IS NULL`），暂未启用 SETNX 响应缓存，**待评审确认是否为必须**；
   3. `/settings` 为 `x-domain: auth`，其兄弟 `/settings/privacy` 仍为 `common`，同一「设置与合规」分组内不一致，宜后续统一；
   4. `my_publish_screen` 的私有 `_ErrorView`/空态**未并入** `core/ui/list_states.dart`（残留近似重复，已抽出的共享件只覆盖新页）。
+
+---
+
+### 2026-10-12（[B2-11] 续：trust 页转真 + 媒体上传链路本体 + 发布/资质/详情三处接线）
+
+> 摘要：把 B2-11 的「前端表单」遗留（资质二层）与**横跨三页的媒体上传链路**一并落地。会话属性 🟢 独立（延续 2026-10-11 批次）。开工前用户两项裁定：① **范围**＝「上传链路本体 + 发布页接线 + 资质提交接线 + 详情页媒体轮播」四项全做；② **落点**＝dev 环境**只做真链路**（不接 `DevOssClient` 那个返回 `http://mock-oss.local/...` 不可达地址的替身，做出来是个假上传）。媒体形态**仅图片**（视频与播放器不在本轮）。
+
+- [x] **上传链路本体（P1/P2，`21883fd`）**：按契约三步式直传落地 —— `POST /media/upload/ticket`（取票据）→ `PUT {upload_url}`（**直传 OSS**）→ `POST /media/{id}/commit`（确认）。
+  - 新建 `lib/features/media/`：`media_dto.dart`（`UploadTicketDto`/`MediaCommitDto`）、`media_picker.dart`（`MediaPicker` 抽象 + `ImagePickerMediaPicker`；白名单/体积客户端预校验，`MediaPickException`）、`media_repository.dart`（`createUploadTicket`/`commitMedia`）、`media_upload_service.dart`（三步编排）。
+  - **关键设计：直传走独立裸 dio**（`ossUploadDioProvider`，仅设 `connectTimeout`）—— App 的五拦截器链（Authorization/信封/幂等/gzip）对 OSS 是污染：OSS 不认 `X-Interaction-Id`、不返业务信封。
+  - `lib/nfr_constants.dart` 新增 `NfrMedia`（`maxMediaCount=9`/`allowedContentTypes`/`maxSizeBytes=20MB`），与后端 `NfrMedia.java` 同源镜像（不复制字面量）。
+- [x] **发布页媒体段转真（P3，`98a5389`）**：新建 `lib/features/publish/media_section.dart` —— `MediaSection` 自持上传条目（选图 → 上传 → 成功留 `mediaId`）；`_Thumb`（80×80 + 上传中/失败/移除）、`_AddTile`（2px 虚线）、`_DashedBorderPainter`。`publish_form_state.dart` 的 `imageCount`(int) 改为 `mediaIds`(`List<String>`) + 派生 getter，`postDraftPayload` 的 `media_ids` 由空数组改真值。**UI 基准**：`code.js` 21 个 builder 穷举确认**无媒体区构件**，按 HTML 原型 `.upload-area` 落地（如实登记「无 Figma 稿」）。
+- [x] **trust 页按设计稿转真（`4807faf`）**：`trust-screen` 由实名表单改为**状态总览**三卡（第一层实名 / 第二层资质三行 / 我的信任指标 + 在架完整度分布 + T4 红线注）；离线探针新增 `buildTrust` 覆盖。
+- [x] **资质提交转真（P4，`869d79b`）**：第二层资质的**可提交态**（未认证/未通过/已过期）接上真提交表单。
+  - 新建 `cert_type_option.dart`（`CertTypeOption` 契约类型值 ↔ 展示名；trust 三行与表单第二消费方，按 §1.1 上浮）与 `qualification_form_screen.dart`（**无 Figma 稿**，对齐 `realname_form_screen` 形态：类型单选 + 证照图 `MediaSection` + 提交；错误映射 40302/50302/40001）。
+  - **修一处真缺陷**：`cert_models.dart` 资质状态原先写成 `passed`，而契约 `QualificationItem.status` 枚举是 `pending`/**`approved`**/`rejected`/`expired`（`passed` 是**实名的** `RealnameStatusEnum` 值）—— 误用会让「已通过资质数」恒为 0 而编译器不报错。已改为状态常量 + 补防再犯测试。
+  - `trust_screen` 动作分流：可提交态进表单、无落点态（已通过「管理」/审核中「查看」）保持降级提示；新增路由 `/trust/qualification?type=`，提交成功回传 `true` 触发总览刷新。
+- [x] **详情页媒体轮播转真（P5，`2636fbb`）**：`_MediaPlaceholder`（分类色渐变块）换成 `MediaCarousel`（`lib/features/detail/media_carousel.dart`）—— 消费 `PostDetail.media` 真图（`PageView` + 页码胶囊 `1 / 3`，**文字而非圆点**，颜色不作唯一载体），点击进**全屏查看**（PRD §7.7）。
+  - `PostDetailDto` 增 `media` 解析（契约非 required：缺失/JSON null → 空列表；非数组 → `parseError`）；`ListingDetail` 增 `mediaUrls`（只存 url，他人视角契约已保证只含 `audit_status=pass`）。
+  - **空图不消失**：无图回落同一分类色占位块（块高 200 与占位块同值，下方内容不因有无图而位移）；原占位文案「图片区（待接入媒体上传）」已失真，改为「该信息未上传图片」。
+- [x] **反冗余门禁 C1 同步**：`post_dto` 新增 1 处 `ApiException.parse`，基线 `55 → 56`，同改 `api_exception.dart` 文件头调用点清单（`post_dto ×7 → ×8`）。
+- 验收证据：`flutter analyze` → **No issues found**；离线探针 → **310 通过 / 0 失败**；`flutter test` → **728/728 All tests passed**（链路起点 713 → P4 +6 → 719 → P5 +9 → 728；新增 `media_carousel_test` 6 例、`post_detail_provider_test` +3、`cert_models_test` +6）。
+- 提交（本地 `main`，**未推送**，按用户习惯待验收）：`4807faf`（trust 页转真）、`21883fd`（上传链路本体）、`98a5389`（发布页媒体段）、`869d79b`（资质提交）、`2636fbb`（详情页媒体轮播）。
+- 门禁结论：**PASS**（本地）。
+- **遗留与豁免（如实登记）**：
+  1. **媒体仅图片** —— 视频转码与内置播放器（PRD §7.7）不在本轮，发布侧同因只收图片；
+  2. `MediaSection` **无 widget 测试** —— 编排逻辑有 `media_upload_service_test` 6 例覆盖，UI 层未单测；
+  3. `_interactionOptions` 现为 **6 处近似副本**（favorite/notify/profile/settings/media/cert），属既有技术债，待上浮公共件；
+  4. **契约无「删除媒体」端点** → 用户移除已上传图会在 OSS 留孤儿对象（服务端 GC 议题）；
+  5. 4 个新写接口（收藏增删/通知已读/设置 PATCH）与 `POST /cert/qualification` **未加 `@Idempotent` 注解**；
+  6. `/settings` 为 `x-domain: auth`，兄弟 `/settings/privacy` 仍为 `common`，分组内不一致；
+  7. `MediaCarousel` 全屏查看页与 `QualificationFormScreen` **均无 Figma 稿**（按 PRD 版面落地，如实登记）。
 
 ---
 
