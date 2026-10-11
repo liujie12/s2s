@@ -134,6 +134,9 @@
 - 2026-10-10（prod 数据面直连端口解封：3316 / 6389 / 7080 —— 跨 6 文件的口径变更）
 - 2026-10-10（DEC-05 收紧落地：三环境 `REQUIRED` → `VERIFY_CA` + PKCS12 信任库）
 - 2026-10-11（本机 dev 直跑落实 · 两个环境实测坑）
+- 2026-10-11（[149] 实名认证接入 · cert 域转真 + 未实名详情额度）
+- 2026-10-11（[149] 评审修复 · P0 防刷失效 + P1 计数重置）
+- 2026-10-11（三项阻塞裁定：收藏契约 · B2-4 批次归属 · 算法备案）
 
 ---
 
@@ -6278,6 +6281,22 @@ printf '\nMYSQL_SSL_MODE=VERIFY_CA\nMYSQL_TLS_TRUSTSTORE_PASSWORD=%s\n' \
 - [x] **P2 漂移**：openapi `agreement_accepted` 描述对齐 `@NotNull`（缺失走 40001）；`realname_form_screen` 错误文案统一拼 request_id（§5.3 唯一格式）；`CertStatus.fromJson` 补 qualifications 校验；事务内调外部核验加「真联调前解耦」注释。
 - 验收证据：`mvn -q test` → **326 全绿**（新增 `CertFailureRecorderTest` 6 例）；`flutter test` → **704/704 All tests passed**；反冗余基线 `ApiException.parse` 57→58（P2-3 补 qualifications 校验）。
 - 门禁结论：PASS。
+
+---
+
+### 2026-10-11（三项阻塞裁定：收藏契约 · B2-4 批次归属 · 算法备案）
+
+> 摘要：Batch2 开工早期三项「会阻塞开工」的待裁定项由用户逐项判决完毕；结论记于《决策登记表》2026-10-11 裁定批次（DEC-31 + 同批裁定非 DEC 项）。
+
+- [x] **收藏契约 4 项口径（DEC-31）**：① **列表路径真分歧**裁定为 `GET /favorites?type=` —— 原 openapi 占位 `/posts/favorites` 会与同域模板路由 `/posts/{post_id}` 构成字面量/模板竞争，且 PRD §13 + 设计稿/离线探针均用 `/favorites`；② 排序 = 收藏时间倒序；③ 上限 = 不设（分页翻取）；④ 空态 =「还没有收藏，去首页逛逛 →」。**已回改**：`openapi.yaml` 路径 `/posts/favorites`→`/favorites` 并补 `type` 枚举（`resource`/`demand`/`all`）+ 分页参数；PRD §8.3.2 补「列表口径」四条。收藏/取消路径（`POST`/`DELETE /posts/{id}/favorite`）两文档本已一致，未动。
+- [x] **B2-4（AI 发布 3B）批次归属 = 保留 Batch2**（用户裁定，与「三批滚动」原口径 Batch3 相反）。**已反向修正 6 处 Batch3 口径 → Batch2**：BRD §7.2 Batch2/Batch3 行、BRD §10.1 绿清单「AI 发布辅助」、MRD §5.1 UR-AI-02、MRD §7.5 GTM 行、§2.7 裁剪表、后端详设 §5.7；openapi `/ai/parse` 原已标 Batch2 无需改；Batch2 清单 B2-4 行归属标注 + 待确认项 #1 关闭。**连带**：Batch3 范围收窄为 S2 动态蜂窝。**未做（如实登记）**：MRD Batch3 GTM 传播钩子待补（原「拍照说一句话 7 秒发布」随 T2 移至 Batch2）。
+- [x] **算法备案评估 = 即刻立独立评估条目 `[150]`**（登记入 Batch2 清单 B2-12，排在 B2-3 开工之前）。依据[《互联网信息服务算法推荐管理规定》第 24 条](https://www.cac.gov.cn/2022-01/04/c_1642894606364259.htm)：触发条件 =「具有舆论属性或社会动员能力的算法推荐服务提供者」，须于**提供服务之日起 10 个工作日**内备案；内测期阶段 0 规则加权不触发，LR/GBDT 一上线（含 10% 灰度）即落入评估范围。评估范围 = 舆论属性/社会动员能力判定 + 上线后 10 工作日备案窗口应对 + 自评估报告准备。
+- 改动文件：`docs/decisions/决策登记表.md`、`docs/api/openapi.yaml`、`docs/PRD.md`、`docs/BRD.md`、`docs/MRD.md`、`docs/governance/裁剪与降级.md`、`docs/design/后端详细设计文档.md`、`docs/plans/Batch2-启动清单.md`、`说明文档.md`。
+- [x] **派生件重生成**：① `找鸭找-市场需求文档-v2.1.pptx` —— 改 `gen_mrd_pptx.py` slide 22（AI 发布钩子移入「第二批 GTM」、第三批改「动态蜂窝半径」）后重跑，28 页；② `找鸭找-产品需求文档-v2.1.docx` —— `gen_prd_v2.1_docx.py` 读 PRD.md 重转，带入 §8.3.2 收藏口径等累计改动（实测 docx 117 表格 = PRD.md 117 表格，忠实）。**BRD PPTX 无需改**：其 Slide 20「后续批次｜11/26 起」已把 Batch2/3 合并为一个框、无批次级标签，裁定不产生文字差异。
+- **顺带发现（如实登记）**：被覆盖的旧 docx（HEAD `158,060B / 1101 段 / 91 表`）在本次之前即已落后 PRD.md（117 表），本次重生成一并追平（新 `203,381B / 1274 段 / 117 表`）；`说明文档 §1.2` 曾记的「84,290 字节」为更早期旧值。
+- **环境坑**：仓库 `.pylibs/lxml` 与本机 Python 3.14 不兼容（`cannot import name 'etree'`）；改用全局 `python-pptx`/`python-docx`，以 `python -c "import lxml.etree,pptx,docx,runpy; runpy.run_path(...)"` 预加载绕过 `.pylibs` 覆盖。
+- 门禁结论：**文档类变更，无 `src/` 与 `lib/` 代码改动，未跑 mvn/flutter 门禁**（非跳检）。
+- 遗留与豁免：MRD Batch3 GTM 钩子待补；B2-4 提前至 Batch2 后，其「真实语料 / dry-run」口径须在开批前另定（已记入 Batch2 清单 B2-4 前置列）。
 
 ---
 

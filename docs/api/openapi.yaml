@@ -1013,14 +1013,29 @@ paths:
       responses:
         '200': { description: 占位，Batch2 交付 }
 
-  /posts/favorites:
+  /favorites:
     get:
       tags: [post]
       summary: 我的收藏列表
       operationId: listFavorites
       x-batch: Batch2
       x-domain: post
-      description: 占位。Batch2 交付。
+      description: |
+        占位。Batch2 交付。
+        路径口径 2026-10-11 裁定为 `/favorites?type=`（对齐 PRD §13；原占位路径 `/posts/favorites`
+        会与同域模板路由 `/posts/{post_id}` 构成字面量/模板竞争，故更正）。
+        排序：按收藏时间倒序（最近收藏在前）；不设收藏上限，分页翻取。
+      parameters:
+        - name: type
+          in: query
+          required: false
+          description: 收藏类型筛选，缺省返回全部（对应页签 资源/需求/全部）
+          schema:
+            type: string
+            enum: [resource, demand, all]
+            default: all
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
       responses:
         '200': { description: 占位，Batch2 交付 }
 
