@@ -109,3 +109,9 @@ docs/database/
 > - `db/migration/V1__init_schema.sql`（新建，Flyway 默认路径……）
 >
 > **落地进展**：DDL 已在数据库设计阶段写就并实测通过，当前存放于 `docs/database/ddl/`。后端工程搭建时移入上述扫描路径即可，脚本内容无需改写。
+
+**边界（迁移一旦应用即不可改）**：上述「脚本内容无需改写」只适用于**尚未被 Flyway 应用**的迁移。一旦该文件在目标库执行过，它即冻结为**不可变历史快照** —— 正文、注释乃至空白都不得再改（改任一字节会使其校验和与下游登记值失配、下游拒绝执行），口径变更一律走**新增版本号**的迁移文件。
+
+## Related
+
+- [applied-flyway-migration-is-immutable-historical-artifact.md](file:///d:/developer/code/aicoding/s2s/docs/solutions/workflow-issues/applied-flyway-migration-is-immutable-historical-artifact.md) —— 本篇以「DDL 内容无需改写、原样移入 `db/migration/`」为前提描述 `V1__` 脚本；该篇补上后续发展：文件一旦被 Flyway 应用即冻结为不可变历史快照，与口径真源冲突时以真源为准 + 快照加标注 + 变更走新增迁移版本。

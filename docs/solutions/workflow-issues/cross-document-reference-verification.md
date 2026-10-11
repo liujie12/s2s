@@ -111,6 +111,8 @@ Grep pattern: "L1[0-9]{3}" 于 docs/PRD.md   → 期望 No matches
 > **不覆盖范围**：运营治理后台 7 页的接口与表结构（**说明文档 §2.7** 定为本期不做）…
 ```
 
+**边界（该规则预设冲突位点可编辑）**：若冲突内容落在**已被 Flyway 应用过的迁移文件**等**不可变历史快照**中，「回改本部分」不可执行 —— 改其任一字节（含注释/空白）会使校验和失配、下游拒绝执行。此时以真源为准、快照原样保留并加指向真源的标注，变更走**新增迁移版本**（见 Related 末条）。
+
 文末结语同步声明同一条冲突处置规则，保证读者从任一端进入都看到。
 
 ### 五、无法溯源的条款要诚实标注新增，不要伪造来源
@@ -171,3 +173,4 @@ Grep pattern: "L1[0-9]{3}" 于 docs/PRD.md   → 期望 No matches
 - 进度与决策留档：[说明文档.md](file:///d:/developer/code/aicoding/s2s/说明文档.md) 记录 [34]
 - 同域但不同角度的一致性教训：[multi-format-deliverable-consistency.md](file:///d:/developer/code/aicoding/s2s/docs/solutions/workflow-issues/multi-format-deliverable-consistency.md) —— 那篇管「一处口径传导到多个格式交付件」的落盘验证，本篇管「一份文档内部跨章节引用与口径搬运」的核验。两篇共用一条底层原则：**权威源自身也要接受同一套核验**。本篇记录的 §12–§14 写入完成后，那批内容的派生 docx 滞后了近 18 小时未重生，该教训已并入那篇的「MD 驱动型的残余风险」一节 —— 两篇正好是同一次变更的前半段与后半段。
 - 一处易混点澄清：软件著作权登记要的不是 SRS，而是带界面截图的「操作说明书」（写「用户怎么用」），SRS 写「系统要满足什么」，二者不可互替 —— 见 [上架前置工作指导手册.md](file:///d:/developer/code/aicoding/s2s/docs/上架前置工作指导手册.md) P5 材料 B。
+- 例外分支：[applied-flyway-migration-is-immutable-historical-artifact.md](file:///d:/developer/code/aicoding/s2s/docs/solutions/workflow-issues/applied-flyway-migration-is-immutable-historical-artifact.md) —— 本篇第四节的冲突处置规则「以前文为准并须回改本部分」预设了冲突位点**可编辑**；该篇补上的正是「不可回改」的那一支：冲突落在已应用迁移中时，以真源为准 + 快照保留加标注 + 变更走新增迁移版本。

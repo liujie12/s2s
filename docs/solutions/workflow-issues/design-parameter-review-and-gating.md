@@ -108,7 +108,7 @@ check("mini@24px brand ring >= 1.5px", band_px_24 >= 1.5, f"{band_px_24:.2f}px")
 1. 生成脚本默认值（[build-4b-assets.py:144](file:///d:/developer/code/aicoding/s2s/prototype-figma/build-4b-assets.py#L144)），docstring 同步记录逐档实测数据与「上限由环带而非笔画决定」；
 2. 重生成全部 12 个 SVG 真源；
 3. 消费侧的内联副本 —— Figma 插件沙箱读不到文件，[code.js:660-664](file:///d:/developer/code/aicoding/s2s/prototype-figma/code.js#L660-L664) 必须存一份逐字相同的路径与眼点常量，由一致性探针守住；
-4. **代码注释里的数字也是副本**。`code.js` 上方仍写着「缩放到占画板 72%」，`Grep "72%|0\.72"` 才扫出来。
+4. **代码注释里的数字也是副本**。`code.js` 上方仍写着「缩放到占画板 72%」，`Grep "72%|0\.72"` 才扫出来。**边界**：这里说的「副本」指**可编辑**的代码/产物；若同一个数字落在**已被 Flyway 应用**的迁移文件里，它已冻结为不可改的**历史快照** —— 不得改写，只能以真源为准并在旁标注（见 Related 末条）。
 
 一个连带项是自然消解的：眼点半径随鸭头同一变换放大到 45.37（24px 下 2.13px），已自然超过 2px 底线，[EYE_R_MINI_FLOOR](file:///d:/developer/code/aicoding/s2s/prototype-figma/build-4b-assets.py#L37) 这个下限保护不再生效 —— 保护失效要写进注释，否则下次有人以为它还在起作用。
 
@@ -167,3 +167,4 @@ check("mini@24px brand ring >= 1.5px", band_px_24 >= 1.5, f"{band_px_24:.2f}px")
 - 守门人：[probe-assets-verify.py](file:///d:/developer/code/aicoding/s2s/prototype-figma/probe-assets-verify.py) 素材几何校验、`probe-duck-inline.py` 真源与内联副本一致性、`probe-tabbar-verify.py` Tab 栏渲染
 - 同域姊妹篇：[multi-format-deliverable-consistency.md](file:///d:/developer/code/aicoding/s2s/docs/solutions/workflow-issues/multi-format-deliverable-consistency.md) —— 那篇的「闸门自身也会过期」讲闸门随文档增长而失效，本篇讲闸门**从一开始就没覆盖对约束**；两篇共用「守门人的红灯必须与真实风险挂钩」这条原则
 - 同域姊妹篇：[cross-document-reference-verification.md](file:///d:/developer/code/aicoding/s2s/docs/solutions/workflow-issues/cross-document-reference-verification.md) —— 那篇的「探针 FAIL 时先怀疑探针」与本篇第四节互为正反两面：那次是探针错了，这次是探针的基准值过期而它守的东西本身缺失
+- 例外分支：[applied-flyway-migration-is-immutable-historical-artifact.md](file:///d:/developer/code/aicoding/s2s/docs/solutions/workflow-issues/applied-flyway-migration-is-immutable-historical-artifact.md) —— 本篇第五节第 4 点要求「注释里的数字也要顺依赖链改掉」；该要求在**已被 Flyway 应用**的迁移注释上不成立 —— 那是不可改的历史快照，只能保留 + 加指向真源的标注（口径变更走新增迁移版本）
