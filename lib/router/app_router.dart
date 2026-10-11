@@ -18,6 +18,7 @@ import 'package:go_router/go_router.dart';
 import 'home_shell.dart';
 import '../domain/category_tree.dart';
 import '../features/auth/login_screen.dart';
+import '../features/cert/realname_form_screen.dart';
 import '../features/contact/contact_screen.dart';
 import '../features/detail/detail_screen.dart';
 import '../features/discovery/list_screen.dart';
@@ -202,11 +203,9 @@ final List<RouteBase> _routes = [
   ),
   GoRoute(
     path: AppRoutes.trust,
-    builder: (context, state) => const PlaceholderScreen(
-      pageId: 'trust-screen',
-      pageName: '信任与认证',
-      note: '实名 + 资质二层认证',
-    ),
+    // [149]：trust 由占位页转真——个人实名认证表单（B2-1 实名为主；资质二层
+    // 认证留 B2-11「我的页实装」）。
+    builder: (context, state) => const RealnameFormScreen(),
   ),
   // ── 模态：用 fullscreenDialog 语义，返回栈行为与页面不同 ──
   GoRoute(

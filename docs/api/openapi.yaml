@@ -1459,23 +1459,51 @@ paths:
         '200': { description: 占位，Batch2 交付 }
 
   # ===========================================================================
-  # 分组七：认证（共 3 个接口，Batch1 覆盖 0 个）
+  # 分组七：认证（共 3 个接口，Batch2 覆盖 3 个）
   # ===========================================================================
 
   /cert/realname:
     post:
       tags: [cert]
-      summary: 提交实名认证
+      summary: 提交实名认证（二要素核验）
       operationId: submitRealname
       x-batch: Batch2
       x-domain: cert
       description: |
-        占位。Batch2 交付。
-        `real_name_enc` 的 AAD 绑定 `user_id`；`id_card_hash` 走盲索引双列范式。
-        上游认证服务不可用回 `50302`。
-        **实名相关敏感列禁止出现在任何 API 响应中**。
+        - 提交姓名 + 身份证号做二要素核验（DEC-30：阿里云实人认证·信息核验·纯服务端 API）
+        - 「手机号一致性」由已登录态保证（短信验证码登录即证明手机号归本人），
+          **不向供应商传手机号、不解密 `user_identity`**
+        - 核验通过 → `user.realname_status='passed'` + 落 `cert` 表；姓名加密落 `real_name_enc`
+          （AAD 绑定 `user_id`）、身份证只存 `id_card_hash`（HMAC 盲索引）+ `id_card_last4`
+        - 核验失败复用 `40001`（参数/核验不通过）；连续失败达阈值锁定（`cert.lock_until`）
+        - 上游认证服务不可用回 `50302`
+        - **实名相关敏感列（real_name / id_card）禁止出现在任何 API 响应中**
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/XDeviceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RealnameSubmitRequest'
       responses:
-        '200': { description: 占位，Batch2 交付 }
+        '200':
+          description: 实名认证成功（或已实名幂等返回）
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/RealnameSubmitResult'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
 
   /cert/qualification:
     post:
@@ -1484,9 +1512,37 @@ paths:
       operationId: submitQualification
       x-batch: Batch2
       x-domain: cert
-      description: 占位。Batch2 交付。未认证发高敏类目时 post 域回 40302。
+      description: |
+        提交资质认证（个人资质 / 企业 / 车辆）。本轮落 `cert` 表 `status='pending'`，
+        OCR 走供应商 dry-run mock，**人工审核留 B2-5 运营后台**。
+        未实名用户提交资质回 `40302`（高敏类目前置实名）。
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/XDeviceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QualificationSubmitRequest'
       responses:
-        '200': { description: 占位，Batch2 交付 }
+        '200':
+          description: 资质已提交（审核中）
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/QualificationSubmitResult'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
 
   /cert/status:
     get:
@@ -1495,9 +1551,25 @@ paths:
       operationId: getCertStatus
       x-batch: Batch2
       x-domain: cert
-      description: 占位。Batch2 交付。
+      description: |
+        查询当前用户实名状态与资质列表。资质列表本轮恒空（人工审核未上线）。
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/XDeviceId'
       responses:
-        '200': { description: 占位，Batch2 交付 }
+        '200':
+          description: 认证状态
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/CertStatusResponse'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
 
   # ===========================================================================
   # 分组八：通知与推送（共 3 个接口，Batch1 覆盖 1 个）
@@ -2120,6 +2192,85 @@ components:
       type: string
       description: 实名状态。对应 `user.realname_status` 列
       enum: [none, pending, passed, rejected]
+
+    CertTypeEnum:
+      type: string
+      description: 认证类型。对应 `cert.cert_type` 列
+      enum: [personal_realname, personal_qualification, enterprise, vehicle]
+
+    RealnameSubmitRequest:
+      type: object
+      required: [real_name, id_card, agreement_accepted]
+      properties:
+        real_name:
+          type: string
+          maxLength: 64
+          description: 真实姓名（明文，服务端加密落 `real_name_enc`，禁止出现在任何响应）
+        id_card:
+          type: string
+          pattern: '^\d{17}[\dXx]$'
+          description: 18 位身份证号（服务端只存 `id_card_hash` 盲索引 + `id_card_last4`，禁止出现在任何响应）
+        agreement_accepted:
+          type: boolean
+          description: 是否已同意实名认证相关协议；false 或缺失回 40002
+
+    RealnameSubmitResult:
+      type: object
+      required: [status]
+      properties:
+        status: { $ref: '#/components/schemas/RealnameStatusEnum' }
+
+    QualificationSubmitRequest:
+      type: object
+      required: [cert_type, media_ids]
+      properties:
+        cert_type:
+          $ref: '#/components/schemas/CertTypeEnum'
+        media_ids:
+          type: array
+          description: OCR 证照图 media_id 列表
+          items: { type: string }
+
+    QualificationSubmitResult:
+      type: object
+      required: [status, sla_hours]
+      properties:
+        status:
+          type: string
+          description: 提交后状态（本轮恒 pending）
+          enum: [pending]
+        sla_hours:
+          type: integer
+          format: int32
+          description: 人工审核 SLA（小时）
+
+    QualificationItem:
+      type: object
+      required: [type, status]
+      properties:
+        type: { $ref: '#/components/schemas/CertTypeEnum' }
+        status:
+          type: string
+          enum: [pending, approved, rejected, expired]
+        expire_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    CertStatusResponse:
+      type: object
+      required: [realname, qualifications]
+      properties:
+        realname:
+          type: object
+          required: [status]
+          properties:
+            status: { $ref: '#/components/schemas/RealnameStatusEnum' }
+        qualifications:
+          type: array
+          description: 已通过/审核中的资质列表（本轮人工审核未上线，恒空）
+          items:
+            $ref: '#/components/schemas/QualificationItem'
 
     AuditStatusEnum:
       type: string

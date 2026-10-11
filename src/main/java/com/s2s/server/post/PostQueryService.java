@@ -3,12 +3,14 @@ package com.s2s.server.post;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.s2s.server.cert.CertService;
 import com.s2s.server.category.CategoryService;
 import com.s2s.server.common.config.SystemConfigService;
 import com.s2s.server.common.constants.NfrApi;
 import com.s2s.server.common.dto.AuthorBrief;
 import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
+import com.s2s.server.common.ratelimit.RateLimitKeys;
 import com.s2s.server.post.dto.MediaItem;
 import com.s2s.server.post.dto.MyPostItem;
 import com.s2s.server.post.dto.MyPostsResponse;
@@ -49,6 +51,8 @@ public class PostQueryService {
     private final CategoryService categoryService;
     private final SystemConfigService systemConfigService;
     private final ObjectMapper objectMapper;
+    private final CertService certService;
+    private final DetailQuotaGate detailQuotaGate;
 
     /**
      * 构造 post 读服务。
@@ -65,13 +69,17 @@ public class PostQueryService {
             MediaAssembler mediaAssembler,
             CategoryService categoryService,
             SystemConfigService systemConfigService,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            CertService certService,
+            DetailQuotaGate detailQuotaGate) {
         this.postQueryMapper = postQueryMapper;
         this.postMediaMapper = postMediaMapper;
         this.mediaAssembler = mediaAssembler;
         this.categoryService = categoryService;
         this.systemConfigService = systemConfigService;
         this.objectMapper = objectMapper;
+        this.certService = certService;
+        this.detailQuotaGate = detailQuotaGate;
     }
 
     /**
@@ -202,17 +210,12 @@ public class PostQueryService {
     }
 
     /**
-     * 未实名详情额度判定（详设 §5.3.4 的 {@code checkDetailQuota} 落点）。
+     * 未实名详情额度判定（详设 §5.3.4 的 {@code checkDetailQuota} 落点，[149] 回填实现）。
      *
-     * <p>Batch1：{@code detail_quota_enabled='off'} → 直接返回，不查用户、不计数
-     * （开关 off 是 DDL 种子值，理由见数据库设计 §7.5）。</p>
-     *
-     * <p><b>开关为 on 时 fail-fast</b>：额度口径（计数键形态、窗口、存储介质）在依据源中
-     * 未定义——详设 §3.4 的键表 11 行无该轨，库内亦无对应表，仅 PRD §12.3 给了
-     * 「每日 3 条、第 4 条 40301」的结论。按红线「设计文档未覆盖的口径先问，禁自创口径」
-     * 不在此处造键；改为抛异常，使「开关被打开但额度未实现」在打开配置的那一刻暴露，
-     * 而不是静默放行（静默放行 = 额度无声失效且无人发现）。裁定后回填实现，
-     * 见说明文档 §2.9。</p>
+     * <p>{@code detail_quota_enabled='off'}（DDL 种子值，数据库设计 §7.5）→ 直接返回；
+     * {@code on} 且已实名 → 直接返回（PRD §3.7 已实名不限额度）；{@code on} 且未实名 →
+     * {@link DetailQuotaGate#checkAndIncrement} 计数，每日达 {@code NfrCert.DETAIL_QUOTA_LIMIT_PER_DAY}
+     * 条抛 {@code 40301}。游客（{@code viewerId == null}）不适用该额度（走 42907 轨）。</p>
      *
      * @param viewerId 已登录访问者 ID（游客无实名态，不适用该额度）
      */
@@ -220,9 +223,11 @@ public class PostQueryService {
         if (viewerId == null || !systemConfigService.isOn(DETAIL_QUOTA_ENABLED_KEY)) {
             return;
         }
-        throw new IllegalStateException("detail_quota_enabled=on，但 40301 额度计数口径未定义"
-                + "（详设 §3.4 键表无该轨、库内无对应表）——不得自创键，待裁定后实现；"
-                + "见说明文档 §2.9 DEC-07");
+        // 已实名不限详情额度（PRD §3.7 基础实名权限两档）
+        if (CertService.REALNAME_STATUS_PASSED.equals(certService.getRealnameStatus(viewerId))) {
+            return;
+        }
+        detailQuotaGate.checkAndIncrement(viewerId, RateLimitKeys.today());
     }
 
     /**

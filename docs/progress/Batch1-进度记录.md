@@ -6251,3 +6251,21 @@ printf '\nMYSQL_SSL_MODE=VERIFY_CA\nMYSQL_TLS_TRUSTSTORE_PASSWORD=%s\n' \
 
 ---
 
+### 2026-10-11（[149] 实名认证接入 · cert 域转真 + 未实名详情额度）
+
+> 摘要：B2-1 实名为主、资质留占位、供应商 dry-run mock（用户 2026-10-11 确认）。方案见 docs/plans/2026-10-11-feat-item149-cert-realname-plan.md。
+
+- [x] **后端 cert 域转真**：`CertService` 空壳 → `submitRealname`（二要素核验 → `realname_status` 落库）/`getCertStatus`/`submitQualification`；新增 `RealnameProvider` 接口 + `AliyunRealnameProvider`（dry-run mock）、`CertEntity`/`CertMapper`/`CertController`/6 个 DTO；`UserService` 增 `realnameStatusOf`/`applyRealnameResult`（cert 写 user 实名列经 auth 域 service，不跨域 mapper）。
+- [x] **未实名详情额度**：`DetailQuotaGate` 独立额度闸（40301 `needRetryAfter=false` 与 `RateLimiter` 的 `ofRetryAfter` 强制语义不兼容）；键 `rl:detailquota:uid:{userId}:1d:{yyyyMMdd}` 收口 `RateLimitKeys.detailQuotaUidDay`；`PostQueryService.checkDetailQuota` 由 fail-fast 转真；新增 `NfrCert`（额度 5 / 失败锁定 3 / 锁 24h / SLA 2）。
+- [x] **手机号一致性不解密**：复用已登录态（短信验证码登录即证明），不向供应商传手机号、不解密 `user_identity` —— `CryptoFacade.decrypt` 调用点计数保持 ==1（DoD D2 基线不漂移）。
+- [x] **契约**：openapi 三端点补 schema（`RealnameSubmitRequest`/`CertTypeEnum`/`CertStatusResponse` 等 8 个），`x-batch: Batch2` 去占位。
+- [x] **前端 cert 域**：`cert_repository.dart`/`cert_models.dart`/`realname_form_screen.dart`（trust 页转真）；`nfr_constants.dart` 加 `NfrCert.detailQuotaLimitPerDay`；详情页 40301 弹「今天的 5 条看完了」引导实名（`_QuotaExhaustedScreen`）。
+- [x] **文档回写**：PRD §3.7/§12.3 文案 3→5 条 + 接口路径 `/certs/*`→`/cert/*`；详设 §5.3.4 回填额度计数口径（DEC-07 闭合）+ §5.7 cert 空壳→转真；上架手册 P6 补实名用途声明；`ErrorCode.DETAIL_QUOTA_USED` 注释 3→5。
+- [x] **反冗余守门基线同步**：`ApiException.parse` 调用点 54→57（cert_models ×2 + cert_repository ×1），同步 api_exception.dart 文件头清单 + anti_redundancy_gate_test 基线；修复 G-Q3 脚本执行位（`build-mysql-ca-truststore.sh` 100644→100755，历史遗留）。
+- 验收证据：`mvn -q test` → 全绿（exit 0）；`flutter analyze` → No issues found!；`flutter test` → **704/704 All tests passed**（新增 cert_models_test 3 例）。
+- 门禁结论：PASS。
+- 遗留与豁免：无。资质认证人工审核留 B2-5（已按「实名为主、资质留占位」裁定）；真阿里云 AccessKey 联调后替换 `AliyunRealnameProvider`（dry-run → 真 API，替换点集中一处）。
+- 知识沉淀：不需要 —— 架构决策（额度闸独立于限频轨、手机号一致性不解密）均已回写依据源（详设 §5.3.4/§5.7、方案 D2/D5），无独立于既有编码规范的方法论增量。
+
+---
+

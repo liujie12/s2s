@@ -9,10 +9,12 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.s2s.server.cert.CertService;
 import com.s2s.server.category.CategoryService;
 import com.s2s.server.common.config.SystemConfigService;
 import com.s2s.server.common.constants.NfrApi;
@@ -47,6 +49,8 @@ class PostQueryServiceTest {
     private MediaAssembler mediaAssembler;
     private CategoryService categoryService;
     private SystemConfigService systemConfigService;
+    private CertService certService;
+    private DetailQuotaGate detailQuotaGate;
     private PostQueryService service;
 
     @BeforeEach
@@ -56,8 +60,11 @@ class PostQueryServiceTest {
         mediaAssembler = mock(MediaAssembler.class);
         categoryService = mock(CategoryService.class);
         systemConfigService = mock(SystemConfigService.class);
+        certService = mock(CertService.class);
+        detailQuotaGate = mock(DetailQuotaGate.class);
         service = new PostQueryService(postQueryMapper, postMediaMapper, mediaAssembler,
-                categoryService, systemConfigService, new ObjectMapper());
+                categoryService, systemConfigService, new ObjectMapper(), certService,
+                detailQuotaGate);
         when(postMediaMapper.selectList(any())).thenReturn(List.of());
         when(systemConfigService.isOn(any())).thenReturn(false);
     }
@@ -143,12 +150,21 @@ class PostQueryServiceTest {
     }
 
     @Test
-    void 额度开关on且未实名failFast() {
+    void 额度开关on且未实名走额度闸() {
         when(postQueryMapper.selectDetailRow(any())).thenReturn(detailRow("active", null));
         when(systemConfigService.isOn(eq("detail_quota_enabled"))).thenReturn(true);
-        assertThatThrownBy(() -> service.getDetail(2L, 100L))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("detail_quota_enabled");
+        when(certService.getRealnameStatus(eq(2L))).thenReturn(CertService.REALNAME_STATUS_NONE);
+        service.getDetail(2L, 100L);
+        verify(detailQuotaGate).checkAndIncrement(eq(2L), any());
+    }
+
+    @Test
+    void 额度开关on且已实名跳过额度闸() {
+        when(postQueryMapper.selectDetailRow(any())).thenReturn(detailRow("active", null));
+        when(systemConfigService.isOn(eq("detail_quota_enabled"))).thenReturn(true);
+        when(certService.getRealnameStatus(eq(2L))).thenReturn(CertService.REALNAME_STATUS_PASSED);
+        service.getDetail(2L, 100L);
+        verify(detailQuotaGate, never()).checkAndIncrement(any(), any());
     }
 
     /**

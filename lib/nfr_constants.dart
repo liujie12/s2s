@@ -439,3 +439,14 @@ class NfrPostLifecycle {
   /// 连续未刷新即自动下架的天数。
   static const int autoArchiveDays = 14;
 }
+
+/// §3.7 未实名详情额度（cert 域，[149]）。
+///
+/// 双端口径：后端 `NfrCert.detailQuotaLimitPerDay` 镜像，前端拼「今日 N 条」
+/// 引导文案引用本值，禁写死数字（详设 §0.1「不复制字面量」）。
+class NfrCert {
+  const NfrCert._();
+
+  /// 未实名用户每日详情浏览额度（条）。PRD §12.3 / DEC-30（2026-10-11 由 3 条改 5 条）。
+  static const int detailQuotaLimitPerDay = 5;
+}

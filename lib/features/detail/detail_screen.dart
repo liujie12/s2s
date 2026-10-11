@@ -20,6 +20,8 @@ import 'package:go_router/go_router.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/network/api_error_code.dart';
 import '../../design_tokens.dart';
+import '../../nfr_constants.dart';
+import '../../router/app_router.dart';
 import '../../domain/listing_category.dart';
 // 色与图标已迁至 style 扩展（详细设计 §10.4.1）：枚举本体须保持纯 Dart，
 // 否则聚合模块（features/map/clustering/）无法持有它，就得退回用 int 传分类。
@@ -94,6 +96,10 @@ class DetailScreen extends ConsumerWidget {
     // 41001 是「这条信息已下架/不存在」——用户的预期结果，非故障。
     if (apiError.code == ApiErrorCode.postGone) {
       return const _NotFoundScreen();
+    }
+    // 40301 未实名详情额度耗尽：弹引导实名（PRD §3.7），非普通错误态。
+    if (apiError.code == ApiErrorCode.detailQuotaUsed) {
+      return const _QuotaExhaustedScreen();
     }
     return const _ErrorScreen();
   }
@@ -532,6 +538,74 @@ class _ErrorScreen extends StatelessWidget {
               style: TextStyle(
                 fontSize: AppTypeScale.body.size,
                 color: Color(AppColors.textSecondary),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 未实名详情额度耗尽（40301）：引导实名（PRD §3.7「今天的 N 条看完了」）。
+///
+/// 与 [_ErrorScreen] 分开：额度耗尽不是故障，而是「完成实名即可解锁」的
+/// 引导态，须给「去实名」入口（跳 trust 实名表单页），不是重试。
+class _QuotaExhaustedScreen extends StatelessWidget {
+  const _QuotaExhaustedScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Color(AppColors.background),
+      appBar: AppBar(
+        toolbarHeight: 48,
+        backgroundColor: Color(AppColors.surface),
+        elevation: 0,
+        title: const Text('详情'),
+      ),
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.verified_user_outlined,
+              size: 48,
+              color: Color(AppColors.textPlaceholder),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            Text(
+              '今天的 ${NfrCert.detailQuotaLimitPerDay} 条看完了',
+              style: TextStyle(
+                fontSize: AppTypeScale.body.size,
+                color: Color(AppColors.textPrimary),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              '完成实名后可无限查看',
+              style: TextStyle(
+                fontSize: AppTypeScale.small.size,
+                color: Color(AppColors.textSecondary),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.xl),
+            ElevatedButton(
+              onPressed: () => context.push(AppRoutes.trust),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Color(AppColors.primary),
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: StadiumBorder(),
+              ),
+              child: const Text('去实名（约 30 秒）'),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            TextButton(
+              onPressed: () => context.pop(),
+              child: Text(
+                '明天再来',
+                style: TextStyle(color: Color(AppColors.textSecondary)),
               ),
             ),
           ],

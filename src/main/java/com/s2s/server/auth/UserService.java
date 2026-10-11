@@ -109,4 +109,50 @@ public class UserService {
         userMapper.updateById(user);
         return MyProfile.from(user);
     }
+
+    /**
+     * 读用户实名状态（供 cert 域查询；详设 §4.2 域间只调 service，cert 禁跨域 user mapper）。
+     *
+     * <p>{@code user.realname_status} 的读入口收口于本方法——cert 域要判断「是否已实名」
+     * 不得自行注入 {@link UserMapper}（跨域 mapper 红线）。</p>
+     *
+     * @param userId 用户 ID
+     * @return {@link String} 实名状态（{@code none/pending/passed/rejected}）；
+     *         用户不存在返回 {@code null}（由调用方决定兜底口径）
+     */
+    public String realnameStatusOf(Long userId) {
+        UserEntity user = userMapper.selectById(userId);
+        return user == null ? null : user.getRealnameStatus();
+    }
+
+    /**
+     * 写回实名认证通过结果（供 cert 域调用；详设 §4.2 域间只调 service）。
+     *
+     * <p>姓名/身份证的加密与盲索引在 cert 域完成（{@code CryptoFacade} 与 {@code BlindIndex}），
+     * 本方法只负责把已算好的值 update 进 {@code user} 表——职责边界：核验流程归 cert 域、
+     * user 表持久化归 auth 域，避免 cert 域直接写 user 表（跨域 mapper 红线）。
+     * 实名状态值由 cert 域传入（{@code CertService.REALNAME_STATUS_PASSED}），本类不复制
+     * 该字面量（编码规范红线「不复制字面量」）。</p>
+     *
+     * @param userId      用户 ID
+     * @param realnameStatus 实名状态（由 cert 域传入，如 {@code passed}）
+     * @param realNameEnc 姓名 AEAD 密文（AAD 绑定 user_id，cert 域已加密）
+     * @param idCardHash  身份证 HMAC 盲索引（cert 域已算）
+     * @param idCardLast4 身份证后 4 位明文
+     * @param keyVersion  密钥版本号（cert 域加密时取）
+     * @throws BizException 用户不存在（已注销/删除）→ 40101
+     */
+    public void applyRealnameResult(Long userId, String realnameStatus, byte[] realNameEnc,
+            byte[] idCardHash, String idCardLast4, int keyVersion) {
+        UserEntity user = userMapper.selectById(userId);
+        if (user == null) {
+            throw BizException.of(ErrorCode.UNAUTHORIZED);
+        }
+        user.setRealnameStatus(realnameStatus);
+        user.setRealNameEnc(realNameEnc);
+        user.setIdCardHash(idCardHash);
+        user.setIdCardLast4(idCardLast4);
+        user.setKeyVersion(keyVersion);
+        userMapper.updateById(user);
+    }
 }

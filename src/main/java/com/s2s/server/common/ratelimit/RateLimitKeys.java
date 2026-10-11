@@ -257,6 +257,27 @@ public final class RateLimitKeys {
     }
 
     // ------------------------------------------------------------------
+    // 行 12：未实名详情额度（账号维度，额度闸专用，[149]）
+    // ------------------------------------------------------------------
+
+    /**
+     * 未实名详情额度·账号·1 自然日窗键（[149]）。
+     *
+     * <p>与 §3.4 限频键表 11 行的区别：本键是「额度闸」而非「限频轨」——超限码
+     * {@code 40301} 为 {@code needRetryAfter=false}（引导实名，非限频等待），故不由
+     * {@link RateLimitTrack} 承载（该枚举绑定的是 needRetryAfter 码）；键拼装仍收口于
+     * 本类（守「键拼装唯一处」，编码规范 §1.2），计数逻辑归 {@code post.DetailQuotaGate}。
+     * 窗口语义同 {@code :1d} 轨：自然日 + 键尾日期片 + 26h TTL（KTD6）。</p>
+     *
+     * @param userId 用户 ID（账号级维度，Long 类型分维，编码规范 §4.7 账号级一律 user_id）
+     * @param date   自然日（Asia/Shanghai，跨零点自动失效）
+     * @return {@link String} 键形 {@code rl:detailquota:uid:{userId}:1d:{yyyyMMdd}}
+     */
+    public static String detailQuotaUidDay(Long userId, LocalDate date) {
+        return KEY_PREFIX + "detailquota:uid:" + userId + ":1d:" + date.format(DATE_FORMAT);
+    }
+
+    // ------------------------------------------------------------------
     // 设备 ID 格式校验（KTD14）
     // ------------------------------------------------------------------
 
