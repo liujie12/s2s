@@ -376,6 +376,32 @@ class NorthStar {
   static const int pushLatencyMin = 1;
 }
 
+/// 媒体上传上限（[B2-11] 上传链路前端镜像，口径源为 openapi 与后端
+/// `common/constants/NfrMedia.java`，非 PRD —— 故不在 §14.1 表内）。
+///
+/// 消费方一律引用本类常量名，不得复制字面量。
+class NfrMedia {
+  const NfrMedia._();
+
+  /// 单帖媒体数量上限（9）。口径源：openapi `PostCreateRequest.media_ids`
+  /// `maxItems: 9` + 后端 `NfrMedia.MAX_MEDIA_COUNT`。
+  static const int maxMediaCount = 9;
+
+  /// 允许上传的图片 MIME 白名单。口径源：openapi
+  /// `POST /media/upload/ticket` 请求体 `content_type` 的 enum +
+  /// 后端 `NfrMedia.ALLOWED_CONTENT_TYPES`。
+  static const List<String> allowedContentTypes = <String>[
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+  ];
+
+  /// 单文件字节上限（20MB）。口径源：后端 `NfrMedia.MAX_SIZE_BYTES`
+  /// （2026-09-23 用户裁定；与 PRD §13.2「媒体合计 ≤200MB」自洽：
+  /// 9 × 20MB = 180MB < 200MB）。
+  static const int maxSizeBytes = 20 * 1024 * 1024;
+}
+
 /// §6.12 T1 匹配的 Hard Filter 与精排粒度。
 ///
 /// **2026-09-02 缺陷评审第 14 条定案**：Hard Filter 类目粒度由三级放宽为二级，
