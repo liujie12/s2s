@@ -5,9 +5,11 @@
 /// 主按钮能不能点。散在页面里意味着这八条规则只能靠手点去验，而其中
 /// 「未实名每日 1 条」这类根本点不出来。抽成纯数据类后可逐条单测。
 ///
-/// **不含媒体与位置的真实值**：媒体依赖 §13.2 `post_media` 与 CDN（详情页同因），
-/// 地图选点依赖高德 Key。这两项在表单里以「是否已选」的布尔位参与校验，
-/// 让「必填齐全才启用」这条规则可以被完整验证，而具体上传与选点是下一层的事。
+/// **媒体仍不含真实值，位置已采集真实坐标**：媒体依赖 §13.2 `post_media` 与
+/// CDN（详情页同因），以「已选数量」参与校验；位置收真实 GCJ-02 坐标（高德
+/// Key 已配置），坐标非空即视为已选（[PublishFormState.hasLocation]）——`POST
+/// /posts` 契约要求 `lng`/`lat` 必填，坐标必须真的能随载荷上送。
+/// 具体上传与地图选点仍是下一层的事。
 library;
 
 import '../../domain/category_tree.dart';
@@ -100,7 +102,8 @@ class PublishFormState {
   const PublishFormState({
     this.kind = PublishKind.supply,
     this.leafCategoryId,
-    this.hasLocation = false,
+    this.lng,
+    this.lat,
     this.doorNumber = '',
     this.title = '',
     this.priceText = '',
@@ -119,8 +122,19 @@ class PublishFormState {
   /// 已选叶子类目 ID（§13.2 `post.leaf_category_id`）。null 表示未选。
   final int? leafCategoryId;
 
-  /// 是否已选位置。真实坐标待地图选点（见文件头）。
-  final bool hasLocation;
+  /// 已选位置的经度（GCJ-02；§13.2 `post.lng`）。null = 未选位置。
+  final double? lng;
+
+  /// 已选位置的纬度（GCJ-02；§13.2 `post.lat`）。null = 未选位置。
+  final double? lat;
+
+  /// 是否已选位置 —— **以坐标为唯一判据**，不另设布尔位。
+  ///
+  /// 为什么不设独立的 `hasLocation` 布尔：一个「已选位置但无坐标」的中间态
+  /// 会让 [postDraftPayload] 发不出 `lng`/`lat`，而 `POST /posts` 契约要求
+  /// 二者必填（`PostCreateRequest` `@NotNull`）——表现为「按钮可点、提交必
+  /// 400」。位置是否就绪只由「坐标是否采集到」回答，两者无从漂移。
+  bool get hasLocation => lng != null && lat != null;
 
   /// 门牌号（§9.8 条件二「位置到门牌号」）。
   ///
@@ -263,7 +277,8 @@ class PublishFormState {
   PublishFormState copyWith({
     PublishKind? kind,
     int? leafCategoryId,
-    bool? hasLocation,
+    double? lng,
+    double? lat,
     String? doorNumber,
     String? title,
     String? priceText,
@@ -279,7 +294,8 @@ class PublishFormState {
     return PublishFormState(
       kind: kind ?? this.kind,
       leafCategoryId: leafCategoryId ?? this.leafCategoryId,
-      hasLocation: hasLocation ?? this.hasLocation,
+      lng: lng ?? this.lng,
+      lat: lat ?? this.lat,
       doorNumber: doorNumber ?? this.doorNumber,
       title: title ?? this.title,
       priceText: priceText ?? this.priceText,
@@ -312,9 +328,12 @@ class PublishFormState {
   /// - `type`：supply→`resource`、demand→`demand`（契约 PostTypeEnum）；
   /// - `attributes`：只含当前模板字段键的非空值（空值不传键——
   ///   attributes 语义是「已填的动态属性」，空串值无意义）；
-  /// - `lng`/`lat`/`address`：本轮无真实坐标（地图选点待高德 Key，
-  ///   见 publish_screen 文件头），不传假值——precheck 对半成品开放，
-  ///   服务端五项校验（敏感词/图片/禁发/资质/实名上限）均不依赖坐标；
+  /// - `lng`/`lat`：**采集到坐标（[hasLocation]）才上送**。`POST /posts`
+  ///   契约要求二者必填（`PostCreateRequest` `@NotNull`），缺失会被服务端
+  ///   40001 打回；precheck 收的 `PostDraft` 不要求（允许半成品预校验），
+  ///   故坐标缺失时 precheck 能过、createPost 必失败 —— 该组合由
+  ///   [blocker] 的 [PublishBlocker.noLocation] 在提交前拦住，不会漏到线上；
+  /// - `address`：本轮无逆地理编码（门牌号走手填 [doorNumber]），不上送；
   /// - `address_precise`：门牌号手填非空即 true（§9.8 条件二兜底口径）；
   /// - `media_ids`：媒体上传保持占位（说明文档裁定），恒空数组；
   /// - 派生字段（`l2_category_id`/`completeness_level`/`grid_id`/
@@ -334,6 +353,10 @@ class PublishFormState {
             field.key: templateValues[field.key]!.trim(),
       },
       'address_precise': doorNumber.trim().isNotEmpty,
+      // 坐标与 hasLocation 同源：只有两个都非空才算「已选位置」，
+      // 故此处用 hasLocation 单判即可，不会上送半对坐标。
+      if (hasLocation) 'lng': lng,
+      if (hasLocation) 'lat': lat,
       'media_ids': const <String>[],
       'contact_type': 'phone',
       if (contact.trim().isNotEmpty) 'contact_value': contact.trim(),
@@ -354,7 +377,8 @@ class PublishFormState {
     return PublishFormState(
       kind: kind,
       leafCategoryId: leafId,
-      hasLocation: hasLocation,
+      lng: lng,
+      lat: lat,
       // 门牌号跟着位置走，与分类无关，故换分类时保留
       doorNumber: doorNumber,
       title: title,

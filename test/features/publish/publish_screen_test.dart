@@ -54,7 +54,8 @@ void main() {
   PublishFormState filledExceptTemplate() {
     return const PublishFormState(
       leafCategoryId: 10101,
-      hasLocation: true,
+      lng: 120.1551,
+      lat: 30.2741,
       title: '火锅店招服务员',
       priceUnit: '面议',
       description: '包吃包住，月休四天，详情面议。',

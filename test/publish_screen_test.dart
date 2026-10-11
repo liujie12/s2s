@@ -14,15 +14,21 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zhaoyazhao/domain/category_tree.dart';
 import 'package:zhaoyazhao/features/publish/cert_modal_screen.dart';
+import 'package:zhaoyazhao/features/publish/publish_form_state.dart';
 import 'package:zhaoyazhao/features/publish/publish_screen.dart';
 
 void main() {
   /// 挂载发布页。
   ///
-  /// 参数 [tester] 测试驱动器。
-  Future<void> pumpPublish(WidgetTester tester) async {
+  /// 参数 [tester] 测试驱动器；[initialForm] 初始表单（测试缝，默认空表单）。
+  Future<void> pumpPublish(
+    WidgetTester tester, {
+    PublishFormState initialForm = const PublishFormState(),
+  }) async {
     await tester.pumpWidget(
-      const ProviderScope(child: MaterialApp(home: PublishScreen())),
+      ProviderScope(
+        child: MaterialApp(home: PublishScreen(initialForm: initialForm)),
+      ),
     );
   }
 
@@ -128,15 +134,17 @@ void main() {
     });
 
     testWidgets('切到需求态不清空已填内容', (tester) async {
-      await pumpPublish(tester);
-      // 位置是最容易被「切换时整表重置」波及的一项
-      await tester.tap(find.text('使用当前位置'));
-      await tester.pump();
-      expect(find.textContaining('演示位置'), findsOneWidget);
+      // 位置是最容易被「切换时整表重置」波及的一项：以带坐标的初始表单起步
+      // （真实采集要过定位权限，不在本页范围内），切换 kind 后应原样保留。
+      await pumpPublish(
+        tester,
+        initialForm: const PublishFormState(lng: 120.1551, lat: 30.2741),
+      );
+      expect(find.textContaining('已使用当前位置'), findsOneWidget);
 
       await tester.tap(find.text('发布需求'));
       await tester.pump();
-      expect(find.textContaining('演示位置'), findsOneWidget);
+      expect(find.textContaining('已使用当前位置'), findsOneWidget);
     });
   });
 

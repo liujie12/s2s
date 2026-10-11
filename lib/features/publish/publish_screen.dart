@@ -9,11 +9,11 @@
 /// [PublishBlocker.templateLoading]：模板拉取是异步事态，进不了同步 blocker
 /// 链，由本页在 [PublishFormState.templatePending] 时合成（[124] B3）。
 ///
-/// **§5.4.1 八段中降级处理的两段，及原因**：
-/// ① **第 2 段位置**：地图选点依赖高德 Key（未申请，说明文档 M4-1b 已记）。
-///    本页给「使用当前位置（演示）」把 `hasLocation` 置真，让后面六段的校验
-///    可被完整走通；「地图选点」按钮保留但禁用并注明原因 —— 隐藏它会让
-///    验收时无法判断是漏做还是待前置。
+/// **§5.4.1 八段中的降级项，及原因**：
+/// ① **第 2 段位置**：「使用当前位置」已接真 —— 从 [locationCenterProvider]
+///    取 GCJ-02 坐标写入表单（`POST /posts` 契约要求 `lng`/`lat` 必填，
+///    坐标随载荷上送）；「地图选点」（拖图选点）按钮保留但禁用并注明原因
+///    —— 隐藏它会让验收时无法判断是漏做还是待前置。
 /// ② **第 6 段媒体**：上传依赖 §13.2 `post_media` 与 CDN（详情页同因）。
 ///    本页只呈现 `0 / 9` 计数与上传区占位，不做选图。
 ///
@@ -36,16 +36,19 @@ import '../../domain/publish_template.dart';
 import '../../core/network/api_exception.dart';
 import '../../router/app_router.dart';
 import '../auth/auth_repository.dart';
+import '../location/location_center.dart';
+import '../location/location_permission.dart';
 import '../post/post_dto.dart';
 import '../post/post_repository.dart';
 import 'publish_form_state.dart';
 import 'publish_template_provider.dart';
 
-/// 位置演示值（§5.4.1 第 2 段示例「XX 小区南门·300m」）。
+/// 已选位置时的展示文案（§5.4.1 第 2 段）。
 ///
-/// 写成常量并在 UI 上标注「演示」：一个看起来像真定位的假地址，
-/// 在验收时会被当成定位已接通。
-const String _demoLocationLabel = 'XX 小区南门 · 300m（演示位置）';
+/// 不展示具体地名：本轮无逆地理编码（`address` 不上送，见
+/// `PublishFormState.postDraftPayload`），凭空拼一个「XX 小区南门」
+/// 会让验收误以为地名解析已接通。
+const String _currentLocationLabel = '已使用当前位置';
 
 /// 发布页。
 class PublishScreen extends ConsumerStatefulWidget {
@@ -259,6 +262,26 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
     router.push(AppRoutes.aiConfirm, extra: _form);
   }
 
+  /// 采集当前位置写入表单（§5.4.1 第 2 段「使用当前位置」）。
+  ///
+  /// 坐标取自 [locationCenterProvider]（地图侧已取到的定位中心，GCJ-02），
+  /// 一次写入 [PublishFormState.lng]/[PublishFormState.lat] —— 位置是否就绪
+  /// 以坐标为准（见 `PublishFormState.hasLocation`）。
+  ///
+  /// **为什么先判权限**：该 Provider 在从未取到真实定位时停在默认城市中心，
+  /// 直接拿它当用户位置发布等于伪造一条坐标。故仅在定位已授权时采集；
+  /// 未授权时提示先开启，而不是塞一个假点把 [PublishBlocker.noLocation] 蒙过去。
+  void _useCurrentLocation() {
+    if (ref.read(locationPermissionProvider) != LocationPermissionPhase.granted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请先开启定位权限，再使用当前位置')),
+      );
+      return;
+    }
+    final center = ref.read(locationCenterProvider);
+    setState(() => _form = _form.copyWith(lng: center.lng, lat: center.lat));
+  }
+
   @override
   Widget build(BuildContext context) {
     // [124] B3：watch 服务端模板，数据到达后回写表单。不用 ref.listen ——
@@ -356,8 +379,7 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
             done: _form.hasLocation,
             child: _LocationRow(
               hasLocation: _form.hasLocation,
-              onUseCurrent: () =>
-                  setState(() => _form = _form.copyWith(hasLocation: true)),
+              onUseCurrent: _useCurrentLocation,
             ),
           ),
           _SectionCard(
@@ -758,7 +780,7 @@ class _LocationRow extends StatelessWidget {
             const SizedBox(width: AppSpacing.sm),
             Expanded(
               child: Text(
-                hasLocation ? _demoLocationLabel : '尚未选择位置',
+                hasLocation ? _currentLocationLabel : '尚未选择位置',
                 style: TextStyle(
                   fontSize: AppTypeScale.body.size,
                   color: hasLocation
@@ -787,7 +809,7 @@ class _LocationRow extends StatelessWidget {
             const SizedBox(width: AppSpacing.sm),
             OutlinedButton(
               // 禁用而非隐藏：§5.4.1 明列「地图选点」，隐藏后无从确认它是待做还是不做。
-              // TODO(高德 Key 到位后)：跳 AppRoutes.mapSelector 并回传真实坐标。
+              // 高德 Key 已配置（[149] 后），缺的是拖图选点页（mapSelector 路由）本身。
               onPressed: null,
               style: OutlinedButton.styleFrom(
                 side: const BorderSide(color: Color(AppColors.border)),
@@ -801,7 +823,7 @@ class _LocationRow extends StatelessWidget {
           ],
         ),
         const SizedBox(height: AppSpacing.xs),
-        _HintText('可见范围默认 5km；地图选点待地图服务接入'),
+        _HintText('可见范围默认 5km；「地图选点」（拖图微调）待接入'),
       ],
     );
   }

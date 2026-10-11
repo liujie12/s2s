@@ -14,7 +14,8 @@ void main() {
   /// 一份必填齐全但缺门牌号的表单（→ 🟡 档）。
   PublishFormState yellow() => const PublishFormState(
     leafCategoryId: 40101,
-    hasLocation: true,
+    lng: 120.1551,
+    lat: 30.2741,
     title: '九成新实木餐桌',
     priceText: '350',
     priceUnit: '元',

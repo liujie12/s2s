@@ -47,8 +47,16 @@ public class PostEntity {
     /** 标题（过敏感词校验）。 */
     private String title;
 
-    /** 描述正文（过敏感词校验）；列名 {@code desc}。 */
-    @TableField("desc")
+    /**
+     * 描述正文（过敏感词校验）；列名 {@code desc}。
+     *
+     * <p><b>{@code desc} 是 MySQL 保留字，必须加反引号</b>：MyBatis-Plus 把注解值
+     * <b>原样</b>拼进生成的 INSERT / SELECT / SET 片段，写成裸 {@code desc} 会让
+     * 自动生成的 SQL 直接语法错（{@code SQLSyntaxErrorException}，全局兜底成 50001）——
+     * 这既挡发布（INSERT）也挡详情/列表（SELECT）。手写 XML（{@code MapPostMapper} /
+     * {@code PostQueryMapper}）早已用 {@code p.`desc`} 引用，此处与之一致。</p>
+     */
+    @TableField("`desc`")
     private String description;
 
     /** 约 500m 网格 ID 字符串 gx_gy。 */

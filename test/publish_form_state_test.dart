@@ -17,13 +17,15 @@ import 'package:zhaoyazhao/features/publish/publish_form_state.dart';
 void main() {
   /// 构造一份「除指定项外全部填妥」的表单。
   ///
-  /// 参数 [leafId] 叶子分类 ID，默认 40101（二手闲置，模板只有一项必填）。
+  /// 参数 [leafId] 叶子分类 ID，默认 40101（二手闲置，模板只有一项必填）；
+  /// [located] 是否已采集到位置坐标（false 用于挖空「位置」一段）。
   /// 返回一份可提交的表单快照，供各用例逐项挖空来验证对应的 blocker。
-  PublishFormState complete({int leafId = 40101}) {
+  PublishFormState complete({int leafId = 40101, bool located = true}) {
     final template = templateForLeaf(leafId);
     return PublishFormState(
       leafCategoryId: leafId,
-      hasLocation: true,
+      lng: located ? 120.1551 : null,
+      lat: located ? 30.2741 : null,
       title: '九成新实木餐桌转让',
       priceText: '350',
       priceUnit: template.priceUnits.first,
@@ -62,12 +64,39 @@ void main() {
     });
   });
 
+  group('位置坐标：采集到才随载荷上送（POST /posts 契约要求 lng/lat 必填）', () {
+    test('已采集坐标 → 载荷含 lng/lat，hasLocation 为真', () {
+      final form = complete();
+      final payload = form.postDraftPayload();
+      expect(form.hasLocation, isTrue);
+      expect(payload['lng'], 120.1551);
+      expect(payload['lat'], 30.2741);
+    });
+
+    test('未采集坐标 → 载荷不含 lng/lat，blocker 拦在 noLocation', () {
+      // 守的是「precheck 能过、createPost 必 400」那个组合：坐标缺失时
+      // 必须被 blocker 在提交前拦住，而不是发到服务端吃 40001。
+      final form = complete(located: false);
+      expect(form.hasLocation, isFalse);
+      expect(form.postDraftPayload().containsKey('lng'), isFalse);
+      expect(form.postDraftPayload().containsKey('lat'), isFalse);
+      expect(form.blocker, PublishBlocker.noLocation);
+    });
+
+    test('hasLocation 与坐标同源：写入坐标即视为已选位置', () {
+      final form = const PublishFormState().copyWith(lng: 120.1551, lat: 30.2741);
+      expect(form.hasLocation, isTrue);
+      expect(form.postDraftPayload()['lng'], 120.1551);
+    });
+  });
+
   group('§5.4.1 八段逐项挖空，各自报出自己的 blocker', () {
     test('未选分类 → noCategory', () {
       // 用全新实例而非 copyWith(leafCategoryId: null)：copyWith 的
       // `?? this.x` 写法无法把可空字段改回 null（这是 copyWith 的通病）。
       const form = PublishFormState(
-        hasLocation: true,
+        lng: 120.1551,
+        lat: 30.2741,
         title: 't',
         priceText: '1',
         priceUnit: '元',
@@ -79,10 +108,9 @@ void main() {
     });
 
     test('未选位置 → noLocation', () {
-      expect(
-        complete().copyWith(hasLocation: false).blocker,
-        PublishBlocker.noLocation,
-      );
+      // 用 located:false 构造无坐标实例：copyWith 的 `?? this.x` 无法把可空
+      // 字段改回 null（同上方 noCategory 用例的注释）。
+      expect(complete(located: false).blocker, PublishBlocker.noLocation);
     });
 
     test('标题为空 → noTitle', () {
@@ -187,7 +215,7 @@ void main() {
       final withCategory = form.withCategory(40101);
       expect(withCategory.blocker, PublishBlocker.noLocation);
 
-      final withLocation = withCategory.copyWith(hasLocation: true);
+      final withLocation = withCategory.copyWith(lng: 120.1551, lat: 30.2741);
       expect(withLocation.blocker, PublishBlocker.noTitle);
 
       final withTitle = withLocation.copyWith(title: '餐桌');
