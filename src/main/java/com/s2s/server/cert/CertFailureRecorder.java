@@ -25,10 +25,10 @@ import org.springframework.transaction.annotation.Transactional;
  * 于独立事务提交，与 {@code audit_log}「必须与业务同事务」恰好相反——审计要的是
  * 「操作成功才留痕」，失败计数要的是「失败也必须留痕」。</p>
  *
- * <p><b>锁过期后重新计数（评审 P1 技术部分）</b>：{@code fail_count} 只在锁定期内累加；
- * {@code lock_until} 过期（或从未锁定）后重新从 0 计数，避免「解锁后每次仅 1 次尝试
- * 即再锁」的退化。锁定的「自然过期恢复 vs 人工申诉」口径冲突已登记待裁定（见
- * {@link CertService} 类注释），本类不代裁定。</p>
+ * <p><b>锁过期后重新计数（评审 P1 技术部分）</b>：{@code fail_count} 在未锁定
+ * （{@code lock_until}=null）或锁定期内累加，{@code lock_until} 过期后归零重计，
+ * 避免「解锁后每次仅 1 次尝试即再锁」的退化。锁定的「自然过期恢复 vs 人工申诉」口径
+ * 冲突已登记待裁定（见 {@link CertService} 类注释），本类不代裁定。</p>
  */
 @Component
 public class CertFailureRecorder {
@@ -61,7 +61,8 @@ public class CertFailureRecorder {
      * 记录一次核验失败并在达阈值时锁定（独立事务 {@code REQUIRES_NEW}）。
      *
      * <p>锁过期后重新计数（评审 P1）：仅当最新记录仍处锁定期（{@code lock_until} 未过期）
-     * 才在旧 {@code fail_count} 上累加，否则归零重计——避免「解锁后一次失败即再锁」。</p>
+     * 或从未锁定（{@code lock_until}=null）才保留累计；{@code lock_until} 已过期则归零重计
+     * ——避免「解锁后一次失败即再锁」。</p>
      *
      * @param userId 用户 ID
      */
