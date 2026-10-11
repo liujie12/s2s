@@ -19,6 +19,7 @@ import 'home_shell.dart';
 import '../domain/category_tree.dart';
 import '../features/auth/login_screen.dart';
 import '../features/cert/realname_form_screen.dart';
+import '../features/cert/trust_screen.dart';
 import '../features/contact/contact_screen.dart';
 import '../features/detail/detail_screen.dart';
 import '../features/discovery/list_screen.dart';
@@ -73,6 +74,7 @@ class AppRoutes {
 
   // ── 认证 ──
   static const String trust = '/trust';
+  static const String trustRealname = '/trust/realname';
 
   // ── 模态（PRD §10.1 三个模态）──
   static const String categorySelector = '/modal/category';
@@ -224,8 +226,13 @@ final List<RouteBase> _routes = [
   ),
   GoRoute(
     path: AppRoutes.trust,
-    // [149]：trust 由占位页转真——个人实名认证表单（B2-1 实名为主；资质二层
-    // 认证留 B2-11「我的页实装」）。
+    // [B2-11]：按设计稿 `trust-screen` 转真为「信任与认证」状态总览
+    // （第一层实名 + 第二层资质 + 我的信任指标）；原实名表单下移为二级路由
+    // [AppRoutes.trustRealname]（`/trust/realname`）。
+    builder: (context, state) => const TrustScreen(),
+  ),
+  GoRoute(
+    path: AppRoutes.trustRealname,
     builder: (context, state) => const RealnameFormScreen(),
   ),
   // ── 模态：用 fullscreenDialog 语义，返回栈行为与页面不同 ──

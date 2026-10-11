@@ -3156,7 +3156,11 @@ function allText(root) {
       ['buildNotification', 'features/notify/notification_screen.dart',
        'notification-screen'],
       ['buildSettings', 'features/settings/settings_screen.dart',
-       'settings-screen']
+       'settings-screen'],
+      // 2026-10-11 [B2-11]：trust 由实名表单改为「信任与认证」状态总览。
+      // 该屏无 `btn/` 节点（三处右侧动作是 TEXT + `›`，非按钮组件），
+      // 纳入本表用于登记「已接线」。
+      ['buildTrust', 'features/cert/trust_screen.dart', 'trust-screen']
     ];
 
     // **临时降级备案**：码侧因「目标页 M4 未排」而有意偏离稿子的按钮。

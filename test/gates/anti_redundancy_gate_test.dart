@@ -821,8 +821,10 @@ void main() {
     /// pins 紧凑行/列序/列数校验 3 + clusters 1 + 单元格助手 2）；
     /// 54 = 53 + 工厂定义 1。33 的历史构成见说明文档 §三。
     /// 57 = 54 + cert 域 3（[149]：cert_models ×2 + cert_repository ×1）。
-    /// 58 = 57 + cert_models ×1（[149] 评审 P2-3 补 qualifications 校验）。
-    const int parseFactoryTotalBaseline = 58;
+    /// 58 = 57 + cert_models ×1（[149] 评审 P2-3 补 qualifications 校验）；
+    /// 55 = 58 − cert_models 3（[B2-11]：cert_models.dart 改用
+    /// core/contract_json 助手，3 处直抛上浮回 contract_json 既有 15 处）。
+    const int parseFactoryTotalBaseline = 55;
 
     test('lib/features/ 无 for/while 循环重试（详设 §14.2，判据 A1）', () {
       // 先断言扫描面非空且不小于基线（部署 §14.5：先断言待判对象存在），

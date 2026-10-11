@@ -12,7 +12,7 @@
 /// 失败抛出点只准走该工厂，禁止内联
 /// `ApiException(code: ApiErrorCode.parseError, ...)` —— 统一入口保证
 /// message 必经 [_truncateParseMessage] 截断、口径单一（编码规范 §1.1）。
-/// 现有 57 处生产调用点（连工厂定义自身共 58 处，与反冗余判据 C1 基线同值）：
+/// 现有 54 处生产调用点（连工厂定义自身共 55 处，与反冗余判据 C1 基线同值）：
 /// `core/network` 9 处（`api_error_code.dart` ×1、`api_client.dart` ×4、
 /// `interceptors/auth_refresh_interceptor.dart` ×1、
 /// `interceptors/envelope_interceptor.dart` ×3）、
@@ -34,8 +34,9 @@
 /// 抛 parseError）、
 /// `features/discovery/map_dto.dart` ×6（[126] 前端段：pins 紧凑行/列序/列数
 /// 校验 3、clusters 缺坐标 1、单元格读取助手 2）；
-/// `features/cert/cert_models.dart` ×3（[149]：`CertStatus.fromJson` 对 data
-/// 非 Map / realname.status 缺失 / qualifications 非 List 抛 parseError）、
+/// `features/cert/cert_models.dart` ×0（[149] 原有 3 处直抛，[B2-11] 改用
+/// `core/contract_json.dart` 的 requireMap/requireString/requireList 助手后
+/// 归零 —— 抛出点随助手回到 contract_json 既有 15 处，属反冗余收敛非删除）、
 /// `features/cert/cert_repository.dart` ×1（[149]：`_parseStatus` 对 status
 /// 缺失抛 parseError）；
 /// 新增解析失败点同走本工厂。
@@ -50,6 +51,8 @@
 /// cert_repository ×1）。
 /// 2026-10-11 再增 1 处：连工厂定义共 58 处（[149] 评审 P2-3 cert_models 补
 /// qualifications 校验）。
+/// 2026-10-11 [B2-11] 减 3 处：连工厂定义共 55 处（cert_models.dart 的 3 处
+/// 直抛改走 contract_json 助手，抛出点归入其既有 15 处，全局总数净减 3）。
 ///
 /// **循环 import 说明**：见 `api_error_code.dart` 文件头，同一份说明。
 library;
