@@ -137,6 +137,8 @@
 - 2026-10-11（[149] 实名认证接入 · cert 域转真 + 未实名详情额度）
 - 2026-10-11（[149] 评审修复 · P0 防刷失效 + P1 计数重置）
 - 2026-10-11（三项阻塞裁定：收藏契约 · B2-4 批次归属 · 算法备案）
+- 2026-10-11（DEC-32/DEC-33 裁定落地：favorite 归 contact 域 · 新建 user_setting 表）
+- 2026-10-11（[B2-11]「我的」页实装 · 后端三域 + 前端四页）
 
 ---
 
@@ -6297,6 +6299,30 @@ printf '\nMYSQL_SSL_MODE=VERIFY_CA\nMYSQL_TLS_TRUSTSTORE_PASSWORD=%s\n' \
 - **环境坑**：仓库 `.pylibs/lxml` 与本机 Python 3.14 不兼容（`cannot import name 'etree'`）；改用全局 `python-pptx`/`python-docx`，以 `python -c "import lxml.etree,pptx,docx,runpy; runpy.run_path(...)"` 预加载绕过 `.pylibs` 覆盖。
 - 门禁结论：**文档类变更，无 `src/` 与 `lib/` 代码改动，未跑 mvn/flutter 门禁**（非跳检）。
 - 遗留与豁免：MRD Batch3 GTM 钩子待补；B2-4 提前至 Batch2 后，其「真实语料 / dry-run」口径须在开批前另定（已记入 Batch2 清单 B2-4 前置列）。
+
+---
+
+### 2026-10-11（[B2-11]「我的」页实装 · 后端三域 + 前端四页）
+
+> 摘要：Batch1 **唯一确证漏项** B2-11 落地。会话属性 🟢 独立（开工前已提醒）；实施前经用户逐条裁定 3 处「设计稿 vs 契约」落差，再按「后端 → 契约门禁 → 前端 → 离线探针」四段推进。
+
+- [x] **实施前裁定（用户逐条判决，3 项）**：① **收藏卡副标题的类目路径** → **扩契约** `FavoriteItem.category_path`（与 `PostDetail.category_path` **同型数组**；后端经 category 域 `CategoryService.categoryPath(leaf)` 拼）；**距离不显示** —— 设计稿副标题含「1.2km」，但收藏列表无定位中心、契约亦无该字段，不伪造；② **资质二层认证本轮一并做** —— 查证后**后端已具备**（`POST /cert/qualification`、`GET /cert/status` 在 [149] 已实现，契约/schema/`CertTypeEnum` 亦已在 openapi），剩余仅**前端表单 + `trust-screen` 整合**；③ **设置页无对应端点的行**（修改密码/注销账号/清除缓存/位置权限说明/版本号/用户协议/隐私政策）→ 按既有降级口径**点击提示「本期内测版暂未开放」**，不做假交互。
+- [x] **U1 后端收藏域**：`POST/DELETE /posts/{id}/favorite`、`GET /favorites?type=` 占位转真 —— `FavoriteController/FavoriteService/FavoriteMapper`(+XML) + 3 DTO（`FavoriteItem`/`FavoritesResponse`/`FavoriteResult`）；幂等靠 `uk_user_post` 的 `INSERT ... ON DUPLICATE KEY UPDATE deleted_at=NULL`；封面经跨域 service 取值（他人视角 `isOwner=false`）。
+- [x] **DEC-32 · `favorite` 域归属 post → contact**：证据 **4 源一致**（架构文档 §3 R9 域切分把「收藏」列入 `contact` 职责、§表→域映射 `favorite`→`contact`、数据库设计文档 #10、PRD §12.3 分组），唯 openapi 两条端点写 `x-domain: post` 为笔误。**已更正** openapi 三端点 `x-domain` → `contact`；**代码迁址 7 件**（`git` 识别为 rename）；依架构文档 §3「功能域互相调用走对方 **service 接口**、不允许跨域访问对方 mapper」，封面改经 `PostQueryService.coverMediaByPost(ids, false)`（该法由 `private` 升为 `public` 跨域接口），不再注入 post 的 Mapper/Assembler。
+- [x] **U2 通知已读**：`POST /notifications/read` 占位转真 —— 请求体 `{ids:[…]}`，`ids` 缺省/空 = **全部已读**；`read_at IS NULL` 条件保证重复标记幂等；`ids` 非空时 SQL 以 `user_id` 限定归属，防越权标记他人通知。
+- [x] **U3 设置域 + DEC-33**：`GET/PATCH /settings` 占位转真。**载体缺口**（PRD §13 要「通知开关 + 默认范围 + 隐私项」，而 V1 仅 `user.default_radius` 承载「默认范围」，**通知开关无任何载体**）裁定为**新建 `user_setting` 表**（Flyway `V6__user_setting.sql`；1:1 `user`、缺行=全默认全开、`ON DUPLICATE KEY UPDATE` upsert）。口径同步：《数据库设计文档》§1.3 清单增 #16、§1.4/§6 计数 15→16、新增 §3.18 字段字典（并note `restart_window`(V2) 属运维基建表不计入）；`openapi.yaml` 新增 `GET/PATCH /settings`（`x-domain: auth`）+ `SettingsResponse`/`SettingsUpdateRequest`。**范围**：可写项仅通知开关四列 + `default_radius`（按 `RadiusEnum` 白名单校验）；隐私项 `contact_display=transit_only` 只读展示；PRD §9.3 的黑名单（P2）不实现。
+- [x] **U4–U8 前端四页**：新建 `lib/features/{profile,favorite,notify,settings}` 四域（各含 DTO + repository + provider，全部走 OpenAPI 契约、经 `dioProvider` 生产同款五拦截器链）；**`profile-screen` 由占位屏转真**（头部昵称/脱敏号/实名态 + 五入口 + 退出登录二次确认清会话）；新增路由 `/favorites`、`/notifications`、`/settings`。角标三路并行聚合（我的发布「N 在架」/收藏「N」/通知「N 未读」），角标失败独立降级不阻塞入口。
+- [x] **反冗余（编码规范 §1.1）**：① 新建 `common/jdbc/JdbcRowValues` 收敛 `toLong/toInteger/toInstant`（原 post/notify 两处复制，本次第三处前上浮）；② 新建 `lib/core/ui/list_states.dart`（`ListEndRow`/`ListErrorView`，第二处需求后上浮）。
+- [x] **契约门禁拦截（重要，记一笔）**：前端 `test/gates/openapi_contract_gate_test.dart` 判「已展开且有写入副作用的写接口必须声明 `Idempotency-Key`」报红 —— `POST/DELETE /posts/{id}/favorite`、`POST /notifications/read`、`PATCH /settings` 四个新写接口初版未声明；**已补齐**（并补 `X-Interaction-Id`/`X-Device-Id`）。该门禁是「契约先行」纪律的强制落点，新写接口必带。
+- [x] **离线探针**：`wiredPages` 由 **5 页补至 9 页**（+`buildProfile`/`buildMyFavorite`/`buildNotification`/`buildSettings`）；`KNOWN_BTN_DOWNGRADES` 仍为空表。
+- 验收证据：`flutter analyze` → **No issues found**；离线探针 → **310 通过 / 0 失败**（「9 页按钮文案全部对上（备案降级 0 项）」）；`flutter test` → **707/707 All tests passed**（基线 704，**+3**）；`mvn -q test` → **343 全绿**（新增 `FavoriteServiceTest` 7 例、`SettingServiceTest` 7 例、`NotifyServiceTest` +2）。
+- 提交（本地 `main`，**未推送**，按用户习惯待验收）：`2b1df2b`（U1 收藏域 + U2 通知已读 + `JdbcRowValues`）、`bbd929a`（DEC-32 迁址）、`7d35521`（U3 设置域 + V6 迁移）、`8fb6708`（U4–U8 前端 + `category_path`）。
+- 门禁结论：**PASS**（本地）。
+- **遗留与豁免（如实登记）**：
+  1. **资质前端未做** —— 用户裁定「本轮一并做」且后端已具备，但剩余前端（资质提交表单 + `trust-screen` 把「实名 + 资质」整合）**需先取 `trust-screen` 设计稿结构**，本轮未完成；
+  2. 4 个新写接口已按门禁声明 `Idempotency-Key`，但**未加 `@Idempotent` 注解** —— 因四端点天然幂等（upsert / `read_at IS NULL`），暂未启用 SETNX 响应缓存，**待评审确认是否为必须**；
+  3. `/settings` 为 `x-domain: auth`，其兄弟 `/settings/privacy` 仍为 `common`，同一「设置与合规」分组内不一致，宜后续统一；
+  4. `my_publish_screen` 的私有 `_ErrorView`/空态**未并入** `core/ui/list_states.dart`（残留近似重复，已抽出的共享件只覆盖新页）。
 
 ---
 
