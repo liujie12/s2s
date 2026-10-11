@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import com.s2s.server.post.dto.MediaItem;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
 
 /**
  * 我的收藏列表项（openapi {@code FavoriteItem}；{@code GET /favorites} 出参）。
@@ -20,6 +21,7 @@ import java.time.Instant;
  * @param type              供需态（resource/demand）
  * @param leafCategoryId    叶子类目 ID
  * @param l2CategoryId      二级类目 ID
+ * @param categoryPath      类目面包屑名称（L1 → L2 → L3；未知类目为空列表）
  * @param title             标题
  * @param price             价格（null 表示面议）；PRD §8.3.2 卡片展示列
  * @param priceUnit         价格单位（price 为 null 时无意义）
@@ -35,6 +37,7 @@ public record FavoriteItem(
         String type,
         Integer leafCategoryId,
         Integer l2CategoryId,
+        List<String> categoryPath,
         String title,
         BigDecimal price,
         String priceUnit,

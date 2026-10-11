@@ -3145,7 +3145,18 @@ function allText(root) {
       // 的穷尽 switch 中逐个出现，其中编辑/删除/继续编辑是 Batch1 降级动作
       // （点击给「本期内测版暂未开放」说明），文案仍与稿一致故不需备案。
       ['buildMyPublish', 'features/post/my_publish_screen.dart',
-       'my-publish-screen']
+       'my-publish-screen'],
+      // 2026-10-11 条目 [B2-11]：「我的」模块四页实装后纳入本表。
+      // profile 页有 `btn/` 节点（退出登录）；收藏/通知/设置三页的可点元素走
+      // `row/*` 与 `segTab`（非 `btn/`），纳入本表既登记「已接线」，也守其按钮文案。
+      ['buildProfile', 'features/profile/profile_screen.dart',
+       'profile-screen'],
+      ['buildMyFavorite', 'features/favorite/favorite_screen.dart',
+       'my-favorite-screen'],
+      ['buildNotification', 'features/notify/notification_screen.dart',
+       'notification-screen'],
+      ['buildSettings', 'features/settings/settings_screen.dart',
+       'settings-screen']
     ];
 
     // **临时降级备案**：码侧因「目标页 M4 未排」而有意偏离稿子的按钮。

@@ -1000,6 +1000,9 @@ paths:
         （取消后重新收藏同路径）。帖子不存在回 `41001`。强制登录态（`40101`）。
       parameters:
         - $ref: '#/components/parameters/PostIdPath'
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/XDeviceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
       responses:
         '200':
           description: 成功
@@ -1025,6 +1028,9 @@ paths:
         （PRD §8.7「取消收藏误操作可恢复」）；对未收藏/不存在的帖子亦返回成功。
       parameters:
         - $ref: '#/components/parameters/PostIdPath'
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/XDeviceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
       responses:
         '200':
           description: 成功
@@ -1689,6 +1695,10 @@ paths:
         标记通知已读。请求体 `{ ids: [...] }`：`ids` 缺省或为空数组 = 标记该用户「全部未读」
         为已读（PRD §8.3.3「全部已读」按钮）；非空 = 只标记所列 id（且限定归属当前用户）。
         `read_at` 只对未读行置位（重复标记幂等）。强制登录态（`40101`）。
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/XDeviceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: false
         content:
@@ -1756,6 +1766,10 @@ paths:
       description: |
         局部更新设置（[B2-11]）：仅提交需变更的字段（`null`/缺省字段不动）；通知开关与默认范围可写，
         隐私项为只读（提交即忽略）。返回更新后的完整设置。强制登录态（`40101`）。
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/XDeviceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
@@ -2889,6 +2903,11 @@ components:
         type: { $ref: '#/components/schemas/PostTypeEnum' }
         leaf_category_id: { type: integer, format: int32 }
         l2_category_id: { type: integer, format: int32 }
+        category_path:
+          type: array
+          nullable: true
+          description: 类目面包屑名称（L1 → L2 → L3，由 post 域 `CategoryService` 拼，2026-10-11 补，与 `PostDetail.category_path` 同型）；未知类目为空数组
+          items: { type: string }
         title: { type: string }
         price: { type: number, format: double, nullable: true, description: 价格（元）；null=面议。PRD §8.3.2 卡片展示 }
         price_unit: { type: string, nullable: true, description: 价格单位；price 为 null 时无意义 }

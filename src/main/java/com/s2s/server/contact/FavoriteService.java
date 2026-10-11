@@ -1,5 +1,6 @@
 package com.s2s.server.contact;
 
+import com.s2s.server.category.CategoryService;
 import com.s2s.server.common.constants.NfrApi;
 import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
@@ -47,16 +48,20 @@ public class FavoriteService {
 
     private final FavoriteMapper favoriteMapper;
     private final PostQueryService postQueryService;
+    private final CategoryService categoryService;
 
     /**
      * 构造收藏域服务。
      *
      * @param favoriteMapper   收藏关系读写 Mapper（本域）
      * @param postQueryService post 域读服务（取封面，跨域 service 接口）
+     * @param categoryService  category 域服务（拼类目面包屑，跨域 service 接口）
      */
-    public FavoriteService(FavoriteMapper favoriteMapper, PostQueryService postQueryService) {
+    public FavoriteService(FavoriteMapper favoriteMapper, PostQueryService postQueryService,
+            CategoryService categoryService) {
         this.favoriteMapper = favoriteMapper;
         this.postQueryService = postQueryService;
+        this.categoryService = categoryService;
     }
 
     /**
@@ -123,11 +128,13 @@ public class FavoriteService {
         List<FavoriteItem> items = new ArrayList<>(rows.size());
         for (Map<String, Object> row : rows) {
             Long postId = toLong(row.get("post_id"));
+            Integer leafCategoryId = toInteger(row.get("leaf_category_id"));
             items.add(new FavoriteItem(
                     postId,
                     (String) row.get("type"),
-                    toInteger(row.get("leaf_category_id")),
+                    leafCategoryId,
                     toInteger(row.get("l2_category_id")),
+                    categoryService.categoryPath(leafCategoryId),
                     (String) row.get("title"),
                     (BigDecimal) row.get("price"),
                     (String) row.get("price_unit"),

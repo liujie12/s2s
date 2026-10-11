@@ -22,17 +22,21 @@ import '../features/cert/realname_form_screen.dart';
 import '../features/contact/contact_screen.dart';
 import '../features/detail/detail_screen.dart';
 import '../features/discovery/list_screen.dart';
+import '../features/favorite/favorite_screen.dart';
 import '../features/map/map_screen.dart';
+import '../features/notify/notification_screen.dart';
 import '../features/placeholder/placeholder_screen.dart';
 import '../features/post/my_publish_screen.dart';
 import '../features/privacy/privacy_consent.dart';
 import '../features/privacy/privacy_gate_screen.dart';
+import '../features/profile/profile_screen.dart';
 import '../features/publish/ai_confirm_screen.dart';
 import '../features/publish/category_selector_screen.dart';
 import '../features/publish/cert_modal_screen.dart';
 import '../features/publish/publish_form_state.dart';
 import '../features/publish/publish_screen.dart';
 import '../features/publish/publish_success_screen.dart';
+import '../features/settings/settings_screen.dart';
 
 /// 路由路径常量。
 ///
@@ -61,6 +65,11 @@ class AppRoutes {
 
   // ── 我的模块（Batch1 降级实现：只做列表与基础操作）[127] 前端段 ──
   static const String myPublish = '/my-publish';
+
+  // ── 我的模块（B2-11 实装：收藏 / 通知 / 设置）──
+  static const String favorites = '/favorites';
+  static const String notifications = '/notifications';
+  static const String settings = '/settings';
 
   // ── 认证 ──
   static const String trust = '/trust';
@@ -146,11 +155,8 @@ final List<RouteBase> _routes = [
       StatefulShellBranch(routes: [
         GoRoute(
           path: AppRoutes.profile,
-          builder: (context, state) => const PlaceholderScreen(
-            pageId: 'profile-screen',
-            pageName: '个人中心',
-            note: '信任与认证入口',
-          ),
+          // [B2-11]：profile-screen 由占位屏转为真页（头部 + 五入口 + 退出登录）。
+          builder: (context, state) => const ProfileScreen(),
         ),
       ]),
     ],
@@ -200,6 +206,21 @@ final List<RouteBase> _routes = [
     // [127] 前端段：my-publish-screen 落地（此前「我的发布」无此路由，
     // 发布成功页第二出口只能临时降级到 profile，见 publish_success_screen 注释）。
     builder: (context, state) => const MyPublishScreen(),
+  ),
+  GoRoute(
+    path: AppRoutes.favorites,
+    // [B2-11]：我的收藏（my-favorite-screen）。
+    builder: (context, state) => const FavoriteScreen(),
+  ),
+  GoRoute(
+    path: AppRoutes.notifications,
+    // [B2-11]：通知中心（notification-screen）。
+    builder: (context, state) => const NotificationScreen(),
+  ),
+  GoRoute(
+    path: AppRoutes.settings,
+    // [B2-11]：设置（settings-screen）。
+    builder: (context, state) => const SettingsScreen(),
   ),
   GoRoute(
     path: AppRoutes.trust,

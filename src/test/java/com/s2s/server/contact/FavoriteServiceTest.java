@@ -15,6 +15,7 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.s2s.server.category.CategoryService;
 import com.s2s.server.common.constants.NfrApi;
 import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
@@ -55,6 +56,7 @@ class FavoriteServiceTest {
 
     private FavoriteMapper favoriteMapper;
     private PostQueryService postQueryService;
+    private CategoryService categoryService;
     private FavoriteService service;
 
     /**
@@ -66,7 +68,8 @@ class FavoriteServiceTest {
     void setUp() {
         favoriteMapper = mock(FavoriteMapper.class);
         postQueryService = mock(PostQueryService.class);
-        service = new FavoriteService(favoriteMapper, postQueryService);
+        categoryService = mock(CategoryService.class);
+        service = new FavoriteService(favoriteMapper, postQueryService, categoryService);
     }
 
     /**
@@ -127,6 +130,8 @@ class FavoriteServiceTest {
         MediaItem cover = new MediaItem("9", "http://oss/x", "pass", null);
         when(postQueryService.coverMediaByPost(List.of(POST_ID), false))
                 .thenReturn(Map.of(POST_ID, cover));
+        when(categoryService.categoryPath(10101))
+                .thenReturn(List.of("工作", "全职招聘", "餐饮服务"));
 
         FavoriteItem item = service.list(USER_ID, null, null, null).items().get(0);
 
@@ -134,6 +139,7 @@ class FavoriteServiceTest {
         assertThat(item.type()).isEqualTo("resource");
         assertThat(item.leafCategoryId()).isEqualTo(10101);
         assertThat(item.l2CategoryId()).isEqualTo(101);
+        assertThat(item.categoryPath()).containsExactly("工作", "全职招聘", "餐饮服务");
         assertThat(item.title()).isEqualTo("搬家找车");
         assertThat(item.price()).isEqualByComparingTo("120.00");
         assertThat(item.status()).isEqualTo("active");
@@ -206,7 +212,8 @@ class FavoriteServiceTest {
     @DisplayName("响应 JSON 键名与契约逐字一致")
     void responseJsonKeysMatchContract() throws Exception {
         FavoritesResponse response = new FavoritesResponse(
-                List.of(new FavoriteItem(POST_ID, "resource", 10101, 101, "标题",
+                List.of(new FavoriteItem(POST_ID, "resource", 10101, 101,
+                        List.of("工作", "全职招聘", "餐饮服务"), "标题",
                         new BigDecimal("120.00"), "次", null, 0, "active",
                         Instant.parse("2026-10-01T10:00:00Z"),
                         Instant.parse("2026-10-05T09:00:00Z"))),
@@ -217,8 +224,8 @@ class FavoriteServiceTest {
         assertThat(fieldNamesOf(root)).containsExactlyInAnyOrder("items", "total", "page", "page_size");
         JsonNode item = root.get("items").get(0);
         assertThat(fieldNamesOf(item)).containsExactlyInAnyOrder(
-                "post_id", "type", "leaf_category_id", "l2_category_id", "title", "price",
-                "price_unit", "cover_media", "completeness_level", "status", "publish_at",
+                "post_id", "type", "leaf_category_id", "l2_category_id", "category_path", "title",
+                "price", "price_unit", "cover_media", "completeness_level", "status", "publish_at",
                 "favorite_at");
     }
 
