@@ -112,7 +112,7 @@ class PublishFormState {
     this.description = '',
     this.templateValues = const {},
     this.loadedTemplate,
-    this.imageCount = 0,
+    this.mediaIds = const <String>[],
     this.contact = '',
     this.agreed = false,
   });
@@ -171,7 +171,14 @@ class PublishFormState {
   /// 尚未返回与从未发起两种，页面不区分——都按 [templatePending] 处理）。
   final PublishTemplate? loadedTemplate;
 
-  final int imageCount;
+  /// 已上传媒体的 media_id 列表（[B2-11] 起为真值；此前为占位恒空）。
+  ///
+  /// 只收**已 commit 成功**的 mediaId —— 上传中/失败的条目属 UI 瞬态，
+  /// 由媒体段自持，不进表单（表单只承载可提交的契约载荷）。
+  final List<String> mediaIds;
+
+  /// 媒体张数（派生自 [mediaIds]，避免「计数」与「列表」两个真源漂移）。
+  int get imageCount => mediaIds.length;
 
   /// 联系方式（§5.4.1 第 8 段）。
   final String contact;
@@ -287,7 +294,7 @@ class PublishFormState {
     String? description,
     Map<String, String>? templateValues,
     PublishTemplate? loadedTemplate,
-    int? imageCount,
+    List<String>? mediaIds,
     String? contact,
     bool? agreed,
   }) {
@@ -304,7 +311,7 @@ class PublishFormState {
       description: description ?? this.description,
       templateValues: templateValues ?? this.templateValues,
       loadedTemplate: loadedTemplate ?? this.loadedTemplate,
-      imageCount: imageCount ?? this.imageCount,
+      mediaIds: mediaIds ?? this.mediaIds,
       contact: contact ?? this.contact,
       agreed: agreed ?? this.agreed,
     );
@@ -335,7 +342,8 @@ class PublishFormState {
   ///   [blocker] 的 [PublishBlocker.noLocation] 在提交前拦住，不会漏到线上；
   /// - `address`：本轮无逆地理编码（门牌号走手填 [doorNumber]），不上送；
   /// - `address_precise`：门牌号手填非空即 true（§9.8 条件二兜底口径）；
-  /// - `media_ids`：媒体上传保持占位（说明文档裁定），恒空数组；
+  /// - `media_ids`：[mediaIds]（[B2-11] 起为真值，此前占位恒空；
+  ///   只含已 commit 成功的媒体）；
   /// - 派生字段（`l2_category_id`/`completeness_level`/`grid_id`/
   ///   `expire_at`/`version`）一律不传（契约：客户端传了也被忽略，
   ///   不传是对「服务端生成」的正向表达）。
@@ -357,7 +365,7 @@ class PublishFormState {
       // 故此处用 hasLocation 单判即可，不会上送半对坐标。
       if (hasLocation) 'lng': lng,
       if (hasLocation) 'lat': lat,
-      'media_ids': const <String>[],
+      'media_ids': mediaIds,
       'contact_type': 'phone',
       if (contact.trim().isNotEmpty) 'contact_value': contact.trim(),
     };
@@ -388,7 +396,7 @@ class PublishFormState {
       negotiable: negotiable,
       description: description,
       templateValues: const {},
-      imageCount: imageCount,
+      mediaIds: mediaIds,
       contact: contact,
       agreed: agreed,
     );

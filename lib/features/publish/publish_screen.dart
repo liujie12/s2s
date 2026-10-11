@@ -14,8 +14,9 @@
 ///    取 GCJ-02 坐标写入表单（`POST /posts` 契约要求 `lng`/`lat` 必填，
 ///    坐标随载荷上送）；「地图选点」（拖图选点）按钮保留但禁用并注明原因
 ///    —— 隐藏它会让验收时无法判断是漏做还是待前置。
-/// ② **第 6 段媒体**：上传依赖 §13.2 `post_media` 与 CDN（详情页同因）。
-///    本页只呈现 `0 / 9` 计数与上传区占位，不做选图。
+/// ② **第 6 段媒体**：[B2-11] 已由占位转真（见 `media_section.dart`）——
+///    选图（`image_picker`）→ OSS 直传 → commit，成功后的 mediaId 进
+///    [PublishFormState.mediaIds] 随载荷上送。本轮**仅图片**（视频待单列）。
 ///
 /// **本轮不做的两条产品能力**（说明文档本轮「不做」清单已列）：
 /// - **记忆机制**（§5.7）：需云端存「user_id + category_leaf_id」的上次值。
@@ -40,6 +41,7 @@ import '../location/location_center.dart';
 import '../location/location_permission.dart';
 import '../post/post_dto.dart';
 import '../post/post_repository.dart';
+import 'media_section.dart';
 import 'publish_form_state.dart';
 import 'publish_template_provider.dart';
 
@@ -473,8 +475,11 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
           _SectionCard(
             index: 6,
             title: '媒体',
-            done: false,
-            child: _MediaPlaceholder(count: _form.imageCount),
+            done: _form.imageCount > 0,
+            child: MediaSection(
+              onChanged: (ids) =>
+                  setState(() => _form = _form.copyWith(mediaIds: ids)),
+            ),
           ),
           _SectionCard(
             index: 7,
@@ -1065,53 +1070,7 @@ class _TemplateFieldsSkeleton extends StatelessWidget {
   }
 }
 
-/// 第 6 段：媒体上传占位（§5.4.1「0 / 9 · 支持图片/视频」）。
-class _MediaPlaceholder extends StatelessWidget {
-  const _MediaPlaceholder({required this.count});
-
-  final int count;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Container(
-          height: 88,
-          decoration: BoxDecoration(
-            color: const Color(AppColors.background),
-            borderRadius: BorderRadius.circular(AppRadius.md),
-            border: Border.all(
-              color: const Color(AppColors.border),
-              style: BorderStyle.solid,
-            ),
-          ),
-          alignment: Alignment.center,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(
-                Icons.add_photo_alternate_outlined,
-                size: 24,
-                color: Color(AppColors.textPlaceholder),
-              ),
-              const SizedBox(height: AppSpacing.xs),
-              Text(
-                '$count / $kMaxImageCount · 支持图片 / 视频',
-                style: TextStyle(
-                  fontSize: AppTypeScale.small.size,
-                  color: const Color(AppColors.textPlaceholder),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: AppSpacing.xs),
-        _HintText('媒体上传待对象存储接入；不影响本页其他字段的发布校验'),
-      ],
-    );
-  }
-}
+/// 第 6 段媒体已由占位转真，见 `media_section.dart`（[B2-11]）。
 
 /// 底部主按钮条（§5.4.1 末行「同意协议并发布」+ §5.8「协议未勾选 → Disabled」）。
 class _SubmitBar extends StatelessWidget {

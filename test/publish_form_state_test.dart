@@ -13,6 +13,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:zhaoyazhao/domain/category_tree.dart';
 import 'package:zhaoyazhao/domain/publish_template.dart';
 import 'package:zhaoyazhao/features/publish/publish_form_state.dart';
+import 'package:zhaoyazhao/nfr_constants.dart';
 
 void main() {
   /// 构造一份「除指定项外全部填妥」的表单。
@@ -42,6 +43,10 @@ void main() {
   group('契约常量（原则 134：必须有一处字面量钉死并被直接比对）', () {
     test('图片上限 9（§5.8「图片 ≤ 9」）', () {
       expect(kMaxImageCount, 9);
+      // 交叉断言（[B2-11]）：NfrMedia 是后端 NfrMedia.java / openapi 的前端
+      // 镜像，与 §5.8 的本地契约值必须同值，否则会出现「客户端放行 9 张、
+      // 服务端拒第 9 张」这类只在上传时才暴露的漂移。
+      expect(NfrMedia.maxMediaCount, kMaxImageCount);
     });
 
     test('描述建议区间 30-200 字（§5.4.1 第 5 段）', () {
@@ -141,11 +146,18 @@ void main() {
 
     test('图片超 9 张 → tooManyMedia', () {
       expect(
-        complete().copyWith(imageCount: kMaxImageCount + 1).blocker,
+        complete()
+            .copyWith(mediaIds: List<String>.filled(kMaxImageCount + 1, 'mda'))
+            .blocker,
         PublishBlocker.tooManyMedia,
       );
       // 恰好 9 张不拦 —— 边界必须落在「超过」而非「等于」
-      expect(complete().copyWith(imageCount: kMaxImageCount).blocker, isNull);
+      expect(
+        complete()
+            .copyWith(mediaIds: List<String>.filled(kMaxImageCount, 'mda'))
+            .blocker,
+        isNull,
+      );
     });
 
     test('模板必填项未填 → templateFieldMissing', () {
