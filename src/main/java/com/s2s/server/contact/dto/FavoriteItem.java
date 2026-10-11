@@ -1,16 +1,20 @@
-package com.s2s.server.post.dto;
+package com.s2s.server.contact.dto;
 
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
+import com.s2s.server.post.dto.MediaItem;
 import java.math.BigDecimal;
 import java.time.Instant;
 
 /**
  * 我的收藏列表项（openapi {@code FavoriteItem}；{@code GET /favorites} 出参）。
  *
- * <p>视角为<b>收藏者（非帖主）</b>：封面媒体只出 {@code audit_status=pass} 的项
- * （由 {@code MediaAssembler.toDto(media, false)} 承担视角分流），故 {@code coverMedia}
- * 的 {@code rejectReason} 恒为 {@code null}。不含完整联系方式。</p>
+ * <p>视角为<b>收藏者（非帖主）</b>：封面媒体由 post 域 service 以 {@code isOwner=false} 组装，
+ * 只出 {@code audit_status=pass} 的项，故 {@code coverMedia} 的 {@code rejectReason} 恒为
+ * {@code null}。不含完整联系方式。</p>
+ *
+ * <p>{@link MediaItem} 复用 post 域的契约 DTO（openapi 单一 {@code MediaItem} schema 的对应体），
+ * 属跨域共享契约类型，非跨域 mapper 访问。</p>
  *
  * @param postId            帖子 ID
  * @param type              供需态（resource/demand）

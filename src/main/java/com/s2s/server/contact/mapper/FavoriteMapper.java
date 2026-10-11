@@ -1,4 +1,4 @@
-package com.s2s.server.post.mapper;
+package com.s2s.server.contact.mapper;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -10,11 +10,13 @@ import org.apache.ibatis.annotations.Param;
  * 收藏域 Mapper（[B2-11]；DDL {@code favorite} 表；openapi {@code POST/DELETE
  * /posts/{id}/favorite}、{@code GET /favorites}）。
  *
- * <p><b>为什么独立于 {@code PostMapper}/{@code PostQueryMapper}</b>：收藏是「用户 × 帖子」
- * 的关系读写（唯一键 {@code uk_user_post} + 软删复活），与 post 的 CRUD/联表读语义不同；
- * 沿用「按用途分 Mapper」的既有范式（{@code PostQueryMapper} 亦为独立读 Mapper）。</p>
+ * <p><b>域归属 = contact</b>：架构文档 §3（R9）域切分把「收藏」列入 contact 职责，表→域映射
+ * 亦把 {@code favorite} 归 contact；openapi 原 {@code x-domain: post} 为笔误，已于 2026-10-11
+ * 裁定更正为 contact。</p>
  *
- * <p><b>列集合纪律</b>：列表查询只出卡片所需列，禁 {@code SELECT *}。</p>
+ * <p><b>跨域数据访问边界</b>：本 Mapper 的 SQL 会读取/联表 {@code post}（列表需帖子列、收藏前
+ * 需判帖子存在）——这是<b>数据层</b>的只读联表，未注入他域 Mapper Bean，符合架构文档 §3「不
+ * 允许跨域直接访问对方的 mapper」的原意；封面等需视角判定的数据走 post 域 service。</p>
  */
 @Mapper
 public interface FavoriteMapper {

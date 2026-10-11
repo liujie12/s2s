@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="com.s2s.server.post.mapper.FavoriteMapper">
+<mapper namespace="com.s2s.server.contact.mapper.FavoriteMapper">
 
     <!-- 帖子存在性（收藏前置校验）。只查主键，不 JOIN。 -->
     <select id="countPostById" resultType="int">

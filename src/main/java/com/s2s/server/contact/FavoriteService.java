@@ -1,20 +1,18 @@
-package com.s2s.server.post;
+package com.s2s.server.contact;
 
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.s2s.server.common.constants.NfrApi;
 import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
-import com.s2s.server.post.dto.FavoriteItem;
-import com.s2s.server.post.dto.FavoriteResult;
-import com.s2s.server.post.dto.FavoritesResponse;
+import com.s2s.server.contact.dto.FavoriteItem;
+import com.s2s.server.contact.dto.FavoriteResult;
+import com.s2s.server.contact.dto.FavoritesResponse;
+import com.s2s.server.contact.mapper.FavoriteMapper;
+import com.s2s.server.post.PostQueryService;
+import com.s2s.server.post.PostStatus;
 import com.s2s.server.post.dto.MediaItem;
-import com.s2s.server.post.entity.PostMediaEntity;
-import com.s2s.server.post.mapper.FavoriteMapper;
-import com.s2s.server.post.mapper.PostMediaMapper;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -28,9 +26,12 @@ import static com.s2s.server.common.jdbc.JdbcRowValues.toLong;
  * 收藏域服务（[B2-11]；openapi {@code POST/DELETE /posts/{id}/favorite}、{@code GET /favorites}；
  * PRD §8.3.2/§8.6/§8.7）。
  *
- * <p>归 post 域（openapi {@code x-domain: post}）：端点 {@code /posts/{id}/favorite} 与
- * {@code /favorites} 都围绕帖子关系，且卡片的封面组装复用 post 域既有的
- * {@link MediaAssembler}（视角分流唯一实现处），不跨域注入 Mapper。</p>
+ * <p><b>域归属 = contact</b>：架构文档 §3（R9）把「收藏」列入 contact 职责、表→域映射把
+ * {@code favorite} 归 contact；openapi 原 {@code x-domain: post} 为笔误，2026-10-11 裁定更正。</p>
+ *
+ * <p><b>跨域协作</b>：封面媒体需按「他人视角」组装，按架构文档 §3「功能域互相调用走对方的
+ * service 接口」，经 {@link PostQueryService#coverMediaByPost} 取值，不直接注入 post 的
+ * mapper/assembler（避免对方自判视角、绕开唯一实现处）。</p>
  *
  * <p><b>口径</b>（2026-10-11 裁定 DEC-31）：列表按收藏时间倒序；不设收藏上限（分页翻取）；
  * {@code type} ∈ {@code resource}/{@code demand}/{@code all}（{@code all} 与缺省等价＝不筛选）。</p>
@@ -41,26 +42,21 @@ public class FavoriteService {
     /** 收藏类型入参「全部」的线值（openapi {@code /favorites} 的 {@code type=all}）。 */
     private static final String TYPE_ALL = "all";
 
-    /** 帖子供需态合法筛选值（openapi {@code PostTypeEnum}，范式同 {@code MapService.POST_TYPES}）。 */
+    /** 帖子供需态合法筛选值（openapi {@code PostTypeEnum}，范式同 post 域 {@code MapService}）。 */
     private static final Set<String> POST_TYPE_FILTERS = Set.of("resource", "demand");
 
     private final FavoriteMapper favoriteMapper;
-    private final PostMediaMapper postMediaMapper;
-    private final MediaAssembler mediaAssembler;
+    private final PostQueryService postQueryService;
 
     /**
      * 构造收藏域服务。
      *
-     * @param favoriteMapper  收藏关系读写 Mapper
-     * @param postMediaMapper 媒体 Mapper（批量取封面）
-     * @param mediaAssembler  媒体视角组装器（唯一实现处，禁在本类自判视角）
+     * @param favoriteMapper   收藏关系读写 Mapper（本域）
+     * @param postQueryService post 域读服务（取封面，跨域 service 接口）
      */
-    public FavoriteService(FavoriteMapper favoriteMapper,
-            PostMediaMapper postMediaMapper,
-            MediaAssembler mediaAssembler) {
+    public FavoriteService(FavoriteMapper favoriteMapper, PostQueryService postQueryService) {
         this.favoriteMapper = favoriteMapper;
-        this.postMediaMapper = postMediaMapper;
-        this.mediaAssembler = mediaAssembler;
+        this.postQueryService = postQueryService;
     }
 
     /**
@@ -121,7 +117,8 @@ public class FavoriteService {
         for (Map<String, Object> row : rows) {
             postIds.add(toLong(row.get("post_id")));
         }
-        Map<Long, MediaItem> covers = coverByPost(postIds);
+        // 收藏者非帖主 → isOwner=false：post 域只回 pass 媒体（视角分流唯一实现处在 post 域）
+        Map<Long, MediaItem> covers = postQueryService.coverMediaByPost(postIds, false);
 
         List<FavoriteItem> items = new ArrayList<>(rows.size());
         for (Map<String, Object> row : rows) {
@@ -136,8 +133,7 @@ public class FavoriteService {
                     (String) row.get("price_unit"),
                     covers.get(postId),
                     toInteger(row.get("completeness_level")),
-                    PostStatus.toApi((String) row.get("status"),
-                            toInteger(row.get("status_reason"))),
+                    PostStatus.toApi((String) row.get("status"), toInteger(row.get("status_reason"))),
                     toInstant(row.get("created_at")),
                     toInstant(row.get("favorite_at"))));
         }
@@ -159,31 +155,5 @@ public class FavoriteService {
             return typeParam;
         }
         throw BizException.of(ErrorCode.PARAM_INVALID);
-    }
-
-    /**
-     * 批量取每帖封面（他人视角：只出 {@code audit_status=pass} 的媒体）。
-     *
-     * @param postIds 当前页帖子 ID 列表
-     * @return {@link Map} postId → 封面媒体；无过审媒体时不含该键
-     */
-    private Map<Long, MediaItem> coverByPost(List<Long> postIds) {
-        if (postIds.isEmpty()) {
-            return Map.of();
-        }
-        List<PostMediaEntity> medias = postMediaMapper.selectList(
-                new QueryWrapper<PostMediaEntity>().in("post_id", postIds).orderByAsc("id"));
-        Map<Long, MediaItem> covers = new LinkedHashMap<>();
-        for (PostMediaEntity media : medias) {
-            if (covers.containsKey(media.getPostId())) {
-                continue;
-            }
-            // 收藏者非帖主 → isOwner=false：非 pass 媒体返回 null（视角分流唯一实现处）
-            MediaItem dto = mediaAssembler.toDto(media, false);
-            if (dto != null) {
-                covers.put(media.getPostId(), dto);
-            }
-        }
-        return covers;
     }
 }

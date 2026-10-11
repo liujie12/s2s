@@ -993,7 +993,7 @@ paths:
       summary: 收藏帖子
       operationId: favoritePost
       x-batch: Batch2
-      x-domain: post
+      x-domain: contact
       description: |
         收藏帖子（幂等）。`favorite` 表唯一键 `uk_user_post`，重复收藏走
         `INSERT ... ON DUPLICATE KEY UPDATE deleted_at = NULL` 复活行而非插新行
@@ -1019,7 +1019,7 @@ paths:
       summary: 取消收藏
       operationId: unfavoritePost
       x-batch: Batch2
-      x-domain: post
+      x-domain: contact
       description: |
         取消收藏（幂等软删）。置 `deleted_at`，由定时任务 30 天后物删
         （PRD §8.7「取消收藏误操作可恢复」）；对未收藏/不存在的帖子亦返回成功。
@@ -1045,7 +1045,7 @@ paths:
       summary: 我的收藏列表
       operationId: listFavorites
       x-batch: Batch2
-      x-domain: post
+      x-domain: contact
       description: |
         我的收藏列表。路径口径 2026-10-11 裁定为 `/favorites?type=`（对齐 PRD §13；原占位路径
         `/posts/favorites` 会与同域模板路由 `/posts/{post_id}` 构成字面量/模板竞争，故更正）。

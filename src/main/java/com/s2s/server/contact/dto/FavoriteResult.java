@@ -1,4 +1,4 @@
-package com.s2s.server.post.dto;
+package com.s2s.server.contact.dto;
 
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;

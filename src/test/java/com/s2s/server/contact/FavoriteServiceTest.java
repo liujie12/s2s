@@ -1,4 +1,4 @@
-package com.s2s.server.post;
+package com.s2s.server.contact;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -18,12 +18,11 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.s2s.server.common.constants.NfrApi;
 import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
-import com.s2s.server.post.dto.FavoriteItem;
-import com.s2s.server.post.dto.FavoritesResponse;
+import com.s2s.server.contact.dto.FavoriteItem;
+import com.s2s.server.contact.dto.FavoritesResponse;
+import com.s2s.server.contact.mapper.FavoriteMapper;
+import com.s2s.server.post.PostQueryService;
 import com.s2s.server.post.dto.MediaItem;
-import com.s2s.server.post.entity.PostMediaEntity;
-import com.s2s.server.post.mapper.FavoriteMapper;
-import com.s2s.server.post.mapper.PostMediaMapper;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -40,11 +39,11 @@ import org.junit.jupiter.api.Test;
  * /posts/{id}/favorite}、{@code GET /favorites}）。
  *
  * <p>覆盖四类易错口径：① 收藏前置（帖子不存在 → {@code 41001} 且不写）；② 列表字段映射与
- * 封面「他人视角」分流（{@code MediaAssembler.toDto(media, false)} 必须被调用）；③
- * {@code type} 白名单（{@code all}/缺省不筛选、非法 → {@code 40001}）；④ 分页钳制与响应
- * JSON 键名契约。</p>
+ * 封面「他人视角」分流（须经 post 域 service {@code coverMediaByPost(..., false)}，不得自判
+ * 视角）；③ {@code type} 白名单（{@code all}/缺省不筛选、非法 → {@code 40001}）；④ 分页钳制与
+ * 响应 JSON 键名契约。</p>
  *
- * <p>纯单元测试：Mapper 与 {@link MediaAssembler} 以 Mockito 替身注入，不连库。</p>
+ * <p>纯单元测试：本域 Mapper 与跨域 {@link PostQueryService} 以 Mockito 替身注入，不连库。</p>
  */
 class FavoriteServiceTest {
 
@@ -55,8 +54,7 @@ class FavoriteServiceTest {
     private static final Long POST_ID = 1001L;
 
     private FavoriteMapper favoriteMapper;
-    private PostMediaMapper postMediaMapper;
-    private MediaAssembler mediaAssembler;
+    private PostQueryService postQueryService;
     private FavoriteService service;
 
     /**
@@ -67,9 +65,8 @@ class FavoriteServiceTest {
     @BeforeEach
     void setUp() {
         favoriteMapper = mock(FavoriteMapper.class);
-        postMediaMapper = mock(PostMediaMapper.class);
-        mediaAssembler = mock(MediaAssembler.class);
-        service = new FavoriteService(favoriteMapper, postMediaMapper, mediaAssembler);
+        postQueryService = mock(PostQueryService.class);
+        service = new FavoriteService(favoriteMapper, postQueryService);
     }
 
     /**
@@ -116,21 +113,20 @@ class FavoriteServiceTest {
     }
 
     /**
-     * 列表字段映射 + 封面组装（他人视角）。
+     * 列表字段映射 + 封面组装（经 post 域 service，他人视角）。
      *
-     * @return void；断言失败即卡片字段串位或封面走了本人视角（下发未过审图）
+     * @return void；断言失败即卡片字段串位或跨域取封面时未按他人视角
      */
     @Test
-    @DisplayName("列表：字段映射 + 封面他人视角 + 状态派生")
+    @DisplayName("列表：字段映射 + 经 post 域 service 取封面（他人视角）+ 状态派生")
     void listMapping() {
         when(favoriteMapper.countByUser(USER_ID, null)).thenReturn(1L);
         when(favoriteMapper.selectPage(eq(USER_ID), isNull(), anyInt(), anyInt()))
                 .thenReturn(List.of(row("resource", "搬家找车", "120.00", "次",
                         "2026-10-01T10:00:00", "2026-10-05T09:00:00")));
-        PostMediaEntity media = media(POST_ID);
-        when(postMediaMapper.selectList(any())).thenReturn(List.of(media));
-        when(mediaAssembler.toDto(media, false))
-                .thenReturn(new MediaItem("9", "http://oss/x", "pass", null));
+        MediaItem cover = new MediaItem("9", "http://oss/x", "pass", null);
+        when(postQueryService.coverMediaByPost(List.of(POST_ID), false))
+                .thenReturn(Map.of(POST_ID, cover));
 
         FavoriteItem item = service.list(USER_ID, null, null, null).items().get(0);
 
@@ -143,9 +139,9 @@ class FavoriteServiceTest {
         assertThat(item.status()).isEqualTo("active");
         assertThat(item.publishAt()).isEqualTo(Instant.parse("2026-10-01T10:00:00Z"));
         assertThat(item.favoriteAt()).isEqualTo(Instant.parse("2026-10-05T09:00:00Z"));
-        assertThat(item.coverMedia()).isNotNull();
-        // 视角唯一实现处：收藏者非帖主 → 必须 isOwner=false
-        verify(mediaAssembler).toDto(media, false);
+        assertThat(item.coverMedia()).isEqualTo(cover);
+        // 跨域唯一实现处：收藏者非帖主 → 必须 isOwner=false
+        verify(postQueryService).coverMediaByPost(List.of(POST_ID), false);
     }
 
     /**
@@ -159,6 +155,7 @@ class FavoriteServiceTest {
     void typeFilter() {
         when(favoriteMapper.countByUser(eq(USER_ID), any())).thenReturn(0L);
         when(favoriteMapper.selectPage(eq(USER_ID), any(), anyInt(), anyInt())).thenReturn(List.of());
+        when(postQueryService.coverMediaByPost(any(), eq(false))).thenReturn(Map.of());
 
         service.list(USER_ID, "demand", 1, 20);
         verify(favoriteMapper).countByUser(USER_ID, "demand");
@@ -183,6 +180,7 @@ class FavoriteServiceTest {
     @DisplayName("分页钳制：缺省与上限，offset 按钳制后值计算")
     void paginationClamped() {
         when(favoriteMapper.countByUser(eq(USER_ID), any())).thenReturn(0L);
+        when(postQueryService.coverMediaByPost(any(), eq(false))).thenReturn(Map.of());
         when(favoriteMapper.selectPage(USER_ID, null, 0, NfrApi.PAGE_SIZE_DEFAULT))
                 .thenReturn(List.of());
 
@@ -272,20 +270,5 @@ class FavoriteServiceTest {
         row.put("created_at", LocalDateTime.parse(createdAt));
         row.put("favorite_at", LocalDateTime.parse(favoriteAt));
         return row;
-    }
-
-    /**
-     * 构造一条媒体实体夹具（字段值不参与断言，仅作 {@code MediaAssembler} 入参）。
-     *
-     * @param postId 归属帖子 ID
-     * @return {@link PostMediaEntity}
-     */
-    private static PostMediaEntity media(Long postId) {
-        PostMediaEntity entity = new PostMediaEntity();
-        entity.setId(9L);
-        entity.setPostId(postId);
-        entity.setAuditStatus("pass");
-        entity.setObjectKey("x");
-        return entity;
     }
 }

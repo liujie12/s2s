@@ -183,7 +183,7 @@ public class PostQueryService {
         for (Map<String, Object> row : rows) {
             postIds.add(toLong(row.get("id")));
         }
-        Map<Long, MediaItem> covers = coverMediaByPost(postIds);
+        Map<Long, MediaItem> covers = coverMediaByPost(postIds, true);
         Map<Long, Long> contactCounts = contactCountByPost(postIds);
 
         List<MyPostItem> items = new ArrayList<>(rows.size());
@@ -252,12 +252,17 @@ public class PostQueryService {
     }
 
     /**
-     * 批量取每帖封面媒体（每帖第一条媒体，本人视角三态）。
+     * 批量取每帖封面媒体（每帖第一条媒体，按 {@code isOwner} 分流视角）。
      *
-     * @param postIds 当前页帖子 ID 列表
+     * <p><b>公开为跨域 service 接口</b>：架构文档 §3（R9）明定「功能域互相调用走对方的 service
+     * 接口，不允许跨域直接访问对方的 mapper」。contact 域的收藏列表（[B2-11]，favorite 归 contact）
+     * 需要封面，故本方法对跨域开放，取值口径与详情/我的发布卡片完全一致，避免对方自判视角。</p>
+     *
+     * @param postIds 帖子 ID 列表
+     * @param isOwner true=本人视角（三态）；false=他人视角（仅 {@code pass}，非 pass 返回 null）
      * @return {@link Map} postId → 封面媒体；无媒体或该帖首条被过滤时为缺省（不放入）
      */
-    private Map<Long, MediaItem> coverMediaByPost(List<Long> postIds) {
+    public Map<Long, MediaItem> coverMediaByPost(List<Long> postIds, boolean isOwner) {
         if (postIds.isEmpty()) {
             return Map.of();
         }
@@ -268,7 +273,7 @@ public class PostQueryService {
             if (covers.containsKey(media.getPostId())) {
                 continue;
             }
-            MediaItem dto = mediaAssembler.toDto(media, true);
+            MediaItem dto = mediaAssembler.toDto(media, isOwner);
             if (dto != null) {
                 covers.put(media.getPostId(), dto);
             }

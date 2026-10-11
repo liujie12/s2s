@@ -1,10 +1,10 @@
-package com.s2s.server.post;
+package com.s2s.server.contact;
 
 import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
 import com.s2s.server.common.web.AuthContext;
-import com.s2s.server.post.dto.FavoriteResult;
-import com.s2s.server.post.dto.FavoritesResponse;
+import com.s2s.server.contact.dto.FavoriteResult;
+import com.s2s.server.contact.dto.FavoritesResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -17,8 +17,11 @@ import org.springframework.web.bind.annotation.RestController;
  * 收藏域控制器（[B2-11]；openapi {@code POST/DELETE /posts/{id}/favorite}、
  * {@code GET /favorites}）。
  *
+ * <p><b>域归属 = contact</b>：架构文档 §3（R9）把「收藏」列入 contact 职责；openapi 原
+ * {@code x-domain: post} 为笔误，2026-10-11 裁定更正为 contact。</p>
+ *
  * <p><b>强制登录态</b>：收藏是「谁收藏了什么」的强归属数据，未登录 → {@code 40101}
- * （范式同 {@code NotifyController#requireUserId}）。用户标识只取登录态，不接受入参指定。</p>
+ * （范式同本域 {@code ContactController}）。用户标识只取登录态，不接受入参指定。</p>
  *
  * <p><b>路径优先级</b>：{@code /favorites} 为顶层资源，与 {@code /posts/{post_id}} 无前缀重合，
  * 不存在「字面段 vs 变量段」歧义（这正是 2026-10-11 裁定弃用 {@code /posts/favorites} 的原因）。</p>
@@ -88,7 +91,7 @@ public class FavoriteController {
     }
 
     /**
-     * 取登录用户 ID，未登录抛 {@code 40101}（范式同 {@code NotifyController#requireUserId}）。
+     * 取登录用户 ID，未登录抛 {@code 40101}（范式同 {@code ContactController}）。
      *
      * @param request 当前请求
      * @return {@link Long} 登录用户 ID
