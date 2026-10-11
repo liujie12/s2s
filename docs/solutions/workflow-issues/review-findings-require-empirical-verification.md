@@ -116,3 +116,4 @@ mysqld 对权限为 777 的 `.cnf` 文件只打一行 Warning（`World-writable 
 - [跨文档引用与口径搬运的核验约定](file:///d:/developer/code/aicoding/s2s/docs/solutions/workflow-issues/cross-document-reference-verification.md)
 - [设计阶段的验证越界](file:///d:/developer/code/aicoding/s2s/docs/solutions/workflow-issues/phase-boundary-verification-scaffolding.md)
 - [注入凭证与作废凭证分属不同平台](file:///d:/developer/code/aicoding/s2s/docs/solutions/workflow-issues/credential-revocation-target-mismatch-from-ledger-summary.md) — 姊妹篇：同一纪律在「凭证作废对象核对」场景的实战，凭挂账摘要险些作废错 key。
+- [docker-pull-large-layer-stall-mtu-wsl2.md](file:///d:/developer/code/aicoding/s2s/docs/solutions/runtime-errors/docker-pull-large-layer-stall-mtu-wsl2.md) — **互补**：本篇的静默陷阱集中在**配置面**（`expire_logs_days` 被移除、world-writable 文件被静默忽略）；网络层亦有同类静默陷阱 —— WSL2 `eth0` MTU 失配会让大层拉取**永久停滞且零报错**，须靠「小镜像秒下 vs 大层冻结」「换源后卡点逐字节不变」的排除性对照才逼得出，与「WSL drvfs 权限被转 777」同属「不实测就发现不了」的家族。
