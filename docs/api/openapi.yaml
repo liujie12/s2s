@@ -1723,6 +1723,59 @@ paths:
   # 分组九：设置与合规（共 3 个接口，Batch1 覆盖 0 个）
   # ===========================================================================
 
+  /settings:
+    get:
+      tags: [auth]
+      summary: 我的设置
+      operationId: getSettings
+      x-batch: Batch2
+      x-domain: auth
+      description: |
+        读取当前用户设置（[B2-11]；PRD §13/§9.3）：通知开关（总开关 + 系统/互动/认证分通道）、
+        默认范围（`user.default_radius`）、隐私项（只读展示）。通知开关缺行时回全默认（全开）。
+        强制登录态（`40101`）。
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/SettingsResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    patch:
+      tags: [auth]
+      summary: 修改我的设置
+      operationId: updateSettings
+      x-batch: Batch2
+      x-domain: auth
+      description: |
+        局部更新设置（[B2-11]）：仅提交需变更的字段（`null`/缺省字段不动）；通知开关与默认范围可写，
+        隐私项为只读（提交即忽略）。返回更新后的完整设置。强制登录态（`40101`）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SettingsUpdateRequest' }
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/SettingsResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
   /settings/privacy:
     get:
       tags: [auth]
@@ -2422,6 +2475,45 @@ components:
           type: string
           description: 脱敏手机号（仅本人视角可见，他人视角不下发）
           example: 138****8000
+
+    SettingsResponse:
+      type: object
+      description: 我的设置（`GET/PATCH /settings` 的 `data`；[B2-11]）
+      required: [notify, default_radius, privacy]
+      properties:
+        notify:
+          type: object
+          description: 通知开关（PRD §9.3）；`user_setting` 缺行时四项均回 `true`（全开）
+          required: [enabled, system, interaction, cert]
+          properties:
+            enabled: { type: boolean, description: 消息通知总开关 }
+            system: { type: boolean, description: 系统通知分通道 }
+            interaction: { type: boolean, description: 互动通知分通道 }
+            cert: { type: boolean, description: 认证通知分通道 }
+        default_radius: { $ref: '#/components/schemas/RadiusEnum' }
+        privacy:
+          type: object
+          description: 隐私项（只读展示，PRD §9.3；`PATCH` 提交即忽略）
+          required: [contact_display]
+          properties:
+            contact_display:
+              type: string
+              description: 联系方式展示策略，恒 `transit_only`（仅在联系中转时展示完整号）
+              enum: [transit_only]
+
+    SettingsUpdateRequest:
+      type: object
+      description: 局部更新设置（仅提交需变更字段；`null`/缺省字段不动）
+      properties:
+        notify:
+          type: object
+          description: 通知开关（各子字段缺省即不动）
+          properties:
+            enabled: { type: boolean }
+            system: { type: boolean }
+            interaction: { type: boolean }
+            cert: { type: boolean }
+        default_radius: { $ref: '#/components/schemas/RadiusEnum' }
 
     # ---------- 分类与模板 ----------
 

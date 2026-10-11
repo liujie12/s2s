@@ -1,0 +1,43 @@
+package com.s2s.server.auth.mapper;
+
+import java.util.Map;
+import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+
+/**
+ * 用户设置 Mapper（[B2-11]；DDL {@code user_setting} 表，V6 迁移；openapi
+ * {@code GET/PATCH /settings}）。
+ *
+ * <p>1:1 与 {@code user}（{@code user_id} 即主键）。查询只出通知开关四列，绝不 {@code SELECT *}。</p>
+ */
+@Mapper
+public interface UserSettingMapper {
+
+    /**
+     * 查某用户的通知开关行。
+     *
+     * @param userId 用户 ID
+     * @return {@link Map} 含 {@code notify_enabled}/{@code notify_system}/{@code notify_interaction}/
+     *         {@code notify_cert}；无该行时返回 {@code null}（由 service 兜底为全默认）
+     */
+    Map<String, Object> selectByUserId(@Param("userId") Long userId);
+
+    /**
+     * 写入通知开关（幂等 upsert）：无行则插入，有行则整行覆盖。
+     *
+     * <p>由主键 {@code user_id} 触发 {@code ON DUPLICATE KEY UPDATE}；值取插入值（MySQL 8.0.19+
+     * 的 {@code AS new} 别名，避免已废弃的 {@code VALUES()} 写法）。</p>
+     *
+     * @param userId          用户 ID
+     * @param notifyEnabled   消息通知总开关（true=开）
+     * @param notifySystem    系统通知分通道
+     * @param notifyInteraction 互动通知分通道
+     * @param notifyCert      认证通知分通道
+     * @return int 受影响行数
+     */
+    int upsert(@Param("userId") Long userId,
+            @Param("notifyEnabled") boolean notifyEnabled,
+            @Param("notifySystem") boolean notifySystem,
+            @Param("notifyInteraction") boolean notifyInteraction,
+            @Param("notifyCert") boolean notifyCert);
+}
