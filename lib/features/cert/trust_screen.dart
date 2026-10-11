@@ -5,11 +5,11 @@
 ///   ② 第二层 · 资质认证（企业认证 / 家政资质 / 车辆认证 三行）
 ///   ③ 我的信任指标（实名 / 资质 N 项 / 完整度 + 在架信息完整度分布 + T4 红线注）
 ///
-/// **降级（如实登记）**：资质行的动作（`去认证`/`查看`/`管理`）与资质**提交**均依赖
-/// 媒体上传链路，而该链路在 Batch1 **未实现**（`publish_screen` 同因：上传依赖
-/// `post_media` 与 CDN，发布侧 `media_ids` 恒空），`POST /cert/qualification` 的
-/// `media_ids` 为必填 ⇒ 资质提交无法端到端。故本轮资质行动作按既有降级口径
-/// 提示「本期内测版暂未开放」，不做假上传。
+/// **动作分流（[B2-11] 起）**：资质行右侧动作按状态分两路 —— 可提交态
+/// （未认证 / 未通过 / 已过期）进 `qualification_form_screen`
+/// （`POST /cert/qualification`，证照图经 OSS 直传链路换 `media_id`）；
+/// 无落点态（已通过「管理」/ 审核中「查看」，设计稿与契约均无对应页面）
+/// 提示「本期内测版暂未开放」。表单提交成功以 `true` 回传，本页据此刷新总览。
 library;
 
 import 'package:flutter/material.dart';
@@ -23,26 +23,7 @@ import '../../domain/listing_detail.dart';
 import '../../router/app_router.dart';
 import 'cert_models.dart';
 import 'cert_provider.dart';
-
-/// 资质行的契约类型（设计稿三行固定：企业认证 / 家政资质 / 车辆认证）。
-enum _QualificationRow {
-  /// 企业认证。
-  enterprise('enterprise', '企业认证'),
-
-  /// 家政资质（契约 `personal_qualification`）。
-  personalQualification('personal_qualification', '家政资质'),
-
-  /// 车辆认证。
-  vehicle('vehicle', '车辆认证');
-
-  const _QualificationRow(this.apiType, this.label);
-
-  /// 契约类型值。
-  final String apiType;
-
-  /// 展示名。
-  final String label;
-}
+import 'cert_type_option.dart';
 
 /// 信任与认证页。
 class TrustScreen extends ConsumerWidget {
@@ -90,7 +71,11 @@ class TrustScreen extends ConsumerWidget {
                 onGoRealname: () => context.push(AppRoutes.trustRealname),
               ),
               const SizedBox(height: AppSpacing.md),
-              _Layer2Card(cert: overview.cert, onAction: () => _notOpen(context)),
+              _Layer2Card(
+                cert: overview.cert,
+                onGoForm: (type) => _openQualificationForm(context, ref, type),
+                onUnsupported: () => _notOpen(context),
+              ),
               const SizedBox(height: AppSpacing.md),
               _MetricsCard(overview: overview),
             ],
@@ -100,7 +85,24 @@ class TrustScreen extends ConsumerWidget {
     );
   }
 
-  /// 未开放提示（资质提交/管理类动作的降级落点）。
+  /// 打开资质提交表单；提交成功返回后刷新状态总览。
+  ///
+  /// 参数：[context] 构建上下文；[ref] Provider 容器；[certType] 契约类型值。
+  /// 返回：[Future<void>]。
+  static Future<void> _openQualificationForm(
+    BuildContext context,
+    WidgetRef ref,
+    String certType,
+  ) async {
+    final submitted = await context.push<bool>(
+      '${AppRoutes.trustQualification}?type=$certType',
+    );
+    if (submitted == true) {
+      await ref.read(trustOverviewProvider.notifier).refresh();
+    }
+  }
+
+  /// 无落点动作提示（「查看 / 管理」—— 设计稿与契约都没有对应页面）。
   ///
   /// 参数：[context] 构建上下文。
   /// 返回：void。
@@ -184,14 +186,22 @@ class _Layer1Card extends StatelessWidget {
 class _Layer2Card extends StatelessWidget {
   /// 构造第二层卡。
   ///
-  /// 参数：[cert] 认证状态；[onAction] 行动作回调（本轮统一降级提示）。
-  const _Layer2Card({required this.cert, required this.onAction});
+  /// 参数：[cert] 认证状态；[onGoForm] 进提交表单回调（带契约类型）；
+  ///   [onUnsupported] 无落点动作回调。
+  const _Layer2Card({
+    required this.cert,
+    required this.onGoForm,
+    required this.onUnsupported,
+  });
 
   /// 认证状态。
   final CertStatus cert;
 
-  /// 行动作回调。
-  final VoidCallback onAction;
+  /// 进提交表单回调（带契约类型值）。
+  final ValueChanged<String> onGoForm;
+
+  /// 无落点动作回调。
+  final VoidCallback onUnsupported;
 
   @override
   Widget build(BuildContext context) {
@@ -213,12 +223,13 @@ class _Layer2Card extends StatelessWidget {
               color: Color(AppColors.textPrimary),
             ),
           ),
-          for (final row in _QualificationRow.values) ...[
+          for (final row in CertTypeOption.values) ...[
             const SizedBox(height: AppSpacing.md),
             _CertRow(
               label: row.label,
               qualification: cert.qualificationOf(row.apiType),
-              onAction: onAction,
+              onGoForm: () => onGoForm(row.apiType),
+              onUnsupported: onUnsupported,
             ),
           ],
         ],
@@ -236,7 +247,8 @@ class _CertRow extends StatelessWidget {
   const _CertRow({
     required this.label,
     required this.qualification,
-    required this.onAction,
+    required this.onGoForm,
+    required this.onUnsupported,
   });
 
   /// 类型展示名。
@@ -245,15 +257,18 @@ class _CertRow extends StatelessWidget {
   /// 该类型记录（未提交为 null）。
   final CertQualification? qualification;
 
-  /// 右侧动作回调。
-  final VoidCallback onAction;
+  /// 「进提交表单」动作回调（去认证 / 重新提交 / 重新认证）。
+  final VoidCallback onGoForm;
+
+  /// 「无落点」动作回调（查看 / 管理 —— 设计稿与契约均无对应页面）。
+  final VoidCallback onUnsupported;
 
   @override
   Widget build(BuildContext context) {
     final status = qualification?.status;
     final view = _viewOf(status);
     // 元信息：已通过且有有效期 → 回显到期日；其余状态契约无对应字段，不伪造。
-    final meta = status == 'passed' && qualification?.expireAt != null
+    final meta = status == CertQualification.statusApproved && qualification?.expireAt != null
         ? _formatDate(qualification!.expireAt!)
         : null;
 
@@ -302,7 +317,7 @@ class _CertRow extends StatelessWidget {
           ),
         ),
         TextButton(
-          onPressed: onAction,
+          onPressed: view.opensForm ? onGoForm : onUnsupported,
           style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: Size.zero),
           child: Text(
             '${view.action} ›',
@@ -313,37 +328,52 @@ class _CertRow extends StatelessWidget {
     );
   }
 
-  /// 状态 → 展示（点色 / 文字色 / 文案 / 动作）。
+  /// 状态 → 展示（点色 / 文字色 / 文案 / 动作 / 动作是否进提交表单）。
+  ///
+  /// 契约 `QualificationItem.status` 枚举为 `pending`/`approved`/`rejected`/
+  /// `expired`（**注意与实名 `RealnameStatusEnum` 的 `passed` 不同值**，
+  /// 两者不可混用）。
   ///
   /// 参数：[status] 契约状态值（null＝未提交）。
-  /// 返回：`(dotColor, textColor, label, action)`。
-  static ({int dotColor, int textColor, String label, String action}) _viewOf(String? status) =>
-      switch (status) {
-        'passed' => (
-            dotColor: AppColors.success,
-            textColor: AppColors.successText,
-            label: '已通过',
-            action: '管理',
-          ),
-        'pending' => (
-            dotColor: AppColors.warning,
-            textColor: AppColors.warningText,
-            label: '审核中',
-            action: '查看',
-          ),
-        'rejected' => (
-            dotColor: AppColors.error,
-            textColor: AppColors.errorText,
-            label: '未通过',
-            action: '重新提交',
-          ),
-        _ => (
-            dotColor: AppColors.error,
-            textColor: AppColors.errorText,
-            label: '未认证',
-            action: '去认证',
-          ),
-      };
+  /// 返回：展示记录。
+  static ({int dotColor, int textColor, String label, String action, bool opensForm})
+      _viewOf(String? status) => switch (status) {
+            CertQualification.statusApproved => (
+                dotColor: AppColors.success,
+                textColor: AppColors.successText,
+                label: '已通过',
+                action: '管理',
+                opensForm: false,
+              ),
+            CertQualification.statusPending => (
+                dotColor: AppColors.warning,
+                textColor: AppColors.warningText,
+                label: '审核中',
+                action: '查看',
+                opensForm: false,
+              ),
+            CertQualification.statusExpired => (
+                dotColor: AppColors.warning,
+                textColor: AppColors.warningText,
+                label: '已过期',
+                action: '重新认证',
+                opensForm: true,
+              ),
+            CertQualification.statusRejected => (
+                dotColor: AppColors.error,
+                textColor: AppColors.errorText,
+                label: '未通过',
+                action: '重新提交',
+                opensForm: true,
+              ),
+            _ => (
+                dotColor: AppColors.error,
+                textColor: AppColors.errorText,
+                label: '未认证',
+                action: '去认证',
+                opensForm: true,
+              ),
+          };
 
   /// 日期格式化为 `yyyy-MM-dd`。
   ///

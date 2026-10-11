@@ -18,6 +18,8 @@ import 'package:go_router/go_router.dart';
 import 'home_shell.dart';
 import '../domain/category_tree.dart';
 import '../features/auth/login_screen.dart';
+import '../features/cert/cert_type_option.dart';
+import '../features/cert/qualification_form_screen.dart';
 import '../features/cert/realname_form_screen.dart';
 import '../features/cert/trust_screen.dart';
 import '../features/contact/contact_screen.dart';
@@ -75,6 +77,7 @@ class AppRoutes {
   // ── 认证 ──
   static const String trust = '/trust';
   static const String trustRealname = '/trust/realname';
+  static const String trustQualification = '/trust/qualification';
 
   // ── 模态（PRD §10.1 三个模态）──
   static const String categorySelector = '/modal/category';
@@ -234,6 +237,15 @@ final List<RouteBase> _routes = [
   GoRoute(
     path: AppRoutes.trustRealname,
     builder: (context, state) => const RealnameFormScreen(),
+  ),
+  GoRoute(
+    path: AppRoutes.trustQualification,
+    // [B2-11]：资质提交（契约 `POST /cert/qualification`）。资质类型由 query
+    // 带入（`?type=enterprise`）作进页预选；未知/缺失值按「未选」处理，
+    // 不猜默认类型（`CertTypeOption.fromApi` 未知返回 null）。
+    builder: (context, state) => QualificationFormScreen(
+      initialType: CertTypeOption.fromApi(state.uri.queryParameters['type']),
+    ),
   ),
   // ── 模态：用 fullscreenDialog 语义，返回栈行为与页面不同 ──
   GoRoute(

@@ -16,6 +16,18 @@ class CertQualification {
   /// 构造资质记录。
   const CertQualification({required this.type, required this.status, this.expireAt});
 
+  /// 状态：审核中（契约 `QualificationItem.status` enum 成员）。
+  static const String statusPending = 'pending';
+
+  /// 状态：已通过。
+  static const String statusApproved = 'approved';
+
+  /// 状态：未通过。
+  static const String statusRejected = 'rejected';
+
+  /// 状态：已过期。
+  static const String statusExpired = 'expired';
+
   /// 由契约 JSON 构造。
   ///
   /// 参数：[json] `CertStatusResponse.qualifications[]` 元素。
@@ -33,7 +45,7 @@ class CertQualification {
   /// 认证类型（`personal_qualification`/`enterprise`/`vehicle`）。
   final String type;
 
-  /// 状态（`passed`/`pending`/`rejected`；未提交不出现）。
+  /// 状态（`pending`/`approved`/`rejected`/`expired`；未提交不出现）。
   final String status;
 
   /// 有效期（可空）。
@@ -73,7 +85,7 @@ class CertStatus {
   /// 参数：无。
   /// 返回：int。
   int get passedQualificationCount =>
-      qualifications.where((item) => item.status == 'passed').length;
+      qualifications.where((item) => item.status == CertQualification.statusApproved).length;
 
   /// 契约 DTO → 域模型。
   ///
@@ -91,4 +103,29 @@ class CertStatus {
       ],
     );
   }
+}
+
+/// 资质提交结果（openapi `QualificationSubmitResult`，required = status/sla_hours）。
+class QualificationSubmitResult {
+  /// 构造提交结果。
+  const QualificationSubmitResult({required this.status, required this.slaHours});
+
+  /// 由契约 JSON 构造。
+  ///
+  /// 参数：[json] 信封拆出的 data。
+  /// 返回：[QualificationSubmitResult]。
+  /// 抛出：[ApiException.parse] required 字段缺失/类型不符时。
+  factory QualificationSubmitResult.fromJson(Object? json) {
+    final map = requireMap(json, 'QualificationSubmitResult');
+    return QualificationSubmitResult(
+      status: requireString(map, 'status', 'QualificationSubmitResult'),
+      slaHours: requireInt(map, 'sla_hours', 'QualificationSubmitResult'),
+    );
+  }
+
+  /// 提交后状态（契约本轮恒 `pending`）。
+  final String status;
+
+  /// 人工审核 SLA（小时）。
+  final int slaHours;
 }

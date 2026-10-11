@@ -62,6 +62,30 @@ class CertRepository {
     return CertStatus.fromJson(response.data);
   }
 
+  /// 提交资质认证（`POST /cert/qualification`，高敏类目前置实名）。
+  ///
+  /// 参数：
+  ///   [certType] 契约 `CertTypeEnum`（`personal_qualification`/`enterprise`/`vehicle`）；
+  ///   [mediaIds] OCR 证照图 media_id 列表（**必填**，须先走上传链路拿到）；
+  ///   [interactionId] 交互 ID，null 由拦截器兜底。
+  /// 返回：[QualificationSubmitResult]（status + sla_hours）。
+  /// 抛出：[ApiException] 信封业务错误（40302 未实名提交资质 / 40001 参数 / 50302 认证服务不可用）。
+  Future<QualificationSubmitResult> submitQualification({
+    required String certType,
+    required List<String> mediaIds,
+    String? interactionId,
+  }) async {
+    final response = await _dio.post<Object?>(
+      '/cert/qualification',
+      data: {
+        'cert_type': certType,
+        'media_ids': mediaIds,
+      },
+      options: _interactionOptions(interactionId),
+    );
+    return QualificationSubmitResult.fromJson(response.data);
+  }
+
   /// 解析「实名提交」响应 data 的 status 字段。
   ///
   /// 参数：[data] 信封拆出的 data（契约 `RealnameSubmitResult`）。
