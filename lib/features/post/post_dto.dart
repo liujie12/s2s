@@ -208,7 +208,9 @@ class PostAuthorDto {
 /// 帖子详情 DTO（openapi.yaml `PostDetail`；[127] 详情页接线）。
 ///
 /// 只解析详情页消费的字段；`version`/`status`/`l2_category_id`/`category_path`/
-/// `contact_mask`/`media` 等属其它端点的消费面，不在本 DTO 预建（预留字段不造数据）。
+/// `contact_mask` 等属其它端点的消费面，不在本 DTO 预建（预留字段不造数据）。
+/// `media` 自 [B2-11] 起承载（详情页顶部媒体轮播；他人视角契约仅含
+/// `audit_status=pass` 的项）。
 /// 映射到域模型 [ListingDetail] 在 `post_detail_provider.dart` 完成（§10.4 语义迁移）。
 class PostDetailDto {
   /// 构造帖子详情 DTO。
@@ -228,6 +230,7 @@ class PostDetailDto {
     required this.publishAt,
     required this.expireAt,
     required this.author,
+    this.media = const [],
   });
 
   /// 由信封 data 构造。
@@ -245,6 +248,13 @@ class PostDetailDto {
         ? attributesRaw.cast<String, Object?>()
         : throw ApiException.parse(
             'PostDetail.attributes 应为对象，实际: $attributesRaw');
+
+    final mediaRaw = map['media'];
+    final media = mediaRaw == null
+        ? <MediaItemDto>[]
+        : mediaRaw is List
+        ? [for (final item in mediaRaw) MediaItemDto.fromJson(item)]
+        : throw ApiException.parse('PostDetail.media 应为数组，实际: $mediaRaw');
 
     return PostDetailDto(
       id: requireInt(map, 'id', 'PostDetail'),
@@ -264,6 +274,7 @@ class PostDetailDto {
       publishAt: _requireDateTime(map, 'publish_at', 'PostDetail'),
       expireAt: _requireDateTime(map, 'expire_at', 'PostDetail'),
       author: PostAuthorDto.fromJson(map['author']),
+      media: media,
     );
   }
 
@@ -311,6 +322,10 @@ class PostDetailDto {
 
   /// 作者摘要。
   final PostAuthorDto author;
+
+  /// 媒体列表（他人视角仅含 `audit_status=pass` 的项；契约非 required，
+  /// 缺失/JSON null 均为空列表）。
+  final List<MediaItemDto> media;
 }
 
 /// 解析必填 date-time 字段（RFC3339 UTC，服务端保证合法）。
@@ -350,9 +365,9 @@ DateTime? _optDateTime(Map<String, Object?> map, String key, String owner) {
 
 /// 媒体项 DTO（openapi.yaml `MediaItem`：required = media_id/url/audit_status）。
 ///
-/// 「我的发布」列表的封面走本类型：本人视角下 `audit_status` 三态齐备
-/// （`pending`/`reject` 也下发并带 `reject_reason`），与详情域只取 `pass`
-/// 的他人视角不同（契约 `MyPostItem` description 明确）。
+/// 两个消费面共用：① 「我的发布」列表封面（本人视角下 `audit_status` 三态齐备，
+/// `pending`/`reject` 也下发并带 `reject_reason`）；② 详情页顶部媒体轮播的
+/// `PostDetail.media`（他人视角只取 `pass`，详见契约 description）。
 class MediaItemDto {
   /// 构造媒体项 DTO。
   const MediaItemDto({

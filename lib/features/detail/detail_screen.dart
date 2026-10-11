@@ -1,12 +1,14 @@
 /// 详情页（PRD §7.4.1 / §7.4.3 需求态差异 / §10.1）。
 ///
-/// **本期不做的四项**（依赖未就位，做了必返工）：
-/// ① **媒体轮播**：§13.2 `post_media` 表未建模，且图片需 CDN 与上传链路，
-///    先用分类色渐变占位块占住版面，让下方内容的位置不会因日后加图而整体位移；
-/// ② **详情小地图**：§7.7 要求高德小地图 + Marker，依赖 Key（同地图页现状）；
-/// ③ **收藏 / 分享**：收藏依赖账号（§13.2 `favorite` 表以 user_id 为键），
+/// **本期不做的三项**（依赖未就位，做了必返工）：
+/// ① **详情小地图**：§7.7 要求高德小地图 + Marker，依赖 Key（同地图页现状）；
+/// ② **收藏 / 分享**：收藏依赖账号（§13.2 `favorite` 表以 user_id 为键），
 ///    分享需 share sheet 插件且要带落地页 URL，而 URL 依赖已备案域名（上架手册 P2）；
-/// ④ **举报入口**：属联系中转页（§7.4.2 底部），不在详情页。
+/// ③ **举报入口**：属联系中转页（§7.4.2 底部），不在详情页。
+///
+/// **[B2-11] 顶部媒体区已由占位转真**：`_MediaPlaceholder`（分类色渐变块）
+/// 换成 `MediaCarousel`（消费 `PostDetail.media` 的真图轮播 + 点击全屏查看）。
+/// 无图时仍回落为同一分类色占位块，保证下方内容位置不因有无图而位移。
 ///
 /// **「联系 TA」按钮做出来但只做到中转页跳转**：§7.5 用户旅程第 3 步是
 /// 「点联系 TA → 弹中转页」，中转页本身是下一个任务。按钮不放会让页面
@@ -27,6 +29,7 @@ import '../../domain/listing_category.dart';
 // 否则聚合模块（features/map/clustering/）无法持有它，就得退回用 int 传分类。
 import '../../domain/listing_category_style.dart';
 import '../../domain/listing_detail.dart';
+import 'media_carousel.dart';
 import 'post_detail_provider.dart';
 
 class DetailScreen extends ConsumerWidget {
@@ -68,7 +71,10 @@ class DetailScreen extends ConsumerWidget {
         // 且用户无法察觉下面还有东西。
         padding: const EdgeInsets.only(bottom: 96),
         children: [
-          _MediaPlaceholder(category: detail.listing.category),
+          MediaCarousel(
+            mediaUrls: detail.mediaUrls,
+            category: detail.listing.category,
+          ),
           _InfoSection(detail: detail),
           if (detail.templateFields.isNotEmpty)
             _TemplateSection(fields: detail.templateFields),
@@ -102,54 +108,6 @@ class DetailScreen extends ConsumerWidget {
       return const _QuotaExhaustedScreen();
     }
     return const _ErrorScreen();
-  }
-}
-
-/// 顶部媒体区占位（PRD §7.4.1 顶部媒体区）。
-///
-/// 用分类色渐变而非灰色占位块：灰块在验收时会被误认为「图没加载出来」，
-/// 而带分类色的渐变一眼能看出是刻意的占位，且顺带验证了分类色在大面积
-/// 铺色时的观感（Pin 上只有 40px，大面积下饱和度问题才会暴露）。
-class _MediaPlaceholder extends StatelessWidget {
-  const _MediaPlaceholder({required this.category});
-
-  final ListingCategory category;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 200,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            category.color.withValues(alpha: 0.85),
-            category.deepColor.withValues(alpha: 0.95),
-          ],
-        ),
-      ),
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              category.icon,
-              size: 56,
-              color: Colors.white.withValues(alpha: 0.9),
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              '图片区（待接入媒体上传）',
-              style: TextStyle(
-                fontSize: AppTypeScale.caption.size,
-                color: Colors.white.withValues(alpha: 0.85),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }
 

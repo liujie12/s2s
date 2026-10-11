@@ -51,7 +51,8 @@ final postDetailProvider = FutureProvider.family<ListingDetail, int>((
 ///   3. `completeness_level`(0/1/2) → [CompletenessLevel]（[CompletenessLevel.fromApi]）；
 ///   4. `realname_status`(四态) → [Publisher.realNameVerified]（仅 passed 为 true）；
 ///   5. `attributes`(map) → [TemplateField] 有序键值对；
-///   6. `price`/`price_unit` → [Listing.price]/[priceUnit]。
+///   6. `price`/`price_unit` → [Listing.price]/[priceUnit]；
+///   7. `media[]`(MediaItem) → [ListingDetail.mediaUrls]（只取 `url`，[B2-11]）。
 ///
 /// 降级（契约未定义、属其它条目口径，本轮不越界自创）：
 ///   - [ListingDetail.contactChannel] 恒 [ContactChannel.phone]：契约 `PostDetail`
@@ -94,6 +95,9 @@ ListingDetail postDetailToListingDetail(PostDetailDto dto) {
     leafCategoryId: dto.leafCategoryId,
     templateFields: _templateFieldsFromAttributes(dto.attributes),
     address: dto.address,
+    // 只取 url：他人视角契约已保证 `media[]` 仅含 audit_status=pass 的项，
+    // 客户端不再二次过滤（过滤反而会掩盖「服务端下发未过审图」这一违约）。
+    mediaUrls: [for (final item in dto.media) item.url],
   );
 }
 

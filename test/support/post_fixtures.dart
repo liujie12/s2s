@@ -104,7 +104,7 @@ void stubCreatePostFailure(
 /// 构造 `GET /posts/{id}` 成功响应 data（契约 `PostDetail`，详情页消费字段）。
 ///
 /// 返回：[Map] 契约 `PostDetail` 形态的 data 对象。覆盖 price/price_unit
-/// 出现形态、attributes 动态对象、author 四态实名。
+/// 出现形态、attributes 动态对象、author 四态实名、media 两项（他人视角仅 pass）。
 Map<String, Object?> postDetailPayload() => {
   'id': 1001,
   'type': 'resource',
@@ -124,6 +124,20 @@ Map<String, Object?> postDetailPayload() => {
   'publish_at': '2026-09-01T04:00:00Z',
   'expire_at': '2026-09-08T04:00:00Z',
   'version': 0,
+  'media': [
+    {
+      'media_id': 'm-1',
+      'url': 'https://oss.example.com/m-1.jpg',
+      'audit_status': 'pass',
+      'reject_reason': null,
+    },
+    {
+      'media_id': 'm-2',
+      'url': 'https://oss.example.com/m-2.jpg',
+      'audit_status': 'pass',
+      'reject_reason': null,
+    },
+  ],
   'author': {
     'id': 7,
     'nickname': '王师傅',

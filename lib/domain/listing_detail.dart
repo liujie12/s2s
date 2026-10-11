@@ -108,6 +108,7 @@ class ListingDetail {
     this.templateFields = const [],
     this.address,
     this.negotiable = false,
+    this.mediaUrls = const [],
   });
 
   /// 复用列表模型承载共有字段，避免同一条信息在两个类里各存一份标题与坐标。
@@ -166,6 +167,15 @@ class ListingDetail {
 
   /// 是否可议价（§7.4.1 价格行的「⬜ 可议价」）。
   final bool negotiable;
+
+  /// 媒体图 URL 列表（§7.4.1 顶部媒体区，对应 §13.2 `post_media`）。
+  ///
+  /// **只存 URL 不存 media_id**：详情页只负责展示，而他人视角契约
+  /// （`PostDetail.media`）仅下发 `audit_status=pass` 的项；media_id 与审核态
+  /// 属发布/管理侧的消费面（见 `post_dto.dart` 的 `MediaItemDto`）。
+  ///
+  /// 空列表＝无图，页面渲染分类色占位块（不退化为「少一块版面」）。
+  final List<String> mediaUrls;
 
   /// 剩余有效期天数（向上取整）。
   ///

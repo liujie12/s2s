@@ -25,7 +25,7 @@
 /// `features/discovery/discovery_filter.dart` ×1、
 /// `features/category/category_dto.dart` ×2（level 范围校验 1 +
 /// `_optChildren` 1，[124] B1 起 11 处中 9 处已上浮）、
-/// `features/post/post_dto.dart` ×7（`PostDetail` 解析 3 + 时间助手 4）、
+/// `features/post/post_dto.dart` ×8（`PostDetail` 解析 4 + 时间助手 4）、
 /// `features/auth/auth_repository.dart` ×8（[123] U10：AuthSession.fromJson ×2、
 /// AuthRepository._parseLoginResult ×4、_parseUserId ×2）、
 /// `features/contact/contact_repository.dart` ×1（[128]：`FullContact.fromJson`

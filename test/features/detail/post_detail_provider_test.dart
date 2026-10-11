@@ -60,6 +60,30 @@ void main() {
         (label: '交易方式', value: '自提'),
       ]);
     });
+
+    test('media[] → mediaUrls（只取 url 且保序）', () {
+      final detail = postDetailToListingDetail(
+        PostDetailDto.fromJson(postDetailPayload()),
+      );
+
+      expect(detail.mediaUrls, [
+        'https://oss.example.com/m-1.jpg',
+        'https://oss.example.com/m-2.jpg',
+      ]);
+    });
+
+    test('media 缺失 → 空列表（契约非 required，不退化为 null）', () {
+      final payload = postDetailPayload()..remove('media');
+      final detail = postDetailToListingDetail(PostDetailDto.fromJson(payload));
+
+      expect(detail.mediaUrls, isEmpty);
+    });
+
+    test('media 非数组抛 parseError（不静默当空）', () {
+      final payload = postDetailPayload()..['media'] = 'oops';
+
+      expect(() => PostDetailDto.fromJson(payload), throwsA(isA<ApiException>()));
+    });
   });
 
   group('CompletenessLevel.fromApi（0/1/2 显式映射）', () {
