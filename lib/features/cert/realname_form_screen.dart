@@ -90,12 +90,14 @@ class _RealnameFormScreenState extends ConsumerState<RealnameFormScreen> {
   String _messageOf(Object error) {
     final api = error is ApiException ? error : null;
     if (api == null) return '网络异常，请稍后重试';
-    return switch (api.code) {
+    final text = switch (api.code) {
       ApiErrorCode.agreementRequired => '请先勾选并同意实名认证相关协议',
       ApiErrorCode.certUnavailable => '认证服务暂时不可用，请稍后重试',
       ApiErrorCode.paramInvalid => '身份信息核验未通过，请检查姓名与身份证号',
       _ => api.message,
     };
+    // 统一回显 request_id（§5.3 UI 报错唯一格式 {message}（{request_id}））
+    return api.requestId == null ? text : '$text（${api.requestId}）';
   }
 
   @override

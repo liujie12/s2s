@@ -6269,3 +6269,15 @@ printf '\nMYSQL_SSL_MODE=VERIFY_CA\nMYSQL_TLS_TRUSTSTORE_PASSWORD=%s\n' \
 
 ---
 
+### 2026-10-11（[149] 评审修复 · P0 防刷失效 + P1 计数重置）
+
+> 摘要：code review（Review-Agent）发现 P0 阻断（失败计数被 `@Transactional` 回滚致防刷失效）+ P1（`fail_count` 锁过期不重置）+ 4 项 P2 漂移，全部修复。
+
+- [x] **P0 防刷失效**：新增 `CertFailureRecorder`，失败计数/锁定走 `@Transactional(propagation=REQUIRES_NEW)` 独立事务——业务异常回滚外层事务前，失败留痕已提交（PRD §4.8「二要素 3 次失败锁 24h」恢复有效）。
+- [x] **P1 计数重置**：`fail_count` 仅在锁定期内累加，`lock_until` 过期后归零重计（避免「解锁后一次失败即再锁」）；「自然过期恢复 vs PRD 需人工申诉」口径冲突登记待裁定（CertService 注释）。
+- [x] **P2 漂移**：openapi `agreement_accepted` 描述对齐 `@NotNull`（缺失走 40001）；`realname_form_screen` 错误文案统一拼 request_id（§5.3 唯一格式）；`CertStatus.fromJson` 补 qualifications 校验；事务内调外部核验加「真联调前解耦」注释。
+- 验收证据：`mvn -q test` → **326 全绿**（新增 `CertFailureRecorderTest` 6 例）；`flutter test` → **704/704 All tests passed**；反冗余基线 `ApiException.parse` 57→58（P2-3 补 qualifications 校验）。
+- 门禁结论：PASS。
+
+---
+

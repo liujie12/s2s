@@ -1,6 +1,5 @@
 package com.s2s.server.cert;
 
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.s2s.server.auth.UserService;
 import com.s2s.server.cert.dto.CertStatusResponse;
 import com.s2s.server.cert.dto.QualificationSubmitRequest;
@@ -51,11 +50,11 @@ public class CertService {
     /** 实名状态枚举值：已通过（二要素核验通过后写回）。 */
     public static final String REALNAME_STATUS_PASSED = "passed";
 
-    /** 认证类型：个人实名（{@code cert.cert_type} 列，实名核验专用）。 */
-    private static final String CERT_TYPE_PERSONAL_REALNAME = "personal_realname";
+    /** 认证类型：个人实名（{@code cert.cert_type} 列，实名核验专用；供 {@link CertFailureRecorder} 复用）。 */
+    public static final String CERT_TYPE_PERSONAL_REALNAME = "personal_realname";
 
-    /** 认证状态：审核中（资质提交初始态）。 */
-    private static final String CERT_STATUS_PENDING = "pending";
+    /** 认证状态：审核中（资质提交初始态；供 {@link CertFailureRecorder} 复用）。 */
+    public static final String CERT_STATUS_PENDING = "pending";
 
     /** 认证状态：已通过（实名核验通过 / 资质人工审核通过）。 */
     private static final String CERT_STATUS_APPROVED = "approved";
@@ -87,25 +86,31 @@ public class CertService {
     /** 全系统唯一 audit_log 写入处。 */
     private final AuditLogWriter auditLogWriter;
 
+    /** 核验失败计数与锁定记录器（独立事务，评审 P0 修复）。 */
+    private final CertFailureRecorder certFailureRecorder;
+
     /**
      * 构造实名认证服务。
      *
-     * @param userService      用户资料服务（读/写 user 实名列）
-     * @param certMapper       cert 表 Mapper
-     * @param realnameProvider 实名核验供应商
-     * @param cryptoFacade     加解密入口（加密姓名）
-     * @param peppers          HMAC pepper 列表（身份证盲索引）
-     * @param auditLogWriter   审计写入
+     * @param userService          用户资料服务（读/写 user 实名列）
+     * @param certMapper           cert 表 Mapper
+     * @param realnameProvider     实名核验供应商
+     * @param cryptoFacade         加解密入口（加密姓名）
+     * @param peppers              HMAC pepper 列表（身份证盲索引）
+     * @param auditLogWriter       审计写入
+     * @param certFailureRecorder  核验失败计数与锁定记录器
      */
     public CertService(UserService userService, CertMapper certMapper,
             RealnameProvider realnameProvider, CryptoFacade cryptoFacade,
-            List<Pepper> peppers, AuditLogWriter auditLogWriter) {
+            List<Pepper> peppers, AuditLogWriter auditLogWriter,
+            CertFailureRecorder certFailureRecorder) {
         this.userService = userService;
         this.certMapper = certMapper;
         this.realnameProvider = realnameProvider;
         this.cryptoFacade = cryptoFacade;
         this.peppers = peppers;
         this.auditLogWriter = auditLogWriter;
+        this.certFailureRecorder = certFailureRecorder;
     }
 
     /**
@@ -124,8 +129,12 @@ public class CertService {
      * 提交实名认证（二要素核验；{@code POST /cert/realname}）。
      *
      * <p>执行次序：协议校验（40002）→ 已实名幂等短路 → 锁定检查（40001）→ 二要素核验
-     * （失败 40001 + 记 fail_count）→ 通过后写 user 实名列（经 UserService）+ 写 cert 表 +
-     * 写审计（同事务）。</p>
+     * （失败 40001 + 记 fail_count，独立事务见 {@link CertFailureRecorder}）→ 通过后写
+     * user 实名列（经 UserService）+ 写 cert 表 + 写审计（同事务）。</p>
+     *
+     * <p><b>锁定恢复路径（口径待裁定）</b>：PRD §4.8「需人工申诉」与本实现的
+     * {@code lock_until} 自然过期恢复存在冲突；人工申诉依赖 B2-5 运营后台（当前未上线），
+     * 故本阶段先取自然过期恢复，{@code fail_count} 锁过期后重新计数。</p>
      *
      * @param userId  当前登录用户 ID（controller 已保证非 null）
      * @param request 实名提交请求（real_name/id_card/agreement_accepted）
@@ -143,8 +152,13 @@ public class CertService {
             // 已实名：幂等返回，不重复调供应商（DEC-30 ⑦「返回业务结果即计费一次」）
             return new RealnameSubmitResult(current);
         }
-        assertNotLocked(userId);
+        if (certFailureRecorder.isLocked(userId)) {
+            // 锁定期内不再调供应商，避免锁定期间继续计费（DEC-30 ⑦）
+            throw BizException.of(ErrorCode.PARAM_INVALID);
+        }
 
+        // 注：真联调后 verify 为外部 HTTP，须移出 @Transactional（避免持事务跨网络）；
+        // dry-run mock 为纯内存判断，无网络无感（评审 P2-4，真 API 接入时处理）
         boolean passed;
         try {
             passed = realnameProvider.verify(request.realName(), request.idCard());
@@ -153,7 +167,8 @@ public class CertService {
             throw BizException.of(ErrorCode.CERT_UNAVAILABLE);
         }
         if (!passed) {
-            recordFailureAndMaybeLock(userId);
+            // 失败计数走独立事务（REQUIRES_NEW），业务异常回滚前已持久化（评审 P0）
+            certFailureRecorder.recordFailure(userId);
             // 核验不通过与锁定态同码 40001（不新增错误码，红线）
             throw BizException.of(ErrorCode.PARAM_INVALID);
         }
@@ -213,55 +228,6 @@ public class CertService {
     }
 
     /**
-     * 检查实名核验是否处于锁定期（防刷）。
-     *
-     * <p>锁定期内直接回 {@code 40001}，不再调供应商——避免锁定期间继续计费（DEC-30 ⑦）。</p>
-     *
-     * @param userId 用户 ID
-     * @throws BizException 处于锁定期 → 40001
-     */
-    private void assertNotLocked(Long userId) {
-        CertEntity latest = latestRealnameCert(userId);
-        if (latest != null && latest.getLockUntil() != null
-                && latest.getLockUntil().isAfter(LocalDateTime.now())) {
-            throw BizException.of(ErrorCode.PARAM_INVALID);
-        }
-    }
-
-    /**
-     * 记录核验失败并达阈值锁定。
-     *
-     * <p>复用 {@code cert.fail_count} + {@code cert.lock_until} 列（已建，PRD §4.8）：
-     * 失败次数 +1，达 {@link NfrCert#REALNAME_FAIL_LOCK_THRESHOLD} 写锁定 24h。</p>
-     *
-     * @param userId 用户 ID
-     */
-    private void recordFailureAndMaybeLock(Long userId) {
-        CertEntity latest = latestRealnameCert(userId);
-        int failCount = latest == null || latest.getFailCount() == null ? 0 : latest.getFailCount();
-        int next = failCount + 1;
-        if (latest == null) {
-            CertEntity entity = new CertEntity();
-            entity.setUserId(userId);
-            entity.setCertType(CERT_TYPE_PERSONAL_REALNAME);
-            entity.setStatus(CERT_STATUS_PENDING);
-            entity.setFailCount(next);
-            if (next >= NfrCert.REALNAME_FAIL_LOCK_THRESHOLD) {
-                entity.setLockUntil(LocalDateTime.now()
-                        .plusSeconds(NfrCert.REALNAME_FAIL_LOCK_SECONDS));
-            }
-            certMapper.insert(entity);
-        } else {
-            latest.setFailCount(next);
-            if (next >= NfrCert.REALNAME_FAIL_LOCK_THRESHOLD) {
-                latest.setLockUntil(LocalDateTime.now()
-                        .plusSeconds(NfrCert.REALNAME_FAIL_LOCK_SECONDS));
-            }
-            certMapper.updateById(latest);
-        }
-    }
-
-    /**
      * 写一条实名核验通过的 cert 记录（status=approved，approved_at=now）。
      *
      * @param userId 用户 ID
@@ -276,17 +242,4 @@ public class CertService {
         certMapper.insert(entity);
     }
 
-    /**
-     * 取该用户最新一条个人实名 cert 记录（用于锁定判定与失败计数，无则 null）。
-     *
-     * @param userId 用户 ID
-     * @return {@link CertEntity} 最新实名记录；无记录返回 {@code null}
-     */
-    private CertEntity latestRealnameCert(Long userId) {
-        return certMapper.selectOne(new QueryWrapper<CertEntity>()
-                .eq("user_id", userId)
-                .eq("cert_type", CERT_TYPE_PERSONAL_REALNAME)
-                .orderByDesc("id")
-                .last("LIMIT 1"));
-    }
 }

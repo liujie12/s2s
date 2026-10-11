@@ -2212,7 +2212,7 @@ components:
           description: 18 位身份证号（服务端只存 `id_card_hash` 盲索引 + `id_card_last4`，禁止出现在任何响应）
         agreement_accepted:
           type: boolean
-          description: 是否已同意实名认证相关协议；false 或缺失回 40002
+          description: 是否已同意实名认证相关协议；false 回 40002（字段缺失按 required 走 40001 参数校验）
 
     RealnameSubmitResult:
       type: object

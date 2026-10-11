@@ -41,6 +41,7 @@ class CertServiceTest {
     private RealnameProvider realnameProvider;
     private CryptoFacade cryptoFacade;
     private AuditLogWriter auditLogWriter;
+    private CertFailureRecorder certFailureRecorder;
     private CertService service;
 
     @BeforeEach
@@ -50,8 +51,9 @@ class CertServiceTest {
         realnameProvider = mock(RealnameProvider.class);
         cryptoFacade = mock(CryptoFacade.class);
         auditLogWriter = mock(AuditLogWriter.class);
+        certFailureRecorder = mock(CertFailureRecorder.class);
         service = new CertService(userService, certMapper, realnameProvider, cryptoFacade,
-                PEPPERS, auditLogWriter);
+                PEPPERS, auditLogWriter, certFailureRecorder);
     }
 
     /**
@@ -89,13 +91,23 @@ class CertServiceTest {
     @Test
     void 核验不通过回40001并记失败() {
         when(userService.realnameStatusOf(1L)).thenReturn(CertService.REALNAME_STATUS_NONE);
-        when(certMapper.selectOne(any())).thenReturn(null);
         when(realnameProvider.verify(any(), any())).thenReturn(false);
         assertThatThrownBy(() -> service.submitRealname(1L, request(true)))
                 .isInstanceOf(BizException.class)
                 .extracting(e -> ((BizException) e).getErrorCode())
                 .isEqualTo(ErrorCode.PARAM_INVALID);
-        verify(certMapper).insert(any(CertEntity.class));
+        verify(certFailureRecorder).recordFailure(eq(1L));
+    }
+
+    @Test
+    void 锁定期内回40001且不调供应商() {
+        when(userService.realnameStatusOf(1L)).thenReturn(CertService.REALNAME_STATUS_NONE);
+        when(certFailureRecorder.isLocked(1L)).thenReturn(true);
+        assertThatThrownBy(() -> service.submitRealname(1L, request(true)))
+                .isInstanceOf(BizException.class)
+                .extracting(e -> ((BizException) e).getErrorCode())
+                .isEqualTo(ErrorCode.PARAM_INVALID);
+        verify(realnameProvider, never()).verify(any(), any());
     }
 
     @Test

@@ -17,7 +17,7 @@ class CertStatus {
   ///
   /// 严格解析（编码规范 F1）：`realname.status` 缺失/类型不符抛
   /// [ApiException.parse]，不返 null 不静默吞。`qualifications` 本轮恒空
-  /// （人工审核未上线），仅校验存在性不展开——域模型本轮无资质消费方。
+  /// （人工审核未上线），仅校验为 List 不展开——域模型本轮无资质消费方。
   ///
   /// 参数：[data] 信封拆出的 data（契约 `CertStatusResponse`）。
   /// 返回：[CertStatus] 认证状态。
@@ -28,6 +28,10 @@ class CertStatus {
     final realname = data['realname'];
     if (realname is! Map || realname['status'] is! String) {
       throw ApiException.parse('认证状态响应 realname.status 缺失或非 String: $realname');
+    }
+    if (data['qualifications'] is! List) {
+      throw ApiException.parse(
+          '认证状态响应 qualifications 缺失或非 List: ${data['qualifications']}');
     }
     return CertStatus(realnameStatus: realname['status'] as String);
   }
