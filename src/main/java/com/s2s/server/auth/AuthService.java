@@ -48,7 +48,7 @@ import org.springframework.transaction.annotation.Transactional;
  *   <li>验证码正确 → 清失败计数 + 删验证码；</li>
  *   <li>手机号盲索引查 {@code user_identity}，未命中则自动注册
  *       （建 {@code user} + {@code user_identity}，同事务）；</li>
- *   <li>写 {@code device}（X-Device-Id 指纹，缺失写匿名行，KTD3）；</li>
+ *   <li>写 {@code device}（X-Device-Id 指纹合法才写；缺失/非法跳过，KTD3 不拦截登录）；</li>
  *   <li>签发 JWT（30 天），返回 {@link LoginResult}。</li>
  * </ol>
  *
@@ -377,7 +377,15 @@ public class AuthService {
 
     /**
      * 写设备：X-Device-Id 合法则按指纹查/插（命中更新 push_token/platform/last_active_at），
-     * 缺失或非法则写匿名行（fingerprint 为 null，KTD3：不拦截登录）。
+     * 缺失或非法则<b>不写 device 行</b>（KTD3：不拦截登录，登录照常成功）。
+     *
+     * <p><b>为什么无合法指纹时不建行</b>：{@code device.fingerprint} 是
+     * {@code NOT NULL + UNIQUE} 列，而文档定义它是「客户端首启生成的 UUID v4」
+     * （PRD §12.1 / openapi {@code X-Device-Id}）。没有合法头就没有设备身份：
+     * 塞常量占位会撞 {@code uk_fingerprint} 唯一键（第二个匿名客户端仍 50001），
+     * 塞随机 UUID 则每次登录新增一行且不可复认（行爆炸）。{@code device} 表语义是
+     * 「设备指纹 / push_token」载体，无指纹即无设备行可言 —— 故跳过写入，
+     * 匿名客户端的限频由 IP 维承担（PRD §7.7 三维限频，IP 维独立生效）。</p>
      *
      * @param userId    用户 ID
      * @param deviceId  X-Device-Id 头值（可能 null/非法）
@@ -385,26 +393,27 @@ public class AuthService {
      * @param pushToken 推送 token（可空）
      */
     private void writeDevice(Long userId, String deviceId, String platform, String pushToken) {
+        // 无合法指纹：不拦截登录，也不建 device 行（理由见方法注释）
+        if (deviceId == null || !UuidV4.isValid(deviceId)) {
+            return;
+        }
+
         DeviceEntity device = new DeviceEntity();
         device.setUserId(userId);
         device.setPlatform(platform);
         device.setPushToken(pushToken);
         device.setLastActiveAt(LocalDateTime.now());
+        device.setFingerprint(deviceId);
 
-        if (deviceId != null && UuidV4.isValid(deviceId)) {
-            device.setFingerprint(deviceId);
-            DeviceEntity existing = deviceMapper.selectOne(
-                    new QueryWrapper<DeviceEntity>().eq("fingerprint", deviceId));
-            if (existing == null) {
-                deviceMapper.insert(device);
-            } else {
-                existing.setPlatform(platform);
-                existing.setPushToken(pushToken);
-                existing.setLastActiveAt(LocalDateTime.now());
-                deviceMapper.updateById(existing);
-            }
-        } else {
+        DeviceEntity existing = deviceMapper.selectOne(
+                new QueryWrapper<DeviceEntity>().eq("fingerprint", deviceId));
+        if (existing == null) {
             deviceMapper.insert(device);
+        } else {
+            existing.setPlatform(platform);
+            existing.setPushToken(pushToken);
+            existing.setLastActiveAt(LocalDateTime.now());
+            deviceMapper.updateById(existing);
         }
     }
 
