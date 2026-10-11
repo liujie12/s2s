@@ -162,6 +162,10 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
     // 最挫败的路径；precheck 把服务端口径（敏感词/图片/禁发/资质/
     // 未实名上限）提前到提交前，blocks 一次性给全不逐条打断。
     setState(() => _precheckInFlight = true);
+    // 单一出口：成功、阻断、传输错、乃至任何未预期异常，都必须在 finally 里
+    // 复位 [_precheckInFlight]。历史缺陷：precheck 段的 try 没有 finally，
+    // 一旦 precheck 抛出非 ApiException，标志便永不归位——发布按钮被永久禁用
+    // 且不显示任何原因（用户侧表现为「点了没反应」）。
     try {
       final result = await ref
           .read(postRepositoryProvider)
@@ -169,9 +173,38 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
       if (!mounted) return;
       if (!result.passed) {
         await _showPrecheckBlocks(result.blocks);
-        if (mounted) setState(() => _precheckInFlight = false);
         return;
       }
+
+      // [125] B5：正式提交。precheck 与 POST 之间的时间差内服务端口径
+      // 可能变化（如审核策略调整），POST 仍可能回发布阻断五码——按同款
+      // 弹层处理（复用动作入口），其余错误按 §11.4 提示。
+      // 返回值（id/version）当前无消费方：埋点事件体与详情跳转分别属
+      // [130] 与详情页条目，接入时再接。
+      try {
+        await ref
+            .read(postRepositoryProvider)
+            .createPost(_form.postDraftPayload());
+      } on ApiException catch (error) {
+        if (!mounted) return;
+        if (_isPublishBlockCode(error.code.code)) {
+          await _showPrecheckBlocks([
+            PrecheckBlockDto(code: error.code.code, message: error.message),
+          ]);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(error.uiMessage)),
+          );
+        }
+        return;
+      }
+
+      // TODO([130] 埋点队列)：post_published 事件入队（事件体 interaction_id
+      // 取本次提交交互、ts 取此刻毫秒精度）；队列与上报实现属 [130]，
+      // 本轮只留调用点，不引入 TrackReporter 依赖。
+
+      // 发布成功进完成页（带上表单快照供完成页算 §9.8 档位）。
+      if (mounted) router.push(AppRoutes.publishSuccess, extra: _form);
     } on ApiException catch (error) {
       // precheck 链路失败（传输/信封错误）与「校验不通过」是两种语义：
       // 后者在 blocks 里（上方弹层），前者按 §11.4 唯一格式提示，
@@ -180,42 +213,10 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(error.uiMessage)),
         );
-        setState(() => _precheckInFlight = false);
       }
-      return;
-    }
-
-    // [125] B5：正式提交。precheck 与 POST 之间的时间差内服务端口径
-    // 可能变化（如审核策略调整），POST 仍可能回发布阻断五码——按同款
-    // 弹层处理（复用动作入口），其余错误按 §11.4 提示。
-    // 返回值（id/version）当前无消费方：埋点事件体与详情跳转分别属
-    // [130] 与详情页条目，接入时再接。
-    try {
-      await ref
-          .read(postRepositoryProvider)
-          .createPost(_form.postDraftPayload());
-    } on ApiException catch (error) {
-      if (!mounted) return;
-      if (_isPublishBlockCode(error.code.code)) {
-        await _showPrecheckBlocks([
-          PrecheckBlockDto(code: error.code.code, message: error.message),
-        ]);
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(error.uiMessage)),
-        );
-      }
-      return;
     } finally {
       if (mounted) setState(() => _precheckInFlight = false);
     }
-
-    // TODO([130] 埋点队列)：post_published 事件入队（事件体 interaction_id
-    // 取本次提交交互、ts 取此刻毫秒精度）；队列与上报实现属 [130]，
-    // 本轮只留调用点，不引入 TrackReporter 依赖。
-
-    // 发布成功进完成页（带上表单快照供完成页算 §9.8 档位）。
-    if (mounted) router.push(AppRoutes.publishSuccess, extra: _form);
   }
 
   /// 是否为发布阻断五码（40901/40902/40302/40303/40304，§12.5）。
