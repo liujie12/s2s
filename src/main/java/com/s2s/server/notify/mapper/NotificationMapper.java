@@ -71,4 +71,26 @@ public interface NotificationMapper {
      */
     int markReadByIds(@Param("userId") Long userId, @Param("ids") List<Long> ids,
             @Param("readAt") LocalDateTime readAt);
+
+    /**
+     * 写一条站内通知（[B2-2]；通知**写入侧唯一入口**）。
+     *
+     * <p><b>为什么用显式列而非实体 insert</b>：{@code notification} 无实体类（读侧一直
+     * 只出七列的 {@code Map}），且 {@code read_at}/{@code deleted_at} 必须留空——用实体
+     * 会让「谁都没打算传的字段」参与 insert，将来加列即被无声写入。</p>
+     *
+     * <p>{@code created_at} 由调用方传入（而非依赖库默认值）：与 {@code markRead} 传
+     * {@code readAt} 同因——口径统一可测，测试能钉死时间而不依赖真实时钟。</p>
+     *
+     * @param userId    接收者 user_id
+     * @param type      通知类型线值（{@code system}/{@code interaction}/{@code cert}）
+     * @param title     标题（≤64，调用方保证）
+     * @param summary   摘要（可空，≤256，调用方保证）
+     * @param targetId  关联对象 ID（可空）
+     * @param createdAt 创建时刻
+     * @return int 影响行数（恒 1）
+     */
+    int insertNotification(@Param("userId") Long userId, @Param("type") String type,
+            @Param("title") String title, @Param("summary") String summary,
+            @Param("targetId") Long targetId, @Param("createdAt") LocalDateTime createdAt);
 }

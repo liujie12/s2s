@@ -1680,7 +1680,7 @@ POC 拆为**算法级（POC-A）与定标级（POC-B）两级**，二者回答�
 - **资源发布后 1min 推给 5km 内 Top30 匹配需求方**；
 - **只埋一级联系漏斗**：仅记录「详情页点击联系 → 跳中转页 → 拉取联系方式成功」三个客观事件，用于 §11 联系埋点与 T1 标签强度打标；
 - **明确不做意向/成交两级**：**不向用户收集"已联系上/已成交"反馈，不做 24h 三选一弹窗**，与 §5.11「不做撮合反馈收集」及 §6.12「不取撮合反馈」为同一红线口径，本节不另设例外；
-- **推送通道**：APNs/FCM/小米/华为厂商通道 + 站内通知中心兜底；
+- **推送通道**：APNs/FCM/华为/小米/OPPO/vivo/荣耀厂商通道 + 站内通知中心兜底（2026-10-12 裁定：**厂商原生逐个接**，不引聚合推送；境内不可用 FCM）；
 - **推送频控**：单用户每日接收推送 ≤10 条，避免骚扰。
 
 > 📌 **与 D1 北极星联动**：AI 召回率口径 = "用户发布需求后 5min 内被推送到 Top20 资源方中，至少 1 个资源方点击查看该需求详情的比例"，依赖 S1 双向推送引擎 + T1 LR+GBDT 模型。
@@ -1961,7 +1961,7 @@ POC 拆为**算法级（POC-A）与定标级（POC-B）两级**，二者回答�
   ```
 - 到期自动下架：后台定时任务（每分钟轮询 post.expire_at），下架推送系统通知；
 - 我的收藏：按 post_id 去重；取消收藏 = 软删保留 30 天避免误删恢复；
-- 通知：APNs/FCM/小米/华为厂商通道（本期文档先写需求，具体接入由研发评估）；未推送的通知走站内通知中心兜底。
+- 通知：APNs/FCM/华为/小米/OPPO/vivo/荣耀厂商通道（具体接入由研发评估；**2026-10-12 裁定厂商原生逐个接**）；未推送的通知走站内通知中心兜底。
 
 ### 8.7 功能细节描述
 
@@ -2389,7 +2389,7 @@ POC 拆为**算法级（POC-A）与定标级（POC-B）两级**，二者回答�
 |---|---|---|---|---|
 | GET | `/notifications?type=` | 通知中心（系统/互动/认证） | 分页，out: `items[]`,`unread_count` | §8.3.3 |
 | POST | `/notifications/read` | 标记已读 / 全部已读 | in: `ids[]` 或 `all=true` | §8.3.3 |
-| POST | `/devices/token` | 上报推送 token | in: `platform`(apns/fcm/mi/hw),`token` | §6.14 推送通道 |
+| POST | `/users/me/devices` | 上报推送 token（路径以 openapi 为准，2026-10-12 裁定） | in: `platform`(apns/fcm/hw/mi/oppo/vivo/honor),`token`；out: `device_id`,`platform` | §6.14 推送通道 |
 
 - 推送为**纯通知形态**，无消息列表、无聊天详情（§8.3.3 / 附录 B）；
 - 单用户接收推送 **≤10 条/日**，超出仅落站内通知不下发（§6.14 频控）。
@@ -2687,12 +2687,14 @@ POC 拆为**算法级（POC-A）与定标级（POC-B）两级**，二者回答�
 | `id` | bigint | PK | — | — |
 | `user_id` | bigint | FK, 索引 | 所属 user_id | §7.7 |
 | `fingerprint` | varchar(64) | NOT NULL, UNIQUE | 设备指纹（UUID，限频键，重装即变） | §7.7 |
-| `platform` | enum | NOT NULL | android/ios | §6.7 |
+| `platform` | enum | NOT NULL | android/ios（**OS 维度**） | §6.7 |
 | `push_token` | varchar(128) | NULL | 推送 token（FCM/APNs/小米/华为） | §6.14 |
+| `push_platform` | enum | NULL | 推送通道 apns/fcm/hw/mi/oppo/vivo/honor（**与 `platform` 是不同维度**；V7 新增） | §6.14 |
 | `last_active_at` | datetime | NOT NULL DEFAULT CURRENT_TIMESTAMP | 最后活跃时间 | — |
 
 - 唯一索引 `uk_fingerprint(fingerprint)` —— 设备指纹唯一，作为联系限频的设备维键；`idx_user_id(user_id)` —— 按用户查设备列表；`idx_last_active_at(last_active_at)` —— 推送下发扫描活跃设备。
 - **双重职责**：`fingerprint` 做联系限频的设备维（§7.7 三维限频），`push_token` 做推送下发（架构 §2）。
+- **`platform` 与 `push_platform` 不可互换**：前者是 OS（登录写入），后者是推送通道（token 上报写入，V7 迁移新增）；合并会让两者互相顶替，服务端无从判断「设备是什么系统」与「下发走哪家」。
 - **设备指纹不可信**：用户重装应用或清数据即得到新指纹，**只提高刷量成本，不构成安全边界**，因此三维限频中账号维与 IP 维不可因它而放宽（§7.7 采集红线）。
 - **采集红线**：禁止采集 IMEI、MAC、IDFA/OAID 等设备唯一标识（§7.7）。
 

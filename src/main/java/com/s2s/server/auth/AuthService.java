@@ -3,6 +3,7 @@ package com.s2s.server.auth;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.s2s.server.auth.dto.DeviceUpsertResult;
 import com.s2s.server.auth.dto.LoginRequest;
 import com.s2s.server.auth.dto.LoginResult;
 import com.s2s.server.auth.dto.MyProfile;
@@ -373,6 +374,62 @@ public class AuthService {
     private String defaultNickname(String phone) {
         return DEFAULT_NICKNAME_PREFIX
                 + phone.substring(phone.length() - DEFAULT_NICKNAME_PHONE_SUFFIX_LENGTH);
+    }
+
+    /**
+     * 上报/更新当前设备的推送 token（{@code POST /users/me/devices}，[B2-2]）。
+     *
+     * <p><b>为什么独立于登录的 {@link #writeDevice}</b>：登录写的是 {@code device.platform}（OS）
+     * + {@code push_token}；本接口写的是 {@code push_platform}（推送通道）+ {@code push_token}。
+     * 二者写的是**不同列**，混用会让「设备是什么系统」与「下发走哪家」互相顶替
+     * （故 {@code writeDevice} 刻意不碰 {@code push_platform}，本方法刻意不碰 {@code platform}）。</p>
+     *
+     * <p><b>与登录的容错口径不同</b>：登录无合法 {@code X-Device-Id} 时**跳过写入**（不拦截登录）；
+     * 本接口的设备指纹是唯一判据（没有它无法定位 {@code device} 行），缺失/非法 → {@code 40001}。</p>
+     *
+     * <p><b>新增行时的 {@code platform} 兜底</b>：该列 {@code NOT NULL}，而本接口入参不含 OS，
+     * 故按推送通道推导（{@code apns}→ios，其余→android，见 {@link PushPlatform#osPlatform()}）。
+     * 正常路径设备行已由登录写入，此兜底仅在行缺失时生效。</p>
+     *
+     * @param userId      当前登录用户 ID（调用方保证非 null）
+     * @param deviceId    {@code X-Device-Id} 头值（设备指纹）
+     * @param platformWire 契约推送通道线值
+     * @param token       推送 token
+     * @return {@link DeviceUpsertResult}（device_id + 回显通道）
+     * @throws BizException {@code 40001} 通道不在白名单内 / 设备指纹缺失或非法
+     */
+    @Transactional
+    public DeviceUpsertResult upsertPushToken(Long userId, String deviceId,
+            String platformWire, String token) {
+        PushPlatform platform = PushPlatform.fromWire(platformWire);
+        if (platform == null) {
+            throw BizException.of(ErrorCode.PARAM_INVALID);
+        }
+        if (deviceId == null || !UuidV4.isValid(deviceId)) {
+            throw BizException.of(ErrorCode.PARAM_INVALID);
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        DeviceEntity existing = deviceMapper.selectOne(
+                new QueryWrapper<DeviceEntity>().eq("fingerprint", deviceId));
+        if (existing == null) {
+            DeviceEntity device = new DeviceEntity();
+            device.setUserId(userId);
+            // platform 为 NOT NULL：本接口无 OS 入参，按通道兜底推导（见方法注释）。
+            device.setPlatform(platform.osPlatform());
+            device.setPushToken(token);
+            device.setPushPlatform(platform.wire());
+            device.setLastActiveAt(now);
+            device.setFingerprint(deviceId);
+            deviceMapper.insert(device);
+            return new DeviceUpsertResult(device.getId(), platform.wire());
+        }
+
+        existing.setPushToken(token);
+        existing.setPushPlatform(platform.wire());
+        existing.setLastActiveAt(now);
+        deviceMapper.updateById(existing);
+        return new DeviceUpsertResult(existing.getId(), platform.wire());
     }
 
     /**

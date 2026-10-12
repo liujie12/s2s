@@ -96,4 +96,18 @@
           <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
     </update>
 
+    <!--
+      写一条站内通知（[B2-2] 通知写入侧唯一入口）。
+
+      EXPLAIN 结论：INSERT 无查询计划可看，EXPLAIN 不适用（豁免口径同 V5/V6/V7 的 DDL 注明）。
+      唯一索引影响：仅 PRIMARY(id) 自增写入 + idx_user_type_deleted_created 尾插，无回表。
+
+      read_at / deleted_at 刻意不出现在列集合：新通知恒为「未读 + 未删」，
+      让库默认值（NULL）表达，比显式传 NULL 更难被将来误改。
+    -->
+    <insert id="insertNotification">
+        INSERT INTO notification (user_id, type, title, summary, target_id, created_at)
+        VALUES (#{userId}, #{type}, #{title}, #{summary}, #{targetId}, #{createdAt})
+    </insert>
+
 </mapper>

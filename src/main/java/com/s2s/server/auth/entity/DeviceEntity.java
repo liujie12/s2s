@@ -39,6 +39,9 @@ public class DeviceEntity {
     /** 推送 token（FCM/APNs，可空）。 */
     private String pushToken;
 
+    /** 推送通道（apns/fcm/hw/mi/oppo/vivo/honor，可空；V7 新增，[B2-2]）。 */
+    private String pushPlatform;
+
     /** 最后活跃时间（数据库默认 CURRENT_TIMESTAMP）。 */
     private LocalDateTime lastActiveAt;
 
@@ -130,6 +133,24 @@ public class DeviceEntity {
      */
     public void setPushToken(String pushToken) {
         this.pushToken = pushToken;
+    }
+
+    /**
+     * 返回推送通道。
+     *
+     * @return 推送通道（apns/fcm/hw/mi/oppo/vivo/honor；可空）
+     */
+    public String getPushPlatform() {
+        return pushPlatform;
+    }
+
+    /**
+     * 设置推送通道。
+     *
+     * @param pushPlatform 推送通道
+     */
+    public void setPushPlatform(String pushPlatform) {
+        this.pushPlatform = pushPlatform;
     }
 
     /**

@@ -13,6 +13,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.s2s.server.auth.dto.DeviceUpsertResult;
 import com.s2s.server.auth.dto.LoginRequest;
 import com.s2s.server.auth.dto.LoginResult;
 import com.s2s.server.auth.dto.RefreshResult;
@@ -32,6 +33,7 @@ import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
@@ -311,6 +313,93 @@ class AuthServiceTest {
         authService.logout("token", null);
 
         verify(valueOps, never()).set(anyString(), anyString(), any(Duration.class));
+    }
+
+    /**
+     * 场景十一：token 上报命中已有设备行 → 更新 push_token/push_platform，**不动 platform**（OS）。
+     *
+     * <p>守的是「推送通道与 OS 是两个维度」这条口径：若本方法顺手覆盖 {@code platform}，
+     * 登录写的 OS 会被推送通道顶替（列语义静默损坏，且无任何断言会红）。</p>
+     *
+     * @return void
+     */
+    @Test
+    void upsertPushTokenUpdatesExistingRow() {
+        DeviceEntity device = new DeviceEntity();
+        device.setId(5L);
+        device.setUserId(1L);
+        device.setFingerprint(DEVICE_ID);
+        device.setPlatform("android");
+        when(deviceMapper.selectOne(any())).thenReturn(device);
+
+        DeviceUpsertResult result = authService.upsertPushToken(1L, DEVICE_ID, "mi", "tok-1");
+
+        assertThat(result.deviceId()).isEqualTo(5L);
+        assertThat(result.platform()).isEqualTo("mi");
+        assertThat(device.getPushToken()).isEqualTo("tok-1");
+        assertThat(device.getPushPlatform()).isEqualTo("mi");
+        assertThat(device.getPlatform()).isEqualTo("android");
+        verify(deviceMapper).updateById(device);
+        verify(deviceMapper, never()).insert(any(DeviceEntity.class));
+    }
+
+    /**
+     * 场景十二：设备行不存在 → 插入一行；{@code platform}（NOT NULL）按通道兜底推导（apns → ios）。
+     *
+     * @return void
+     */
+    @Test
+    void upsertPushTokenInsertsRowWithDerivedOs() {
+        when(deviceMapper.selectOne(any())).thenReturn(null);
+        when(deviceMapper.insert(any(DeviceEntity.class))).thenAnswer(invocation -> {
+            DeviceEntity inserted = invocation.getArgument(0);
+            inserted.setId(7L);
+            return 1;
+        });
+
+        DeviceUpsertResult result = authService.upsertPushToken(1L, DEVICE_ID, "apns", "tok-2");
+
+        assertThat(result.deviceId()).isEqualTo(7L);
+        assertThat(result.platform()).isEqualTo("apns");
+        ArgumentCaptor<DeviceEntity> captor = ArgumentCaptor.forClass(DeviceEntity.class);
+        verify(deviceMapper).insert(captor.capture());
+        assertThat(captor.getValue().getPlatform()).isEqualTo("ios");
+        assertThat(captor.getValue().getPushPlatform()).isEqualTo("apns");
+        assertThat(captor.getValue().getPushToken()).isEqualTo("tok-2");
+    }
+
+    /**
+     * 场景十三：通道不在白名单 → 40001，且不触库（白名单校验先于查库）。
+     *
+     * @return void
+     */
+    @Test
+    void upsertPushTokenRejectsUnknownPlatform() {
+        assertThatThrownBy(() -> authService.upsertPushToken(1L, DEVICE_ID, "fcm-x", "tok"))
+                .isInstanceOf(BizException.class)
+                .satisfies(ex -> assertThat(((BizException) ex).getErrorCode())
+                        .isEqualTo(ErrorCode.PARAM_INVALID));
+
+        verify(deviceMapper, never()).selectOne(any());
+    }
+
+    /**
+     * 场景十四：设备指纹缺失/非法 → 40001（与登录「无指纹则跳过写入」的容错口径不同：
+     * 本接口的设备指纹是唯一判据，没有它无法定位 device 行）。
+     *
+     * @return void
+     */
+    @Test
+    void upsertPushTokenRejectsMissingFingerprint() {
+        assertThatThrownBy(() -> authService.upsertPushToken(1L, null, "mi", "tok"))
+                .isInstanceOf(BizException.class)
+                .satisfies(ex -> assertThat(((BizException) ex).getErrorCode())
+                        .isEqualTo(ErrorCode.PARAM_INVALID));
+
+        assertThatThrownBy(() -> authService.upsertPushToken(1L, "not-a-uuid", "mi", "tok"))
+                .isInstanceOf(BizException.class)
+                .satisfies(ex -> assertThat(((BizException) ex).getErrorCode())
+                        .isEqualTo(ErrorCode.PARAM_INVALID));
     }
 
     /**

@@ -140,6 +140,7 @@
 - 2026-10-11（DEC-32/DEC-33 裁定落地：favorite 归 contact 域 · 新建 user_setting 表）
 - 2026-10-11（[B2-11]「我的」页实装 · 后端三域 + 前端四页）
 - 2026-10-12（[B2-11] 续：trust 页转真 + 媒体上传链路本体 + 发布/资质/详情三处接线）
+- 2026-10-12（B2-2 S1 双向推送 · 阶段 1：契约 + token 落库 + 站内写入 + 配额闸 + 下发编排）
 
 ---
 
@@ -6356,6 +6357,55 @@ printf '\nMYSQL_SSL_MODE=VERIFY_CA\nMYSQL_TLS_TRUSTSTORE_PASSWORD=%s\n' \
   5. 4 个新写接口（收藏增删/通知已读/设置 PATCH）与 `POST /cert/qualification` **未加 `@Idempotent` 注解**；
   6. `/settings` 为 `x-domain: auth`，兄弟 `/settings/privacy` 仍为 `common`，分组内不一致；
   7. `MediaCarousel` 全屏查看页与 `QualificationFormScreen` **均无 Figma 稿**（按 PRD 版面落地，如实登记）。
+
+---
+
+### 2026-10-12（B2-2 S1 双向推送 · 阶段 1：契约 + token 落库 + 站内写入 + 配额闸 + 下发编排）
+
+> 摘要：B2-2「S1 双向推送 + notify 前端接线」的**服务端一半**落地。会话属性 🔴 延续（延续当前会话）。本批共 3 处裁定 + 6 项行政前置识别。
+
+**开工前 3 处裁定（2026-10-12）**
+
+1. **本轮范围 = 端到端含真实通道**（用户裁定）。但**推送凭据尚无** → 关键路径变成「先办凭据」，故本批只做**有设计依据且不依赖凭据**的部分。
+2. **端点路径以 openapi 为准**：PRD §12 原写 `POST /devices/token`，openapi 是 `POST /users/me/devices` —— 裁定改 PRD 对齐 openapi（消陈不一致）。
+3. **新增 `device.push_platform` 列**：`device.platform` 是 **OS**（enum android/ios，登录写入），而 token 上报的 `platform` 是**推送通道**（apns/hw/mi/…）—— **同名不同义**，合用一个列会让「下发走哪家」与「设备是什么系统」互相顶替。裁定新增列 + Flyway `V7` 迁移。
+
+**推送前置办理清单（6 通道，据各厂商官方文档核）—— ⚠️ 行政待办，须用户办理**
+
+| 通道 | 入口 | 关键前置 | 审核时长 | 雷点 |
+| --- | --- | --- | --- | --- |
+| APNs | Apple Developer → Keys | Apple 开发者账号（Account Holder/Admin） | 即时 | `.p8` **只能下载一次** |
+| 华为 | AppGallery Connect → 项目设置 | 实名认证；AGC 建应用 + **配置签名证书指纹**；设数据处理位置 | 权益申请需审 | ⚠️ **未申请「通知消息自分类权益」→ 默认按资讯营销类，每天仅 2 或 5 条**，与 ≤10 条/日冲突 → 必须申请 |
+| 小米 | 小米推送运营平台 | 企业实名（1–3 工作日）；**应用上架通过**；同意四份协议 | 账号 1–3 天 + 通知类别 3–5 天 | 产出 AppId/AppKey（端）/ **AppSecret**（服务端） |
+| vivo | vivo 开放平台推送运营平台 | **企业开发者**（三证合一 + 法人手持身份证 / 对公打款）；应用上架 | 1–2 工作日 | 需上传含 push SDK 的 APK |
+| OPPO | OPPO 开放平台 | **企业开发者**（执照 + 法人姓名 + **对公账户**） | 人工 1–3 工作日 | 个人开发者**无 push 权限** |
+| 荣耀 | HONOR Developers → Console | HONOR ID → 身份验证 | — | 与华为 Push **不是同一套** |
+
+> 六个通道都卡在**企业实名 + 应用上架**；只有 APNs 的 `.p8` 可即刻取得（若已有 Apple 组织账号）。
+
+**本批交付（阶段 1）**
+
+- [x] **契约**：`POST /users/me/devices` 占位转真 —— 新增 `DevicePlatformEnum`（`apns/fcm/hw/mi/oppo/vivo/honor`）+ `DeviceUpsertRequest` + `DeviceUpsertResult`；参数含 `X-Device-Id`/`X-Interaction-Id`/`Idempotency-Key`（守写接口契约门禁）。PRD §12 路径同步回改；PRD §6.14 / §1964 推送通道扩为「APNs/华为/小米/OPPO/vivo/荣耀」（境内不可用 FCM）。
+- [x] **数据库**：`V7__device_push_platform.sql` 新增 `push_platform`（可空，通道枚举与 openapi 同源，`AFTER push_token`）；同步《数据库设计文档》§3.13 与 PRD §13 字段字典（含「与 `platform` 不同维度」的红字说明）。
+- [x] **后端 token 落库**：`PushPlatform`（枚举 + `fromWire` + `osPlatform` 兜底推导）、`DeviceEntity.pushPlatform`、`AuthService#upsertPushToken`（按指纹查/插；**只碰 `push_platform`，刻意不碰 `platform`**；通道非法或指纹缺失/非法 → `40001`）、`AuthController#upsertDevice`（强制登录态 `40101`）。
+- [x] **通知写入侧**：`NotificationMapper#insertNotification` + XML —— 站内通知**写入侧唯一入口**（显式列，`read_at`/`deleted_at` 留给库默认值，`created_at` 由调用方传入以便测试钉时间）。
+- [x] **推送每日配额闸**：`NfrPush.DAILY_LIMIT = 10`（PRD §6.14）+ `RateLimitKeys#pushQuotaUidDay` + `PushQuotaGate`。**超限不抛码**（PRD §12.3「静默转站内」）；**Redis 不可用保守拒发**——与 `DetailQuotaGate` 的失败放行**刻意相反**（超发即违背 §6.14 立此限额的目的，而拒发不丢信息）。
+- [x] **下发编排**：`PushDispatchService`（站内必写 → 筛可下发目标 → 占配额 → 逐设备下发；**按「消息」而非「设备」计配额**；无可下发目标则**不占配额**）、`PushSender` 接口 + `PushSenderRegistry`（一通道一实现，重复注册启动即失败）、`PushMessage`/`PushDispatchResult`。
+- [x] **补两处设计口径**（此前为空白，否则即自创）：后端详设 §5.6（写入侧与下发管道四组件 + 阶段 1 边界）、前端详设 §10.2.2（推送客户端 SDK **选型待定**、token 生命周期表、权限申请时机底线）。
+
+**门禁证据**
+
+- `mvn -q test` → **全绿**（本批新增 13 例：`AuthServiceTest` +4、`PushQuotaGateTest` 5、`PushDispatchServiceTest` 5、`PushSenderRegistryTest` 3；其中 `PushSenderRegistryTest` 为空表实现）。
+- `flutter test test/gates/` → **60/60 通过**（openapi 改动未破坏契约门禁/反冗余门禁/质量门禁）。
+
+**阶段 2（待凭据）与遗留**
+
+1. **各厂商真实 `PushSender` 实现**：小米/vivo/华为/OPPO/荣耀多提供**服务端 HTTP API**（凭据 = AppKey/AppSecret/证书），APNs 走 JWT（`.p8`）——**凭据到位后可写并实测**。本批**刻意不提供「记日志的假 Sender」**（同 `DevOssClient` 被否决的取向：假实现会把「已接入」的假象留在工程里）。因此**当前生产环境路由表为空**，下发路径走「无发送器 → 仅站内兜底」降级。
+2. **客户端插件 + 权限 + 上报调用**：厂商原生逐个接 → Flutter 侧插件需逐个验证（华为/荣耀/小米有官方或社区插件，OPPO/vivo 多为原生 SDK 需 Platform Channel）；**本轮不写入 `pubspec.yaml`**（未验证的依赖比不写更糟）。已登记于前端详设 §10.2.2。
+3. **`PATCH /notifications/settings`**（推送偏好）仍是 openapi 占位，未实现。
+4. **`POST /users/me/devices` 未加 `@Idempotent` 注解** —— 累入既有挂账（连同收藏增删/通知已读/设置 PATCH/资质提交，共 5 处）。
+5. **`PushDispatchService` 尚无生产调用方**：目标是 B2-3 的匹配结果下发（「发给谁」属匹配域，不在本批）；当前仅由单测驱动。
+6. **权限申请的具体交互点待产品确认**（本批只钉「不在冷启动首屏申请」这条底线，见前端详设 §10.2.2）。
 
 ---
 

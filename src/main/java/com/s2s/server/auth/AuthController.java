@@ -1,5 +1,7 @@
 package com.s2s.server.auth;
 
+import com.s2s.server.auth.dto.DeviceUpsertRequest;
+import com.s2s.server.auth.dto.DeviceUpsertResult;
 import com.s2s.server.auth.dto.LoginRequest;
 import com.s2s.server.auth.dto.LoginResult;
 import com.s2s.server.auth.dto.RefreshResult;
@@ -7,6 +9,7 @@ import com.s2s.server.auth.dto.SendCodeRequest;
 import com.s2s.server.auth.dto.SendCodeResult;
 import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
+import com.s2s.server.common.web.AuthContext;
 import com.s2s.server.common.web.ClientIp;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -127,5 +130,32 @@ public class AuthController {
             throw BizException.of(ErrorCode.UNAUTHORIZED);
         }
         authService.logout(token, httpRequest.getHeader(X_DEVICE_ID_HEADER));
+    }
+
+    /**
+     * 上报/更新设备推送 token（{@code POST /users/me/devices}，[B2-2]）。
+     *
+     * <p><b>为什么路径不带 {@code /auth} 前缀仍在本类</b>：openapi 该端点
+     * {@code tags: [auth]}、{@code x-domain: auth}，与登录/登出同属 auth 域；
+     * 本类本就不设类级 {@code @RequestMapping}（见类注释），逐方法写完整路径。</p>
+     *
+     * <p>强制登录态（{@code 40101}）：推送 token 是「发给谁」的强归属数据，
+     * 用户标识只取登录态，不接受入参指定。设备指纹取 {@code X-Device-Id} 头。</p>
+     *
+     * @param request     上报请求（platform + token，经 @Valid 校验）
+     * @param httpRequest 当前 HTTP 请求（取登录态 + X-Device-Id 头）
+     * @return {@link DeviceUpsertResult}
+     * @throws BizException {@code 40101} 未登录 / {@code 40001} 通道非法或指纹缺失
+     */
+    @PostMapping("/users/me/devices")
+    public DeviceUpsertResult upsertDevice(@Valid @RequestBody DeviceUpsertRequest request,
+            HttpServletRequest httpRequest) {
+        Long userId = AuthContext.currentUserId(httpRequest);
+        if (userId == null) {
+            throw BizException.of(ErrorCode.UNAUTHORIZED);
+        }
+        return authService.upsertPushToken(
+                userId, httpRequest.getHeader(X_DEVICE_ID_HEADER),
+                request.platform(), request.token());
     }
 }

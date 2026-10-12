@@ -462,9 +462,38 @@ paths:
       operationId: upsertDevice
       x-batch: Batch2
       x-domain: auth
-      description: 占位。Batch2 交付，与双向推送下发能力配套。
+      description: |
+        上报/更新**当前设备**的推送 token（B2-2；PRD §6.14 推送通道 / §12）。
+
+        以 `X-Device-Id`（设备指纹）定位 `device` 行：命中则更新 `push_token` +
+        `push_platform` + `last_active_at`，未命中则新增一行 —— **按指纹唯一，重复上报幂等**。
+        `push_platform` 是**推送通道**（apns/hw/mi/…），与 `device.platform`（OS，android/ios）
+        是两个不同维度，不可互相顶替。登出（`POST /auth/logout`）会清空该设备的 `push_token`。
+        强制登录态（`40101`）。
+      parameters:
+        - $ref: '#/components/parameters/XDeviceId'
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceUpsertRequest'
       responses:
-        '200': { description: 占位，Batch2 交付 }
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/DeviceUpsertResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
 
   /users/{user_id}:
     get:
@@ -2331,6 +2360,34 @@ components:
       type: string
       description: 实名状态。对应 `user.realname_status` 列
       enum: [none, pending, passed, rejected]
+
+    DevicePlatformEnum:
+      type: string
+      description: |
+        推送通道（B2-2）。**与 `device.platform`（OS，android/ios）是两个维度**：
+        本枚举决定服务端走哪家推送服务下发，`device.platform` 只记 OS。
+        境内不可用 FCM（无 Google 服务），保留枚举值仅为契约与 PRD §12 对齐。
+      enum: [apns, fcm, hw, mi, oppo, vivo, honor]
+
+    DeviceUpsertRequest:
+      type: object
+      required: [platform, token]
+      properties:
+        platform: { $ref: '#/components/schemas/DevicePlatformEnum' }
+        token:
+          type: string
+          maxLength: 128
+          description: 推送 token（与 `device.push_token` 列同长）
+
+    DeviceUpsertResult:
+      type: object
+      required: [device_id, platform]
+      properties:
+        device_id:
+          type: integer
+          format: int64
+          description: 被写入的 `device` 行 ID（新增或命中同一指纹）
+        platform: { $ref: '#/components/schemas/DevicePlatformEnum' }
 
     CertTypeEnum:
       type: string
