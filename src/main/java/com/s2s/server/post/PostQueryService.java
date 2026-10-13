@@ -143,8 +143,9 @@ public class PostQueryService {
                 // distanceM：详情接口无视野中心入参（openapi 未声明 lng/lat），恒 null
                 null,
                 assembleMedia(postId, isOwner),
-                // contactMask：GET 详情恒 null（PostDetail 类注释给出红线依据）
-                null,
+                // contactMask：返回发布时落库的脱敏值（[147] DEC-13）。本列由发布端
+                // 明文派生，读取它**不触调解密**——CryptoFacade.decrypt 唯一调用点仍在 contact 域。
+                (String) row.get("contact_mask"),
                 toInteger(row.get("completeness_level")),
                 PostStatus.toApi(dbStatus, toInteger(row.get("status_reason"))),
                 toInstant(row.get("created_at")),
@@ -317,6 +318,24 @@ public class PostQueryService {
         } catch (Exception e) {
             throw new IllegalStateException("post.template_values 不是合法 JSON 对象: " + json, e);
         }
+    }
+
+    // ---------------------------------------------------------------------
+    // [153] B2-5 §9.10.2 72h 临时类目通道：供 ops 域经 service 接口取数
+    // （编码规范 §4.2 域间只调 service）
+    // ---------------------------------------------------------------------
+
+    /**
+     * 统计某叶子类目在时间窗内的发布数（72h 临时类目达标判定用）。
+     *
+     * @param leafCategoryId 叶子类目 ID
+     * @param from           窗口起（含）
+     * @param to             窗口止（不含）
+     * @return long 发布数
+     */
+    public long countPublishedByLeafBetween(int leafCategoryId, java.time.LocalDateTime from,
+            java.time.LocalDateTime to) {
+        return postQueryMapper.countByLeafBetween(leafCategoryId, from, to);
     }
 
 }

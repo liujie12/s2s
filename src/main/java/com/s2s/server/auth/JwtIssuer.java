@@ -1,6 +1,7 @@
 package com.s2s.server.auth;
 
 import com.s2s.server.common.config.SecretsProperties;
+import com.s2s.server.common.constants.NfrAdmin;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import java.nio.charset.StandardCharsets;
@@ -58,6 +59,35 @@ public class JwtIssuer {
                 .id(jti)
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plus(Duration.ofDays(NfrAuth.TOKEN_TTL_DAYS))))
+                .signWith(signingKey)
+                .compact();
+    }
+
+    /**
+     * 签发<b>后台 Token</b>（[153] B2-5）：声明 {@code sub=adminId}、{@code jti}、
+     * {@code scope=admin}、{@code role=<后台角色落库值>}、{@code iat}/{@code exp}。
+     *
+     * <p>与 C 端 Token 的区分靠 {@code scope=admin} 声明（《决策登记表》2026-10-12：
+     * 同密钥 + scope 声明）：C 端拦截器拒收带 {@code scope=admin} 的 Token，
+     * 后台拦截器只接受带 {@code scope=admin} 的 Token，两侧互不认对方。</p>
+     *
+     * <p>有效期取 {@link NfrAdmin#TOKEN_TTL_MINUTES} 分钟 —— 后台为高权限面，显著短于
+     * C 端（{@link NfrAuth#TOKEN_TTL_DAYS} 天）。</p>
+     *
+     * @param adminId 管理员 ID（sub 的十进制字符串源）
+     * @param roleDbValue 后台角色落库值（{@code OperatorRole#dbValue()}，须为后台四角色）
+     * @return {@link String} 紧凑序列化 JWT（不含 "Bearer " 前缀）
+     */
+    public String issueAdmin(long adminId, String roleDbValue) {
+        Instant now = Instant.now();
+        String jti = UUID.randomUUID().toString();
+        return Jwts.builder()
+                .subject(String.valueOf(adminId))
+                .id(jti)
+                .claim(JwtVerifier.CLAIM_SCOPE, JwtVerifier.SCOPE_ADMIN)
+                .claim(JwtVerifier.CLAIM_ROLE, roleDbValue)
+                .issuedAt(Date.from(now))
+                .expiration(Date.from(now.plus(Duration.ofMinutes(NfrAdmin.TOKEN_TTL_MINUTES))))
                 .signWith(signingKey)
                 .compact();
     }

@@ -13,6 +13,8 @@ import com.s2s.server.post.dto.PostDraft;
 import com.s2s.server.post.dto.PostStatusResult;
 import com.s2s.server.post.dto.PostStatusUpdateRequest;
 import com.s2s.server.post.dto.PrecheckResult;
+import com.s2s.server.post.dto.PostUpdateRequest;
+import com.s2s.server.post.dto.RepostDraft;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -121,6 +123,43 @@ public class PostController {
             HttpServletRequest httpRequest) {
         Long userId = requireUserId(httpRequest);
         return postService.updateStatus(userId, postId, request);
+    }
+
+    /**
+     * 编辑帖子内容（[B2-8]；openapi {@code PATCH /posts/{post_id}}；PRD §8.4 发布页编辑态）。
+     *
+     * <p>字段集与 {@code POST /posts} 一致，另带 {@code version} 乐观锁；仅 {@code active} 可编辑，
+     * 0 行一律 {@code 40903}。联系方式字段可空（{@code null} = 保留原密文不改）。</p>
+     *
+     * @param postId      帖子 ID
+     * @param request     编辑载荷（含 {@code version}）
+     * @param httpRequest 当前请求（取登录用户 ID）
+     * @return {@link PostDetail} 编辑后详情
+     */
+    @PatchMapping("/posts/{post_id}")
+    @Idempotent
+    public PostDetail updatePost(@PathVariable("post_id") Long postId,
+            @Valid @RequestBody PostUpdateRequest request,
+            HttpServletRequest httpRequest) {
+        Long userId = requireUserId(httpRequest);
+        return postService.updatePost(userId, postId, request);
+    }
+
+    /**
+     * 克隆重发：取可编辑草稿（[B2-8]；openapi {@code POST /posts/{post_id}/repost}；PRD §8.4/§8.6）。
+     *
+     * <p>只读不落库：返回草稿载荷供前端带入发布页编辑态；仅 {@code offline}/{@code expired} 可重发。
+     * 无写库，故不加 {@code @Idempotent}（幂等闸门只保护写接口，同 {@code /posts/precheck} 取向）。</p>
+     *
+     * @param postId      帖子 ID
+     * @param httpRequest 当前请求（取登录用户 ID）
+     * @return {@link RepostDraft} 可编辑草稿载荷
+     */
+    @PostMapping("/posts/{post_id}/repost")
+    public RepostDraft repostPost(@PathVariable("post_id") Long postId,
+            HttpServletRequest httpRequest) {
+        Long userId = requireUserId(httpRequest);
+        return postService.repost(userId, postId);
     }
 
     /**

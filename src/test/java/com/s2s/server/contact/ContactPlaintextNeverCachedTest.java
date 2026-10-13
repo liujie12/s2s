@@ -16,6 +16,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.s2s.server.auth.AuthInterceptor;
 import com.s2s.server.auth.JwtVerifier;
 import com.s2s.server.common.audit.AuditLogWriter;
+import com.s2s.server.cert.CertService;
+import com.s2s.server.post.PostModerationService;
 import com.s2s.server.common.crypto.CryptoFacade;
 import com.s2s.server.common.crypto.MasterKey;
 import com.s2s.server.common.idempotency.Idempotent;
@@ -136,7 +138,8 @@ class ContactPlaintextNeverCachedTest {
 
         service = new ContactService(rateGuard, postMapper,
                 mock(ContactEventMapper.class), mock(ReportMapper.class),
-                cryptoFacade, mock(AuditLogWriter.class), new ObjectMapper());
+                cryptoFacade, mock(AuditLogWriter.class), new ObjectMapper(),
+                mock(CertService.class), mock(PostModerationService.class));
     }
 
     /**

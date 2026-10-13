@@ -25,7 +25,8 @@
 /// `features/discovery/discovery_filter.dart` ×1、
 /// `features/category/category_dto.dart` ×2（level 范围校验 1 +
 /// `_optChildren` 1，[124] B1 起 11 处中 9 处已上浮）、
-/// `features/post/post_dto.dart` ×8（`PostDetail` 解析 4 + 时间助手 4）、
+/// `features/post/post_dto.dart` ×11（`PostDetail` 解析 4 + 时间助手 4 +
+/// `RepostDraft` 解析 3：[B2-8] 的 attributes 对象校验 1 + lng/lat 缺失 2）、
 /// `features/auth/auth_repository.dart` ×8（[123] U10：AuthSession.fromJson ×2、
 /// AuthRepository._parseLoginResult ×4、_parseUserId ×2）、
 /// `features/contact/contact_repository.dart` ×1（[128]：`FullContact.fromJson`
@@ -53,6 +54,8 @@
 /// qualifications 校验）。
 /// 2026-10-11 [B2-11] 减 3 处：连工厂定义共 55 处（cert_models.dart 的 3 处
 /// 直抛改走 contract_json 助手，抛出点归入其既有 15 处，全局总数净减 3）。
+/// 2026-10-13 增 3 处：连工厂定义共 58 处（[B2-8] `RepostDraftDto` 的
+/// attributes 对象校验 1 + lng/lat 缺失校验 2；基线同步 56 → 59）。
 ///
 /// **循环 import 说明**：见 `api_error_code.dart` 文件头，同一份说明。
 library;

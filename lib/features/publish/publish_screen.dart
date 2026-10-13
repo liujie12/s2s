@@ -24,7 +24,21 @@
 ///   但值来自模板常量而非真实历史 —— 文案里不写「记忆带入」以免误认。
 /// - **未实名每日 1 条 + 先发后审受限态**（§5.8 首行 / §3.7）：判定与计数都在
 ///   服务端，客户端自计的次数清缓存即失效，做出来是个假门槛。
+///
+/// **[B2-8] 三态入口与本地草稿**：
+/// - **编辑态**（[PublishScreenArgs.editPostId] 非空）：表单由「我的发布」的
+///   卡片经 `GET /posts/{id}` 预填，提交走 `PATCH /posts/{id}`，成功后 `pop(true)`
+///   回列表刷新（**不进完成页**）。编辑态联系方式留空（明文不回显，服务端保留
+///   原密文），故本地闸门对该态跳过 [PublishBlocker.noContact]。
+/// - **重发态**：由「我的发布」经 `POST /posts/{id}/repost` 取草稿预填，属
+///   **新建语义**（提交走 `POST /posts`），不传编辑参数。
+/// - **本地草稿**（PRD §8.7，见 `draft_store.dart`）：仅新建/重发态启用 ——
+///   进入时若本地有草稿则恢复，表单变更 3 秒防抖自动保存，提交成功后清空，
+///   退出且未提交则询问「是否保存」。编辑态的连续性由服务端权威数据保证，
+///   本地草稿对其无复用价值，故编辑态不存、不恢复草稿。
 library;
+
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -41,8 +55,10 @@ import '../location/location_center.dart';
 import '../location/location_permission.dart';
 import '../post/post_dto.dart';
 import '../post/post_repository.dart';
+import 'draft_store.dart';
 import 'media_section.dart';
 import 'publish_form_state.dart';
+import 'publish_screen_args.dart';
 import 'publish_template_provider.dart';
 
 /// 已选位置时的展示文案（§5.4.1 第 2 段）。
@@ -54,19 +70,21 @@ const String _currentLocationLabel = '已使用当前位置';
 
 /// 发布页。
 class PublishScreen extends ConsumerStatefulWidget {
-  const PublishScreen({super.key, this.initialForm = const PublishFormState()});
+  /// 构造发布页。
+  ///
+  /// 参数：[args] 页面入参（初始表单 + 编辑态信息，见 [PublishScreenArgs]）。
+  ///   生产由路由经 `extra` 透传；不传则为一张空白新建表单。
+  const PublishScreen({super.key, this.args = const PublishScreenArgs()});
 
-  /// 初始表单快照（测试缝：widget 测试与 B5 提交链测试以预填表单驱动，
-  /// 避免为填表而拉起 GoRouter + 级联选择器全链路）。生产调用方不传。
-  @visibleForTesting
-  final PublishFormState initialForm;
+  /// 页面入参（新建/重发/编辑三态共用）。
+  final PublishScreenArgs args;
 
   @override
   ConsumerState<PublishScreen> createState() => _PublishScreenState();
 }
 
 class _PublishScreenState extends ConsumerState<PublishScreen> {
-  late PublishFormState _form = widget.initialForm;
+  late PublishFormState _form = widget.args.initialForm;
 
   final TextEditingController _titleCtrl = TextEditingController();
   final TextEditingController _priceCtrl = TextEditingController();
@@ -79,8 +97,34 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
   /// 预建的控制器在新模板里无人使用，dispose 时也容易漏。
   final Map<String, TextEditingController> _templateCtrls = {};
 
+  /// 草稿自动保存的防抖计时器（仅新建/重发态启用；见文件头）。
+  Timer? _autosaveTimer;
+
+  /// 本次提交是否已成功（成功后不再触发退出保存询问、不再自动保存）。
+  bool _submitted = false;
+
+  /// 编辑目标帖子 ID；null 表示新建/重发态。
+  int? get _editPostId => widget.args.editPostId;
+
+  /// 是否处于编辑态（提交走 `PATCH /posts/{id}`）。
+  bool get _isEditing => _editPostId != null;
+
+  @override
+  void initState() {
+    super.initState();
+    // 用初始表单回填文本控制器：新建态为空白、重发/编辑态为预填内容。
+    // 缺了这一步，预填表单的标题/价格等虽在状态里，输入框却是空的
+    //（历史只把状态与控制器分离在「用户输入」路径上同步）。
+    _syncControllersFromForm();
+    // 新建/重发态尝试恢复本地草稿（编辑态不恢复，见文件头）。
+    if (!_isEditing) {
+      unawaited(_restoreDraftIfAny());
+    }
+  }
+
   @override
   void dispose() {
+    _autosaveTimer?.cancel();
     _titleCtrl.dispose();
     _priceCtrl.dispose();
     _descCtrl.dispose();
@@ -90,6 +134,131 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
     }
     super.dispose();
   }
+
+  /// 把当前表单回填到各文本控制器（仅初始一次性，不做双向绑定）。
+  ///
+  /// 返回：void。
+  void _syncControllersFromForm() {
+    _titleCtrl.text = _form.title;
+    _priceCtrl.text = _form.priceText;
+    _descCtrl.text = _form.description;
+    _contactCtrl.text = _form.contact;
+  }
+
+  /// 更新表单并登记草稿自动保存（所有表单变更的统一入口）。
+  ///
+  /// 参数：[next] 新表单快照。
+  /// 返回：void。
+  void _updateForm(PublishFormState next) {
+    setState(() => _form = next);
+    _scheduleAutosave();
+  }
+
+  /// 登记一次草稿自动保存（3 秒防抖；编辑态不存草稿）。
+  ///
+  /// 返回：void。
+  void _scheduleAutosave() {
+    if (_isEditing) return;
+    _autosaveTimer?.cancel();
+    _autosaveTimer = Timer(kDraftAutosaveInterval, () {
+      unawaited(ref.read(draftStoreProvider).save(DraftSnapshot.of(_form)));
+    });
+  }
+
+  /// 进入发布页时若本地有草稿则恢复（仅新建/重发态调用）。
+  ///
+  /// 返回：[Future<void>]；无草稿则不动作。
+  Future<void> _restoreDraftIfAny() async {
+    final snapshot = await ref.read(draftStoreProvider).load();
+    if (!mounted || snapshot == null) return;
+    setState(() {
+      _form = snapshot.form;
+      _titleCtrl.text = snapshot.form.title;
+      _priceCtrl.text = snapshot.form.priceText;
+      _descCtrl.text = snapshot.form.description;
+      _contactCtrl.text = snapshot.form.contact;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('已恢复上次未发布的草稿')),
+    );
+  }
+
+  /// 表单是否含有值得保存的内容（决定退出时是否弹「是否保存」）。
+  ///
+  /// 返回：[bool]；全空表单（用户只是打开又退出）不弹问。
+  bool _hasDraftContent() {
+    final f = _form;
+    return f.leafCategoryId != null ||
+        f.title.trim().isNotEmpty ||
+        f.description.trim().isNotEmpty ||
+        f.contact.trim().isNotEmpty ||
+        f.mediaIds.isNotEmpty ||
+        f.lng != null ||
+        f.lat != null ||
+        f.templateValues.values.any((v) => v.trim().isNotEmpty);
+  }
+
+  /// 处理返回/退出：未提交且有内容时询问是否保存草稿，再退出。
+  ///
+  /// 返回：[Future<void>]。
+  Future<void> _handleExit() async {
+    final router = GoRouter.of(context);
+
+    if (_isEditing || _submitted || !_hasDraftContent()) {
+      _autosaveTimer?.cancel();
+      router.canPop() ? router.pop() : router.go(AppRoutes.home);
+      return;
+    }
+
+    final keep = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        content: const Text('有未发布草稿，是否保存？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('不保存'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    _autosaveTimer?.cancel();
+    if (keep == true) {
+      await ref.read(draftStoreProvider).save(DraftSnapshot.of(_form));
+    } else {
+      await ref.read(draftStoreProvider).clear();
+    }
+    if (!mounted) return;
+    router.canPop() ? router.pop() : router.go(AppRoutes.home);
+  }
+
+  /// 组装按钮闸门（模板异步闸门优先，编辑态跳过发布仪式闸门）。
+  ///
+  /// 返回：[PublishBlocker?]；null 表示可提交。
+  PublishBlocker? _effectiveBlocker() {
+    final base = _form.templatePending
+        ? PublishBlocker.templateLoading
+        : _form.blocker;
+    if (!_isEditing) return base;
+    // 编辑态跳过两条「发布仪式」闸门，否则编辑既有帖会被本地拦死在提交前：
+    // - noContact：明文不回显，编辑不改联系方式时输入框本应为空
+    //   （服务端按「空 = 保留原密文」处理，见文件头）；
+    // - agreementUnchecked：该帖当初已按协议发布，编辑不要求重勾。
+    if (base == PublishBlocker.noContact ||
+        base == PublishBlocker.agreementUnchecked) {
+      return null;
+    }
+    return base;
+  }
+
+  /// 当前是否可提交（含编辑态联系方式豁免）。
+  bool get _canSubmit => _effectiveBlocker() == null;
 
   /// 打开分类级联选择器并接收叶子 ID（§5.4.2）。
   Future<void> _pickCategory() async {
@@ -109,6 +278,7 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
       }
       _templateCtrls.clear();
     });
+    _scheduleAutosave();
   }
 
   /// 取（或懒建）某个模板字段的控制器。
@@ -122,11 +292,9 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
   }
 
   void _setTemplateValue(String key, String value) {
-    setState(() {
-      _form = _form.copyWith(
-        templateValues: {..._form.templateValues, key: value},
-      );
-    });
+    _updateForm(
+      _form.copyWith(templateValues: {..._form.templateValues, key: value}),
+    );
   }
 
   /// 提交发布（§5.5 S6 / §5.8「强制认证拦截」/ §12.3 precheck）。
@@ -135,7 +303,7 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
   ///（[124] B4，提前暴露服务端口径阻断项）→ 通过后进完成页
   ///（正式 `POST /posts` 为 B5 接线）。
   Future<void> _submit() async {
-    if (!_form.canSubmit || _precheckInFlight) return;
+    if (!_canSubmit || _precheckInFlight) return;
     final router = GoRouter.of(context);
 
     // 未登录先引导登录（§5.5 S1「或首次弹未登录引导」）。
@@ -178,15 +346,25 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
         return;
       }
 
-      // [125] B5：正式提交。precheck 与 POST 之间的时间差内服务端口径
-      // 可能变化（如审核策略调整），POST 仍可能回发布阻断五码——按同款
-      // 弹层处理（复用动作入口），其余错误按 §11.4 提示。
-      // 返回值（id/version）当前无消费方：埋点事件体与详情跳转分别属
-      // [130] 与详情页条目，接入时再接。
+      // [125] B5 / [B2-8]：正式提交。precheck 与写接口之间的时间差内服务端
+      // 口径可能变化（如审核策略调整），仍可能回发布阻断五码——按同款弹层
+      // 处理（复用动作入口），其余错误按 §11.4 提示。
+      // 编辑态走 PATCH（须带 version，contact 留空 = 保留原密文）；
+      // 新建/重发态走 POST。两者回执字段子集同构（PostCreatedDto）。
       try {
-        await ref
-            .read(postRepositoryProvider)
-            .createPost(_form.postDraftPayload());
+        if (_isEditing) {
+          await ref.read(postRepositoryProvider).updatePost(
+                _editPostId!,
+                <String, Object?>{
+                  ..._form.postDraftPayload(),
+                  'version': widget.args.editVersion,
+                },
+              );
+        } else {
+          await ref
+              .read(postRepositoryProvider)
+              .createPost(_form.postDraftPayload());
+        }
       } on ApiException catch (error) {
         if (!mounted) return;
         if (_isPublishBlockCode(error.code.code)) {
@@ -205,8 +383,22 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
       // 取本次提交交互、ts 取此刻毫秒精度）；队列与上报实现属 [130]，
       // 本轮只留调用点，不引入 TrackReporter 依赖。
 
-      // 发布成功进完成页（带上表单快照供完成页算 §9.8 档位）。
-      if (mounted) router.push(AppRoutes.publishSuccess, extra: _form);
+      // 提交已成功：置位以关闭退出二次确认，并撤销待触发的自动保存。
+      _submitted = true;
+      _autosaveTimer?.cancel();
+      if (!_isEditing) {
+        // 草稿已被本次发布消费，清掉避免下次进页面又被恢复。
+        await ref.read(draftStoreProvider).clear();
+      }
+      if (!mounted) return;
+      if (_isEditing) {
+        // 编辑成功回「我的发布」并刷新（pop(true)），**不进完成页** ——
+        // 完成页是「新发布」的闭环，编辑没有「发布成功」这一步。
+        router.canPop() ? router.pop(true) : router.go(AppRoutes.myPublish);
+      } else {
+        // 发布成功进完成页（带上表单快照供完成页算 §9.8 档位）。
+        router.push(AppRoutes.publishSuccess, extra: _form);
+      }
     } on ApiException catch (error) {
       // precheck 链路失败（传输/信封错误）与「校验不通过」是两种语义：
       // 后者在 blocks 里（上方弹层），前者按 §11.4 唯一格式提示，
@@ -282,7 +474,7 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
       return;
     }
     final center = ref.read(locationCenterProvider);
-    setState(() => _form = _form.copyWith(lng: center.lng, lat: center.lat));
+    _updateForm(_form.copyWith(lng: center.lng, lat: center.lat));
   }
 
   @override
@@ -307,12 +499,9 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
     }
 
     final template = _form.template;
-    // 模板异步闸门（[124] B3）：已选分类而服务端模板未就位时禁提交，
-    // 优先于同步 blocker 链 —— 防止本地字段校验放行、提交时被服务端
-    // precheck 以「必填字段缺失」打回（B4）。
-    final blocker = _form.templatePending
-        ? PublishBlocker.templateLoading
-        : _form.blocker;
+    // 提交闸门（模板异步闸门优先；编辑态另跳过发布仪式闸门）——唯一真源在
+    // [_effectiveBlocker]，本页不再就地拼一次（两处拼装必然漂移）。
+    final blocker = _effectiveBlocker();
 
     return Scaffold(
       backgroundColor: const Color(AppColors.background),
@@ -325,13 +514,13 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
             Icons.arrow_back,
             color: Color(AppColors.textPrimary),
           ),
-          onPressed: () {
-            final router = GoRouter.of(context);
-            router.canPop() ? router.pop() : router.go(AppRoutes.home);
-          },
+          // 返回走 _handleExit：未提交且有内容时先问「是否保存草稿」（§8.7）。
+          onPressed: _handleExit,
         ),
         title: Text(
-          '发布',
+          // 编辑态标题为「编辑」：同一张表单承载新建/重发/编辑三态，
+          // 标题是用户判断「我这次到底在干什么」的唯一线索（[B2-8]）。
+          _isEditing ? '编辑' : '发布',
           style: TextStyle(
             fontSize: AppTypeScale.h3.size,
             fontWeight: FontWeight.w600,
@@ -343,14 +532,14 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
           // 长表单滚到中段时顶部按钮省一次回滚。
           TextButton(
             // precheck 进行中同样禁用（防重入，见 _precheckInFlight 注释）
-            onPressed:
-                _form.canSubmit && !_precheckInFlight ? _submit : null,
+            onPressed: _canSubmit && !_precheckInFlight ? _submit : null,
             child: Text(
-              '发布',
+              // 编辑态主按钮为「保存」：提交语义是更新而非新发布。
+              _isEditing ? '保存' : '发布',
               style: TextStyle(
                 fontSize: AppTypeScale.body.size,
                 fontWeight: FontWeight.w600,
-                color: _form.canSubmit
+                color: _canSubmit
                     ? const Color(AppColors.primary)
                     : const Color(AppColors.textPlaceholder),
               ),
@@ -364,7 +553,7 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
         children: [
           _KindSwitch(
             kind: _form.kind,
-            onChanged: (k) => setState(() => _form = _form.copyWith(kind: k)),
+            onChanged: (k) => _updateForm(_form.copyWith(kind: k)),
           ),
           _TempAiEntry(onTap: _openAiConfirm),
           _SectionCard(
@@ -399,7 +588,7 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
                 // 一个自己没打过的方括号。
                 prefix: demandPrefixFor(_form.kind, _form.leafCategoryId),
               ).copyWith(counterText: ''),
-              onChanged: (v) => setState(() => _form = _form.copyWith(title: v)),
+              onChanged: (v) => _updateForm(_form.copyWith(title: v)),
             ),
           ),
           _SectionCard(
@@ -409,12 +598,10 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
             child: _PriceRow(
               form: _form,
               controller: _priceCtrl,
-              onPriceChanged: (v) =>
-                  setState(() => _form = _form.copyWith(priceText: v)),
-              onUnitChanged: (u) =>
-                  setState(() => _form = _form.copyWith(priceUnit: u)),
+              onPriceChanged: (v) => _updateForm(_form.copyWith(priceText: v)),
+              onUnitChanged: (u) => _updateForm(_form.copyWith(priceUnit: u)),
               onNegotiableChanged: (v) =>
-                  setState(() => _form = _form.copyWith(negotiable: v)),
+                  _updateForm(_form.copyWith(negotiable: v)),
             ),
           ),
           _SectionCard(
@@ -431,8 +618,7 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
                   maxLines: 5,
                   minLines: 3,
                   decoration: _fieldDecoration(hint: '填得越具体越容易被联系'),
-                  onChanged: (v) =>
-                      setState(() => _form = _form.copyWith(description: v)),
+                  onChanged: (v) => _updateForm(_form.copyWith(description: v)),
                 ),
                 const SizedBox(height: AppSpacing.xs),
                 // 字数提示只提示不拦截（§5.4.1 写的是「建议 30-200 字」）
@@ -477,8 +663,7 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
             title: '媒体',
             done: _form.imageCount > 0,
             child: MediaSection(
-              onChanged: (ids) =>
-                  setState(() => _form = _form.copyWith(mediaIds: ids)),
+              onChanged: (ids) => _updateForm(_form.copyWith(mediaIds: ids)),
             ),
           ),
           _SectionCard(
@@ -502,8 +687,7 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
               decoration: _fieldDecoration(
                 hint: '请输入可联系到你的手机号',
               ).copyWith(counterText: ''),
-              onChanged: (v) =>
-                  setState(() => _form = _form.copyWith(contact: v)),
+              onChanged: (v) => _updateForm(_form.copyWith(contact: v)),
             ),
           ),
         ],
@@ -511,8 +695,7 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
       bottomNavigationBar: _SubmitBar(
         agreed: _form.agreed,
         blocker: blocker,
-        onAgreedChanged: (v) =>
-            setState(() => _form = _form.copyWith(agreed: v)),
+        onAgreedChanged: (v) => _updateForm(_form.copyWith(agreed: v)),
         // null 表示提交链路进行中（precheck 网络往返），与 blocker 禁用
         // 同效但不出禁用文案 —— 期间文案继续显示「差什么」没有意义。
         onSubmit: _precheckInFlight ? null : _submit,

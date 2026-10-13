@@ -49,6 +49,7 @@ void main() {
         sort: ListingSort.distance,
         now: _now,
         distanceOf: (l) => distances[l.title]!,
+        completenessOf: (_) => 2,
       );
 
       expect(_ids(sorted), ['近', '中', '远']);
@@ -68,6 +69,7 @@ void main() {
         sort: ListingSort.newest,
         now: _now,
         distanceOf: (_) => 0,
+        completenessOf: (_) => 2,
       );
 
       expect(_ids(sorted), ['一小时前', '一天前', '三天前']);
@@ -87,6 +89,7 @@ void main() {
         sort: ListingSort.priceAsc,
         now: _now,
         distanceOf: (_) => 0,
+        completenessOf: (_) => 2,
       );
 
       expect(_ids(sorted), [
@@ -108,6 +111,7 @@ void main() {
         sort: ListingSort.priceDesc,
         now: _now,
         distanceOf: (_) => 0,
+        completenessOf: (_) => 2,
       );
 
       expect(_ids(sorted), [
@@ -125,6 +129,7 @@ void main() {
         sort: ListingSort.priceAsc,
         now: _now,
         distanceOf: (_) => 0,
+        completenessOf: (_) => 2,
       );
 
       expect(_ids(sorted), ['a', 'b']);
@@ -132,11 +137,11 @@ void main() {
   });
 
   group('综合排序', () {
-    test('距离与时间各占一半：很近但很旧，输给中等距离的新信息', () {
+    test('时效 40% + 距离 40% + 完整度档 20%：很近但很旧，输给中等距离的新信息', () {
       final list = [
-        // 距离 0，但已 7 天：得分 0×0.5 + 1×0.5 = 0.5
+        // 距离 0、已 7 天、🟢：0×0.4 + 1×0.4 + 0×0.2 = 0.4
         _listing('近而旧', minutesAgo: 7 * 24 * 60),
-        // 距离 10km（上界 20km 的一半），刚发布：0.5×0.5 + 0 = 0.25
+        // 距离 10km（上界 20km 的一半）、刚发布、🟢：0.5×0.4 + 0×0.4 + 0×0.2 = 0.2
         _listing('中而新', minutesAgo: 0),
       ];
       final distances = {'近而旧': 0.0, '中而新': 10000.0};
@@ -146,9 +151,29 @@ void main() {
         sort: ListingSort.composite,
         now: _now,
         distanceOf: (l) => distances[l.title]!,
+        completenessOf: (_) => 2,
       );
 
       expect(_ids(sorted), ['中而新', '近而旧']);
+    });
+
+    test('完整度档参与加权：距离与时效相同，🟢 排在 🔴 之前', () {
+      final list = [_listing('红'), _listing('绿')];
+      const completeness = {'红': 0, '绿': 2};
+
+      final sorted = sortListings(
+        list,
+        sort: ListingSort.composite,
+        now: _now,
+        distanceOf: (_) => 5000,
+        completenessOf: (l) => completeness[l.title]!,
+      );
+
+      expect(
+        _ids(sorted),
+        ['绿', '红'],
+        reason: '🟢 系数 1.0 → 代价项 0；🔴 系数 0.2 → 代价项 0.8（权重 20%）',
+      );
     });
 
     test('超出上界的距离一律按最远处理，不继续拉开差距', () {
@@ -164,6 +189,7 @@ void main() {
         sort: ListingSort.composite,
         now: _now,
         distanceOf: (l) => distances[l.title]!,
+        completenessOf: (_) => 2,
       );
 
       expect(_ids(sorted), [
@@ -185,6 +211,7 @@ void main() {
         sort: ListingSort.newest,
         now: _now,
         distanceOf: (_) => 0,
+        completenessOf: (_) => 2,
       );
 
       expect(_ids(original), ['b', 'a'], reason: '就地排序会让共享同一份数据的地图页顺序也被改掉');

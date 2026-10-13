@@ -2,6 +2,7 @@ package com.s2s.server.post;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.s2s.server.common.constants.NfrPost;
 import com.s2s.server.common.crypto.CryptoFacade;
@@ -13,7 +14,9 @@ import com.s2s.server.post.dto.PostCreateRequest;
 import com.s2s.server.post.dto.PostDetail;
 import com.s2s.server.post.dto.PostStatusResult;
 import com.s2s.server.post.dto.PostStatusUpdateRequest;
+import com.s2s.server.post.dto.PostUpdateRequest;
 import com.s2s.server.post.dto.PrecheckResult;
+import com.s2s.server.post.dto.RepostDraft;
 import com.s2s.server.post.entity.PostEntity;
 import com.s2s.server.post.entity.PostMediaEntity;
 import com.s2s.server.post.mapper.PostMapper;
@@ -101,6 +104,9 @@ public class PostService {
         post.setAddress(req.address());
         post.setContactChannel(req.contactType());
         post.setContactValueEnc(new byte[0]);
+        // [147] DEC-13：发布时由明文派生脱敏掩码落库（详情/联系中转页未拉取态展示用，
+        // 不触调解密——明文即用户本次提交值，非密文回解）。
+        post.setContactMask(maskContact(req.contactValue()));
         post.setKeyVersion(0);
         post.setCompletenessConditions(conditionsJson(derived));
         post.setStatus(STATUS_ACTIVE);
@@ -121,7 +127,7 @@ public class PostService {
 
         // 重查取 STORED 生成列（l2_category_id / completeness_level）
         PostEntity saved = postMapper.selectById(post.getId());
-        return assemble(saved, req, userId);
+        return assemble(saved, req.attributes(), req.mediaIds());
     }
 
     /**
@@ -192,6 +198,188 @@ public class PostService {
     }
 
     /**
+     * 编辑帖子内容（[B2-8]；openapi {@code PATCH /posts/{post_id}}；PRD §8.4 步骤 4「进发布页编辑态」）。
+     *
+     * <p><b>只对在架帖开放</b>：更新语句 {@code WHERE id=? AND user_id=? AND version=? AND
+     * status='active'}——非本人/版本不符/行不存在/非在架<b>一律 0 行 → {@code 40903}</b>
+     * （不区分成因，与 {@link #updateStatus} 同口径，不按 id 探测存在性）。</p>
+     *
+     * <p><b>重走发布校验与派生</b>：敏感词/图片/类目/资质经 {@link PostValidator}；重算
+     * {@code grid_id} 与 {@code completeness_conditions}（{@code completeness_level} 是 STORED
+     * 生成列，禁写由实体策略保证）。<b>不重置 {@code expire_at}</b>（仅重发重置）。</p>
+     *
+     * <p><b>联系方式安全收窄</b>：{@code contactValue} 为 {@code null}/空表示<b>保留原密文不改</b>
+     * ——明文唯一出口是 {@code GET /posts/{id}/contact}（安全方案 §4.6 出口收敛），编辑接口既不
+     * 回显也不要求重填。给了新值才重新加密（AAD 仍是 {@code post_id}，与发布一致）。</p>
+     *
+     * <p><b>媒体重设</b>：先解绑该帖原全部媒体，再按 {@code mediaIds} 重新关联（未被选中的旧媒体
+     * 因此解除 {@code post_id}，回到孤儿清理轨道）。</p>
+     *
+     * @param userId 当前登录用户 ID（归属约束）
+     * @param postId 帖子 ID
+     * @param req    编辑载荷（含 {@code version}）
+     * @return {@link PostDetail} 编辑后详情（必带新 {@code version}）
+     * @throws BizException 阻断项（40901/40902/40303/40302）、{@code 40903}（0 行）
+     */
+    @Transactional
+    public PostDetail updatePost(Long userId, Long postId, PostUpdateRequest req) {
+        // 复用发布校验（敏感词/图片/类目禁发/高敏资质），命中即抛
+        validator.validate(userId, req.leafCategoryId(), req.title(), req.description(), req.mediaIds());
+
+        String gridId = GridIdCalculator.of(req.lng(), req.lat());
+        PrecheckResult.Derived derived =
+                validator.computeDerived(req.leafCategoryId(), req.attributes(), req.addressPrecise());
+
+        UpdateWrapper<PostEntity> update = new UpdateWrapper<>();
+        update.eq("id", postId).eq("user_id", userId).eq("version", req.version())
+                .eq("status", PostStatus.DB_ACTIVE)
+                .set("type", req.type())
+                .set("leaf_category_id", req.leafCategoryId())
+                .set("title", req.title())
+                .set("price", req.price() == null ? null : BigDecimal.valueOf(req.price()))
+                .set("price_unit", req.priceUnit())
+                .set("`desc`", req.description())
+                .set("template_values", toJson(req.attributes()))
+                .set("grid_id", gridId)
+                .set("lng", BigDecimal.valueOf(req.lng()))
+                .set("lat", BigDecimal.valueOf(req.lat()))
+                .set("address", req.address())
+                .set("completeness_conditions", conditionsJson(derived));
+
+        if (req.contactType() != null) {
+            update.set("contact_channel", req.contactType());
+        }
+        if (req.contactValue() != null && !req.contactValue().isBlank()) {
+            CryptoFacade.EncryptResult enc =
+                    cryptoFacade.encrypt(req.contactValue(), String.valueOf(postId));
+            update.set("contact_value_enc", enc.ciphertext());
+            update.set("key_version", enc.keyVersion());
+            update.set("contact_mask", maskContact(req.contactValue()));
+        }
+        update.setSql("version = version + 1");
+
+        int affected = postMapper.update(null, update);
+        if (affected == 0) {
+            throw BizException.of(ErrorCode.VERSION_CONFLICT);
+        }
+        reLinkMedia(userId, postId, req.mediaIds());
+
+        PostEntity saved = postMapper.selectById(postId);
+        return assemble(saved, req.attributes(), req.mediaIds());
+    }
+
+    /**
+     * 克隆重发：读取原帖返回可编辑草稿（[B2-8]；openapi {@code POST /posts/{post_id}/repost}；PRD §8.4/§8.6）。
+     *
+     * <p><b>只读、不落库</b>：本方法不写任何行；前端拿到草稿后带入发布页编辑态，用户确认后走
+     * {@code POST /posts} 落 {@code active}（有效期在发布时重置为默认 7 天）。</p>
+     *
+     * <p><b>可重发状态</b>：仅 API 状态为 {@code offline}/{@code expired}（PRD §8.3.1 稿侧
+     * 「已下架 → 刷新重发」）；其他状态回 {@code 40001}。帖子不存在或非本人回 {@code 41001}
+     * （两者不区分，避免按 id 探测存在性）。</p>
+     *
+     * <p><b>不回显明文联系方式</b>：只回 {@code contactType} + {@code contactMask}（脱敏）。</p>
+     *
+     * @param userId 当前登录用户 ID（归属约束）
+     * @param postId 帖子 ID
+     * @return {@link RepostDraft} 可编辑草稿载荷
+     * @throws BizException {@code 41001}（不存在/非本人）、{@code 40001}（状态不可重发）
+     */
+    public RepostDraft repost(Long userId, Long postId) {
+        PostEntity post = postMapper.selectById(postId);
+        if (post == null || !post.getUserId().equals(userId)) {
+            throw BizException.of(ErrorCode.POST_GONE);
+        }
+        String apiStatus = PostStatus.toApi(post.getStatus(), post.getStatusReason());
+        if (!PostStatus.API_OFFLINE.equals(apiStatus) && !PostStatus.API_EXPIRED.equals(apiStatus)) {
+            throw BizException.of(ErrorCode.PARAM_INVALID);
+        }
+        return new RepostDraft(
+                post.getId(),
+                post.getType(),
+                post.getLeafCategoryId(),
+                post.getTitle(),
+                post.getPrice() == null ? null : post.getPrice().doubleValue(),
+                post.getPriceUnit(),
+                post.getDescription(),
+                fromJson(post.getTemplateValues()),
+                post.getLng() == null ? null : post.getLng().doubleValue(),
+                post.getLat() == null ? null : post.getLat().doubleValue(),
+                post.getAddress(),
+                addressPreciseOf(post.getCompletenessConditions()),
+                mediaIdsOfPost(postId),
+                post.getContactChannel(),
+                post.getContactMask(),
+                validator.isLeafAvailable(post.getLeafCategoryId()));
+    }
+
+    /**
+     * 重设帖子媒体关联：先解绑原全部媒体，再按新列表重新关联（[B2-8] 编辑用）。
+     *
+     * @param userId   当前用户 ID（归属校验）
+     * @param postId   帖子 ID
+     * @param mediaIds 新媒体 ID 列表（可空 = 全部解绑）
+     */
+    private void reLinkMedia(Long userId, Long postId, List<String> mediaIds) {
+        mediaMapper.update(null, new UpdateWrapper<PostMediaEntity>()
+                .eq("post_id", postId).set("post_id", null));
+        linkMedia(userId, postId, mediaIds);
+    }
+
+    /**
+     * 取帖子已关联的媒体 ID 列表（[B2-8] 克隆重发用）。
+     *
+     * @param postId 帖子 ID
+     * @return {@link List} media_id 字符串列表（契约中 media_id 为 string）
+     */
+    private List<String> mediaIdsOfPost(Long postId) {
+        return mediaMapper.selectList(new QueryWrapper<PostMediaEntity>().eq("post_id", postId))
+                .stream()
+                .map(media -> String.valueOf(media.getId()))
+                .toList();
+    }
+
+    /**
+     * 反序列化 {@code template_values} JSON 为动态属性 Map（[B2-8]）。
+     *
+     * @param json 库内 JSON 文本（可空）
+     * @return {@link Map} 属性；空/解析失败返回空 Map（不吞为异常，草稿可缺省）
+     */
+    private Map<String, Object> fromJson(String json) {
+        if (json == null || json.isBlank()) {
+            return Map.of();
+        }
+        try {
+            return objectMapper.readValue(json, new TypeReference<Map<String, Object>>() { });
+        } catch (Exception e) {
+            return Map.of();
+        }
+    }
+
+    /**
+     * 从 {@code completeness_conditions} JSON 取 {@code address_precise}（[B2-8] 克隆重发用）。
+     *
+     * <p>为什么不从 {@code address} 列推断：本轮发布不上送 {@code address}（门牌号走
+     * {@code address_precise} 布尔），故 {@code address} 恒空；三条件 JSON 才是唯一真源。</p>
+     *
+     * @param conditionsJson 三条件 JSON（可空）
+     * @return {@link Boolean} 是否精确到门牌；缺失/解析失败返回 {@code null}
+     */
+    private Boolean addressPreciseOf(String conditionsJson) {
+        if (conditionsJson == null || conditionsJson.isBlank()) {
+            return null;
+        }
+        try {
+            Map<String, Object> map =
+                    objectMapper.readValue(conditionsJson, new TypeReference<Map<String, Object>>() { });
+            Object value = map.get("address_precise");
+            return value instanceof Boolean b ? b : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
      * 关联媒体到帖子（归属校验后更新 post_id）。
      */
     private void linkMedia(Long userId, Long postId, List<String> mediaIds) {
@@ -214,11 +402,21 @@ public class PostService {
 
     /**
      * 组装 PostDetail（本人视角 media 全量）。
+     *
+     * <p>入参取「属性 Map + 媒体 ID 列表」而非整个请求对象：发布（{@link PostCreateRequest}）与
+     * 编辑（{@link PostUpdateRequest}）两个载荷类型不同但出参同构，取二者公共数据即可复用本方法
+     * （避免为编辑再抄一份组装逻辑）。</p>
+     *
+     * @param post       帖子实体（含 STORED 生成列）
+     * @param attributes 动态属性（回填 {@code PostDetail.attributes}）
+     * @param mediaIds   本次关联的媒体 ID 列表（本人视角全量）
+     * @return {@link PostDetail} 详情
      */
-    private PostDetail assemble(PostEntity post, PostCreateRequest req, Long userId) {
+    private PostDetail assemble(PostEntity post, Map<String, Object> attributes,
+            List<String> mediaIds) {
         List<MediaItem> media = new ArrayList<>();
-        if (req.mediaIds() != null && !req.mediaIds().isEmpty()) {
-            for (String mediaId : req.mediaIds()) {
+        if (mediaIds != null && !mediaIds.isEmpty()) {
+            for (String mediaId : mediaIds) {
                 Long id = parseMediaId(mediaId);
                 if (id != null) {
                     PostMediaEntity entity = mediaMapper.selectById(id);
@@ -239,13 +437,13 @@ public class PostService {
                 post.getPrice(),
                 post.getPriceUnit(),
                 post.getDescription(),
-                req.attributes(),
+                attributes,
                 post.getLng(),
                 post.getLat(),
                 post.getAddress(),
                 null,
                 media,
-                maskContact(req.contactValue()),
+                post.getContactMask(),
                 post.getCompletenessLevel(),
                 PostStatus.toApi(post.getStatus(), post.getStatusReason()),
                 post.getCreatedAt().toInstant(ZoneOffset.UTC),

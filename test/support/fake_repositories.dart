@@ -154,4 +154,61 @@ class FakePostRepository extends PostRepository {
     if (error != null) throw error;
     return PostStatusResultDto.fromJson(postStatusResultPayload());
   }
+
+  // ---------------------------------------------------------------------
+  // [B2-8] 编辑 / 克隆重发 / 详情（编辑态预填用）
+  // ---------------------------------------------------------------------
+
+  /// fetchDetail 抛出的异常；null 走正常返回。
+  Object? detailErrorToThrow;
+
+  /// fetchDetail 收到的帖子 ID（断言「编辑」先取详情再进编辑态）。
+  int? lastDetailPostId;
+
+  /// updatePost 抛出的异常；null 走正常返回。
+  Object? updateErrorToThrow;
+
+  /// updatePost 收到的帖子 ID。
+  int? lastUpdatePostId;
+
+  /// updatePost 收到的载荷（断言编辑态提交走 PATCH 且带 `version`）。
+  Map<String, Object?>? lastUpdateDraft;
+
+  /// repost 抛出的异常；null 走正常返回。
+  Object? repostErrorToThrow;
+
+  /// repost 返回的草稿；null 用 [repostDraftPayload] 默认桩。
+  RepostDraftDto? repostToReturn;
+
+  /// repost 收到的帖子 ID（断言「刷新重发」打的是 repost 而非 PATCH status）。
+  int? lastRepostPostId;
+
+  @override
+  Future<PostDetailDto> fetchDetail(int postId, {String? interactionId}) async {
+    lastDetailPostId = postId;
+    final error = detailErrorToThrow;
+    if (error != null) throw error;
+    return PostDetailDto.fromJson(postDetailPayload());
+  }
+
+  @override
+  Future<PostCreatedDto> updatePost(
+    int postId,
+    Map<String, Object?> draft, {
+    String? interactionId,
+  }) async {
+    lastUpdatePostId = postId;
+    lastUpdateDraft = draft;
+    final error = updateErrorToThrow;
+    if (error != null) throw error;
+    return PostCreatedDto.fromJson(postCreatedPayload());
+  }
+
+  @override
+  Future<RepostDraftDto> repost(int postId, {String? interactionId}) async {
+    lastRepostPostId = postId;
+    final error = repostErrorToThrow;
+    if (error != null) throw error;
+    return repostToReturn ?? RepostDraftDto.fromJson(repostDraftPayload());
+  }
 }

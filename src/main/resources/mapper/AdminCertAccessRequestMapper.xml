@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.s2s.server.admin.mapper.AdminCertAccessRequestMapper">
+
+    <!--
+      复核申请分页（[153] B2-5；PRD §9.10.1 敏感查看双人复核）。
+
+      EXPLAIN 结论：`idx_cert_access_status_created` 的前缀列 `status` 等值命中；
+      无 status 筛选时退化为全表扫——但本表是人工复核留痕、行数极小，
+      全表扫成本可忽略，故不为「无状态筛选」再建索引。
+
+      排序：申请时间倒序，同刻按 id 倒序保证跨页稳定。
+      分页用显式 LIMIT/OFFSET（本工程未注册 MyBatis-Plus 分页插件）。
+    -->
+    <sql id="statusFilter">
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+    </sql>
+
+    <select id="countByStatus" resultType="long">
+        SELECT COUNT(*)
+        FROM admin_cert_access_request
+        WHERE 1 = 1
+        <include refid="statusFilter"/>
+    </select>
+
+    <select id="selectPageByStatus"
+            resultType="com.s2s.server.admin.entity.AdminCertAccessRequestEntity">
+        SELECT id, cert_id, requester_id, reason, status, reviewer_id, reviewed_at, created_at
+        FROM admin_cert_access_request
+        WHERE 1 = 1
+        <include refid="statusFilter"/>
+        ORDER BY created_at DESC, id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+</mapper>

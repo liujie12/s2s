@@ -14,14 +14,16 @@ import java.util.Map;
  * <p><b>出参必带 {@code version}</b>（供 PATCH status 乐观锁入参）。<b>不含完整
  * 联系方式</b>；完整值只由 {@code GET /posts/{id}/contact} 返回。</p>
  *
- * <p>{@code contactMask} 在两个出参场景下的取值不同，且是刻意为之：
+ * <p>{@code contactMask} 两个出参场景同源于发布时落库的 {@code post.contact_mask}
+ * （[147] DEC-13），取值一致且均<b>非解密所得</b>：
  * <ul>
- *   <li>{@code POST /posts}（[125]）：发布者握有自己刚提交的明文，回显其脱敏值；</li>
- *   <li>{@code GET /posts/{id}}（[127]）：<b>恒为 {@code null}</b>——库内只有 AEAD 密文，
- *       而「{@code CryptoFacade.decrypt} 全库唯一调用点在 contact 域」是安全红线
- *       （详设 §5.5.1），detail 域解密即破坏该不变量；且 PRD §7.4.1 详情页线框图
- *       无号码展示位，只有「📞 联系 TA」按钮——脱敏值属联系中转页（[128]）职责。</li>
+ *   <li>{@code POST /posts}（[125]）：回显发布时由明文派生的脱敏值；</li>
+ *   <li>{@code GET /posts/{id}}（[127] → [147]）：读取库内 {@code contact_mask} 列。
+ *       该列由<strong>发布端由明文派生</strong>（非密文回解），故读取它不破坏
+ *       「{@code CryptoFacade.decrypt} 全库唯一调用点在 contact 域」这一安全红线
+ *       （详设 §5.5.1）；完整明文仍只由 {@code GET /posts/{id}/contact} 返回。</li>
  * </ul>
+ * 值为可空：存量行（V9 迁移前发布）无掩码，为 {@code null}。
  * </p>
  *
  * @param id                帖子 ID
@@ -40,7 +42,7 @@ import java.util.Map;
  * @param distanceM         与请求方视野中心的距离（米）；详情接口无视野中心入参
  *                          （openapi 未声明 lng/lat query），[127] 恒 {@code null}
  * @param media             媒体列表（本人视角三态，他人视角仅 pass）
- * @param contactMask       脱敏联系方式（见类注释：GET 详情恒 null）
+ * @param contactMask       发布时落库的脱敏联系方式（见类注释；可空）
  * @param completenessLevel 完整度档位（0/1/2）
  * @param status            状态（API 值，见 {@code PostStatus#toApi}）
  * @param publishAt         发布时间

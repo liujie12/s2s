@@ -11,11 +11,11 @@ import java.time.LocalDateTime;
  * <p>字段与 DDL {@code V1__init_schema.sql:260-279} 逐列对齐。{@code evidence} 为 JSON 列，
  * 本实体以 {@link String} 承载（写入方负责序列化）。</p>
  *
- * <p><b>Batch1 的字段空置说明</b>：{@code weight}（风险分权重）与
- * {@code is_false_report} 由运营侧写入，Batch1 无运营后台，故一律走 DDL 默认值
- * （0 / 0）不在 Java 侧赋值；{@code handlerId}/{@code handledAt} 同理留空。
- * 风险分累计（{@code post.risk_score}）与自动下架（阈值 60）属 §9.10.3 的运营链路，
- * Batch1 只负责「举报落库」，不做自动下架。</p>
+ * <p><b>字段写入方</b>：{@code weight}（风险分贡献 = 原因分 × 举报方权重）由举报创建时
+ * 写入（[153] B2-5 ④，PRD §9.10.3）；{@code is_false_report}/{@code handler_id}/
+ * {@code handled_at} 由运营侧（后台举报工单处理）写入。Batch1 只负责「举报落库」；
+ * 风险分累计（{@code post.risk_score}）与自动下架（阈值 60）已由 [153] B2-5 接通
+ * （见 {@code ContactService#report} → {@code PostModerationService}）。</p>
  */
 @TableName("report")
 public class ReportEntity {
@@ -43,16 +43,16 @@ public class ReportEntity {
     /** 举报凭证 media_ids 数组（JSON 文本）。 */
     private String evidence;
 
-    /** 风险分权重（运营可配；Batch1 不写，走 DDL 默认 0）。 */
+    /** 风险分贡献（= 原因分 × 举报方权重，PRD §9.10.3；创建举报时写入）。 */
     private Integer weight;
 
-    /** 运营打标误报（Batch1 不写，走 DDL 默认 0）。 */
+    /** 运营打标误报（0/1；后台工单处理时写入，误报应回撤其风险分贡献）。 */
     private Integer isFalseReport;
 
     /** 处理状态（新建恒 pending）。 */
     private String status;
 
-    /** 处理人 user_id（Batch1 不写）。 */
+    /** 处理人（后台 admin_user.id；Batch1 不写，工单处理时写入）。 */
     private Long handlerId;
 
     /** 处理时间（Batch1 不写）。 */

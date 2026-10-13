@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.s2s.server.contact.mapper.ReportMapper">
+
+    <!--
+      举报工单队列查询（[153] B2-5 ④；PRD §9.10.1 ④）。
+      排序：post.risk_score 降序（验收「按风险分排序」），同分再按举报时间升序（先来先处理）。
+      联 post 取标题与累计风险分——工单要能直接看出「这条为什么排前面」。
+    -->
+    <select id="countByStatus" resultType="long">
+        SELECT COUNT(*)
+        FROM report
+        WHERE status = #{status}
+    </select>
+
+    <select id="selectPageByStatus" resultType="com.s2s.server.contact.dto.ReportTicketRow">
+        SELECT r.id            AS reportId,
+               r.post_id       AS postId,
+               p.title         AS postTitle,
+               r.reason        AS reason,
+               r.weight        AS weight,
+               r.status        AS status,
+               r.is_false_report AS isFalseReport,
+               p.risk_score    AS riskScore,
+               r.created_at    AS createdAt
+        FROM report r
+        JOIN post p ON p.id = r.post_id
+        WHERE r.status = #{status}
+        ORDER BY p.risk_score DESC, r.created_at ASC, r.id ASC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+</mapper>

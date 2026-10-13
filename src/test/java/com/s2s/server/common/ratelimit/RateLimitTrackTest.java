@@ -86,7 +86,7 @@ class RateLimitTrackTest {
                 RateLimitThresholds.WINDOW_DAY_SECONDS,
                 RateLimitThresholds.CONTACT_OVERFLOW);
         assertSingleRule(RateLimitTrack.CONTACT_BURST,
-                RateLimitThresholds.CONTACT_BURST_LIMIT_PER_MINUTE,
+                RateLimitThresholds.CONTACT_BURST_LIMIT_PER_MINUTE - 1,
                 RateLimitThresholds.WINDOW_MINUTE_SECONDS,
                 RateLimitThresholds.CONTACT_BURST_OVERFLOW);
         assertSingleRule(RateLimitTrack.REPORT_UID,

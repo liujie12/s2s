@@ -3,7 +3,9 @@ package com.s2s.server.contact;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
@@ -20,7 +22,9 @@ import com.s2s.server.common.crypto.MasterKey;
 import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
 import com.s2s.server.common.ratelimit.RateLimitEntries;
+import com.s2s.server.cert.CertService;
 import com.s2s.server.contact.dto.ContactInfo;
+import com.s2s.server.post.PostModerationService;
 import com.s2s.server.contact.dto.ReportRequest;
 import com.s2s.server.contact.dto.ReportResult;
 import com.s2s.server.contact.entity.ContactEventEntity;
@@ -74,10 +78,16 @@ class ContactServiceTest {
     private ReportMapper reportMapper;
     private AuditLogWriter auditLogWriter;
     private CryptoFacade cryptoFacade;
+    private CertService certService;
+    private PostModerationService postModerationService;
     private ContactService service;
 
     /**
      * 装配被测对象：真实 {@link CryptoFacade} + 其余依赖 mock。
+     *
+     * <p>[153] B2-5 ④ 起举报链路多两个域间依赖：{@link CertService}（举报方实名门槛/
+     * 企业权重）与 {@link PostModerationService}（风险分累计/下架）。此处默认
+     * 「已实名 + 非企业」，使既有举报用例聚焦自身语义；门槛与权重由专门用例覆盖。</p>
      *
      * @return void；无断言
      */
@@ -89,9 +99,14 @@ class ContactServiceTest {
         reportMapper = mock(ReportMapper.class);
         auditLogWriter = mock(AuditLogWriter.class);
         cryptoFacade = new CryptoFacade(List.of(KEY_V1));
+        certService = mock(CertService.class);
+        postModerationService = mock(PostModerationService.class);
         service = new ContactService(rateGuard, contactPostMapper, contactEventMapper,
-                reportMapper, cryptoFacade, auditLogWriter, new ObjectMapper());
+                reportMapper, cryptoFacade, auditLogWriter, new ObjectMapper(),
+                certService, postModerationService);
         when(rateGuard.remainingToday(anyLong(), any())).thenReturn(27);
+        when(certService.isRealnamePassed(anyLong())).thenReturn(true);
+        when(certService.isEnterpriseVerified(anyLong())).thenReturn(false);
     }
 
     /**
@@ -327,11 +342,72 @@ class ContactServiceTest {
         assertThat(saved.getStatus()).isEqualTo("pending");
         // 被举报人取自帖子发布者，不接受客户端指定
         assertThat(saved.getReportedUserId()).isEqualTo(OWNER_ID);
-        // Batch1 无运营后台：权重与误报标不写（走 DDL 默认 0）
-        assertThat(saved.getWeight()).isNull();
+        // [153] B2-5 ④：风险分贡献 = 原因分(fraud=50) × 举报方权重(普通实名 ×1) = 50
+        assertThat(saved.getWeight()).isEqualTo(50);
+        // is_false_report 由后台工单处理时写入，创建时不写
         assertThat(saved.getIsFalseReport()).isNull();
 
+        // 风险分累计到帖子；未达阈值（50 < 60）不触发下架
+        verify(postModerationService).applyRiskDelta(postId, 50);
+        verify(postModerationService, never()).auditTakedown(anyLong(), any(), any());
+
         verify(auditLogWriter).write(any(AuditEntry.class));
+    }
+
+    /**
+     * 未实名用户不可举报 → 40305，且不落库、不累计风险分（PRD §9.10.3 举报方门槛）。
+     *
+     * @return void；断言失败即未实名用户可举报（合规缺口）
+     */
+    @Test
+    void reportRequiresRealname() {
+        when(certService.isRealnamePassed(VIEWER_ID)).thenReturn(false);
+
+        assertThatThrownBy(() -> service.report(VIEWER_ID, 1001L,
+                new ReportRequest("fraud", null, null)))
+                .isInstanceOf(BizException.class)
+                .extracting(e -> ((BizException) e).getErrorCode())
+                .isEqualTo(ErrorCode.NO_PERMISSION);
+
+        verify(reportMapper, never()).insert(any(ReportEntity.class));
+        verify(postModerationService, never()).applyRiskDelta(anyLong(), anyInt());
+    }
+
+    /**
+     * 企业认证举报方权重 ×1.5：{@code fraud} 基础 50 → 贡献 75（PRD §9.10.3）。
+     *
+     * @return void；断言失败即企业权重未生效
+     */
+    @Test
+    void enterpriseReporterContributesMore() {
+        Long postId = 1001L;
+        when(certService.isEnterpriseVerified(VIEWER_ID)).thenReturn(true);
+        when(contactPostMapper.selectContactRow(postId))
+                .thenReturn(row(postId, encryptedAad(postId), 1, "phone", "active"));
+
+        service.report(VIEWER_ID, postId, new ReportRequest("fraud", null, null));
+
+        ArgumentCaptor<ReportEntity> captor = ArgumentCaptor.forClass(ReportEntity.class);
+        verify(reportMapper).insert(captor.capture());
+        assertThat(captor.getValue().getWeight()).isEqualTo(75);
+        verify(postModerationService).applyRiskDelta(postId, 75);
+    }
+
+    /**
+     * 累计风险分达阈值（≥60）→ 自动下架（PRD §9.10.3）。
+     *
+     * @return void；断言失败即阈值触发的下架缺失
+     */
+    @Test
+    void reachingThresholdTriggersAuditTakedown() {
+        Long postId = 1001L;
+        when(contactPostMapper.selectContactRow(postId))
+                .thenReturn(row(postId, encryptedAad(postId), 1, "phone", "active"));
+        when(postModerationService.applyRiskDelta(postId, 50)).thenReturn(60);
+
+        service.report(VIEWER_ID, postId, new ReportRequest("fraud", null, null));
+
+        verify(postModerationService).auditTakedown(eq(postId), eq(VIEWER_ID), any());
     }
 
     /**

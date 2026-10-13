@@ -84,6 +84,22 @@ void main() {
 
       expect(() => PostDetailDto.fromJson(payload), throwsA(isA<ApiException>()));
     });
+
+    test('contact_mask → contactMasked（[147] DEC-13 未拉取态切真）', () {
+      final detail = postDetailToListingDetail(
+        PostDetailDto.fromJson(postDetailPayload()),
+      );
+
+      expect(detail.contactMasked, '138****8000');
+      expect(detail.hasContact, isTrue);
+    });
+
+    test('contact_mask 缺失 → contactMasked 为 null（存量行无掩码）', () {
+      final payload = postDetailPayload()..remove('contact_mask');
+      final detail = postDetailToListingDetail(PostDetailDto.fromJson(payload));
+
+      expect(detail.contactMasked, isNull);
+    });
   });
 
   group('CompletenessLevel.fromApi（0/1/2 显式映射）', () {

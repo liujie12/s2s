@@ -12,12 +12,19 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:zhaoyazhao/domain/category_tree.dart';
 import 'package:zhaoyazhao/features/publish/cert_modal_screen.dart';
 import 'package:zhaoyazhao/features/publish/publish_form_state.dart';
 import 'package:zhaoyazhao/features/publish/publish_screen.dart';
+import 'package:zhaoyazhao/features/publish/publish_screen_args.dart';
 
 void main() {
+  // 发布页 [B2-8] 起接入本地草稿（SharedPreferences），须在内存 mock 下运行。
+  setUp(() {
+    SharedPreferences.setMockInitialValues(const <String, Object>{});
+  });
+
   /// 挂载发布页。
   ///
   /// 参数 [tester] 测试驱动器；[initialForm] 初始表单（测试缝，默认空表单）。
@@ -27,7 +34,9 @@ void main() {
   }) async {
     await tester.pumpWidget(
       ProviderScope(
-        child: MaterialApp(home: PublishScreen(initialForm: initialForm)),
+        child: MaterialApp(
+          home: PublishScreen(args: PublishScreenArgs(initialForm: initialForm)),
+        ),
       ),
     );
   }

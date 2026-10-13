@@ -1,7 +1,9 @@
 package com.s2s.server.map;
 
+import com.s2s.server.common.web.AuthContext;
 import com.s2s.server.map.dto.PinsCompactResponse;
 import com.s2s.server.map.dto.SearchPostsResponse;
+import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -77,6 +79,7 @@ public class MapController {
      */
     @GetMapping("/posts/search")
     public SearchPostsResponse searchPosts(
+            HttpServletRequest http,
             @RequestParam(name = "category_ids", required = false) List<Integer> categoryIds,
             @RequestParam(name = "post_type", required = false) List<String> postTypes,
             @RequestParam(required = false) String radius,
@@ -88,7 +91,9 @@ public class MapController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) Integer page,
             @RequestParam(name = "page_size", required = false) Integer pageSize) {
+        // 游客可访问 → userId 可能为 null；仅用于「空圈入队」的线索归属（PRD §6.4.4）
+        Long userId = AuthContext.currentUserId(http);
         return mapService.searchPosts(categoryIds, postTypes, radius, gridId, categoryVersion,
-                lng, lat, keyword, sort, page, pageSize);
+                lng, lat, keyword, sort, page, pageSize, userId);
     }
 }

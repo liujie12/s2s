@@ -87,6 +87,9 @@ public class PostEntity {
     /** 联系方式 AEAD 密文（VARBINARY）。 */
     private byte[] contactValueEnc;
 
+    /** 发布时计算的脱敏联系方式（[147] DEC-13；详情/联系中转页未拉取态展示用，不参与查询）。 */
+    private String contactMask;
+
     /** 三条件达成态 JSON {required_full, address_precise, leaf_matched}。 */
     private String completenessConditions;
 
@@ -255,6 +258,19 @@ public class PostEntity {
 
     public void setContactValueEnc(byte[] contactValueEnc) {
         this.contactValueEnc = contactValueEnc;
+    }
+
+    public String getContactMask() {
+        return contactMask;
+    }
+
+    /**
+     * 设置脱敏联系方式（发布时由明文派生，[147] DEC-13）。
+     *
+     * @param contactMask 脱敏串（如 {@code 138****8000}）
+     */
+    public void setContactMask(String contactMask) {
+        this.contactMask = contactMask;
     }
 
     public String getCompletenessConditions() {

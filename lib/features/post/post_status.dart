@@ -38,6 +38,10 @@ class PostStatusAction {
   static const String offline = 'offline';
 
   /// 重新上架（→ active，重算 `expire_at`）。
+  ///
+  /// **服务端能力仍在**（`PATCH /posts/{id}/status` 的合法 action），但 [B2-8] 起
+  /// 「我的发布」已下架卡片的「刷新重发」改为**克隆重发**（`POST /posts/{id}/repost`，
+  /// 进发布页编辑态）—— 稿侧没有「直接重新上架」的按钮，故本常量当前**无前端调用点**。
   static const String republish = 'republish';
 }
 
@@ -74,38 +78,45 @@ enum MyPostsTab {
 
 /// 卡片动作（客户端动作枚举；与契约 `action` 的对应见 [apiAction]）。
 enum MyPostCardAction {
-  /// 编辑（依赖 Batch2 的 `PATCH /posts/{id}` 与发布页编辑态，本轮降级）。
+  /// 编辑（[B2-8] 已接通：预填表单 → `PATCH /posts/{id}`）。
   edit(null),
 
   /// 下架（契约 `offline`）。
   offline(PostStatusAction.offline),
 
-  /// 刷新重发（契约 `republish`：直接重新上架，**不克隆原内容**）。
+  /// 克隆重发（[B2-8] 已接通：`POST /posts/{id}/repost` 取草稿 → 进发布页编辑态 →
+  /// 用户确认后走 `POST /posts` 新建）。
   ///
-  /// PRD §8.4 的「重发」是克隆重发（`POST /posts/{id}/repost`），该端点
-  /// openapi 无声明、Batch2 才交付，故本轮语义降级为 `republish`
-  /// （2026-09-27 用户裁定；差异登记见说明文档 §2.9）。
-  republish(PostStatusAction.republish),
+  /// 它不走 `PATCH /posts/{id}/status`，故 [apiAction] 为 null；「是否已接通」由
+  /// [isWired] 显式表达，不能再靠 `apiAction != null` 推断。
+  repost(null),
 
-  /// 删除（openapi 无 `DELETE /posts/{post_id}`，本轮降级）。
+  /// 删除（openapi 无 `DELETE /posts/{post_id}`；[B2-8] 裁定本轮不做，继续降级）。
   remove(null),
 
-  /// 继续编辑（草稿；依赖 Batch2 本地草稿 + 编辑态，本轮无数据源）。
+  /// 继续编辑（[B2-8] 已接通：从本地草稿恢复表单进发布页）。
   continueEdit(null);
 
   const MyPostCardAction(this.apiAction);
 
-  /// 契约 `action` 值；null = 本轮无对应接口（降级项）。
+  /// 契约 `action` 值；null = 本动作不走 `PATCH /posts/{id}/status`。
   final String? apiAction;
 
-  /// 是否为已接通真接口的动作（有契约 `action`）。
-  bool get isWired => apiAction != null;
+  /// 是否为已接通真接口的动作。
+  ///
+  /// **不可用 `apiAction != null` 判定**：[B2-8] 起 [repost] 与 [continueEdit] 均已
+  /// 接通，但都走各自通道（`POST /posts/{id}/repost` / 本地草稿）而非 PATCH status，
+  /// 其 [apiAction] 天然为 null。改为显式列举「唯一仍降级的动作」，新增动作时
+  /// 必须显式决定其接通状态，避免默认被误当成已接通而静默暴露一个必然失败的动作。
+  bool get isWired => this != MyPostCardAction.remove;
 }
 
 /// 按 API 状态给出卡片操作组（PRD §8.3.1 / §8.6 状态机 + 设计稿 my-publish）。
 ///
 /// **设计稿冻结的对应关系**（`prototype-figma/code.js` `buildMyPublish`：
 /// 在架 → [编辑, 下架]；已下架 → [刷新重发, 删除]；草稿 → [继续编辑, 删除]）。
+/// [B2-8] 起「刷新重发」由降级的 `republish`（直接上架）转真为 [MyPostCardAction.repost]
+/// （克隆重发，见《决策登记表》2026-10-13 B2-8 裁定批）。
 /// 稿面未单独覆盖的两个契约状态按下表延伸，**不新增稿外按钮**：
 ///   - `expired`（已过期）→ 同「已下架」（PRD §8.4「过期了能一键重发」）；
 ///   - `archived`（成交归档）→ 仅 [删除]（成交件不应被重新上架）。
@@ -119,11 +130,11 @@ List<MyPostCardAction> cardActionsFor(String apiStatus) => switch (apiStatus) {
     MyPostCardAction.offline,
   ],
   PostApiStatus.offline => const [
-    MyPostCardAction.republish,
+    MyPostCardAction.repost,
     MyPostCardAction.remove,
   ],
   PostApiStatus.expired => const [
-    MyPostCardAction.republish,
+    MyPostCardAction.repost,
     MyPostCardAction.remove,
   ],
   PostApiStatus.archived => const [MyPostCardAction.remove],

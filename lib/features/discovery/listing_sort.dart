@@ -8,6 +8,8 @@ library;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../domain/listing.dart';
+import '../../domain/listing_detail.dart';
+import '../../nfr_constants.dart';
 
 /// 排序档位。
 ///
@@ -15,8 +17,9 @@ import '../../domain/listing.dart';
 /// （契约 `sort` 由三值扩展为六值），故 UI 档位必须逐值映射到契约值，
 /// 不能把枚举名直接传上去。
 enum ListingSort {
-  /// 综合：距离与新鲜度各半（归一化上界 20km / 7 天）。
-  /// 服务端实现见 `MapService.compositeScore`，与本地 [_compositeScore] 同口径。
+  /// 综合：时效 40% + 距离 40% + 完整度档 20%（§6.11 阶段 0 规则加权，唯一口径）。
+  /// 归一化上界 20km / 7 天；服务端实现见 `MapService.compositeScore`，
+  /// 与本地 [_compositeScore] 同口径（常量真源 `NfrMatch`）。
   composite('综合', 'composite'),
 
   /// 距离近优先。PRD §6.4.3 标注为默认。
@@ -52,7 +55,10 @@ final listingSortProvider = NotifierProvider<ListingSortNotifier, ListingSort>(
   ListingSortNotifier.new,
 );
 
-/// 综合排序得分：距离与新鲜度各占一半，越小越靠前。
+/// 综合排序得分：**越小越靠前**（PRD §6.11 阶段 0 规则加权，唯一口径）。
+///
+/// 权重：时效 40% + 距离 40% + 完整度档 20%（常量真源 `NfrMatch`，
+/// 与服务端 `MapService.compositeScore` 同口径 —— 双端结果必须一致）。
 ///
 /// **为什么不直接把米数和分钟数相加**：两者量纲不同，10km（10000）与 7 天
 /// （10080 分钟）数值恰好接近纯属巧合，换个单位（秒）时间就会完全压过距离。
@@ -66,14 +72,36 @@ final listingSortProvider = NotifierProvider<ListingSortNotifier, ListingSort>(
 /// 超出上界的一律按 1 处理（clamp），不做外推 —— 30km 与 50km 都属「很远」，
 /// 让它们继续拉开差距只会挤压近距离条目之间的分辨率。
 ///
-/// 参数 [distanceMeters] 为到基准点的距离（米），[ageMinutes] 为发布至今的分钟数。
+/// 参数 [distanceMeters] 为到基准点的距离（米），[ageMinutes] 为发布至今的分钟数，
+/// [completenessCode] 为契约 `completeness_level`（0=🔴 / 1=🟡 / 2=🟢）。
 /// 返回 0–1 的得分。
-double _compositeScore(double distanceMeters, int ageMinutes) {
-  const double maxDistanceMeters = 20000;
-  const double maxAgeMinutes = 7 * 24 * 60;
-  final double d = (distanceMeters / maxDistanceMeters).clamp(0.0, 1.0);
-  final double a = (ageMinutes / maxAgeMinutes).clamp(0.0, 1.0);
-  return d * 0.5 + a * 0.5;
+double _compositeScore(
+  double distanceMeters,
+  int ageMinutes,
+  int completenessCode,
+) {
+  final double d = (distanceMeters / NfrMatch.compositeMaxDistanceMeters).clamp(
+    0.0,
+    1.0,
+  );
+  final double a = (ageMinutes / NfrMatch.compositeMaxAgeMinutes).clamp(
+    0.0,
+    1.0,
+  );
+  // 完整度档「越高越好」，而本式「越小越靠前」，故取 (1 − 系数) 作为代价项。
+  final double c = 1 - _completenessFactor(completenessCode);
+  return d * NfrMatch.compositeWeightDistance +
+      a * NfrMatch.compositeWeightTime +
+      c * NfrMatch.compositeWeightCompleteness;
+}
+
+/// 完整度档折算系数。契约值 → 档位复用 [CompletenessLevel.fromApi]（不另建映射）。
+double _completenessFactor(int code) {
+  return switch (CompletenessLevel.fromApi(code)) {
+    CompletenessLevel.green => NfrMatch.completenessFactorGreen,
+    CompletenessLevel.yellow => NfrMatch.completenessFactorYellow,
+    CompletenessLevel.red => NfrMatch.completenessFactorRed,
+  };
 }
 
 /// 按 [sort] 排序。
@@ -88,12 +116,17 @@ double _compositeScore(double distanceMeters, int ageMinutes) {
 /// [distanceOf] 返回某条信息到基准点的距离（米）。由调用方注入，
 /// 使排序不必知道「基准点是用户定位还是默认中心」。
 ///
+/// [completenessOf] 返回某条信息在契约上的 `completeness_level`（0/1/2）。
+/// 同样由调用方注入：列表 DTO 未携带该字段（列表一次拉几百条，多带一列
+/// 要动契约与 DTO），而综合排序的 20% 权重依赖它，故按需注入而非改模型。
+///
 /// 返回新列表，不修改入参。
 List<Listing> sortListings(
   List<Listing> listings, {
   required ListingSort sort,
   required DateTime now,
   required double Function(Listing) distanceOf,
+  required int Function(Listing) completenessOf,
 }) {
   final result = List<Listing>.of(listings);
 
@@ -111,10 +144,12 @@ List<Listing> sortListings(
         final sa = _compositeScore(
           distanceOf(a),
           now.difference(a.createdAt).inMinutes,
+          completenessOf(a),
         );
         final sb = _compositeScore(
           distanceOf(b),
           now.difference(b.createdAt).inMinutes,
+          completenessOf(b),
         );
         return sa.compareTo(sb);
       });

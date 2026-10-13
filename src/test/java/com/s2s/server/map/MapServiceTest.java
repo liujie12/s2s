@@ -21,6 +21,7 @@ import com.s2s.server.common.error.ErrorCode;
 import com.s2s.server.map.dto.PinsCompactResponse;
 import com.s2s.server.map.dto.SearchPostsResponse;
 import com.s2s.server.map.mapper.MapPostMapper;
+import com.s2s.server.ops.OpsFollowUpService;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
@@ -47,7 +48,7 @@ class MapServiceTest {
     void setUp() {
         mapper = mock(MapPostMapper.class);
         categoryService = mock(CategoryService.class);
-        mapService = new MapService(mapper, categoryService);
+        mapService = new MapService(mapper, categoryService, mock(OpsFollowUpService.class));
     }
 
     /**
@@ -171,7 +172,7 @@ class MapServiceTest {
 
         SearchPostsResponse resp = mapService.searchPosts(
                 List.of(10101), List.of("resource"), "3", "0_0", "2026-08-31.1",
-                120.15, 30.28, null, "publish_time", 2, 20);
+                120.15, 30.28, null, "publish_time", 2, 20, null);
 
         assertEquals(25, resp.total());
         assertEquals(5, resp.items().size());
@@ -190,7 +191,7 @@ class MapServiceTest {
     void 供需态超过两个回40001() {
         BizException ex = assertThrows(BizException.class, () -> mapService.searchPosts(
                 List.of(10101), List.of("resource", "demand", "resource"), "3", "0_0",
-                "2026-08-31.1", 120.15, 30.28, null, "distance", 1, 20));
+                "2026-08-31.1", 120.15, 30.28, null, "distance", 1, 20, null));
         assertEquals(ErrorCode.PARAM_INVALID, ex.getErrorCode());
     }
 
@@ -200,13 +201,15 @@ class MapServiceTest {
      * <p>构造一对互相矛盾的数据：「近而旧」与「远而新」。若时效项缺失或权重为 0，
      * 综合排序会与距离排序同序，近者恒排第一；含时效项时，远而新者应反超。
      * 两条断言合起来才说明「综合 ≠ 距离」，只看其中一条无法区分。</p>
+     *
+     * <p>两者完整度档同为 🟡（系数 0.5 → 代价项 0.5，贡献 0.1），故本用例只考验距离与时效两维。</p>
      */
     @Test
     void 综合排序以时效压过距离() {
-        // A：就在视野中心（距离 ≈ 0）但已挂 7 天 → 距离项 0 + 时效项顶格 ≈ 0.5
+        // A：就在视野中心（距离 ≈ 0）但已挂 7 天 → 0.4×0 + 0.4×1 + 0.1 = 0.5
         Map<String, Object> nearOld = searchRow(1L, "120.15000", "30.28000",
                 java.time.LocalDateTime.now().minusDays(7), null);
-        // B：正北约 10km（距离项 ≈ 0.5）但刚发布 → 得分 ≈ 0.25，应排到 A 之前
+        // B：正北约 10km（距离项 ≈ 0.5）但刚发布 → 0.4×0.5 + 0.4×0 + 0.1 = 0.3，应排到 A 之前
         Map<String, Object> farFresh = searchRow(2L, "120.15000", "30.37000",
                 java.time.LocalDateTime.now(), null);
         when(mapper.selectSearchPosts(any(), any(), any(), any()))
@@ -215,6 +218,24 @@ class MapServiceTest {
         // 距离排序：近者在前
         assertEquals(List.of(1L, 2L), fetchedIds("distance"));
         // 综合排序：时效维度生效，远而新者反超近而旧者
+        assertEquals(List.of(2L, 1L), fetchedIds("composite"));
+    }
+
+    /**
+     * 场景八之二：`composite` 排序的**完整度档维度**确实参与计算（§6.11 唯一口径的第三项）。
+     *
+     * <p>构造距离与时效**完全相同**、仅完整度档不同的一对：🟢(2) 应排在 🔴(0) 之前。
+     * 若完整度项缺失或权重为 0，两者得分相同、顺序退化为原序，本断言即失败 ——
+     * 故「🟢 在前」一条同时覆盖了「这项存在」与「方向没写反」（代价项取 1−系数）。</p>
+     */
+    @Test
+    void 综合排序以完整度档压过同距同时效() {
+        java.time.LocalDateTime published = java.time.LocalDateTime.now().minusHours(2);
+        Map<String, Object> red = searchRow(1L, "120.15000", "30.28000", published, null, 0);
+        Map<String, Object> green = searchRow(2L, "120.15000", "30.28000", published, null, 2);
+        when(mapper.selectSearchPosts(any(), any(), any(), any()))
+                .thenReturn(List.of(red, green));
+
         assertEquals(List.of(2L, 1L), fetchedIds("composite"));
     }
 
@@ -250,7 +271,7 @@ class MapServiceTest {
         when(mapper.selectSearchPosts(any(), any(), any(), any())).thenReturn(List.of());
         for (String radius : List.of("1", "3", "5", "10")) {
             mapService.searchPosts(List.of(10101), List.of("resource"), radius, "0_0",
-                    "2026-08-31.1", 120.15, 30.28, null, "distance", 1, 20);
+                    "2026-08-31.1", 120.15, 30.28, null, "distance", 1, 20, null);
         }
 
         ArgumentCaptor<List<String>> captor = ArgumentCaptor.forClass(List.class);
@@ -273,7 +294,7 @@ class MapServiceTest {
      */
     private List<Long> fetchedIds(String sort) {
         return mapService.searchPosts(List.of(10101), List.of("resource"), "3", "0_0",
-                        "2026-08-31.1", 120.15, 30.28, null, sort, 1, 20)
+                        "2026-08-31.1", 120.15, 30.28, null, sort, 1, 20, null)
                 .items().stream().map(card -> card.id()).toList();
     }
 
@@ -289,6 +310,22 @@ class MapServiceTest {
      */
     private Map<String, Object> searchRow(long id, String lng, String lat,
             java.time.LocalDateTime publishAt, BigDecimal price) {
+        return searchRow(id, lng, lat, publishAt, price, 1);
+    }
+
+    /**
+     * 同上，另指定契约 {@code completeness_level}（0=🔴 / 1=🟡 / 2=🟢）。
+     *
+     * @param id               帖子 ID
+     * @param lng              经度（GCJ-02，字符串以免精度损失）
+     * @param lat              纬度（GCJ-02）
+     * @param publishAt        发布时间
+     * @param price            价格，null = 面议
+     * @param completenessLevel 契约完整度档
+     * @return 模拟 DB 行
+     */
+    private Map<String, Object> searchRow(long id, String lng, String lat,
+            java.time.LocalDateTime publishAt, BigDecimal price, int completenessLevel) {
         Map<String, Object> row = new java.util.HashMap<>();
         row.put("id", id);
         row.put("type", "resource");
@@ -300,7 +337,7 @@ class MapServiceTest {
         row.put("price_unit", price == null ? null : "月");
         row.put("lng", new BigDecimal(lng));
         row.put("lat", new BigDecimal(lat));
-        row.put("completeness_level", 1);
+        row.put("completeness_level", completenessLevel);
         row.put("publish_at", publishAt);
         row.put("author_id", 1L);
         row.put("nickname", "n");

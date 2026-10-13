@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.s2s.server.ops.mapper.TempCategoryMapper">
+
+    <!--
+      临时类目分页（[153] B2-5 §9.10.2；PRD §9.10.2）。
+
+      EXPLAIN 结论：`idx_temp_category_status_expire` 的前缀列 `status` 等值命中，
+      无 status 筛选（status 为 null）时退化为全表扫——但本表由运营手工创建，
+      行数极小（量级为「个位数子」），全表扫成本可忽略；故不为「无状态筛选」再建索引。
+
+      排序：创建时间倒序（最新创建排前），同刻按 id 倒序保证跨页稳定。
+      分页用显式 LIMIT/OFFSET（本工程未注册 MyBatis-Plus 分页插件）。
+    -->
+    <sql id="statusFilter">
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+    </sql>
+
+    <select id="countByStatus" resultType="long">
+        SELECT COUNT(*)
+        FROM temp_category
+        WHERE 1 = 1
+        <include refid="statusFilter"/>
+    </select>
+
+    <select id="selectPageByStatus" resultType="com.s2s.server.ops.entity.TempCategoryEntity">
+        SELECT id, l2_parent_id, name, status, created_by, created_at, expire_at, closed_at
+        FROM temp_category
+        WHERE 1 = 1
+        <include refid="statusFilter"/>
+        ORDER BY created_at DESC, id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+</mapper>

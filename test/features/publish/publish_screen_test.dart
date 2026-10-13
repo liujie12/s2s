@@ -19,12 +19,14 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:zhaoyazhao/core/network/api_error_code.dart';
 import 'package:zhaoyazhao/core/network/api_exception.dart';
 import 'package:zhaoyazhao/features/category/category_repository.dart';
 import 'package:zhaoyazhao/features/publish/publish_form_state.dart';
 import 'package:zhaoyazhao/features/publish/publish_screen.dart';
+import 'package:zhaoyazhao/features/publish/publish_screen_args.dart';
 
 import '../../support/fake_repositories.dart';
 
@@ -37,6 +39,8 @@ void main() {
 
   setUp(() {
     repo = _FakeCategoryRepository();
+    // 发布页 [B2-8] 起接入本地草稿（SharedPreferences），须在内存 mock 下运行。
+    SharedPreferences.setMockInitialValues(const <String, Object>{});
   });
 
   /// 加高测试视口使长表单全部子节点首帧即构建（理由见文件头）。
@@ -71,7 +75,7 @@ void main() {
   Widget app(PublishFormState form) {
     return ProviderScope(
       overrides: [categoryRepositoryProvider.overrideWithValue(repo)],
-      child: MaterialApp(home: PublishScreen(initialForm: form)),
+      child: MaterialApp(home: PublishScreen(args: PublishScreenArgs(initialForm: form))),
     );
   }
 

@@ -154,6 +154,8 @@ tags:
     description: 埋点上报（功能域 common）
   - name: city
     description: 城市与行政区划（功能域 city，定位兜底「手动选城市」数据源）
+  - name: admin
+    description: 运营治理后台（功能域 admin，Batch2 [153] B2-5；后台 Token 与 C 端隔离）
 
 security:
   - bearerAuth: []
@@ -893,11 +895,78 @@ paths:
       operationId: updatePost
       x-batch: Batch2
       x-domain: post
-      description: 占位。Batch2 交付，同样以 version 做乐观锁。
+      description: |
+        [B2-8]「我的发布」在架帖编辑（PRD §8.4 步骤 4「进发布页编辑态」）。
+
+        - 字段集与 `POST /posts` 一致，另带 `version` 乐观锁（**必带**；不符回 `40903`）；
+        - **仅 `active` 可编辑**：非在架（下架/过期/归档）与版本不符、非本人**一律 `40903`**
+          （0 行不区分成因，与 `PATCH /posts/{id}/status` 同口径，不按 id 探测存在性）；
+        - 重走敏感词/图片/类目/资质校验与完整度重算；**不重置 `expire_at`**（仅重发重置）；
+        - **不回显完整联系方式**：`contact_value` 可空，`null` = 保留原密文不改（明文唯一出口
+          是 `GET /posts/{id}/contact`，安全方案 §4.6 出口收敛）。
       parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/PostIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PostUpdateRequest' }
+      responses:
+        '200':
+          description: 编辑成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/PostDetail' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /posts/{post_id}/repost:
+    post:
+      tags: [post]
+      summary: 克隆重发（取可编辑草稿）
+      operationId: repostPost
+      x-batch: Batch2
+      x-domain: post
+      description: |
+        [B2-8]（PRD §8.4「重发」/§8.6「archived → 重发 → 克隆新 draft → 编辑 → active」）。
+
+        服务端读取原帖并返回一份**可编辑草稿载荷**（**不落库**）；前端带入发布页编辑态，
+        用户确认后走既有 `POST /posts` 落 `active`（有效期由发布时重置为默认 7 天）。
+
+        - **仅 `offline`/`expired` 可重发**（PRD §8.3.1 稿侧：已下架→刷新重发）；其他状态回 `40001`；
+        - 帖子不存在或非本人回 `41001`（不区分，避免按 id 探测）；
+        - `category_available=false` 表示原分类已被运营停用（PRD §8.7），前端须提示重选分类；
+        - **不回显完整联系方式**：只回 `contact_type` + 脱敏 `contact_mask`。
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/IdempotencyKey'
         - $ref: '#/components/parameters/PostIdPath'
       responses:
-        '200': { description: 占位，Batch2 交付 }
+        '200':
+          description: 成功（返回草稿载荷）
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/RepostDraft' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '410': { $ref: '#/components/responses/Gone' }
+        '500': { $ref: '#/components/responses/InternalError' }
 
   /posts/{post_id}/status:
     patch:
@@ -1366,8 +1435,10 @@ paths:
             - `distance`：距视野中心近者优先（默认）
             - `publish_time`：发布时间新者优先
             - `completeness`：完整度档位高者优先，同档按发布时间新者优先
-            - `composite`：综合 = 距离与新鲜度各半（归一化后加权，上界取
-              距离 20km / 时效 7 天，与客户端 `_compositeScore` 同口径）
+            - `composite`：综合 = **时效 40% + 距离 40% + 完整度档 20%**（PRD §6.11
+              阶段 0 规则加权，唯一口径；完整度档 = 🟢1.0 / 🟡0.5 / 🔴0.2），各项
+              归一化后加权，上界取距离 20km / 时效 7 天，与客户端 `_compositeScore`
+              同口径（常量真源 `NfrMatch`）
             - `price_asc`：价格升序
             - `price_desc`：价格降序
 
@@ -1977,6 +2048,955 @@ paths:
         '429': { $ref: '#/components/responses/TooManyRequests' }
         '500': { $ref: '#/components/responses/InternalError' }
 
+  # ===========================================================================
+  # 分组：运营治理后台（功能域 admin，Batch2 [153] B2-5）
+  # ===========================================================================
+
+  /admin/login:
+    post:
+      tags: [admin]
+      summary: 后台登录
+      operationId: adminLogin
+      x-batch: Batch2
+      x-domain: admin
+      security: []
+      description: |
+        运营治理后台账号登录（[153] B2-5）。后台账号与 C 端 `user` **完全隔离**（表 `admin_user`）。
+
+        成功返回**后台 Token**（JWT 带 `scope=admin` + `role`，有效期 120 分钟）。
+        后台 Token 与 C 端 Token **互不认对方**：C 端接口拒收 `scope=admin` 的 Token，
+        后台接口拒收 C 端 Token。
+
+        失败（账号不存在 / 口令错 / 账号禁用 / 角色非法）**一律回 `40101`**，不区分具体原因
+        —— 防账号枚举，且 PRD §12.5 已定案 25 个错误码（禁新增）。
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: { type: string, maxLength: 64, example: root }
+                password: { type: string, example: '********' }
+      responses:
+        '200':
+          description: 登录成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [token, role]
+                        properties:
+                          token: { type: string, description: 后台 Token（scope=admin） }
+                          role:
+                            type: string
+                            enum: [super_admin, auditor, operator, algo]
+                            description: 当前账号角色（PRD §9.10.1 四角色）
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/audit-logs:
+    get:
+      tags: [admin]
+      summary: 审计留痕查询
+      operationId: listAuditLogs
+      x-batch: Batch2
+      x-domain: admin
+      description: |
+        查询 `audit_log`（PRD §9.10.1 审计留痕；保留 ≥180 天）。
+
+        **权限：仅超级管理员（`super_admin`）**；其余角色（内容审核员/运营专员/算法运营）
+        一律回 `40305`（越权统一同码，安全方案 §8.1）。需携带后台 Token。
+
+        支持按「角色」筛选 —— [153] 起 `audit_log.operator_role` 枚举已覆盖 PRD 四角色
+        （`super_admin`/`auditor`/`operator`/`algo`，另有 `system`/`user`）。
+      parameters:
+        - name: operator_id
+          in: query
+          required: false
+          schema: { type: integer, format: int64 }
+        - name: operator_role
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [super_admin, auditor, operator, algo, system, user]
+        - name: action
+          in: query
+          required: false
+          schema: { type: string }
+        - name: target_type
+          in: query
+          required: false
+          schema: { type: string }
+        - name: target_id
+          in: query
+          required: false
+          schema: { type: integer, format: int64 }
+        - name: from
+          in: query
+          required: false
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          required: false
+          schema: { type: string, format: date-time }
+        - name: page
+          in: query
+          required: false
+          schema: { type: integer, format: int32, default: 1 }
+        - name: page_size
+          in: query
+          required: false
+          schema: { type: integer, format: int32, default: 20 }
+      responses:
+        '200':
+          description: 查询成功（按操作时间倒序）
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [items, total, page, page_size]
+                        properties:
+                          items:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                id: { type: integer, format: int64 }
+                                operator_id: { type: integer, format: int64 }
+                                operator_role: { type: string }
+                                action: { type: string }
+                                target_type: { type: string }
+                                target_id: { type: integer, format: int64 }
+                                before_value: { type: string, nullable: true }
+                                after_value: { type: string, nullable: true }
+                                reason: { type: string, nullable: true }
+                                created_at: { type: string, format: date-time }
+                          total: { type: integer, format: int64 }
+                          page: { type: integer, format: int32 }
+                          page_size: { type: integer, format: int32 }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/audit-logs/export:
+    get:
+      tags: [admin]
+      summary: 审计留痕导出为 CSV
+      operationId: exportAuditLogs
+      x-batch: Batch2
+      x-domain: admin
+      description: |
+        PRD §9.10.1「审计留痕…导出需二次确认」。同步导出：服务端按与
+        `GET /admin/audit-logs` **完全一致**的过滤条件拼好 CSV 文本，经统一响应信封
+        的 `data.content` 返回（**不直出 `text/csv`**：全站响应统一经套壳器包成
+        `{code,message,data,request_id}`，直出文件会破坏信封；详见 `AdminAuditExportResponse` 类注释）。
+        前端二次确认后把 `content` 存为 `file_name`。
+
+        单次上限 10,000 行（超上限只导出前 N 行，`row_count` 回传实际行数）。
+        **权限：仅超级管理员**，其余角色回 `40305`。
+      parameters:
+        - name: operator_id
+          in: query
+          required: false
+          schema: { type: integer, format: int64 }
+        - name: operator_role
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [super_admin, auditor, operator, algo, system, user]
+        - name: action
+          in: query
+          required: false
+          schema: { type: string }
+        - name: target_type
+          in: query
+          required: false
+          schema: { type: string }
+        - name: target_id
+          in: query
+          required: false
+          schema: { type: integer, format: int64 }
+        - name: from
+          in: query
+          required: false
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          required: false
+          schema: { type: string, format: date-time }
+      responses:
+        '200':
+          description: 导出成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/AdminAuditExport' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/match-config:
+    get:
+      tags: [admin]
+      summary: 读取撮合权重配置 + AB 开关
+      operationId: getMatchConfig
+      x-batch: Batch2
+      x-domain: admin
+      description: |
+        PRD §9.10.1 ③「撮合权重配置 + AB 开关」。三项权重为 PRD §6.11 唯一口径
+        （时效 0.40 / 距离 0.40 / 完整度档 0.20）；配置缺失时回退该默认口径。
+        **权限：算法运营或超级管理员**，其余角色回 `40305`。
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminMatchConfig'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    put:
+      tags: [admin]
+      summary: 更新撮合权重配置 + AB 开关
+      operationId: updateMatchConfig
+      x-batch: Batch2
+      x-domain: admin
+      description: |
+        三项权重之和必须为 **1**（否则回 `40001`）。权重与开关变更属 PRD §9.10.1
+        「必留操作」，与配置落库**同事务**写 `audit_log`。
+        **权限：算法运营或超级管理员**。
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [weight_time, weight_distance, weight_completeness, gbdt_enabled, gray_ratio]
+              properties:
+                weight_time: { type: number, format: double, minimum: 0 }
+                weight_distance: { type: number, format: double, minimum: 0 }
+                weight_completeness: { type: number, format: double, minimum: 0 }
+                gbdt_enabled: { type: boolean }
+                gray_ratio: { type: integer, format: int32, minimum: 0, maximum: 100 }
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/switches:
+    get:
+      tags: [admin]
+      summary: 读取模型/性能降级开关
+      operationId: getSwitchConfig
+      x-batch: Batch2
+      x-domain: admin
+      description: |
+        PRD §9.10.1 ⑦「模型降级开关 + 性能降级开关」（§6.12 冷启动降级 / §6.10.1）。
+        **权限：算法运营或超级管理员**。
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminSwitchConfig'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    put:
+      tags: [admin]
+      summary: 更新模型/性能降级开关
+      operationId: updateSwitchConfig
+      x-batch: Batch2
+      x-domain: admin
+      description: |
+        开关变更属 PRD §9.10.1「必留操作」，与配置落库**同事务**写 `audit_log`。
+        **权限：算法运营或超级管理员**。
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [model_downgrade_enabled, perf_downgrade_enabled]
+              properties:
+                model_downgrade_enabled: { type: boolean }
+                perf_downgrade_enabled: { type: boolean }
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/categories:
+    get:
+      tags: [admin]
+      summary: 分类配置全量列表
+      operationId: adminListCategories
+      x-batch: Batch2
+      x-domain: admin
+      description: |
+        PRD §9.10.1 ①「分类配置」。后台视角返回全量分类行，含不下发客户端的可配字段
+        （`forbidden` / `need_cert` / `sort_order` / `cluster_threshold`）。
+        **权限：运营专员或超级管理员**，其余角色回 `40305`。
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminCategoryList' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    post:
+      tags: [admin]
+      summary: 新增叶子类目（leaf 级）
+      operationId: adminCreateCategory
+      x-batch: Batch2
+      x-domain: admin
+      description: |
+        叶子 ID = L2 × 100 + 叶内序号（追加，已发布编号不重排）。写库后 bump 分类树版本号
+        + 失效缓存，客户端按版本协商拉到新树（PRD §9.10.1 ① 验收「5 分钟内生效」）。
+        新增属「必留操作」，同事务写 `audit_log`。**权限：运营专员或超级管理员**。
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminCategoryCreateRequest' }
+      responses:
+        '200':
+          description: 新增成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/categories/{id}:
+    put:
+      tags: [admin]
+      summary: 更新类目（改名/禁用/高敏/排序/图标）
+      operationId: adminUpdateCategory
+      x-batch: Batch2
+      x-domain: admin
+      description: |
+        PRD §9.10.1 ①。入参为 `null` 的字段表示**不改该列**（本表无「清空」语义）。
+        更新属「必留操作」，同事务写 `audit_log`；改后 bump 分类树版本号 + 失效缓存。
+        **权限：运营专员或超级管理员**。
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 类目 ID（即层级编号）
+          schema: { type: integer, format: int32 }
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminCategoryUpdateRequest' }
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/templates/{template_key}:
+    get:
+      tags: [admin]
+      summary: 读取发布模板（Schema + 版本号）
+      operationId: adminGetTemplate
+      x-batch: Batch2
+      x-domain: admin
+      description: |
+        PRD §9.10.1 ②「模板 Schema 编辑器」。`template_key` 即 `template.leaf_category_id`
+        —— 本工程模板按 **L2 父级** 存储，同 L2 下所有叶子共享一份模板。无自定义模板时
+        `template_version=0`、`fields=null`（前端按通用模板渲染）。
+        **权限：运营专员或超级管理员**。
+      parameters:
+        - name: template_key
+          in: path
+          required: true
+          description: 模板键（L2 类目 ID）
+          schema: { type: integer, format: int32 }
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminTemplate' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    put:
+      tags: [admin]
+      summary: 保存模板新版本
+      operationId: adminSaveTemplate
+      x-batch: Batch2
+      x-domain: admin
+      description: |
+        PRD §9.10.1 ②「保存新版本」+ 验收「改完模板新版本立即生效」。版本号每次 +1
+        （与 `post.template_version` 对齐），保存后清空模板缓存。`fields` 必须为非空 JSON
+        数组，否则回 `40001`。保存属「必留操作」，同事务写 `audit_log`。
+        **权限：运营专员或超级管理员**。
+      parameters:
+        - name: template_key
+          in: path
+          required: true
+          description: 模板键（L2 类目 ID）
+          schema: { type: integer, format: int32 }
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminTemplateSaveRequest' }
+      responses:
+        '200':
+          description: 保存成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/reports:
+    get:
+      tags: [admin]
+      summary: 举报工单队列（按风险分排序）
+      operationId: adminListReports
+      x-batch: Batch2
+      x-domain: admin
+      description: |
+        PRD §9.10.1 ④「举报工单列表」+ §9.10.3 举报分级响应引擎。返回工单按**被举报帖子
+        累计风险分降序**（`post.risk_score`），同分按举报时间升序。默认状态 `pending`。
+        **权限：内容审核员或超级管理员**，其余角色回 `40305`。
+      parameters:
+        - name: status
+          in: query
+          required: false
+          description: 工单状态筛选（默认 pending）
+          schema: { type: string }
+        - name: page
+          in: query
+          required: false
+          schema: { type: integer, format: int32, minimum: 1 }
+        - name: page_size
+          in: query
+          required: false
+          schema: { type: integer, format: int32, minimum: 1, maximum: 100 }
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminReportPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/reports/{id}/handle:
+    post:
+      tags: [admin]
+      summary: 处理举报工单（打标误报 / 判定下架）
+      operationId: adminHandleReport
+      x-batch: Batch2
+      x-domain: admin
+      description: |
+        PRD §9.10.1 ④。`action=false_report`：置 `is_false_report=1` 并**回撤**该举报的
+        风险分贡献（§9.10.3「误报不计入累计」）；`action=offline`：对被举报帖子执行审核
+        下架（`status_reason=2`）。已处理的工单再处理回 `40001`。处理属「必留操作」，
+        同事务写 `audit_log`。**权限：内容审核员或超级管理员**。
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 举报 ID
+          schema: { type: integer, format: int64 }
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminReportHandleRequest' }
+      responses:
+        '200':
+          description: 处理成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/follow-ups:
+    get:
+      tags: [admin]
+      summary: 待运营跟进队列
+      operationId: adminListFollowUps
+      x-batch: Batch2
+      x-domain: admin
+      description: |
+        PRD §6.4.4「空圈且 30 秒内三级兜底均无结果 → 该需求进待运营跟进队列」。
+        队列由 `/posts/search` 返回 `total=0` 时写入（本工程以 total=0 作为等价触发点）。
+        默认状态 `pending`，按入队时间升序。**权限：运营专员或超级管理员**，其余回 `40305`。
+      parameters:
+        - name: status
+          in: query
+          required: false
+          description: 状态筛选（默认 pending）
+          schema: { type: string, enum: [pending, handled] }
+        - name: page
+          in: query
+          required: false
+          schema: { type: integer, format: int32, minimum: 1 }
+        - name: page_size
+          in: query
+          required: false
+          schema: { type: integer, format: int32, minimum: 1, maximum: 100 }
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminFollowUpPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/follow-ups/{id}/handle:
+    post:
+      tags: [admin]
+      summary: 处理（跟进）队列条目
+      operationId: adminHandleFollowUp
+      x-batch: Batch2
+      x-domain: admin
+      description: |
+        置条目为 `handled` 并记处理人与时间；已处理再处理回 `40001`。处理属「必留操作」，
+        同事务写 `audit_log`。**权限：运营专员或超级管理员**。
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 队列条目 ID
+          schema: { type: integer, format: int64 }
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminFollowUpHandleRequest' }
+      responses:
+        '200':
+          description: 处理成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/temp-categories:
+    get:
+      tags: [admin]
+      summary: 临时类目列表
+      operationId: adminListTempCategories
+      x-batch: Batch2
+      x-domain: admin
+      description: |
+        PRD §9.10.2「72h 临时类目快速验证通道」。返回临时类目及其 72h 判定快照
+        （`publish_count` / `contact_count` / `promoted`；**结算前为 null**）。
+        按创建时间倒序。**权限：运营专员或超级管理员**，其余回 `40305`。
+      parameters:
+        - name: status
+          in: query
+          required: false
+          description: 生命周期筛选（不传 = 不限）
+          schema: { type: string, enum: [active, expired, promoted] }
+        - name: page
+          in: query
+          required: false
+          schema: { type: integer, format: int32, minimum: 1 }
+        - name: page_size
+          in: query
+          required: false
+          schema: { type: integer, format: int32, minimum: 1, maximum: 100 }
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminTempCategoryList' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    post:
+      tags: [admin]
+      summary: 创建 72h 临时类目
+      operationId: adminCreateTempCategory
+      x-batch: Batch2
+      x-domain: admin
+      description: |
+        PRD §9.10.2。在该 L2（通常为「临时」）下挂一个临时叶子：落 `category` +
+        `temp_category`，`expire_at = now + 72h`；到期由定时任务结算（发布数 ≥3 且
+        被联系数 ≥5 → `promoted` 进转正候选池，否则 `expired` 并置分类树禁发）。
+        创建属「必留操作」，同事务写 `audit_log`。**权限：运营专员或超级管理员**。
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminTempCategoryCreateRequest' }
+      responses:
+        '200':
+          description: 创建成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/cert-access-requests:
+    get:
+      tags: [admin]
+      summary: 敏感查看复核申请列表
+      operationId: adminListCertAccessRequests
+      x-batch: Batch2
+      x-domain: admin
+      description: |
+        PRD §9.10.1「敏感查看双人复核」的申请队列（按申请时间倒序）。
+        **权限：内容审核员或超级管理员**，其余角色回 `40305`。
+      parameters:
+        - name: status
+          in: query
+          required: false
+          description: 复核状态筛选（不传 = 不限）
+          schema: { type: string, enum: [pending, approved, rejected] }
+        - name: page
+          in: query
+          required: false
+          schema: { type: integer, format: int32, minimum: 1 }
+        - name: page_size
+          in: query
+          required: false
+          schema: { type: integer, format: int32, minimum: 1, maximum: 100 }
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminCertAccessPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    post:
+      tags: [admin]
+      summary: 发起认证敏感查看申请
+      operationId: adminCreateCertAccessRequest
+      x-batch: Batch2
+      x-domain: admin
+      description: |
+        PRD §9.10.1：查看认证原始信息须「另一名管理员确认」。本端点发起申请（落
+        `pending`）；认证不存在回 `41001`，同发起人对该认证已有待复核申请回 `40001`。
+        **权限：内容审核员或超级管理员**。
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminCertAccessCreateRequest' }
+      responses:
+        '200':
+          description: 发起成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '410': { $ref: '#/components/responses/Gone' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/cert-access-requests/{id}/review:
+    post:
+      tags: [admin]
+      summary: 复核敏感查看申请（通过 / 驳回）
+      operationId: adminReviewCertAccessRequest
+      x-batch: Batch2
+      x-domain: admin
+      description: |
+        双人复核：**复核人必须与发起人不同**（自审回 `40001`）。驳回强制填写理由；
+        非待复核状态再复核回 `40001`。复核属「必留操作」，同事务写 `audit_log`。
+        **权限：内容审核员或超级管理员**。
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 申请 ID
+          schema: { type: integer, format: int64 }
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminCertAccessReviewRequest' }
+      responses:
+        '200':
+          description: 复核成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '410': { $ref: '#/components/responses/Gone' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/cert-access-requests/{id}/content:
+    get:
+      tags: [admin]
+      summary: 打开认证原始信息
+      operationId: adminOpenCertAccessContent
+      x-batch: Batch2
+      x-domain: admin
+      description: |
+        仅在复核通过、且由**发起人本人**调用时返回认证原始信息（`cert.ocr_image_ref`）；
+        非本人回 `40305`（越权统一同码），尚未通过回 `40001`。
+        每次打开写审计 `cert.sensitive_view`（PRD §9.10.1「查看用户脱敏信息」必留）。
+        **权限：内容审核员或超级管理员**。
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 申请 ID
+          schema: { type: integer, format: int64 }
+      responses:
+        '200':
+          description: 打开成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/AdminCertAccessContent' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '410': { $ref: '#/components/responses/Gone' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/reports/batch-handle:
+    post:
+      tags: [admin]
+      summary: 批量处理举报工单
+      operationId: adminBatchHandleReports
+      x-batch: Batch2
+      x-domain: admin
+      description: |
+        PRD §9.10.1 ④「批量处理」。整批**同事务**：任一条失败（不存在/已处理/动作非法）
+        则整批回滚，不做部分成功。单次条数上限 `100`（超上限回 `40001`，不静默截断）。
+        审计**逐条**写（每条都有独立后果，合并会让「哪个帖子被下架」不可读）。
+        **权限：内容审核员或超级管理员**。
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminReportBatchHandleRequest' }
+      responses:
+        '200':
+          description: 处理成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/accounts:
+    get:
+      tags: [admin]
+      summary: 后台账号列表
+      operationId: adminListAccounts
+      x-batch: Batch2
+      x-domain: admin
+      description: |
+        PRD §9.10.1 角色表「超级管理员：全部 + **账号与角色管理**」。返回全部后台账号，
+        **不含口令哈希**。**权限：仅超级管理员**，其余角色回 `40305`。
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminAccountList' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    post:
+      tags: [admin]
+      summary: 新建后台账号
+      operationId: adminCreateAccount
+      x-batch: Batch2
+      x-domain: admin
+      description: |
+        口令经 PBKDF2 哈希后入库，**审计与日志不含口令任何形态**；用户名唯一（重复回 `40001`）；
+        口令长度下限见 `NfrAdmin.PASSWORD_MIN_LENGTH`；角色必须是 PRD 四角色之一。
+        **权限：仅超级管理员**。
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminAccountCreateRequest' }
+      responses:
+        '200':
+          description: 新建成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/accounts/{id}:
+    put:
+      tags: [admin]
+      summary: 修改后台账号角色/状态
+      operationId: adminUpdateAccount
+      x-batch: Batch2
+      x-domain: admin
+      description: |
+        两字段均为可选，`null` 表示不改；两项都为空回 `40001`（避免客户端字段名拼错被静默吞掉）。
+        **权限：仅超级管理员**。
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 账号 ID
+          schema: { type: integer, format: int64 }
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminAccountUpdateRequest' }
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/accounts/{id}/password:
+    post:
+      tags: [admin]
+      summary: 重置后台账号口令
+      operationId: adminResetAccountPassword
+      x-batch: Batch2
+      x-domain: admin
+      description: |
+        口令哈希后入库；审计只记「发生了重置」，**不记口令值/哈希**。**权限：仅超级管理员**。
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 账号 ID
+          schema: { type: integer, format: int64 }
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminPasswordResetRequest' }
+      responses:
+        '200':
+          description: 重置成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
 components:
 
   # ===========================================================================
@@ -2336,6 +3356,333 @@ components:
         message: { type: string, example: 缺少必填参数 grid_id }
         data: { nullable: true, example: null }
         request_id: { type: string, example: req_7f3a91c2 }
+
+    # ---------- 运营治理后台（功能域 admin，[153] B2-5） ----------
+
+    AdminMatchConfig:
+      type: object
+      description: 撮合权重配置 + AB 开关（PRD §9.10.1 ③；权重口径 §6.11）
+      required: [weight_time, weight_distance, weight_completeness, gbdt_enabled, gray_ratio]
+      properties:
+        weight_time: { type: number, format: double, example: 0.4 }
+        weight_distance: { type: number, format: double, example: 0.4 }
+        weight_completeness: { type: number, format: double, example: 0.2 }
+        gbdt_enabled: { type: boolean, description: GBDT override 开关 }
+        gray_ratio:
+          type: integer
+          format: int32
+          description: AB 灰度比例（整数百分比 0–100）
+          example: 10
+
+    AdminSwitchConfig:
+      type: object
+      description: 模型/性能降级开关（PRD §9.10.1 ⑦）
+      required: [model_downgrade_enabled, perf_downgrade_enabled]
+      properties:
+        model_downgrade_enabled: { type: boolean, description: 模型降级开关（§6.12 冷启动降级） }
+        perf_downgrade_enabled: { type: boolean, description: 性能降级开关（§6.10.1） }
+
+    AdminCategoryItem:
+      type: object
+      description: 分类行（后台视角，含不下发客户端的可配字段；PRD §9.10.1 ①）
+      required: [id, level, name]
+      properties:
+        id: { type: integer, format: int32, description: 类目 ID（即层级编号） }
+        parent_id: { type: integer, format: int32, nullable: true, description: 父类目 ID（顶级为 null） }
+        level: { type: integer, format: int32, description: 层级 1/2/3 }
+        name: { type: string }
+        icon: { type: string, nullable: true, description: Material Symbols 图标名 }
+        need_cert:
+          type: string
+          nullable: true
+          description: 高敏所需认证类型（null = 非高敏）
+        forbidden: { type: integer, format: int32, description: 禁发标记 0/1 }
+        sort_order: { type: integer, format: int32, description: 同级排序 }
+        cluster_threshold: { type: integer, format: int32, description: 差异化聚合阈值 }
+
+    AdminCategoryList:
+      type: object
+      description: 分类配置全量列表（PRD §9.10.1 ①）
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/AdminCategoryItem' }
+
+    AdminCategoryCreateRequest:
+      type: object
+      description: 新增叶子类目入参（PRD §9.10.1 ①）
+      required: [parent_id, name]
+      properties:
+        parent_id: { type: integer, format: int32, description: 挂载的二级类目 ID（非 L2 → 40001） }
+        name: { type: string, maxLength: 32 }
+        icon: { type: string, maxLength: 64 }
+        need_cert: { type: string, maxLength: 32, description: 高敏所需认证类型（可空） }
+        forbidden: { type: integer, format: int32, minimum: 0, maximum: 1 }
+        sort_order: { type: integer, format: int32 }
+
+    AdminCategoryUpdateRequest:
+      type: object
+      description: 更新类目入参（null 字段 = 不改该列；PRD §9.10.1 ①）
+      properties:
+        name: { type: string, maxLength: 32 }
+        icon: { type: string, maxLength: 64 }
+        need_cert: { type: string, maxLength: 32 }
+        forbidden: { type: integer, format: int32, minimum: 0, maximum: 1 }
+        sort_order: { type: integer, format: int32 }
+
+    AdminTemplate:
+      type: object
+      description: 模板读取出参（PRD §9.10.1 ②）
+      required: [template_key, template_version]
+      properties:
+        template_key: { type: integer, format: int32, description: 模板键（L2 类目 ID） }
+        template_version: { type: integer, format: int32, description: 当前版本号（0 = 无自定义模板） }
+        fields:
+          type: array
+          nullable: true
+          description: Schema 字段数组（null = 无自定义模板，前端按通用模板渲染）
+          items: { type: object, additionalProperties: true }
+
+    AdminTemplateSaveRequest:
+      type: object
+      description: 模板保存入参（PRD §9.10.1 ②）
+      required: [fields]
+      properties:
+        fields:
+          type: array
+          minItems: 1
+          description: 新 Schema 字段数组（非空；非法 → 40001）
+          items: { type: object, additionalProperties: true }
+
+    AdminReportItem:
+      type: object
+      description: 举报工单行（PRD §9.10.1 ④、§9.10.3）
+      required: [report_id, post_id, reason, status, risk_score]
+      properties:
+        report_id: { type: integer, format: int64 }
+        post_id: { type: integer, format: int64 }
+        post_title: { type: string, description: 被举报帖子标题 }
+        reason: { type: string, description: 举报原因枚举 }
+        weight: { type: integer, format: int32, description: 该举报的风险分贡献 }
+        status: { type: string, description: 工单状态 }
+        is_false_report: { type: integer, format: int32, description: 是否已打标误报（0/1） }
+        risk_score: { type: integer, format: int32, description: 被举报帖子累计风险分 }
+        created_at: { type: string, format: date-time, description: 举报时间 }
+
+    AdminReportPage:
+      type: object
+      description: 举报工单分页（PRD §9.10.1 ④）
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/AdminReportItem' }
+        total: { type: integer, format: int64 }
+        page: { type: integer, format: int32 }
+        page_size: { type: integer, format: int32 }
+
+    AdminReportHandleRequest:
+      type: object
+      description: 举报工单处理入参（PRD §9.10.1 ④）
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum: [false_report, offline]
+          description: false_report=打标误报（回撤风险分）；offline=判定下架
+
+    AdminFollowUpItem:
+      type: object
+      description: 待运营跟进队列条目（PRD §6.4.4）
+      required: [id, status]
+      properties:
+        id: { type: integer, format: int64 }
+        user_id: { type: integer, format: int64, nullable: true, description: 触发检索的用户（游客为 null） }
+        keyword: { type: string, nullable: true }
+        l2_category_id: { type: integer, format: int32, nullable: true }
+        grid_id: { type: string, nullable: true, description: 坐标网格（约 500m，粗粒度） }
+        status: { type: string, description: pending/handled }
+        triggered_at: { type: string, format: date-time }
+
+    AdminFollowUpPage:
+      type: object
+      description: 待运营跟进队列分页（PRD §6.4.4）
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/AdminFollowUpItem' }
+        total: { type: integer, format: int64 }
+        page: { type: integer, format: int32 }
+        page_size: { type: integer, format: int32 }
+
+    AdminFollowUpHandleRequest:
+      type: object
+      description: 跟进队列处理入参（PRD §6.4.4）
+      properties:
+        remark: { type: string, maxLength: 255, description: 处理备注（可空） }
+
+    AdminAuditExport:
+      type: object
+      description: 审计导出的 CSV 承载（PRD §9.10.1「导出需二次确认」）
+      required: [file_name, content_type, content, row_count]
+      properties:
+        file_name: { type: string, description: 建议文件名（含 .csv 后缀） }
+        content_type: { type: string, description: '固定 text/csv; charset=UTF-8' }
+        content: { type: string, description: 同步拼好的 CSV 正文（含表头，RFC 4180） }
+        row_count: { type: integer, format: int32, description: 实际导出行数（不含表头） }
+
+    AdminCertAccessPage:
+      type: object
+      description: 敏感查看复核申请分页（PRD §9.10.1）
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/AdminCertAccessItem' }
+        total: { type: integer, format: int64 }
+        page: { type: integer, format: int32 }
+        page_size: { type: integer, format: int32 }
+
+    AdminCertAccessItem:
+      type: object
+      description: 敏感查看复核申请条目
+      required: [id, cert_id, requester_id, reason, status]
+      properties:
+        id: { type: integer, format: int64 }
+        cert_id: { type: integer, format: int64, description: 目标认证记录 ID }
+        requester_id: { type: integer, format: int64, description: 发起人（后台账号 ID） }
+        reason: { type: string, description: 查看理由 }
+        status: { type: string, enum: [pending, approved, rejected] }
+        reviewer_id: { type: integer, format: int64, nullable: true, description: 复核人（未复核为 null） }
+        reviewed_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time, nullable: true }
+
+    AdminCertAccessCreateRequest:
+      type: object
+      description: 发起认证敏感查看申请入参（PRD §9.10.1）
+      required: [cert_id, reason]
+      properties:
+        cert_id: { type: integer, format: int64, description: 目标认证记录 ID }
+        reason: { type: string, maxLength: 255, description: 查看理由（必填） }
+
+    AdminCertAccessReviewRequest:
+      type: object
+      description: 复核认证敏感查看申请入参（PRD §9.10.1）
+      required: [approved]
+      properties:
+        approved: { type: boolean, description: 是否通过 }
+        reason: { type: string, maxLength: 255, description: 复核说明（驳回时必填） }
+
+    AdminCertAccessContent:
+      type: object
+      description: 认证原始信息（仅在复核通过且发起人本人调用时返回；每次打开写审计）
+      required: [cert_id]
+      properties:
+        cert_id: { type: integer, format: int64 }
+        ocr_image_ref: { type: string, nullable: true, description: 资质图原始引用（可空表示无资质图） }
+
+    AdminTempCategoryList:
+      type: object
+      description: 临时类目分页（PRD §9.10.2）
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/AdminTempCategoryItem' }
+        total: { type: integer, format: int64 }
+        page: { type: integer, format: int32 }
+        page_size: { type: integer, format: int32 }
+
+    AdminTempCategoryItem:
+      type: object
+      description: 临时类目条目（含 72h 判定快照；结算前统计字段为 null）
+      required: [id, l2_parent_id, name, status]
+      properties:
+        id:
+          type: integer
+          format: int32
+          description: 临时叶子类目 ID（= category.id）
+        l2_parent_id: { type: integer, format: int32, description: 挂载的「临时」二级类目 ID }
+        name: { type: string }
+        status:
+          type: string
+          description: 生命周期
+          enum: [active, expired, promoted]
+        created_by: { type: integer, format: int64, nullable: true, description: 创建人（后台账号 ID） }
+        created_at: { type: string, format: date-time, nullable: true }
+        expire_at: { type: string, format: date-time, nullable: true, description: 自动下线时刻 }
+        closed_at: { type: string, format: date-time, nullable: true, description: 结算时刻 }
+        publish_count: { type: integer, format: int32, nullable: true, description: 72h 内发布数 }
+        contact_count: { type: integer, format: int32, nullable: true, description: 72h 内被联系数 }
+        promoted: { type: boolean, nullable: true, description: 是否达标进转正候选池 }
+
+    AdminTempCategoryCreateRequest:
+      type: object
+      description: 创建临时类目入参（PRD §9.10.2）
+      required: [l2_parent_id, name]
+      properties:
+        l2_parent_id: { type: integer, format: int32, description: 挂载的「临时」二级类目 ID }
+        name: { type: string, maxLength: 32 }
+
+    AdminReportBatchHandleRequest:
+      type: object
+      description: 举报工单批量处理入参（PRD §9.10.1 ④）
+      required: [report_ids, action]
+      properties:
+        report_ids:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items: { type: integer, format: int64 }
+        action:
+          type: string
+          enum: [false_report, offline]
+
+    AdminAccountItem:
+      type: object
+      description: 后台账号条目（不含口令哈希；PRD §9.10.1 超管「账号与角色管理」）
+      required: [id, username, role, status]
+      properties:
+        id: { type: integer, format: int64 }
+        username: { type: string }
+        role: { type: string, description: super_admin/auditor/operator/algo }
+        status: { type: string, description: active/disabled }
+        last_login_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time, nullable: true }
+
+    AdminAccountList:
+      type: object
+      description: 后台账号列表（PRD §9.10.1 超管专属）
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/AdminAccountItem' }
+
+    AdminAccountCreateRequest:
+      type: object
+      description: 新建后台账号入参（PRD §9.10.1 超管专属）
+      required: [username, password, role]
+      properties:
+        username: { type: string, maxLength: 64 }
+        password: { type: string, maxLength: 128, description: 长度下限见 NfrAdmin.PASSWORD_MIN_LENGTH }
+        role: { type: string, enum: [super_admin, auditor, operator, algo] }
+
+    AdminAccountUpdateRequest:
+      type: object
+      description: 修改后台账号入参（null = 不改；PRD §9.10.1 超管专属）
+      properties:
+        role: { type: string, enum: [super_admin, auditor, operator, algo] }
+        status: { type: string, enum: [active, disabled] }
+
+    AdminPasswordResetRequest:
+      type: object
+      description: 重置后台账号口令入参（PRD §9.10.1 超管专属）
+      required: [new_password]
+      properties:
+        new_password: { type: string, maxLength: 128 }
 
     # ---------- 通用枚举与基础类型 ----------
 
@@ -2785,6 +4132,54 @@ components:
             （`l2_category_id` / `completeness_level` / `grid_id` / `expire_at` / `version`）
             **由服务端生成，客户端传了也被忽略**。
 
+    PostUpdateRequest:
+      allOf:
+        - $ref: '#/components/schemas/PostDraft'
+        - type: object
+          required: [version, type, leaf_category_id, title, lng, lat]
+          properties:
+            version:
+              type: integer
+              format: int64
+              description: |
+                乐观锁版本号（须取自 `GET /posts/mine` 或 `GET /posts/{id}` 的 `version`）。
+                不符、非本人、行不存在或非在架一律回 `40903`（0 行不区分成因）。
+          description: |
+            [B2-8] 编辑载荷。字段集与 `PostCreateRequest` 一致，**但 `contact_type`/`contact_value`
+            可空**——`contact_value` 为 `null` 表示**保留原密文不改**（完整联系方式明文唯一出口是
+            `GET /posts/{id}/contact`，安全方案 §4.6 出口收敛；本接口不回显亦不要求重填）。
+
+    RepostDraft:
+      type: object
+      description: |
+        [B2-8] 克隆重发草稿载荷（PRD §8.4/§8.6）。服务端读取原帖返回**可编辑草稿**（**不落库**），
+        前端带入发布页编辑态，用户确认后走 `POST /posts`。**不含完整联系方式**（只 `contact_type` + 脱敏 `contact_mask`）。
+      required: [source_post_id, type, leaf_category_id, title, lng, lat, category_available]
+      properties:
+        source_post_id: { type: integer, format: int64, description: 原帖 ID }
+        type: { $ref: '#/components/schemas/PostTypeEnum' }
+        leaf_category_id: { type: integer, format: int32 }
+        title: { type: string }
+        price: { type: number, format: double, nullable: true, description: 价格（元）；null=面议 }
+        price_unit: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+        attributes:
+          type: object
+          additionalProperties: true
+          description: 动态属性（原帖 `template_values` 反序列化）
+        lng: { type: number, format: double }
+        lat: { type: number, format: double }
+        address: { type: string, nullable: true }
+        address_precise: { type: boolean, nullable: true }
+        media_ids:
+          type: array
+          items: { type: string }
+        contact_type: { type: string, nullable: true, description: 原渠道（phone/wechat） }
+        contact_mask: { type: string, nullable: true, description: 脱敏原联系方式（不回显明文） }
+        category_available:
+          type: boolean
+          description: false = 原分类已被运营停用（PRD §8.7），前端须提示重选分类
+
     PrecheckResult:
       type: object
       required: [passed, blocks]
@@ -2862,9 +4257,10 @@ components:
           type: string
           nullable: true
           description: |
-            脱敏联系方式。**本接口恒为 `null`**：完整/脱敏值只由 `/posts/{id}/contact` 返回
-            （解密唯一入口在 contact 域）。`POST /posts` 出参会给出真实脱敏值，故两处形态不同，
-            客户端须按可空处理。
+            发布时落库的脱敏联系方式（`post.contact_mask`，[147] DEC-13）。由发布端
+            **明文派生**、非密文回解，故不破坏「解密唯一入口在 contact 域」这一红线；
+            完整明文仍只由 `GET /posts/{id}/contact` 返回。**可空**：存量行（迁移前发布）
+            为 `null`，客户端须按可空处理。
           example: 138****8000
         completeness_level: { $ref: '#/components/schemas/CompletenessLevelEnum' }
         status: { $ref: '#/components/schemas/PostStatusEnum' }

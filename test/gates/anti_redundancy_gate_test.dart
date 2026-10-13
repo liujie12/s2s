@@ -825,7 +825,9 @@ void main() {
     /// 55 = 58 − cert_models 3（[B2-11]：cert_models.dart 改用
     /// core/contract_json 助手，3 处直抛上浮回 contract_json 既有 15 处）；
     /// 56 = 55 + post_dto ×1（[B2-11]：`PostDetail.media` 非数组时抛 parseError）。
-    const int parseFactoryTotalBaseline = 56;
+    /// 59 = 56 + post_dto ×3（[B2-8]：`RepostDraftDto` 的 attributes 对象校验 1
+    /// + lng/lat 缺失校验 2）。
+    const int parseFactoryTotalBaseline = 59;
 
     test('lib/features/ 无 for/while 循环重试（详设 §14.2，判据 A1）', () {
       // 先断言扫描面非空且不小于基线（部署 §14.5：先断言待判对象存在），

@@ -38,6 +38,7 @@ import '../features/publish/category_selector_screen.dart';
 import '../features/publish/cert_modal_screen.dart';
 import '../features/publish/publish_form_state.dart';
 import '../features/publish/publish_screen.dart';
+import '../features/publish/publish_screen_args.dart';
 import '../features/publish/publish_success_screen.dart';
 import '../features/settings/settings_screen.dart';
 
@@ -183,7 +184,13 @@ final List<RouteBase> _routes = [
   ),
   GoRoute(
     path: AppRoutes.publish,
-    builder: (context, state) => const PublishScreen(),
+    // extra 传 [PublishScreenArgs]（初始表单 + 编辑态信息，[B2-8]）；
+    // 允许为空是为了让路由可被直接访问时不崩，空则退化为空白新建表单。
+    builder: (context, state) => PublishScreen(
+      args: state.extra is PublishScreenArgs
+          ? state.extra as PublishScreenArgs
+          : const PublishScreenArgs(),
+    ),
   ),
   GoRoute(
     path: AppRoutes.aiConfirm,

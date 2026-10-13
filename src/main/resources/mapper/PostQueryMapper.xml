@@ -22,6 +22,7 @@
                p.lng,
                p.lat,
                p.address,
+               p.contact_mask,
                p.completeness_level,
                p.status,
                p.status_reason,
@@ -93,6 +94,23 @@
         WHERE post_id IN
         <foreach collection="postIds" item="pid" open="(" separator="," close=")">#{pid}</foreach>
         GROUP BY post_id
+    </select>
+
+    <!--
+      统计某叶子类目在时间窗内的发布数（[153] B2-5 §9.10.2 达标判定用）。
+
+      EXPLAIN 结论：`idx_leaf_category` 等值 + `created_at` 范围，属「等值前缀 + 范围」
+      组合，命中该索引的单前缀区间，无全表扫。
+
+      窗口语义：`post.created_at ∈ [from, to)`，即「该临时类目挂出后 72h 内发布的帖子数」
+      —— PRD §9.10.2「3 天内该类目发布数」。
+    -->
+    <select id="countByLeafBetween" resultType="long">
+        SELECT COUNT(*)
+        FROM post p
+        WHERE p.leaf_category_id = #{leafCategoryId}
+          AND p.created_at &gt;= #{from}
+          AND p.created_at &lt; #{to}
     </select>
 
 </mapper>

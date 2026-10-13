@@ -431,6 +431,30 @@ class NfrMatch {
   ///
   /// **粒度为二级类目**（第 14 条定案后不再设「三级→二级」回落层）。
   static const int categoryModelMinSamples = 2000;
+
+  /// 阶段 0 规则加权权重（PRD §6.11 **唯一口径**，2026-10-12 裁定）：
+  /// 时效 40% + 距离 40% + 完整度档 20%。
+  ///
+  /// 消费方：列表页综合排序（`listing_sort.dart`）与服务端 `MapService.compositeScore`
+  /// —— **双端同口径**，Java 镜像见 `common/constants/NfrMatch.java`，改动须双端同步。
+  static const double compositeWeightTime = 0.40;
+  static const double compositeWeightDistance = 0.40;
+  static const double compositeWeightCompleteness = 0.20;
+
+  /// 完整度档折算系数（PRD §6.11 供给分模型同源）：🟢 1.0 / 🟡 0.5 / 🔴 0.2。
+  ///
+  /// 注意与契约 `completeness_level`（0=🔴 / 1=🟡 / 2=🟢）**不是同一个数值**，
+  /// 映射由 `CompletenessLevel.fromApi` 承担，禁止在此另建一份映射。
+  static const double completenessFactorGreen = 1.0;
+  static const double completenessFactorYellow = 0.5;
+  static const double completenessFactorRed = 0.2;
+
+  /// 综合排序的归一化上界：距离 20km（范围最大档 10km 的一倍余量）、时效 7 天（§6.4.4）。
+  ///
+  /// 取「本期业务边界」而非样本极值 —— 用样本极值会让同一条信息的排名随其他
+  /// 信息的增删而跳动。
+  static const double compositeMaxDistanceMeters = 20000;
+  static const double compositeMaxAgeMinutes = 7 * 24 * 60;
 }
 
 /// §6.8 定位失败降级阈值（PRD §6.8「定位失败 ≥ 3 次 → 降级」）。

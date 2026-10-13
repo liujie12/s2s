@@ -7,6 +7,8 @@ import com.s2s.server.category.dto.CategoryTreeDto;
 import com.s2s.server.category.entity.CategoryEntity;
 import com.s2s.server.category.mapper.CategoryMapper;
 import com.s2s.server.common.config.SystemConfigService;
+import com.s2s.server.common.error.BizException;
+import com.s2s.server.common.error.ErrorCode;
 import com.s2s.server.config.CacheConfig;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -193,5 +195,130 @@ public class CategoryService {
                 entity.getForbidden() != null && entity.getForbidden() != 0,  // forbidden != 0 → 禁发
                 children
         );
+    }
+
+    // ---------------------------------------------------------------------
+    // [153] B2-5 ① 分类配置：供后台（admin 域）经 service 接口调用
+    // （编码规范 §4.2 域间只调 service，admin 不直连本域 Mapper）
+    // ---------------------------------------------------------------------
+
+    /** 分类层级：二级（模板/新增叶子的挂载父级）。 */
+    private static final int LEVEL_L2 = 2;
+
+    /** 分类层级：叶子（可发布类目）。 */
+    private static final int LEVEL_L3 = 3;
+
+    /** 四级编号：叶子 ID = L2 × 100 + 叶内序号。 */
+    private static final int LEAF_ID_FACTOR = 100;
+
+    /**
+     * 列出全部分类（后台配置页用，含 {@code forbidden}/{@code need_cert}/{@code sort_order}
+     * 等不下发客户端的可配字段）。
+     *
+     * @return {@link List} 全量分类行，按层级、排序号升序
+     */
+    public List<CategoryEntity> listAllForAdmin() {
+        return categoryMapper.selectList(new QueryWrapper<CategoryEntity>()
+                .orderByAsc("level")
+                .orderByAsc("sort_order")
+                .orderByAsc("id"));
+    }
+
+    /**
+     * 新增一个叶子类目（PRD §9.10.1 ①「新增/禁用类目（leaf 级）」）。
+     *
+     * <p>编号自增规则（数据库设计 §7.3 不变量）：叶子 ID = L2 × 100 + 叶内序号，
+     * 取该 L2 下现有最大叶子 ID + 1；<b>已发布编号不得重排</b>，故只追加不修改历史号。</p>
+     *
+     * @param parentL2Id       挂载的二级类目 ID
+     * @param name             类目名
+     * @param icon             图标名（可空）
+     * @param needCert         高敏所需认证类型（可空 = 非高敏）
+     * @param forbidden        禁发标记（0/1，可空 = 0）
+     * @param sortOrder        同级排序（可空 = 0）
+     * @return {@link Integer} 新建叶子类目 ID
+     * @throws BizException 父级不存在或非二级 → 40001
+     */
+    public Integer createLeaf(int parentL2Id, String name, String icon, String needCert,
+            Integer forbidden, Integer sortOrder) {
+        CategoryEntity parent = categoryMapper.selectById(parentL2Id);
+        if (parent == null || parent.getLevel() == null || parent.getLevel() != LEVEL_L2) {
+            throw BizException.of(ErrorCode.PARAM_INVALID);
+        }
+        List<CategoryEntity> siblings = categoryMapper.selectList(
+                new QueryWrapper<CategoryEntity>().eq("parent_id", parentL2Id));
+        int nextSeq = 1;
+        for (CategoryEntity sibling : siblings) {
+            int seq = sibling.getId() % LEAF_ID_FACTOR;
+            nextSeq = Math.max(nextSeq, seq + 1);
+        }
+        int newId = parentL2Id * LEAF_ID_FACTOR + nextSeq;
+
+        CategoryEntity created = new CategoryEntity();
+        created.setId(newId);
+        created.setParentId(parentL2Id);
+        created.setLevel(LEVEL_L3);
+        created.setName(name);
+        created.setIcon(icon);
+        created.setNeedCert(needCert);
+        created.setForbidden(forbidden == null ? 0 : forbidden);
+        created.setSortOrder(sortOrder == null ? 0 : sortOrder);
+        categoryMapper.insert(created);
+        bumpTreeVersion();
+        return newId;
+    }
+
+    /**
+     * 更新类目可配字段（PRD §9.10.1 ①：改名 / 禁用 / 高敏 / 排序 / 图标）。
+     *
+     * <p>只写非 {@code null} 字段：调用方传 {@code null} 表示「不改该列」，
+     * 避免把未提交的列清空。</p>
+     *
+     * @param id        类目 ID
+     * @param name      新名（可空）
+     * @param icon      新图标（可空）
+     * @param needCert  新高敏认证类型（传 {@code null} 表示不改；本表无「清空」语义）
+     * @param forbidden 禁发标记（可空）
+     * @param sortOrder 排序号（可空）
+     * @throws BizException 类目不存在 → 41001
+     */
+    public void updateCategory(int id, String name, String icon, String needCert,
+            Integer forbidden, Integer sortOrder) {
+        CategoryEntity existing = categoryMapper.selectById(id);
+        if (existing == null) {
+            throw BizException.of(ErrorCode.POST_GONE);
+        }
+        CategoryEntity patch = new CategoryEntity();
+        patch.setId(id);
+        patch.setName(name);
+        patch.setIcon(icon);
+        patch.setNeedCert(needCert);
+        patch.setForbidden(forbidden);
+        patch.setSortOrder(sortOrder);
+        categoryMapper.updateById(patch);
+        bumpTreeVersion();
+    }
+
+    /**
+     * 版本号 +1 并失效分类树缓存（PRD §9.10.1 ①「改完客户端 5 分钟内生效」）。
+     *
+     * <p>落地口径：分类树客户端按版本协商拉全量（openapi {@code /categories/tree}），
+     * 因此「推 JSON 到 CDN」在本工程等价于 <b>bump 版本号 + 失效本地缓存</b>，
+     * 客户端下次协商即拉到新树（TTL 兜底）。版本号格式 {@code YYYY-MM-DD.N}，
+     * 同日递增 N，跨日重置为 1（字符串比较即可判新旧）。</p>
+     */
+    private void bumpTreeVersion() {
+        String current = getServerVersion();
+        String today = java.time.LocalDate.now().toString();
+        String next;
+        if (current.startsWith(today + ".")) {
+            int sequence = Integer.parseInt(current.substring(today.length() + 1)) + 1;
+            next = today + "." + sequence;
+        } else {
+            next = today + ".1";
+        }
+        systemConfigService.putValue(CATEGORY_TREE_VERSION_KEY, next,
+                "分类树版本号（运营改配置时 bump，[153] B2-5 ①）");
+        categoryTreeCache.invalidate(CacheConfig.CATEGORY_TREE_CACHE_KEY);
     }
 }

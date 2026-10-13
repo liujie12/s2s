@@ -4,16 +4,23 @@
 /// `PATCH /posts/{id}/status`（乐观锁 + 幂等）。详情页接线见同条目
 /// `features/detail/`。
 ///
-/// **本轮接通的动作**：下架（`offline`）、刷新重发（`republish`）。
-/// **本轮降级的三类**（Batch1 无契约/无数据源，登记见说明文档 §2.9）：
-///   - 编辑 / 继续编辑：依赖 Batch2 的 `PATCH /posts/{id}`（openapi 占位）
-///     与发布页编辑态（本轮未做）；
-///   - 删除：openapi 无 `DELETE /posts/{post_id}`；
-///   - 顶部「搜索」：设计稿 `FLOW_LINKS` 未给它跳转边（无目标页）；
-///   - 「草稿」页签：服务端不存 `draft`（PRD §8.7），本地草稿属 Batch2。
-/// 降级按钮**按设计稿原样呈现**（稿是 UI 冻结对象），点击给出「本期内测版
-/// 暂未开放」的明确说明 —— 不留一个点了没反应的死按钮（说明文档 [74] 教训：
-/// 「立即补齐」承诺了一件做不到的事）。
+/// **本轮接通的动作**（[B2-8] 转真后）：下架（`offline`）、编辑（`PATCH /posts/{id}`）、
+/// 克隆重发（`POST /posts/{id}/repost`）、继续编辑（本地草稿恢复）。
+/// **仍降级的一类**：删除（openapi 无 `DELETE /posts/{post_id}`，[B2-8] 裁定本轮不做，
+/// 登记见说明文档 §2.9）。
+///
+/// **[B2-8] 转真要点**（裁定见《决策登记表》2026-10-13 B2-8 批）：
+///   - **编辑**：先 `GET /posts/{id}` 预填表单，再以 `PublishScreenArgs.editPostId`
+///     进发布页编辑态（提交走 PATCH，成功回本页刷新）；联系方式**不回显**（明文唯一
+///     出口是 `/posts/{id}/contact`），编辑态留空即服务端「保留原密文」；
+///   - **重发**：`POST /posts/{id}/repost` 取克隆草稿进发布页（**新建语义**）；
+///     原分类被停用时先提示「该分类已停用，请重选分类」（PRD §8.7）；
+///   - **搜索**：页内**本地筛选**（裁定：不新增网络请求），按标题/类目名过滤已加载列表；
+///   - **草稿页签**：数据源改为**本地草稿**（PRD §8.7 纯客户端，`draft_store.dart`），
+///     卡片动作 `[继续编辑, 删除]`（此处「删除」删的是本地草稿，真实生效）。
+///
+/// **降级按钮按设计稿原样呈现**（稿是 UI 冻结对象），点击给出「本期内测版暂未开放」
+/// 的明确说明 —— 不留一个点了没反应的死按钮（说明文档 [74] 教训）。
 ///
 /// **契约缺口一并未做**：PRD §5.11「一键刷新续 7 天」对应契约 `action=renew`，
 /// 但设计稿本页操作组无此按钮，按「不新增稿外按钮」本轮不呈现，缺口登记 §2.9。
@@ -34,8 +41,12 @@ import '../../domain/listing.dart';
 import '../../domain/listing_category_style.dart';
 import '../../domain/listing_detail.dart';
 import '../../router/app_router.dart';
+import '../publish/draft_store.dart';
+import '../publish/publish_form_state.dart';
+import '../publish/publish_screen_args.dart';
 import 'my_posts_provider.dart';
 import 'post_dto.dart';
+import 'post_repository.dart';
 import 'post_status.dart';
 
 /// 我的发布页。
@@ -53,6 +64,12 @@ class _MyPublishScreenState extends ConsumerState<MyPublishScreen> {
 
   /// 触底判定余量（像素）：提前一屏约 1/4 触发，避免用户等到底部才加载。
   static const double _loadMoreThreshold = 200;
+
+  /// 页内搜索关键词（[B2-8] 裁定：本地筛选，不新增网络请求）。
+  ///
+  /// 空串 = 未筛选。它只作用于**已加载**的列表项 —— 语义是「在当前页里找」，
+  /// 与「全站搜索」是两件事（PRD §8.3.1 只给了本页一个搜索图标）。
+  String _searchQuery = '';
 
   @override
   void initState() {
@@ -89,21 +106,42 @@ class _MyPublishScreenState extends ConsumerState<MyPublishScreen> {
     }
   }
 
-  /// 执行卡片动作：已接通动作调真接口，降级动作给出明确说明。
+  /// 执行卡片动作（[B2-8]：按动作分派到各自的真通道）。
   ///
   /// 参数：[action] 卡片动作；[item] 该动作所属的列表项（带乐观锁版本号）。
   /// 返回：[Future<void>]。
   Future<void> _onAction(MyPostCardAction action, MyPostItemDto item) async {
-    if (!action.isWired) {
-      // 降级动作：不承诺版本号，只说本期状态（说「后续版本」等于替未排期的事打包票）
-      _showMessage('${_actionLabel(action)}功能本期内测版暂未开放');
-      return;
+    switch (action) {
+      case MyPostCardAction.remove:
+        // 唯一仍降级的动作：不承诺版本号，只说本期状态
+        //（说「后续版本」等于替未排期的事打包票）。
+        _showMessage('${_actionLabel(action)}功能本期内测版暂未开放');
+      case MyPostCardAction.offline:
+        await _changeStatus(action, item);
+      case MyPostCardAction.edit:
+        await _openEdit(item);
+      case MyPostCardAction.repost:
+        await _openRepost(item);
+      case MyPostCardAction.continueEdit:
+        // 该动作只出现在「草稿」页签的本地草稿卡片上（不走本方法，
+        // 见 _buildDraftList 的 onContinue）；此处不可达，留空分支让 switch 穷尽。
+        break;
     }
-    final apiAction = action.apiAction!;
+  }
+
+  /// 状态变更（下架 / 上架类动作，走 `PATCH /posts/{id}/status`）。
+  ///
+  /// 参数：[action] 契约动作；[item] 列表项。
+  /// 返回：[Future<void>]。
+  Future<void> _changeStatus(MyPostCardAction action, MyPostItemDto item) async {
     try {
       await ref
           .read(myPostsProvider.notifier)
-          .changeStatus(postId: item.id, action: apiAction, version: item.version);
+          .changeStatus(
+            postId: item.id,
+            action: action.apiAction!,
+            version: item.version,
+          );
       _showMessage('已${_actionLabel(action)}');
     } catch (e) {
       final apiError = asApiException(e);
@@ -114,6 +152,153 @@ class _MyPublishScreenState extends ConsumerState<MyPublishScreen> {
       }
       if (mounted) _showMessage(apiError.uiMessage);
     }
+  }
+
+  /// 编辑既有帖（[B2-8]）：取详情预填表单 → 进发布页编辑态 → 返回后刷新。
+  ///
+  /// 参数：[item] 目标列表项（提供帖 ID 与乐观锁版本）。
+  /// 返回：[Future<void>]。
+  Future<void> _openEdit(MyPostItemDto item) async {
+    try {
+      // 列表项不含描述/属性/媒体/坐标，编辑态需要全量字段，故先取详情。
+      final detail = await ref.read(postRepositoryProvider).fetchDetail(item.id);
+      if (!mounted) return;
+      final saved = await context.push<bool>(
+        AppRoutes.publish,
+        extra: PublishScreenArgs(
+          initialForm: _formFromDetail(detail),
+          editPostId: item.id,
+          // 版本取自**列表项**：详情 DTO 不解析 version（它的消费面是只读展示）。
+          editVersion: item.version,
+        ),
+      );
+      if (!mounted) return;
+      if (saved == true) {
+        await ref.read(myPostsProvider.notifier).refresh();
+        if (mounted) _showMessage('已保存');
+      }
+    } catch (e) {
+      if (mounted) _showMessage(asApiException(e).uiMessage);
+    }
+  }
+
+  /// 克隆重发（[B2-8]）：取克隆草稿 → 进发布页（新建语义）→ 返回后刷新。
+  ///
+  /// 参数：[item] 目标列表项。
+  /// 返回：[Future<void>]。
+  Future<void> _openRepost(MyPostItemDto item) async {
+    try {
+      final draft = await ref.read(postRepositoryProvider).repost(item.id);
+      if (!mounted) return;
+      if (!draft.categoryAvailable) {
+        // PRD §8.7「重发分类变动」：原分类被运营停用，先告知再进编辑态
+        //（用户可在发布页重选分类）。
+        _showMessage('该分类已停用，请重选分类');
+      }
+      await context.push<bool>(
+        AppRoutes.publish,
+        extra: PublishScreenArgs(initialForm: _formFromRepost(draft)),
+      );
+      if (!mounted) return;
+      // 重发是新建语义（走 POST /posts），成功后会进完成页；返回列表时刷新。
+      await ref.read(myPostsProvider.notifier).refresh();
+    } catch (e) {
+      if (mounted) _showMessage(asApiException(e).uiMessage);
+    }
+  }
+
+  /// 打开页内搜索（本地筛选）：输入关键词并按标题/类目名过滤已加载列表。
+  ///
+  /// 返回：[Future<void>]。
+  Future<void> _openSearch() async {
+    final result = await showDialog<String>(
+      context: context,
+      builder: (_) => _SearchDialog(initialQuery: _searchQuery),
+    );
+    if (!mounted || result == null) return;
+    setState(() => _searchQuery = result.trim());
+  }
+
+  /// 按当前搜索词本地过滤列表项（标题或类目路径任一命中即保留）。
+  ///
+  /// 参数：[items] 已加载的列表项。
+  /// 返回：[List] 过滤后的列表；搜索词为空时原样返回。
+  List<MyPostItemDto> _filteredItems(List<MyPostItemDto> items) {
+    final query = _searchQuery.trim().toLowerCase();
+    if (query.isEmpty) return items;
+    return items.where((item) {
+      if (item.title.toLowerCase().contains(query)) return true;
+      final leafId = item.leafCategoryId;
+      if (leafId == null) return false;
+      // 类目路径（一级→三级）任一名称命中即匹配：用户可能记得大类名而非叶子名。
+      return categoryPathOf(leafId).any(
+        (node) => node.name.toLowerCase().contains(query),
+      );
+    }).toList();
+  }
+
+  /// 把详情 DTO 映射为发布页表单（[B2-8] 编辑态预填）。
+  ///
+  /// 参数：[detail] `GET /posts/{id}` 出参。
+  /// 返回：[PublishFormState]；联系方式**留空**（明文不回显，见文件头）。
+  PublishFormState _formFromDetail(PostDetailDto detail) {
+    return PublishFormState(
+      kind: detail.type == 'demand' ? PublishKind.demand : PublishKind.supply,
+      leafCategoryId: detail.leafCategoryId,
+      lng: detail.lng,
+      lat: detail.lat,
+      doorNumber: detail.address ?? '',
+      title: detail.title,
+      priceText: detail.price == null ? '' : _priceTextOf(detail.price!),
+      priceUnit: detail.priceUnit,
+      description: detail.description ?? '',
+      templateValues: _stringAttributes(detail.attributes),
+      mediaIds: [for (final media in detail.media) media.mediaId],
+      contact: '',
+    );
+  }
+
+  /// 把克隆重发草稿映射为发布页表单（[B2-8] 重发态预填）。
+  ///
+  /// 参数：[draft] `POST /posts/{id}/repost` 出参。
+  /// 返回：[PublishFormState]；联系方式**留空** —— 发布契约要求 `contact_value`
+  ///   必填且明文不回显，用户须重新填写（安全收窄，见《决策登记表》B2-8 批）。
+  PublishFormState _formFromRepost(RepostDraftDto draft) {
+    return PublishFormState(
+      kind: draft.type == 'demand' ? PublishKind.demand : PublishKind.supply,
+      leafCategoryId: draft.leafCategoryId,
+      lng: draft.lng,
+      lat: draft.lat,
+      doorNumber: draft.address ?? '',
+      title: draft.title,
+      priceText: draft.price == null ? '' : _priceTextOf(draft.price!),
+      priceUnit: draft.priceUnit,
+      description: draft.description ?? '',
+      templateValues: _stringAttributes(draft.attributes ?? const {}),
+      mediaIds: draft.mediaIds,
+      contact: '',
+    );
+  }
+
+  /// 把契约 `attributes`（Object? 值）转为表单的 `Map<String, String>`。
+  ///
+  /// 参数：[attributes] 动态属性（可空值）。
+  /// 返回：[Map] 仅含非空值的字符串属性。
+  Map<String, String> _stringAttributes(Map<String, Object?> attributes) {
+    return {
+      for (final entry in attributes.entries)
+        if (entry.value != null) entry.key: entry.value.toString(),
+    };
+  }
+
+  /// 价格数字转输入框文本（整数不带小数点，贴合用户输入习惯）。
+  ///
+  /// 参数：[price] 价格（元）。
+  /// 返回：[String] 如 `50` / `49.5`。
+  String _priceTextOf(double price) {
+    return price == price.roundToDouble()
+        ? price.toInt().toString()
+        : price.toString();
   }
 
   /// 顶部提示（§11.4 唯一回显格式由 [ApiException.uiMessage] 承载）。
@@ -153,8 +338,8 @@ class _MyPublishScreenState extends ConsumerState<MyPublishScreen> {
         actions: [
           IconButton(
             icon: Icon(Icons.search, color: Color(AppColors.textPrimary)),
-            // 降级：设计稿 navBar 有「搜索」但 FLOW_LINKS 无该跳转边（无目标页）
-            onPressed: () => _showMessage('搜索功能本期内测版暂未开放'),
+            // [B2-8] 转真：页内本地筛选（裁定不新增网络请求）。
+            onPressed: _openSearch,
           ),
         ],
       ),
@@ -166,14 +351,19 @@ class _MyPublishScreenState extends ConsumerState<MyPublishScreen> {
                 ref.read(myPostsTabProvider.notifier).select(next),
           ),
           Expanded(
-            child: postsAsync.when(
-              loading: () => const _SkeletonList(),
-              error: (error, _) => _ErrorView(
-                error: asApiException(error),
-                onRetry: () => ref.read(myPostsProvider.notifier).refresh(),
-              ),
-              data: (data) => _buildList(tab, data),
-            ),
+            // 「草稿」页签的数据源是**本地草稿**（PRD §8.7 纯客户端），
+            // 与服务端的帖子列表是两条互不相干的来源，故在此分叉。
+            child: tab == MyPostsTab.draft
+                ? _buildDrafts()
+                : postsAsync.when(
+                    loading: () => const _SkeletonList(),
+                    error: (error, _) => _ErrorView(
+                      error: asApiException(error),
+                      onRetry: () =>
+                          ref.read(myPostsProvider.notifier).refresh(),
+                    ),
+                    data: (data) => _buildList(tab, data),
+                  ),
           ),
         ],
       ),
@@ -188,18 +378,24 @@ class _MyPublishScreenState extends ConsumerState<MyPublishScreen> {
     if (data.items.isEmpty) {
       return _EmptyView(tab: tab);
     }
+    final items = _filteredItems(data.items);
+    if (items.isEmpty) {
+      // 有数据但被搜索词滤空：给可解释的空态，而不是复用「还没发布」文案
+      //（后者会让用户以为自己的帖子没了）。
+      return _NoMatchView(query: _searchQuery);
+    }
     return RefreshIndicator(
       onRefresh: () => ref.read(myPostsProvider.notifier).refresh(),
       child: ListView.builder(
         controller: _scrollController,
         padding: const EdgeInsets.all(AppSpacing.lg),
         // 末行固定为分页终态（设计稿 listEndRow「没有更多了」）
-        itemCount: data.items.length + 1,
+        itemCount: items.length + 1,
         itemBuilder: (context, index) {
-          if (index == data.items.length) {
+          if (index == items.length) {
             return _ListEndRow(hasMore: data.hasMore);
           }
-          final item = data.items[index];
+          final item = items[index];
           return _MyPostCard(
             item: item,
             onAction: (action) => _onAction(action, item),
@@ -207,6 +403,59 @@ class _MyPublishScreenState extends ConsumerState<MyPublishScreen> {
         },
       ),
     );
+  }
+
+  /// 组装「草稿」页签列表（数据源 = 本地草稿，见 `draft_store.dart`）。
+  ///
+  /// 返回：[Widget]。
+  Widget _buildDrafts() {
+    final draftsAsync = ref.watch(draftListProvider);
+    return draftsAsync.when(
+      loading: () => const _SkeletonList(),
+      error: (error, _) => _ErrorView(
+        error: asApiException(error),
+        onRetry: () => ref.invalidate(draftListProvider),
+      ),
+      data: (drafts) {
+        if (drafts.isEmpty) return const _EmptyView(tab: MyPostsTab.draft);
+        return ListView.builder(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          itemCount: drafts.length,
+          itemBuilder: (context, index) {
+            final draft = drafts[index];
+            return _DraftCard(
+              snapshot: draft,
+              onContinue: () => _continueDraft(draft),
+              onRemove: () => _removeDraft(draft),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  /// 继续编辑一份本地草稿：恢复表单进发布页（**新建语义**，非编辑既有帖）。
+  ///
+  /// 参数：[snapshot] 草稿快照。
+  /// 返回：[Future<void>]。
+  Future<void> _continueDraft(DraftSnapshot snapshot) async {
+    await context.push<bool>(
+      AppRoutes.publish,
+      extra: PublishScreenArgs(initialForm: snapshot.form),
+    );
+    if (!mounted) return;
+    // 发布成功会清空草稿；返回时刷新草稿列表以反映最新状态。
+    ref.invalidate(draftListProvider);
+  }
+
+  /// 删除一份本地草稿（**真实生效** —— 删的是本地存储，非「本期暂未开放」）。
+  ///
+  /// 参数：[snapshot] 草稿快照。
+  /// 返回：[Future<void>]。
+  Future<void> _removeDraft(DraftSnapshot snapshot) async {
+    await ref.read(draftStoreProvider).remove(snapshot.draftId);
+    ref.invalidate(draftListProvider);
+    if (mounted) _showMessage('已删除草稿');
   }
 }
 
@@ -550,7 +799,9 @@ class _EmptyView extends StatelessWidget {
             ),
             const SizedBox(height: AppSpacing.lg),
             Text(
-              isDraft ? '草稿箱本期内测版暂未开放' : '还没发布，立即发一条',
+              // 草稿页签自 [B2-8] 起有数据源（本地草稿），空态文案改为
+              //「还没有草稿」—— 原来的「本期内测版暂未开放」已不成立。
+              isDraft ? '还没有草稿' : '还没发布，立即发一条',
               style: TextStyle(
                 fontSize: AppTypeScale.body.size,
                 color: Color(AppColors.textSecondary),
@@ -570,6 +821,166 @@ class _EmptyView extends StatelessWidget {
               ),
             ],
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 页内搜索弹层（[B2-8] 本地筛选）。
+///
+/// **为什么单列成 StatefulWidget 而不是在调用处 new 一个 controller**：
+/// `showDialog` 的关闭有动画，调用处在 `await` 返回后立刻 dispose 控制器，
+/// 弹层在退场动画里仍会重建并读它 —— 直接抛出「controller used after dispose」。
+/// 把控制器交给弹层自己的 State 管理，生命周期与弹层一致。
+class _SearchDialog extends StatefulWidget {
+  /// 构造搜索弹层。
+  ///
+  /// 参数：[initialQuery] 当前搜索词（回填输入框，便于用户改词）。
+  const _SearchDialog({required this.initialQuery});
+
+  /// 当前搜索词。
+  final String initialQuery;
+
+  @override
+  State<_SearchDialog> createState() => _SearchDialogState();
+}
+
+class _SearchDialogState extends State<_SearchDialog> {
+  late final TextEditingController _controller =
+      TextEditingController(text: widget.initialQuery);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('搜索我的发布'),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        decoration: const InputDecoration(hintText: '输入标题或类目关键词'),
+        onSubmitted: (value) => Navigator.of(context).pop(value),
+      ),
+      actions: [
+        TextButton(
+          // 空串 = 清除筛选（回到全部已加载项）
+          onPressed: () => Navigator.of(context).pop(''),
+          child: const Text('清除'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(_controller.text),
+          child: const Text('搜索'),
+        ),
+      ],
+    );
+  }
+}
+
+/// 本地草稿卡片（[B2-8]「草稿」页签；数据源见 `draft_store.dart`）。
+///
+/// 与 [_MyPostCard] 分开：草稿**不是帖子**（无 id/状态/类目色条），共用卡片
+/// 只会逼出一堆恒空字段；两张卡的形状差异远大于共性。
+class _DraftCard extends StatelessWidget {
+  /// 构造草稿卡片。
+  ///
+  /// 参数：[snapshot] 草稿快照；[onContinue] 继续编辑；[onRemove] 删除草稿。
+  const _DraftCard({
+    required this.snapshot,
+    required this.onContinue,
+    required this.onRemove,
+  });
+
+  /// 草稿快照。
+  final DraftSnapshot snapshot;
+
+  /// 继续编辑回调。
+  final VoidCallback onContinue;
+
+  /// 删除回调。
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final title = snapshot.form.title.trim();
+    return Container(
+      margin: const EdgeInsets.only(bottom: AppSpacing.md),
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: Color(AppColors.surface),
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: Color(AppColors.border)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title.isEmpty ? '未命名草稿' : title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: AppTypeScale.body.size,
+              fontWeight: FontWeight.w600,
+              color: Color(AppColors.textPrimary),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            '保存于 ${formatRelativeAge(snapshot.savedAt)}',
+            style: TextStyle(
+              fontSize: AppTypeScale.small.size,
+              color: Color(AppColors.textSecondary),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(
+                onPressed: onContinue,
+                child: Text(_actionLabel(MyPostCardAction.continueEdit)),
+              ),
+              TextButton(
+                onPressed: onRemove,
+                child: Text(_actionLabel(MyPostCardAction.remove)),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 搜索无匹配空态（[B2-8] 页内本地筛选）。
+///
+/// 与 [_EmptyView] 分开：用户在有数据时搜不到，最怕的是「我的帖子是不是没了」，
+/// 故文案必须点明是**搜索词**没匹配，而不是「你没有内容」。
+class _NoMatchView extends StatelessWidget {
+  /// 构造无匹配空态。
+  ///
+  /// 参数：[query] 当前搜索词。
+  const _NoMatchView({required this.query});
+
+  /// 当前搜索词。
+  final String query;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.xl),
+        child: Text(
+          '没有匹配「$query」的内容',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: AppTypeScale.body.size,
+            color: Color(AppColors.textSecondary),
+          ),
         ),
       ),
     );
@@ -634,7 +1045,7 @@ class _ErrorView extends StatelessWidget {
 String _actionLabel(MyPostCardAction action) => switch (action) {
   MyPostCardAction.edit => '编辑',
   MyPostCardAction.offline => '下架',
-  MyPostCardAction.republish => '刷新重发',
+  MyPostCardAction.repost => '刷新重发',
   MyPostCardAction.remove => '删除',
   MyPostCardAction.continueEdit => '继续编辑',
 };

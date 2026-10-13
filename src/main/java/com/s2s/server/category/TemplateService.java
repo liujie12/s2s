@@ -136,4 +136,64 @@ public class TemplateService {
                 new TemplateFieldDto("price", "价格", "number", false, null, null, "面议可不填")
         ));
     }
+
+    // ---------------------------------------------------------------------
+    // [153] B2-5 ② 模板 Schema 编辑器：供后台（admin 域）经 service 接口调用
+    // ---------------------------------------------------------------------
+
+    /**
+     * 读取模板原始行（后台编辑页用：需拿到 {@code fields} JSON 原文与当前版本号）。
+     *
+     * @param templateKey 模板键（即 {@code template.leaf_category_id}，本工程按 <b>L2 父级</b> 存储）
+     * @return {@link TemplateEntity} 模板行；不存在返回 {@code null}
+     */
+    public TemplateEntity findRawForAdmin(int templateKey) {
+        return templateMapper.selectOne(
+                new QueryWrapper<TemplateEntity>().eq("leaf_category_id", templateKey));
+    }
+
+    /**
+     * 保存模板新版本（PRD §9.10.1 ②「保存新版本」+ 验收「改完模板新版本立即生效」）。
+     *
+     * <p>版本号每次保存 +1（{@code post.template_version} 与之对齐，老发布仍可回溯旧版），
+     * 保存后清空模板缓存使新版本立即生效。{@code fields} 必须是合法 JSON 数组
+     * （元素形状同 {@link TemplateFieldDto}），否则 40001 —— 脏 Schema 会让发布页整页崩。</p>
+     *
+     * @param templateKey 模板键（L2 父级 ID）
+     * @param fieldsJson  新 Schema JSON（数组）
+     * @return int 新版本号
+     * @throws BizException JSON 非法 → 40001
+     */
+    public int saveForAdmin(int templateKey, String fieldsJson) {
+        List<TemplateFieldDto> parsed;
+        try {
+            parsed = objectMapper.readValue(fieldsJson, new TypeReference<List<TemplateFieldDto>>() {});
+        } catch (Exception e) {
+            throw BizException.of(ErrorCode.PARAM_INVALID);
+        }
+        if (parsed.isEmpty()) {
+            throw BizException.of(ErrorCode.PARAM_INVALID);
+        }
+
+        TemplateEntity existing = findRawForAdmin(templateKey);
+        int nextVersion;
+        if (existing == null) {
+            TemplateEntity created = new TemplateEntity();
+            created.setLeafCategoryId(templateKey);
+            created.setFields(fieldsJson);
+            created.setTemplateVersion(1);
+            created.setUpdatedAt(java.time.LocalDateTime.now());
+            templateMapper.insert(created);
+            nextVersion = 1;
+        } else {
+            existing.setFields(fieldsJson);
+            nextVersion = (existing.getTemplateVersion() == null ? 0 : existing.getTemplateVersion()) + 1;
+            existing.setTemplateVersion(nextVersion);
+            existing.setUpdatedAt(java.time.LocalDateTime.now());
+            templateMapper.updateById(existing);
+        }
+        // 模板编辑低频，直接清空缓存（缓存按 L3 键，L2 改动波及该 L2 下全部叶子）
+        templateCache.invalidateAll();
+        return nextVersion;
+    }
 }

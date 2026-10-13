@@ -67,4 +67,16 @@ public interface PostQueryMapper {
      * @return {@link List} 每行含 {@code post_id} 与 {@code cnt}；无事件的帖子不出现在结果里
      */
     List<Map<String, Object>> countContactEvents(@Param("postIds") List<Long> postIds);
+
+    /**
+     * 统计某叶子类目在时间窗内的发布数（[153] B2-5 §9.10.2 达标判定用）。
+     *
+     * @param leafCategoryId 叶子类目 ID
+     * @param from           窗口起（含）
+     * @param to             窗口止（不含）
+     * @return long 命中发布数
+     */
+    long countByLeafBetween(@Param("leafCategoryId") int leafCategoryId,
+            @Param("from") java.time.LocalDateTime from,
+            @Param("to") java.time.LocalDateTime to);
 }

@@ -121,6 +121,7 @@ class _ContactScreenState extends ConsumerState<ContactScreen> {
             loading: _loading,
             failure: _failure,
             remainingToday: _remainingToday,
+            masked: detail.contactMasked,
             onReveal: _reveal,
             onUse: _useContact,
             // 登录成功后自动重试拉取：让用户回到中转页还要再点一次按钮，
@@ -386,9 +387,10 @@ class _NoticeItem extends StatelessWidget {
 
 /// 联系方式卡片（PRD §7.4.2 中部，仅展示发布时填写的那一种）。
 ///
-/// **渠道与号码字形只在 [full] 非空后出现**：契约 `PostDetail` 不返回
-/// `contact_channel`、`contact_mask` 恒 null，故未拉取态显示中性渠道名与占位文案
-/// （§2.9 DEC-13）。这不影响 §7.4.2「不做双卡片并列」——发布时只填一种，
+/// **渠道名只在 [full] 非空后出现**：契约 `PostDetail` 仍不返回 `contact_channel`，
+/// 故未拉取态显示中性渠道名。**号码字形**：未拉取态显示发布时落库的脱敏值
+/// [masked]（[147] DEC-13，真值来自服务端 `post.contact_mask`），无掩码（存量行）
+/// 才退回占位文案。这不影响 §7.4.2「不做双卡片并列」——发布时只填一种，
 /// 拉取后这里也只呈现那一种。
 class _ContactCard extends StatelessWidget {
   const _ContactCard({
@@ -396,6 +398,7 @@ class _ContactCard extends StatelessWidget {
     required this.loading,
     required this.failure,
     required this.remainingToday,
+    required this.masked,
     required this.onReveal,
     required this.onUse,
     required this.onLogin,
@@ -407,6 +410,10 @@ class _ContactCard extends StatelessWidget {
 
   /// 今日剩余次数（仅账号维度）；null = 本次会话还没拿到服务端值。
   final int? remainingToday;
+
+  /// 发布时落库的脱敏联系方式（[147] DEC-13）；null = 存量行无掩码。
+  /// 仅未拉取态展示：拉取成功后以 [full] 的完整值为准。
+  final String? masked;
 
   final VoidCallback onReveal;
   final VoidCallback onUse;
@@ -453,11 +460,10 @@ class _ContactCard extends StatelessWidget {
               ),
               Expanded(
                 child: Text(
-                  // 未拉取 → 占位文案，不显示任何号码字形：脱敏值在 Batch1 无契约来源
-                  // （详情不解密是红线），画一串 `138 **** 8888` 会与真实号码对不上；
-                  // 留空则与「加载失败」无从区分（§7.4.2 稿面对此有明确取舍：宁可说清
-                  // 「要点一下才给」，也不给假字形）。
-                  full?.value ?? '点击下方按钮查看',
+                  // 未拉取态优先显示发布时落库的脱敏值（[147] DEC-13，真值来自服务端
+                  // `post.contact_mask`）；无掩码（存量行）才退回占位文案 —— 不画死一串
+                  // 与真实值对不上、也不留空与「加载失败」无从区分。
+                  full?.value ?? masked ?? '点击下方按钮查看',
                   style: TextStyle(
                     fontSize: AppTypeScale.h3.size,
                     fontWeight: FontWeight.w700,

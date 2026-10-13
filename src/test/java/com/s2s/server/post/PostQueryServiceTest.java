@@ -91,6 +91,7 @@ class PostQueryServiceTest {
         row.put("lng", new BigDecimal("120.15"));
         row.put("lat", new BigDecimal("30.28"));
         row.put("address", "地址");
+        row.put("contact_mask", "138****8000");
         row.put("completeness_level", 2);
         row.put("status", status);
         row.put("status_reason", statusReason);
@@ -131,11 +132,12 @@ class PostQueryServiceTest {
     }
 
     @Test
-    void 详情出参contactMask恒null且author白名单() {
+    void 详情出参contactMask取发布时落库脱敏值且author白名单() {
         when(postQueryMapper.selectDetailRow(any())).thenReturn(detailRow("active", null));
         when(categoryService.categoryPath(any())).thenReturn(List.of("生活", "家政", "日常保洁"));
         PostDetail detail = service.getDetail(2L, 100L);
-        assertThat(detail.contactMask()).isNull();
+        // [147] DEC-13：详情出参回发布时落库的脱敏值（原为恒 null）
+        assertThat(detail.contactMask()).isEqualTo("138****8000");
         assertThat(detail.author().nickname()).isEqualTo("王师傅");
         assertThat(detail.author().qualificationBadges()).isEmpty();
         assertThat(detail.categoryPath()).containsExactly("生活", "家政", "日常保洁");

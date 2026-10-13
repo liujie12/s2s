@@ -84,9 +84,15 @@ public enum RateLimitTrack {
      * 行 7 · 联系熔断（账号级）：计数键 {@code rl:contact:burst:{userId}:1m}，
      * 1min ≥10 次 → 42903 当日冻结。冻结标记 {@code fz:contact:{userId}:{date}}
      * 的写入/判定归 U4（键拼装）与 [128]，本轨只承载计数三元组。
+     *
+     * <p><b>limit 取 threshold − 1 的 off-by-one 修正（DEC-12，[147] 落地）</b>：
+     * {@link RateLimiter} 超限判定统一为 {@code current > limit}（严格大于），即
+     * 「允许 limit 次、第 limit+1 次超限」。业务语义「1min ≥10 次 → 冻结」= 第 10 次
+     * 触发，即「允许 9 次、第 10 次冻结」，故 limit = threshold − 1 = 9。修正前
+     * 直接取 10 使实际在第 11 次触发（与 {@link #LOGIN_FAIL} 轨「第 5 次」口径不一致）。</p>
      */
     CONTACT_BURST(
-            new WindowRule(RateLimitThresholds.CONTACT_BURST_LIMIT_PER_MINUTE,
+            new WindowRule(RateLimitThresholds.CONTACT_BURST_LIMIT_PER_MINUTE - 1,
                     RateLimitThresholds.WINDOW_MINUTE_SECONDS,
                     RateLimitThresholds.CONTACT_BURST_OVERFLOW)),
 

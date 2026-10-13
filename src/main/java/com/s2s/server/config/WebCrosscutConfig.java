@@ -1,5 +1,6 @@
 package com.s2s.server.config;
 
+import com.s2s.server.admin.AdminInterceptor;
 import com.s2s.server.auth.AuthInterceptor;
 import com.s2s.server.common.idempotency.IdempotencyCaptureFilter;
 import com.s2s.server.common.idempotency.IdempotencyInterceptor;
@@ -39,6 +40,9 @@ public class WebCrosscutConfig implements WebMvcConfigurer {
     /** 鉴权拦截器（构造注入，Spring 托管的单例）。 */
     private final AuthInterceptor authInterceptor;
 
+    /** 后台鉴权拦截器（[153] B2-5；仅拦 {@code /admin/**}）。 */
+    private final AdminInterceptor adminInterceptor;
+
     /** 限频拦截器（构造注入，Spring 托管的单例）。 */
     private final RateLimitInterceptor rateLimitInterceptor;
 
@@ -52,15 +56,18 @@ public class WebCrosscutConfig implements WebMvcConfigurer {
      * 构造组装根，注入全部拦截器与 Redis 模板。
      *
      * @param authInterceptor       鉴权拦截器（auth 域 @Component）
+     * @param adminInterceptor      后台鉴权拦截器（admin 域 @Component）
      * @param rateLimitInterceptor  限频拦截器（common/ratelimit 域 @Component）
      * @param idempotencyInterceptor 幂等拦截器（common/idempotency 域 @Component）
      * @param redisTemplate         Redis 模板（幂等捕获 Filter 实例化参数）
      */
     public WebCrosscutConfig(AuthInterceptor authInterceptor,
+            AdminInterceptor adminInterceptor,
             RateLimitInterceptor rateLimitInterceptor,
             IdempotencyInterceptor idempotencyInterceptor,
             StringRedisTemplate redisTemplate) {
         this.authInterceptor = authInterceptor;
+        this.adminInterceptor = adminInterceptor;
         this.rateLimitInterceptor = rateLimitInterceptor;
         this.idempotencyInterceptor = idempotencyInterceptor;
         this.redisTemplate = redisTemplate;
@@ -104,13 +111,21 @@ public class WebCrosscutConfig implements WebMvcConfigurer {
      *
      * <p><b>全路径生效</b>：不加 excludePathPatterns——具体哪些接口启用哪些限频轨/幂等
      * 由方法上的 {@code @RateLimit}/{@code @Idempotent} 注解声明，拦截器对无注解的方法
-     * 直接放行。
+     * 直接放行。</p>
+     *
+     * <p><b>后台面（[153]）</b>：{@code /admin/**} 交由 {@link AdminInterceptor} 独立处理
+     * ——C 端 {@code AuthInterceptor} 对其 <b>exclude</b>（两套身份体系互不认对方，
+     * 见《决策登记表》2026-10-12「同密钥 + scope 声明」）；{@code /admin/login} 为匿名
+     * 登录端点，故后台拦截器再加一层 exclude。</p>
      *
      * @param registry Spring MVC 拦截器注册器
      */
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
-        registry.addInterceptor(authInterceptor);
+        registry.addInterceptor(authInterceptor).excludePathPatterns("/admin/**");
+        registry.addInterceptor(adminInterceptor)
+                .addPathPatterns("/admin/**")
+                .excludePathPatterns("/admin/login");
         registry.addInterceptor(rateLimitInterceptor);
         registry.addInterceptor(idempotencyInterceptor);
     }

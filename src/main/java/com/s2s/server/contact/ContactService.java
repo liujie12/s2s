@@ -2,6 +2,7 @@ package com.s2s.server.contact;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.s2s.server.cert.CertService;
 import com.s2s.server.common.audit.AuditEntry;
 import com.s2s.server.common.audit.AuditLogWriter;
 import com.s2s.server.common.audit.OperatorRole;
@@ -12,11 +13,14 @@ import com.s2s.server.common.ratelimit.RateLimitEntries;
 import com.s2s.server.contact.dto.ContactInfo;
 import com.s2s.server.contact.dto.ReportRequest;
 import com.s2s.server.contact.dto.ReportResult;
+import com.s2s.server.contact.dto.ReportTicketPage;
+import com.s2s.server.contact.dto.ReportTicketRow;
 import com.s2s.server.contact.entity.ContactEventEntity;
 import com.s2s.server.contact.entity.ReportEntity;
 import com.s2s.server.contact.mapper.ContactEventMapper;
 import com.s2s.server.contact.mapper.ContactPostMapper;
 import com.s2s.server.contact.mapper.ReportMapper;
+import com.s2s.server.post.PostModerationService;
 import com.s2s.server.post.PostStatus;
 import java.time.LocalDate;
 import java.util.List;
@@ -59,6 +63,15 @@ public class ContactService {
     /** 新建举报的初始状态（DDL {@code report.status} 默认值）。 */
     private static final String REPORT_STATUS_PENDING = "pending";
 
+    /** 工单已处理状态（后台处理写入）。 */
+    private static final String REPORT_STATUS_HANDLED = "handled";
+
+    /** 后台处理动作：打标误报（回撤该举报的风险分贡献）。 */
+    public static final String HANDLE_ACTION_FALSE_REPORT = "false_report";
+
+    /** 后台处理动作：判定下架（审核下架被举报帖子）。 */
+    public static final String HANDLE_ACTION_OFFLINE = "offline";
+
     private final ContactRateGuard rateGuard;
     private final ContactPostMapper contactPostMapper;
     private final ContactEventMapper contactEventMapper;
@@ -66,17 +79,21 @@ public class ContactService {
     private final CryptoFacade cryptoFacade;
     private final AuditLogWriter auditLogWriter;
     private final ObjectMapper objectMapper;
+    private final CertService certService;
+    private final PostModerationService postModerationService;
 
     /**
      * 构造联系域服务。
      *
-     * @param rateGuard          限频与熔断守卫（详设 §5.5.1 第 [2]–[4] 步）
-     * @param contactPostMapper  帖子密文材料读取（本域自有 Mapper，见其类注释）
-     * @param contactEventMapper 联系事件写入
-     * @param reportMapper       举报写入
-     * @param cryptoFacade       全系统唯一解密入口
-     * @param auditLogWriter     全系统唯一 {@code audit_log} 写入处
-     * @param objectMapper       举报凭证 JSON 序列化
+     * @param rateGuard             限频与熔断守卫（详设 §5.5.1 第 [2]–[4] 步）
+     * @param contactPostMapper     帖子密文材料读取（本域自有 Mapper，见其类注释）
+     * @param contactEventMapper    联系事件写入
+     * @param reportMapper          举报写入
+     * @param cryptoFacade          全系统唯一解密入口
+     * @param auditLogWriter        全系统唯一 {@code audit_log} 写入处
+     * @param objectMapper          举报凭证 JSON 序列化
+     * @param certService           认证域服务（举报方实名门槛/企业权重判定，[153] B2-5 ④）
+     * @param postModerationService 帖子治理服务（风险分累计/审核下架，[153] B2-5 ④）
      */
     public ContactService(ContactRateGuard rateGuard,
             ContactPostMapper contactPostMapper,
@@ -84,7 +101,9 @@ public class ContactService {
             ReportMapper reportMapper,
             CryptoFacade cryptoFacade,
             AuditLogWriter auditLogWriter,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            CertService certService,
+            PostModerationService postModerationService) {
         this.rateGuard = rateGuard;
         this.contactPostMapper = contactPostMapper;
         this.contactEventMapper = contactEventMapper;
@@ -92,6 +111,8 @@ public class ContactService {
         this.cryptoFacade = cryptoFacade;
         this.auditLogWriter = auditLogWriter;
         this.objectMapper = objectMapper;
+        this.certService = certService;
+        this.postModerationService = postModerationService;
     }
 
     /**
@@ -165,9 +186,9 @@ public class ContactService {
         event.setChannelType(channel);
         contactEventMapper.insert(event);
 
-        // [8] 审计留痕（与 [7] 同事务；operator_role 取 system，理由见 OperatorRole 类注释
-        //     与说明文档 §2.9 DEC-11）
-        auditLogWriter.write(AuditEntry.minimal(viewerId, OperatorRole.SYSTEM,
+        // [8] 审计留痕（与 [7] 同事务；用户触发的解密留痕 operator_role 取 user，
+        //     不再用 system 兜底 —— 依据 DEC-11 / [147]）
+        auditLogWriter.write(AuditEntry.minimal(viewerId, OperatorRole.USER,
                 AUDIT_ACTION_CONTACT_VIEW, AUDIT_TARGET_POST, postId));
 
         // [9] 返回完整值 + 账号维剩余次数（剩余量在日限计数之后读取，故已含本次消耗）
@@ -194,6 +215,11 @@ public class ContactService {
      */
     @Transactional
     public ReportResult report(Long reporterId, Long postId, ReportRequest request) {
+        // [153] B2-5 ④ §9.10.3 举报方门槛：仅已实名用户可提交举报。
+        // 用既有码 40305（无权限）—— 不新增错误码（红线），语义上「未实名 = 不具备该权限」。
+        if (!certService.isRealnamePassed(reporterId)) {
+            throw BizException.of(ErrorCode.NO_PERMISSION);
+        }
         Map<String, Object> row = contactPostMapper.selectContactRow(postId);
         if (row == null) {
             throw BizException.of(ErrorCode.POST_GONE);
@@ -209,6 +235,11 @@ public class ContactService {
             throw new IllegalStateException("post " + postId + " 缺 user_id，无法确定被举报人");
         }
 
+        // [153] B2-5 ④ §9.10.3 风险分 = 原因分 × 举报方权重（企业认证 ×1.5）。
+        // 权重落 report.weight 列（评审/回撤都靠它，不能只存在内存里）。
+        int contribution = ReportRiskScore.of(request.reason(),
+                certService.isEnterpriseVerified(reporterId));
+
         ReportEntity entity = new ReportEntity();
         entity.setPostId(postId);
         entity.setReporterId(reporterId);
@@ -219,16 +250,107 @@ public class ContactService {
         // 契约字段名 remark → 列名 description（KTD4 同类漂移，映射只在此处）
         entity.setDescription(request.remark());
         entity.setEvidence(toEvidenceJson(request.evidence()));
+        entity.setWeight(contribution);
         entity.setStatus(REPORT_STATUS_PENDING);
-        // weight / is_false_report / handler_id / handled_at 不写：Batch1 无运营后台，
-        // 一律走 DDL 默认值（详见 ReportEntity 类注释）。
+        // is_false_report / handler_id / handled_at 不写：由运营侧（后台工单处理）写入。
         reportMapper.insert(entity);
 
-        // 举报成功同写 audit_log（详设 §5.5.2），与举报落库同事务。
-        auditLogWriter.write(AuditEntry.minimal(reporterId, OperatorRole.SYSTEM,
+        // 累计到 post.risk_score；≥ 阈值即自动下架（§9.10.3），随后进人工复核队列。
+        // 审计归属：改动由该举报触发，故记 reporterId + user（真实触发人），
+        // 而非 SYSTEM —— 留痕要能回答「谁的操作导致了这次下架」。
+        int cumulative = postModerationService.applyRiskDelta(postId, contribution);
+        if (ReportRiskScore.shouldAutoOffline(cumulative)) {
+            postModerationService.auditTakedown(postId, reporterId, OperatorRole.USER);
+        }
+
+        // 举报成功同写 audit_log（详设 §5.5.2），与举报落库同事务；
+        // 用户触发留痕 operator_role 取 user（DEC-11 / [147]）。
+        auditLogWriter.write(AuditEntry.minimal(reporterId, OperatorRole.USER,
                 AUDIT_ACTION_REPORT_CREATE, AUDIT_TARGET_POST, postId));
 
         return new ReportResult(entity.getId(), entity.getStatus());
+    }
+
+    /**
+     * 分页列出举报工单（[153] B2-5 ④；供后台经 service 接口调用）。
+     *
+     * @param status   工单状态（如 {@code pending}）
+     * @param page     页码（1 起）
+     * @param pageSize 每页条数
+     * @return {@link ReportTicketPage} 当前页 + 总数（按帖子累计风险分降序）
+     */
+    public ReportTicketPage listReportsForAdmin(String status, int page, int pageSize) {
+        long total = reportMapper.countByStatus(status);
+        List<ReportTicketRow> items =
+                reportMapper.selectPageByStatus(status, (page - 1) * pageSize, pageSize);
+        return new ReportTicketPage(items, total, page, pageSize);
+    }
+
+    /**
+     * 处理举报工单（[153] B2-5 ④；PRD §9.10.1 ④）。
+     *
+     * <p>两个动作（互斥）：
+     * <ul>
+     *   <li>{@link #HANDLE_ACTION_FALSE_REPORT} —— 打标误报：置 {@code is_false_report=1}
+     *       并<b>回撤</b>该举报的风险分贡献（§9.10.3「误报不计入累计」）；</li>
+     *   <li>{@link #HANDLE_ACTION_OFFLINE} —— 判定下架：对被举报帖子执行审核下架
+     *       （{@code status_reason=2}）。</li>
+     * </ul>
+     * 两动作都置工单为 {@code handled} 并记处理人与时间。已处理的工单再处理 → 40001
+     * （幂等靠状态判定，不靠重复执行）。</p>
+     *
+     * @param reportId    举报 ID
+     * @param handlerId   处理人 ID（后台管理员）
+     * @param handlerRole 处理人角色（审计用）
+     * @param action      处理动作（见上）
+     * @throws BizException 举报不存在 → 41001；动作非法 / 工单已处理 → 40001
+     */
+    @Transactional
+    public void handleReport(long reportId, Long handlerId, OperatorRole handlerRole,
+            String action) {
+        boolean falseReport = HANDLE_ACTION_FALSE_REPORT.equals(action);
+        boolean offline = HANDLE_ACTION_OFFLINE.equals(action);
+        if (!falseReport && !offline) {
+            throw BizException.of(ErrorCode.PARAM_INVALID);
+        }
+        ReportEntity report = reportMapper.selectById(reportId);
+        if (report == null) {
+            throw BizException.of(ErrorCode.POST_GONE);
+        }
+        if (!REPORT_STATUS_PENDING.equals(report.getStatus())) {
+            // 已处理：不重复回撤/重复下架（重复回撤会把风险分压到 0，掩盖后续举报）
+            throw BizException.of(ErrorCode.PARAM_INVALID);
+        }
+
+        ReportEntity patch = new ReportEntity();
+        patch.setId(reportId);
+        patch.setStatus(REPORT_STATUS_HANDLED);
+        patch.setHandlerId(handlerId);
+        patch.setHandledAt(java.time.LocalDateTime.now());
+        patch.setIsFalseReport(falseReport ? 1 : 0);
+        reportMapper.updateById(patch);
+
+        if (falseReport) {
+            int contribution = report.getWeight() == null ? 0 : report.getWeight();
+            postModerationService.applyRiskDelta(report.getPostId(), -contribution);
+        } else {
+            postModerationService.auditTakedown(report.getPostId(), handlerId, handlerRole);
+        }
+    }
+
+    /**
+     * 统计某叶子类目下帖子在时间窗内被联系的次数（[153] B2-5 §9.10.2 达标判定用）。
+     *
+     * <p>供 {@code ops} 域经 service 接口调用（域间只调 service，编码规范 §4.2）。</p>
+     *
+     * @param leafCategoryId 叶子类目 ID
+     * @param from           窗口起（含）
+     * @param to             窗口止（不含）
+     * @return long 联系事件数
+     */
+    public long countContactsByLeafBetween(int leafCategoryId, java.time.LocalDateTime from,
+            java.time.LocalDateTime to) {
+        return contactPostMapper.countContactsByLeafBetween(leafCategoryId, from, to);
     }
 
     /**

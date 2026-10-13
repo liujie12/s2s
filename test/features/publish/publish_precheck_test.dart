@@ -17,6 +17,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:go_router/go_router.dart';
 import 'package:zhaoyazhao/core/network/api_error_code.dart';
 import 'package:zhaoyazhao/core/network/api_exception.dart';
@@ -26,6 +27,7 @@ import 'package:zhaoyazhao/features/post/post_dto.dart';
 import 'package:zhaoyazhao/features/post/post_repository.dart';
 import 'package:zhaoyazhao/features/publish/publish_form_state.dart';
 import 'package:zhaoyazhao/features/publish/publish_screen.dart';
+import 'package:zhaoyazhao/features/publish/publish_screen_args.dart';
 
 import '../../support/fake_repositories.dart';
 import '../../support/post_fixtures.dart';
@@ -37,6 +39,9 @@ void main() {
   setUp(() {
     categoryRepo = FakeCategoryRepository();
     postRepo = FakePostRepository();
+    // 发布页 [B2-8] 起接入本地草稿（SharedPreferences），须在内存 mock 下运行；
+    // 与 privacy/category 等既有测试同一纪律。
+    SharedPreferences.setMockInitialValues(const <String, Object>{});
   });
 
   /// 一份可提交的表单（叶子 40101 无资质要求，跳过本地资质拦截直达
@@ -66,7 +71,11 @@ void main() {
   Widget app(PublishFormState form) {
     final router = GoRouter(
       routes: [
-        GoRoute(path: '/', builder: (_, _) => PublishScreen(initialForm: form)),
+        GoRoute(
+          path: '/',
+          builder: (_, _) =>
+              PublishScreen(args: PublishScreenArgs(initialForm: form)),
+        ),
         GoRoute(
           path: '/publish/success',
           builder: (_, _) => const Scaffold(body: Text('成功页占位')),

@@ -26,4 +26,23 @@
         WHERE p.id = #{postId}
     </select>
 
+    <!--
+      统计某叶子类目下帖子在给定时间窗内被联系次数（[153] B2-5 §9.10.2 达标判定用）。
+
+      EXPLAIN 结论：驱动表 `post` 走 `idx_leaf_category`（leaf_category_id 等值），
+      再按 post_id 关联 `contact_event` 的 `idx_post`；属「小范围驱动 + 索引关联」，
+      无全表扫。窗口条件写在 `contact_event.created_at` 上（判定的是「窗口内被联系」，
+      而非「窗口内发布的帖子」）。
+
+      只读、只出 COUNT：不 SELECT 任何密文/联系方式列。
+    -->
+    <select id="countContactsByLeafBetween" resultType="long">
+        SELECT COUNT(*)
+        FROM contact_event ce
+        JOIN post p ON p.id = ce.post_id
+        WHERE p.leaf_category_id = #{leafCategoryId}
+          AND ce.created_at &gt;= #{from}
+          AND ce.created_at &lt; #{to}
+    </select>
+
 </mapper>

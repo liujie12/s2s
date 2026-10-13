@@ -89,6 +89,73 @@ class PostRepository {
     return PostCreatedDto.fromJson(response.data);
   }
 
+  /// 编辑帖子（`PATCH /posts/{post_id}`，[B2-8]）。
+  ///
+  /// **`PostCreatedDto` 同时承载两个写接口的回执**：`POST /posts` 与
+  /// `PATCH /posts/{post_id}` 的响应 data 都是契约 `PostDetail`，且本前端只
+  /// 消费其中的 8 个字段子集（id/type/leaf_category_id/l2_category_id/
+  /// title/status/version/completeness_level），二者字段子集**同构**，故复用
+  /// 同一 DTO 解析，不另建 `PostUpdatedDto`（回执字段完全一致，双份只会漂移）。
+  ///
+  /// **乐观锁强约束**：编辑载荷必须在 [draft] 内带 `version`（须取自
+  /// `GET /posts/mine` 或 `GET /posts/{id}`）。不符、非本人、行不存在或非
+  /// 在架一律回 `40903`，客户端**不得自动重试**（属 `forceRefetch`，§12.2）。
+  ///
+  /// **联系方式保留**：契约 `PostUpdateRequest.contact_value` 可空，缺失/null
+  /// 表示「保留原密文不改」；[draft] 由 `postDraftPayload` 构造，编辑态
+  /// `contact` 留空即不上送该键。
+  ///
+  /// 幂等：契约挂 `Idempotency-Key`，HeaderInterceptor 按写接口（POST/PATCH）
+  /// 纪律缺失即注入，本层不碰该头。
+  ///
+  /// 参数：
+  ///   [postId] 帖子 ID（契约路径参数 int64）；
+  ///   [draft] `PostDraft` 全字段 + `version`（由调用方在
+  ///     `postDraftPayload()` 之上补 `version`）；
+  ///   [interactionId] 交互起点生成的 X-Interaction-Id；null 由拦截器兜底。
+  /// 返回：[PostCreatedDto]（编辑后回执）；解析口径同 [createPost]。
+  /// 抛出：[ApiException] 信封业务错误（40903 版本冲突、40001 参数、40101
+  ///   未登录等）与传输错误归一后的异常。
+  Future<PostCreatedDto> updatePost(
+    int postId,
+    Map<String, Object?> draft, {
+    String? interactionId,
+  }) async {
+    final response = await _dio.patch<Object?>(
+      '/posts/$postId',
+      data: draft,
+      options: _interactionOptions(interactionId),
+    );
+    return PostCreatedDto.fromJson(response.data);
+  }
+
+  /// 克隆重发（取可编辑草稿，`POST /posts/{post_id}/repost`，[B2-8]）。
+  ///
+  /// **只读不落库**：服务端读取原帖返回 [RepostDraftDto]（可编辑草稿载荷），
+  /// 前端带入发布页，用户确认后走既有 `POST /posts` 落 `active`。仅
+  /// `offline`/`expired` 状态可重发（其他状态服务端回 40001）；帖子不存在或
+  /// 非本人回 41001。
+  ///
+  /// 幂等：契约挂 `Idempotency-Key`（POST 写接口纪律），HeaderInterceptor 缺失
+  /// 即注入，本层不碰该头。
+  ///
+  /// 参数：
+  ///   [postId] 帖子 ID（契约路径参数 int64）；
+  ///   [interactionId] 交互起点生成的 X-Interaction-Id；null 由拦截器兜底。
+  /// 返回：[RepostDraftDto] 可编辑草稿（含 `category_available` 判定）。
+  /// 抛出：[ApiException] 信封业务错误（40001 状态非法、41001 不存在/非本人、
+  ///   40101 未登录）与传输错误归一后的异常。
+  Future<RepostDraftDto> repost(
+    int postId, {
+    String? interactionId,
+  }) async {
+    final response = await _dio.post<Object?>(
+      '/posts/$postId/repost',
+      options: _interactionOptions(interactionId),
+    );
+    return RepostDraftDto.fromJson(response.data);
+  }
+
   /// 查帖子详情（`GET /posts/{post_id}`，游客可读，[127]）。
   ///
   /// 参数：

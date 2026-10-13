@@ -35,4 +35,20 @@ public interface ContactPostMapper {
      *         {@code status}；帖子不存在时返回 {@code null}
      */
     Map<String, Object> selectContactRow(@Param("postId") Long postId);
+
+    /**
+     * 统计某叶子类目下帖子在时间窗内被联系的次数（[153] B2-5 §9.10.2 达标判定用）。
+     *
+     * <p>口径：{@code contact_event.created_at} 落窗（「窗口内被联系」），而非
+     * 「窗口内发布的帖子」—— 后者会把「72h 后才被大量联系」排除在外，与本通道
+     * 「快速验证需求是否成立」的意图不符。</p>
+     *
+     * @param leafCategoryId 叶子类目 ID
+     * @param from           窗口起（含）
+     * @param to             窗口止（不含）
+     * @return long 命中联系事件数
+     */
+    long countContactsByLeafBetween(@Param("leafCategoryId") int leafCategoryId,
+            @Param("from") java.time.LocalDateTime from,
+            @Param("to") java.time.LocalDateTime to);
 }

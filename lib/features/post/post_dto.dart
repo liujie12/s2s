@@ -207,8 +207,9 @@ class PostAuthorDto {
 
 /// 帖子详情 DTO（openapi.yaml `PostDetail`；[127] 详情页接线）。
 ///
-/// 只解析详情页消费的字段；`version`/`status`/`l2_category_id`/`category_path`/
-/// `contact_mask` 等属其它端点的消费面，不在本 DTO 预建（预留字段不造数据）。
+/// 只解析详情页消费的字段；`version`/`status`/`l2_category_id`/`category_path`
+/// 等属其它端点的消费面，不在本 DTO 预建（预留字段不造数据）。
+/// `contact_mask` 自 [147] DEC-13 起承载（详情出参回发布时落库的脱敏值）。
 /// `media` 自 [B2-11] 起承载（详情页顶部媒体轮播；他人视角契约仅含
 /// `audit_status=pass` 的项）。
 /// 映射到域模型 [ListingDetail] 在 `post_detail_provider.dart` 完成（§10.4 语义迁移）。
@@ -231,6 +232,7 @@ class PostDetailDto {
     required this.expireAt,
     required this.author,
     this.media = const [],
+    this.contactMask,
   });
 
   /// 由信封 data 构造。
@@ -275,6 +277,7 @@ class PostDetailDto {
       expireAt: _requireDateTime(map, 'expire_at', 'PostDetail'),
       author: PostAuthorDto.fromJson(map['author']),
       media: media,
+      contactMask: optString(map, 'contact_mask', 'PostDetail'),
     );
   }
 
@@ -326,6 +329,13 @@ class PostDetailDto {
   /// 媒体列表（他人视角仅含 `audit_status=pass` 的项；契约非 required，
   /// 缺失/JSON null 均为空列表）。
   final List<MediaItemDto> media;
+
+  /// 脱敏联系方式（`contact_mask`；[147] DEC-13）。
+  ///
+  /// 发布时落库的脱敏值（如 `138****8000`），供联系中转页未拉取态展示；
+  /// 完整明文仍只由 `GET /posts/{id}/contact` 返回。可空：存量行（迁移前发布）
+  /// 为 null。
+  final String? contactMask;
 }
 
 /// 解析必填 date-time 字段（RFC3339 UTC，服务端保证合法）。
@@ -580,4 +590,131 @@ class PostStatusResultDto {
 
   /// 变更后的到期时间（`republish`/`renew` 会重算）。
   final DateTime? expireAt;
+}
+
+/// 克隆重发草稿 DTO（openapi.yaml `RepostDraft`；[B2-8]
+/// `POST /posts/{post_id}/repost` 响应 data）。
+///
+/// 契约语义：服务端读取原帖返回一份**可编辑草稿**（**不落库**），前端带入
+/// 发布页新建态，用户确认后走既有 `POST /posts` 落 `active`（有效期由发布
+/// 时重置）。required = source_post_id/type/leaf_category_id/title/lng/lat/
+/// category_available；其余可空。
+///
+/// **不含完整联系方式**（契约：只回 `contact_type` + 脱敏 `contact_mask`）：
+/// [contactMask] 是脱敏展示值，明文唯一出口仍是 `GET /posts/{id}/contact`
+/// （安全方案 §4.6 出口收敛）。
+///
+/// [categoryAvailable] 为 false 表示原分类已被运营停用（PRD §8.7），页面
+/// 须提示「该分类已停用，请重选分类」——这是本轮的已知分支，不是异常。
+class RepostDraftDto {
+  /// 构造克隆重发草稿 DTO。
+  const RepostDraftDto({
+    required this.sourcePostId,
+    required this.type,
+    required this.leafCategoryId,
+    required this.title,
+    this.price,
+    this.priceUnit,
+    this.description,
+    this.attributes,
+    required this.lng,
+    required this.lat,
+    this.address,
+    this.addressPrecise,
+    this.mediaIds = const <String>[],
+    this.contactType,
+    this.contactMask,
+    required this.categoryAvailable,
+  });
+
+  /// 由信封 data 构造。
+  ///
+  /// 参数：[json] 信封 data（`POST /posts/{post_id}/repost` 的 data 字段）。
+  /// 返回：[RepostDraftDto]。
+  /// 抛出：[ApiException.parse] required 字段缺失/类型不符时（含实际值）。
+  factory RepostDraftDto.fromJson(Object? json) {
+    final map = requireMap(json, 'RepostDraft');
+
+    // 契约 `attributes` 为可选对象，缺失/JSON null 视为 null（不造空桶）；
+    // 出现但不是对象则违约当场抛，避免把坏数据当「无属性」静默吞掉。
+    final attributesRaw = map['attributes'];
+    final attributes = attributesRaw == null
+        ? null
+        : attributesRaw is Map
+        ? attributesRaw.cast<String, Object?>()
+        : throw ApiException.parse(
+            'RepostDraft.attributes 应为对象或 null，实际: $attributesRaw');
+
+    return RepostDraftDto(
+      sourcePostId: requireInt(map, 'source_post_id', 'RepostDraft'),
+      type: requireString(map, 'type', 'RepostDraft'),
+      leafCategoryId: requireInt(map, 'leaf_category_id', 'RepostDraft'),
+      title: requireString(map, 'title', 'RepostDraft'),
+      price: optDouble(map, 'price', 'RepostDraft'),
+      priceUnit: optString(map, 'price_unit', 'RepostDraft'),
+      description: optString(map, 'description', 'RepostDraft'),
+      attributes: attributes,
+      // 契约 lng/lat 为必填 number，缺失即解析失败（不兜底成 0）。
+      lng: optDouble(map, 'lng', 'RepostDraft') ??
+          (throw ApiException.parse('RepostDraft.lng 缺失')),
+      lat: optDouble(map, 'lat', 'RepostDraft') ??
+          (throw ApiException.parse('RepostDraft.lat 缺失')),
+      address: optString(map, 'address', 'RepostDraft'),
+      addressPrecise: optBool(map, 'address_precise', 'RepostDraft'),
+      // 契约 media_ids 非 required，缺失/JSON null 均视为空列表。
+      mediaIds: optStringList(map, 'media_ids', 'RepostDraft') ?? const [],
+      contactType: optString(map, 'contact_type', 'RepostDraft'),
+      contactMask: optString(map, 'contact_mask', 'RepostDraft'),
+      categoryAvailable: requireBool(map, 'category_available', 'RepostDraft'),
+    );
+  }
+
+  /// 原帖 ID。
+  final int sourcePostId;
+
+  /// 供需态（`resource`/`demand`）。
+  final String type;
+
+  /// 叶子类目 ID（原帖分类；[categoryAvailable] 为 false 时已停用）。
+  final int leafCategoryId;
+
+  /// 标题（回显原帖）。
+  final String title;
+
+  /// 价格（元）；null=面议。
+  final double? price;
+
+  /// 价格单位；price 为 null 时无意义。
+  final String? priceUnit;
+
+  /// 描述正文（可空）。
+  final String? description;
+
+  /// 动态属性（原帖 `template_values` 反序列化）；契约可空，缺失为 null。
+  final Map<String, Object?>? attributes;
+
+  /// GCJ-02 经度。
+  final double lng;
+
+  /// GCJ-02 纬度。
+  final double lat;
+
+  /// 门牌号地址（可空）。
+  final String? address;
+
+  /// 是否已到门牌号精度（可空）。
+  final bool? addressPrecise;
+
+  /// 原帖媒体 ID 列表（契约非 required，缺失为空列表）。
+  final List<String> mediaIds;
+
+  /// 原联系渠道（phone/wechat，可空）。
+  final String? contactType;
+
+  /// 脱敏原联系方式（不回显明文，可空）。
+  final String? contactMask;
+
+  /// 原分类是否仍可用：false = 已被运营停用，前端须提示重选分类
+  /// （PRD §8.7）。
+  final bool categoryAvailable;
 }

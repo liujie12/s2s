@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.s2s.server.ops.mapper.OpsFollowUpMapper">
+
+    <!--
+      待运营跟进队列分页（[153] B2-5 ⑥；PRD §6.4.4）。
+      排序：入队时间升序（先来先跟），同刻按 id 升序保证跨页稳定。
+      分页用显式 LIMIT/OFFSET（本工程未注册 MyBatis-Plus 分页插件）。
+    -->
+    <select id="countByStatus" resultType="long">
+        SELECT COUNT(*)
+        FROM ops_follow_up
+        WHERE status = #{status}
+    </select>
+
+    <select id="selectPageByStatus" resultType="com.s2s.server.ops.entity.OpsFollowUpEntity">
+        SELECT id, user_id, keyword, l2_category_id, grid_id, status,
+               handler_id, handled_at, remark, triggered_at
+        FROM ops_follow_up
+        WHERE status = #{status}
+        ORDER BY triggered_at ASC, id ASC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+</mapper>

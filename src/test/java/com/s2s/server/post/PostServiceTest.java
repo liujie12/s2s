@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -18,10 +19,15 @@ import com.s2s.server.post.dto.PostCreateRequest;
 import com.s2s.server.post.dto.PostDetail;
 import com.s2s.server.post.dto.PostStatusResult;
 import com.s2s.server.post.dto.PostStatusUpdateRequest;
+import com.s2s.server.post.dto.PostUpdateRequest;
 import com.s2s.server.post.dto.PrecheckResult;
+import com.s2s.server.post.dto.RepostDraft;
 import com.s2s.server.post.entity.PostEntity;
+import com.s2s.server.post.entity.PostMediaEntity;
 import com.s2s.server.post.mapper.PostMapper;
 import com.s2s.server.post.mapper.PostMediaMapper;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
@@ -126,5 +132,189 @@ class PostServiceTest {
                 postService.updateStatus(1L, 100L, new PostStatusUpdateRequest("offline", 3L));
         assertThat(result.status()).isEqualTo("offline");
         assertThat(result.version()).isEqualTo(4L);
+    }
+
+    // ---------------------------------------------------------------------
+    // [B2-8] 编辑 / 克隆重发
+    // ---------------------------------------------------------------------
+
+    /**
+     * 编辑：0 行（版本不符 / 非本人 / 非在架）→ 40903，且不触达媒体重设。
+     *
+     * @return void；断言失败即编辑可越过乐观锁或状态守卫
+     */
+    @Test
+    void updatePost影响0行回40903() {
+        when(postMapper.update(isNull(), any())).thenReturn(0);
+
+        assertThatThrownBy(() -> postService.updatePost(1L, 100L, updateReq(null)))
+                .isInstanceOf(BizException.class)
+                .extracting(e -> ((BizException) e).getErrorCode())
+                .isEqualTo(ErrorCode.VERSION_CONFLICT);
+        verify(mediaMapper, never()).update(isNull(), any());
+    }
+
+    /**
+     * 编辑：不传联系方式（null）→ 保留原密文，不重新加密；成功返回新版本号。
+     *
+     * @return void；断言失败即编辑会覆盖原联系方式（安全收窄被破）
+     */
+    @Test
+    void updatePostKeepsContactWhenValueAbsent() {
+        when(postMapper.update(isNull(), any())).thenReturn(1);
+        when(postMapper.selectById(100L)).thenReturn(activeRow());
+        when(mediaMapper.selectList(any())).thenReturn(List.of());
+        when(mediaMapper.update(isNull(), any())).thenReturn(0);
+
+        PostDetail detail = postService.updatePost(1L, 100L, updateReq(null));
+
+        assertThat(detail.id()).isEqualTo(100L);
+        assertThat(detail.version()).isEqualTo(5L);
+        verify(cryptoFacade, never()).encrypt(anyString(), any());
+    }
+
+    /**
+     * 编辑：传了新联系方式 → 以 AAD=post_id 重新加密。
+     *
+     * @return void
+     */
+    @Test
+    void updatePostReEncryptsWhenContactProvided() {
+        when(postMapper.update(isNull(), any())).thenReturn(1);
+        when(postMapper.selectById(100L)).thenReturn(activeRow());
+        when(mediaMapper.selectList(any())).thenReturn(List.of());
+        when(mediaMapper.update(isNull(), any())).thenReturn(0);
+
+        postService.updatePost(1L, 100L, updateReq("13900139000"));
+
+        verify(cryptoFacade).encrypt(eq("13900139000"), eq("100"));
+    }
+
+    /**
+     * 重发：帖子不存在 / 非本人 → 41001（不区分，避免按 id 探测）。
+     *
+     * @return void
+     */
+    @Test
+    void repostMissingOrNotOwner回41001() {
+        when(postMapper.selectById(100L)).thenReturn(null);
+        assertThatThrownBy(() -> postService.repost(1L, 100L))
+                .isInstanceOf(BizException.class)
+                .extracting(e -> ((BizException) e).getErrorCode())
+                .isEqualTo(ErrorCode.POST_GONE);
+
+        PostEntity others = archivedRow();
+        others.setUserId(999L);
+        when(postMapper.selectById(100L)).thenReturn(others);
+        assertThatThrownBy(() -> postService.repost(1L, 100L))
+                .isInstanceOf(BizException.class)
+                .extracting(e -> ((BizException) e).getErrorCode())
+                .isEqualTo(ErrorCode.POST_GONE);
+    }
+
+    /**
+     * 重发：在架帖不可重发 → 40001。
+     *
+     * @return void
+     */
+    @Test
+    void repostActive回40001() {
+        when(postMapper.selectById(100L)).thenReturn(activeRow());
+        assertThatThrownBy(() -> postService.repost(1L, 100L))
+                .isInstanceOf(BizException.class)
+                .extracting(e -> ((BizException) e).getErrorCode())
+                .isEqualTo(ErrorCode.PARAM_INVALID);
+    }
+
+    /**
+     * 重发：已下架 → 返回克隆草稿（含媒体、脱敏联系方式、分类可用）。
+     *
+     * @return void；断言失败即重发拿不到可编辑载荷
+     */
+    @Test
+    void repostReturnsCloneDraft() {
+        when(postMapper.selectById(100L)).thenReturn(archivedRow());
+        PostMediaEntity media = new PostMediaEntity();
+        media.setId(7L);
+        when(mediaMapper.selectList(any())).thenReturn(List.of(media));
+        when(validator.isLeafAvailable(10101)).thenReturn(true);
+
+        RepostDraft draft = postService.repost(1L, 100L);
+
+        assertThat(draft.sourcePostId()).isEqualTo(100L);
+        assertThat(draft.type()).isEqualTo("resource");
+        assertThat(draft.leafCategoryId()).isEqualTo(10101);
+        assertThat(draft.mediaIds()).containsExactly("7");
+        assertThat(draft.contactMask()).isEqualTo("138****8000");
+        assertThat(draft.attributes()).containsEntry("a", "b");
+        assertThat(draft.addressPrecise()).isTrue();
+        assertThat(draft.categoryAvailable()).isTrue();
+    }
+
+    /**
+     * 重发：原分类被运营停用 → categoryAvailable=false（PRD §8.7 前端须提示重选）。
+     *
+     * @return void
+     */
+    @Test
+    void repostMarksCategoryUnavailable() {
+        when(postMapper.selectById(100L)).thenReturn(archivedRow());
+        when(mediaMapper.selectList(any())).thenReturn(List.of());
+        when(validator.isLeafAvailable(10101)).thenReturn(false);
+
+        assertThat(postService.repost(1L, 100L).categoryAvailable()).isFalse();
+    }
+
+    /**
+     * 造编辑载荷（[B2-8]）。
+     *
+     * @param contactValue 联系方式值；{@code null} 表示保留原密文不改
+     * @return {@link PostUpdateRequest} 载荷
+     */
+    private static PostUpdateRequest updateReq(String contactValue) {
+        return new PostUpdateRequest(4L, "resource", 10101, "新标题", 60.0, "小时", "新描述",
+                Map.of("k", "v"), 120.15, 30.28, null, false, List.of(),
+                contactValue == null ? null : "phone", contactValue);
+    }
+
+    /**
+     * 造在架帖行。
+     *
+     * @return {@link PostEntity} active 行
+     */
+    private static PostEntity activeRow() {
+        PostEntity post = new PostEntity();
+        post.setId(100L);
+        post.setUserId(1L);
+        post.setType("resource");
+        post.setLeafCategoryId(10101);
+        post.setL2CategoryId(101);
+        post.setTitle("t");
+        post.setCompletenessLevel(2);
+        post.setStatus("active");
+        post.setVersion(5L);
+        post.setCreatedAt(LocalDateTime.now());
+        post.setExpireAt(LocalDateTime.now().plusDays(7));
+        return post;
+    }
+
+    /**
+     * 造已下架帖行（archived + reason 0 → API offline），含克隆所需字段。
+     *
+     * @return {@link PostEntity} archived 行
+     */
+    private static PostEntity archivedRow() {
+        PostEntity post = activeRow();
+        post.setStatus("archived");
+        post.setStatusReason(0);
+        post.setPrice(new BigDecimal("50.0"));
+        post.setPriceUnit("小时");
+        post.setLng(new BigDecimal("120.150000"));
+        post.setLat(new BigDecimal("30.280000"));
+        post.setContactChannel("phone");
+        post.setContactMask("138****8000");
+        post.setTemplateValues("{\"a\":\"b\"}");
+        post.setCompletenessConditions("{\"required_full\":true,\"address_precise\":true,\"leaf_matched\":true}");
+        return post;
     }
 }

@@ -56,4 +56,30 @@ public class SystemConfigService {
                 new QueryWrapper<SystemConfigEntity>().eq("config_key", configKey));
         return config == null ? null : config.getConfigValue();
     }
+
+    /**
+     * 写入（upsert）配置值 —— 运营后台配置类页面的<b>唯一落库入口</b>（[153] B2-5）。
+     *
+     * <p>缺行则插入（`description` 由调用方给的 {@code description} 填，便于后台排查该键的
+     * 用途），有行则更新值。调用方须自带 {@code @Transactional} 并把本写入与
+     * {@code audit_log} 留痕放同一事务（权重/开关变更属 PRD §9.10.1 必留操作）。</p>
+     *
+     * @param configKey   配置键
+     * @param configValue 配置值（原文）
+     * @param description 配置说明（仅新建行时写入；已存在时保留原说明）
+     */
+    public void putValue(String configKey, String configValue, String description) {
+        SystemConfigEntity existing = systemConfigMapper.selectOne(
+                new QueryWrapper<SystemConfigEntity>().eq("config_key", configKey));
+        if (existing == null) {
+            SystemConfigEntity created = new SystemConfigEntity();
+            created.setConfigKey(configKey);
+            created.setConfigValue(configValue);
+            created.setDescription(description);
+            systemConfigMapper.insert(created);
+            return;
+        }
+        existing.setConfigValue(configValue);
+        systemConfigMapper.updateById(existing);
+    }
 }

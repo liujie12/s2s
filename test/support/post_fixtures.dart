@@ -120,6 +120,8 @@ Map<String, Object?> postDetailPayload() => {
   'lat': 30.2741,
   'address': '文三路 100 号',
   'completeness_level': 2,
+  // [147] DEC-13：详情出参回发布时落库的脱敏值（可空字段出现形态）。
+  'contact_mask': '138****8000',
   'status': 'active',
   'publish_at': '2026-09-01T04:00:00Z',
   'expire_at': '2026-09-08T04:00:00Z',
@@ -226,6 +228,31 @@ void stubGetMyPosts(NetworkChainHarness harness, {Map<String, Object?>? payload}
     );
   });
 }
+
+/// 构造 `POST /posts/{post_id}/repost` 成功响应 data（契约 `RepostDraft`，[B2-8]）。
+///
+/// 覆盖：属性对象出现形态、`address`/`address_precise` 可空、媒体为空列表、
+/// 脱敏联系方式出现形态（**不含明文** —— 契约安全收窄）、`category_available=true`。
+///
+/// 返回：[Map] 契约 `RepostDraft` 形态的 data 对象。
+Map<String, Object?> repostDraftPayload() => {
+  'source_post_id': 1002,
+  'type': 'resource',
+  'leaf_category_id': 10101,
+  'title': '九成新实木餐桌转让',
+  'price': 299,
+  'price_unit': '元',
+  'description': '自用一年，成色好',
+  'attributes': {'height': '75cm'},
+  'lng': 120.15,
+  'lat': 30.28,
+  'address': null,
+  'address_precise': false,
+  'media_ids': <String>[],
+  'contact_type': 'phone',
+  'contact_mask': '138****8000',
+  'category_available': true,
+};
 
 /// 构造 `PATCH /posts/{id}/status` 成功响应 data（契约四字段）。
 ///

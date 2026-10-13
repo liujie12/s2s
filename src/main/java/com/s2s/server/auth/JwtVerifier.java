@@ -1,5 +1,6 @@
 package com.s2s.server.auth;
 
+import com.s2s.server.common.audit.OperatorRole;
 import com.s2s.server.common.config.SecretsProperties;
 import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
@@ -57,6 +58,15 @@ public class JwtVerifier {
     /** JWT 声明名：Token 唯一标识（JWT ID）。 */
     static final String CLAIM_JTI = "jti";
 
+    /** JWT 声明名：Token 作用域（[153] B2-5 后台 Token 与 C 端 Token 的区分位）。 */
+    public static final String CLAIM_SCOPE = "scope";
+
+    /** JWT 声明名：后台角色落库值（仅 {@code scope=admin} 的 Token 携带）。 */
+    public static final String CLAIM_ROLE = "role";
+
+    /** 后台 Token 的 {@code scope} 值。 */
+    public static final String SCOPE_ADMIN = "admin";
+
     /** 验签密钥（HS256，构造时从 SecretsProperties 一次性转换）。 */
     private final SecretKey signingKey;
 
@@ -106,6 +116,7 @@ public class JwtVerifier {
      */
     public Long verifyAndGetUserId(String token) {
         Claims claims = parseClaims(token);
+        rejectAdminScope(claims);
         String jti = claims.get(CLAIM_JTI, String.class);
         if (jti == null || jti.isBlank()) {
             // jti 缺失：格式不合法（签发方应保证 jti 存在），按无效 Token 处理
@@ -128,6 +139,7 @@ public class JwtVerifier {
      */
     public Long verifyAndGetUserIdAllowExpired(String token) {
         Claims claims = parseClaimsAllowExpired(token);
+        rejectAdminScope(claims);
         String jti = claims.get(CLAIM_JTI, String.class);
         if (jti == null || jti.isBlank()) {
             throw BizException.of(ErrorCode.UNAUTHORIZED);
@@ -150,6 +162,7 @@ public class JwtVerifier {
      */
     public TokenInfo verifyAndGetTokenInfoAllowExpired(String token) {
         Claims claims = parseClaimsAllowExpired(token);
+        rejectAdminScope(claims);
         String jti = claims.get(CLAIM_JTI, String.class);
         if (jti == null || jti.isBlank()) {
             throw BizException.of(ErrorCode.UNAUTHORIZED);
@@ -157,6 +170,52 @@ public class JwtVerifier {
         Long userId = parseUserId(claims);
         Instant expiresAt = claims.getExpiration().toInstant();
         return new TokenInfo(userId, jti, expiresAt);
+    }
+
+    /**
+     * 验签并提取<b>后台操作人</b>（[153] B2-5）：仅接受 {@code scope=admin} 的 Token。
+     *
+     * <p>与 C 端 {@link #verifyAndGetUserId(String)} 互不认对方：本方法要求
+     * {@code scope=admin} 且 {@code role} 为后台四角色之一；C 端各方法则拒收
+     * {@code scope=admin}（{@link #rejectAdminScope(Claims)}）。</p>
+     *
+     * @param token 原始 Token 字符串（不含 "Bearer " 前缀）
+     * @return {@link AdminPrincipal} 管理员 ID + 角色；永不返回 null
+     * @throws BizException 非后台 Token / 签名非法 / 过期 / 黑名单命中 → 40101；
+     *                      Redis 异常 → 50001
+     */
+    public AdminPrincipal verifyAdminToken(String token) {
+        Claims claims = parseClaims(token);
+        if (!SCOPE_ADMIN.equals(claims.get(CLAIM_SCOPE, String.class))) {
+            // 非后台 Token（含 C 端 Token）不可用于后台
+            throw BizException.of(ErrorCode.UNAUTHORIZED);
+        }
+        String jti = claims.get(CLAIM_JTI, String.class);
+        if (jti == null || jti.isBlank()) {
+            throw BizException.of(ErrorCode.UNAUTHORIZED);
+        }
+        checkBlacklist(jti);
+        Long adminId = parseUserId(claims);
+        OperatorRole role = OperatorRole.fromDbValue(claims.get(CLAIM_ROLE, String.class));
+        if (role == null || !role.isAdminRole()) {
+            throw BizException.of(ErrorCode.UNAUTHORIZED);
+        }
+        return new AdminPrincipal(adminId, role);
+    }
+
+    /**
+     * C 端路径拒收后台 Token：带 {@code scope=admin} 的 Token 一律 40101。
+     *
+     * <p>防「后台 Token 被拿去调 C 端接口」——两套身份体系必须互认边界
+     * （《决策登记表》2026-10-12：后台 Token 与 C 端 Token 分离）。</p>
+     *
+     * @param claims 已验签声明集
+     * @throws BizException 命中后台 scope → 40101
+     */
+    private void rejectAdminScope(Claims claims) {
+        if (SCOPE_ADMIN.equals(claims.get(CLAIM_SCOPE, String.class))) {
+            throw BizException.of(ErrorCode.UNAUTHORIZED);
+        }
     }
 
     /**
@@ -272,5 +331,14 @@ public class JwtVerifier {
      * @param expiresAt Token 过期时刻（黑名单键 TTL = 到该时刻的剩余秒数）
      */
     public record TokenInfo(Long userId, String jti, Instant expiresAt) {
+    }
+
+    /**
+     * 后台 Token 验签产出（[153] B2-5）。
+     *
+     * @param adminId 管理员 ID（sub 的 Long 形态）
+     * @param role    后台角色（{@code OperatorRole}，必为后台四角色之一）
+     */
+    public record AdminPrincipal(Long adminId, OperatorRole role) {
     }
 }

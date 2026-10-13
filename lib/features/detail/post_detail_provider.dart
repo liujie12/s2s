@@ -58,8 +58,9 @@ final postDetailProvider = FutureProvider.family<ListingDetail, int>((
 ///   - [ListingDetail.contactChannel] 恒 [ContactChannel.phone]：契约 `PostDetail`
 ///     不返回 `contact_channel`（联系方式渠道属 [128] contact 域口径），详情页
 ///     仅用其决定「联系 TA」按钮图标，降级默认电话图标，精确值待 [128]；
-///   - [ListingDetail.contactMasked] 恒 null：详情接口 `contact_mask` 恒 null
-///     （完整/脱敏值只由 `GET /posts/{id}/contact` 返回，[128]）；
+///   - [ListingDetail.contactMasked] 取 `dto.contactMask`（发布时落库的脱敏值，
+///     [147] DEC-13）：未拉取态据此显示真实脱敏号码；完整明文仍待用户点「查看」后
+///     由 `GET /posts/{id}/contact` 返回（[128]）。存量行无掩码时为 null。
 ///   - [ListingDetail.negotiable] 恒 false：契约与 DDL 均无「可议价」字段。
 ListingDetail postDetailToListingDetail(PostDetailDto dto) {
   final listing = Listing(
@@ -92,6 +93,7 @@ ListingDetail postDetailToListingDetail(PostDetailDto dto) {
     completeness: CompletenessLevel.fromApi(dto.completenessLevel),
     expireAt: dto.expireAt,
     contactChannel: ContactChannel.phone,
+    contactMasked: dto.contactMask,
     leafCategoryId: dto.leafCategoryId,
     templateFields: _templateFieldsFromAttributes(dto.attributes),
     address: dto.address,

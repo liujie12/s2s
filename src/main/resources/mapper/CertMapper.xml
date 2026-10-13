@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.s2s.server.cert.mapper.CertMapper">
+
+    <!--
+      认证审核队列查询（[153] B2-5 ⑤；PRD §9.10.1 验收「队列按提交时间排序」）。
+      分页用显式 LIMIT/OFFSET 参数绑定（本工程未注册 MyBatis-Plus 分页插件）。
+      「按提交时间升序」= 先来先审，与人工审核 SLA 的队列语义一致。
+    -->
+    <select id="countByStatus" resultType="long">
+        SELECT COUNT(*)
+        FROM cert
+        WHERE status = #{status}
+    </select>
+
+    <select id="selectPageByStatus" resultType="com.s2s.server.cert.entity.CertEntity">
+        SELECT id, user_id, cert_type, status, submitted_at, approved_at, expire_at,
+               reject_reason, ocr_image_ref, fail_count, lock_until
+        FROM cert
+        WHERE status = #{status}
+        ORDER BY submitted_at ASC, id ASC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+</mapper>

@@ -141,6 +141,8 @@
 - 2026-10-11（[B2-11]「我的」页实装 · 后端三域 + 前端四页）
 - 2026-10-12（[B2-11] 续：trust 页转真 + 媒体上传链路本体 + 发布/资质/详情三处接线）
 - 2026-10-12（B2-2 S1 双向推送 · 阶段 1：契约 + token 落库 + 站内写入 + 配额闸 + 下发编排）
+- 2026-10-12（[150] 算法备案评估 · 结论：触发备案 + 10 工作日窗口应对 + 自评估报告清单）
+- 2026-10-12（[151] B2-4 大模型备案评估 · 结论：分阶段（阶段① 调已备案 API 走「登记」/ 阶段② 微调 3B 预留））
 
 ---
 
@@ -6406,6 +6408,367 @@ printf '\nMYSQL_SSL_MODE=VERIFY_CA\nMYSQL_TLS_TRUSTSTORE_PASSWORD=%s\n' \
 4. **`POST /users/me/devices` 未加 `@Idempotent` 注解** —— 累入既有挂账（连同收藏增删/通知已读/设置 PATCH/资质提交，共 5 处）。
 5. **`PushDispatchService` 尚无生产调用方**：目标是 B2-3 的匹配结果下发（「发给谁」属匹配域，不在本批）；当前仅由单测驱动。
 6. **权限申请的具体交互点待产品确认**（本批只钉「不在冷启动首屏申请」这条底线，见前端详设 §10.2.2）。
+
+---
+
+### 2026-10-12（[150] 算法备案评估 · 结论：触发备案 + 10 工作日窗口应对 + 自评估报告清单）
+
+> 摘要：B2-12「算法备案评估」独立评估条目（会话属性 🟢 独立；用户裁定**沿用当前会话**、结论**仅写入现有分册、不新建文件**）。目的 = 在 B2-3（T1 LR+GBDT）开工前给出「是否需备案 + 期限 + 材料」的定论。依据全部取自**法规原文**（中国网信网 / 工信部 / 公安部 / 国务院公报：2022 令第 9 号 + 2018《安全评估规定》），未凭记忆编造。
+
+**一、法规适用判定（结论：触发）**
+
+- [x] **① 是否属「算法推荐服务」（《互联网信息服务算法推荐管理规定》第二条）** —— 第二条列举五类算法技术：生成合成类 / **个性化推送类** / **排序精选类** / 检索过滤类 / 调度决策类。Batch2 的 **T1（LR 一阶召回 + GBDT 二阶精排）= 排序精选类**，与 **S1 双向推送 = 个性化推送类**叠加 ⇒ **属算法推荐服务**。**要点**：第二条的适用范围**不限于「有舆论属性者」**——凡应用算法推荐技术，第二章（第六–二十二条）通用义务一律适用（尤其第七条「制定并公开算法推荐服务相关规则」、第十七条「用户选择权/拒绝权/标签管理」）。
+- [x] **② 是否「具有舆论属性或社会动员能力」（《具有舆论属性或社会动员能力的互联网信息服务安全评估规定》第二条）** —— 第二条系**列举式**：（一）开办论坛、博客、微博客、聊天室、通讯群组、公众账号、短视频、网络直播、**信息分享**、小程序等信息服务或者附设相应功能；（二）提供公众舆论表达渠道或具发动社会公众从事特定活动能力。本产品为 **UGC 供需信息发布/浏览平台**（发布 + 详情 + 举报 + 联系中转），属第（一）项**「信息分享」** ⇒ **保守判定：构成「具有舆论属性或社会动员能力」**。
+- [x] **③ 合并结论** —— T1 上线即同时满足「算法推荐服务」+「具有舆论属性」⇒ **触发《算法推荐管理规定》第二十四条备案义务 + 第二十七条安全评估义务**。
+- [x] **修正既有口径（重要）** —— 原记「内测期阶段 0 规则加权不触发」。本次评估指出：**「不触发」的成立理由不是「规则加权简单」**（规则加权同样是排序，且本产品本身即「信息分享」类，按保守口径阶段 0 亦可能落入「排序精选类」），**而是「内测期未向公众提供服务」这一服务时点理由**。该理由在**公开上架（M7 ≈ 2026-11-25）后失效**——上架即「向公众提供」，10 工作日窗口自任一用户可见的最早时点起算。
+
+**二、触发的义务与法定期限（原文口径）**
+
+| 义务 | 依据 | 期限 / 时点 |
+| --- | --- | --- |
+| **算法备案** | 第二十四条 | 提供服务之日起 **10 个工作日**（变更 10 个工作日；终止 20 个工作日办注销） |
+| **安全评估报告** | 第二十七条 +《安全评估规定》第三条第一项、第七条 | **上线（或增设推荐功能）前**提交 —— **早于**算法备案 |
+| 备案编号公示 | 第二十六条 | 备案通过后在 App 显著位置标明 |
+| 结果受理期 | 第二十五条 | 网信收到材料，齐全者 **30 个工作日**内备案；不齐 → 不予备案 + 说明理由 |
+| 通用义务（不限备案） | 第七条 / 第十七条 | 公开算法推荐规则；提供不针对个人特征的选项**或**便捷关闭；可查看/删除个人特征标签 |
+
+- **关键纠偏**：「10 个工作日」是**提交窗口**，**不是准备期**。算法自评估报告 + 拟公示内容必须在**上线前**备齐；否则窗口内交不出。安全评估报告的上线前义务更早。⇒ 真实倒排须以「T1 上线日」为锚点**向前**排。
+- **兜底咨询口径（官方通告）**：备案系统 `https://beian.cac.gov.cn`（2022-03-01 上线）；咨询 010-68359892 / pingguchu@cac.gov.cn（工作日 9–17 时）。属地判定有疑义时以此为准。
+
+**三、10 个工作日窗口应对方案（倒排，锚点 = T1 上线日 / 灰度放量日）**
+
+- **T-30 天（建议预留 ≥1 个月）**：启动材料准备 —— 主体信息（企业执照 + 法人身份证 + **算法安全负责人**）、算法信息（算法类型 / 机制机理 / 数据与标签 / 应用场景）、产品及功能信息（App 名称 / 服务形式 / 应用领域 / 推荐功能位置）、**算法自评估报告**、**拟公示内容**。
+- **T-15 天**：完成**安全评估报告**，经**全国互联网安全管理服务平台**提交**所在地地市级以上网信 + 公安**（《安全评估规定》第七条；第三条第一项 = 上线**前**）。
+- **T-0**：T1 上线 / 10% 双轨灰度放量（保守取任一用户可见的最早时点）。
+- **T+10 个工作日**：`beian.cac.gov.cn` 完成**算法备案填报**（系统三板块：**主体信息 → 算法信息 → 关联产品及功能信息**，先主体后算法/产品）。
+- **备案通过后**：App 显著位置标示备案编号。
+- **缓冲**：受理期最长 30 个工作日 + 材料不齐会补正 ⇒ 整体**预留 ≥1 个月**，勿压到上线当天动手。
+
+**四、算法自评估报告准备（清单 + 本项目素材映射）**
+
+报告须同时覆盖三处法定要件：
+- **第二十四条填报项**：服务提供者名称、服务形式、应用领域、算法类型（排序精选/个性化推送）、算法自评估报告、拟公示内容。
+- **《安全评估规定》第五条「重点评估」8 项**：① 安全管理负责人/信息审核人员配置；② 用户真实身份核验与注册信息留存；③ 账号、操作时间/类型、网络源地址目标地址端口、客户端硬件特征等日志与发布信息记录留存；④ 违法有害信息防范处置与记录保存；⑤ 个人信息保护及防「社会动员功能失控」的技术措施；⑥ 投诉举报制度与受理处置；⑦ 为网信部门履职提供技术/数据支持机制；⑧ 为公安、国安依法履职提供技术/数据支持机制。
+- **《安全评估规定》第六条「报告构成」4 部分**：① 服务功能/服务范围/软硬件设施/部署位置 + 证照获取情况；② 安全管理制度与技术措施落实及风险防控效果；③ 安全评估结论；④ 其他应说明情况。
+
+**本项目可复用资产（避免从零写）**：
+
+| 报告要件 | 本项目既有落点 |
+| --- | --- |
+| ② 真实身份核验 + 注册信息留存 | [149] 实名认证（`cert` 域 + 阿里云实人认证纯服务端 API）+ 资质二层 |
+| ③ 日志 / 记录留存 | `audit_log` 审计留痕 + notify 埋点库 + 发布信息记录 |
+| ④ 违法有害信息处置 | §2.7 R6 举报分级响应引擎（风险分 ≥60 自动下架 + 4h 工单 SLA）+ content 审核 |
+| ⑥ 投诉举报 | 举报入口（[128] contact 域） |
+| ① 负责人 / 审核人员 | **缺** —— 须指定「算法安全负责人」（建议技术/合规负责人兼任） |
+| ⑦⑧ 网信 / 公安支持机制 | **缺** —— 须成文承诺并指定对接人 |
+
+**须新增（当前无，属合规 gap）**：
+- **第七条**：「算法推荐服务相关规则」**公开文本 + 公示位**（即「拟公示内容」）。
+- **第十七条**：① 提供**不针对个人特征的选项**或**便捷关闭算法推荐**的入口，关闭后立即停止；② 提供**查看/删除针对个人特征的用户标签**的功能。
+
+**五、对 B2-3（T1）的硬约束与移交**
+
+1. **判定 = 触发备案**（保守口径）。**B2-3 开工前**须先在 B2-3 范围内补两项产品能力（第七条规则公开 = 拟公示内容；第十七条关闭/标签），否则 T1 上线即违规。
+2. **上线前**须完成安全评估报告提交；**上线（含灰度）起 10 个工作日**内完成算法备案；**通过后**公示编号。
+3. **本评估不涵盖大模型备案/登记**（派生边界，移交 B2-4）：T2（AI 发布 3B）若**自研/微调** ⇒ 需**大模型备案**；若**纯调用已备案第三方模型** ⇒ 需**大模型登记**；二者与算法备案**并行不替代**。已识别，开 B2-4 前另判，本轮不并入。
+4. **主体一致性**：备案主体须与 ICP/APP 备案主体一致（现持企业执照）；算法安全负责人建议由技术/合规负责人担任（具体以备案系统填报指南为准）。
+
+**落点与依据**
+
+- 法规原文来源：中国网信网《互联网信息服务算法推荐管理规定》（令第 9 号，2022-03-01 施行）第二/七/十七/二十三/二十四/二十五/二十六/二十七条；《关于互联网信息服务算法备案系统上线的通告》（2022-02-28）；《具有舆论属性或社会动员能力的互联网信息服务安全评估规定》第二/三/五/六/七条。
+- 分册落点：本条目（结论原文） + 《决策登记表》2026-10-12 同批裁定 + Batch2 清单 B2-12 行状态。
+- 门禁结论：**文档类条目，无 `src/` 与 `lib/` 代码改动，未跑 mvn/flutter 门禁**（非跳检）。
+
+---
+
+### 2026-10-12（[151] B2-4 大模型备案评估 · 结论：走「登记」+ 技术路线口径裁定）
+
+> 摘要：B2-4（AI 智能发布）的**派生合规边界**评估（[150] 移交项）。会话属性 🟢 独立；用户裁定 **沿用当前会话 + 立独立条目 [151]**、结论**只写入现有分册**。**开工即挖出一处阻断性口径冲突**（T2 实现路线两处文档互斥），已提交用户裁定；用户选 **「调已备案境内大模型 API ⇒ 走『登记』」**。依据取自法规原文与网信办公告（未凭记忆编造）。
+
+**一、先决冲突（已裁定）——T2 实现路线两处文档互斥**
+
+| 文档 | 该文档写的实现路线 |
+| --- | --- |
+| 《技术栈选型说明》§8.2 | **调外部大模型 API，不自建也不自训**（含鸡生蛋论证 + 成本表 + 退出条件）—— **工程侧结论** |
+| 《系统总体架构设计文档》§7.3 | 解析调用**外部大模型 API**（依据 R5） |
+| BRD §10.1 三色清单 / MRD A7 / PRD §5.9–§5.10 / §2.7 裁剪表 | **3B 小模型**（MRD A7 更写「BOSS Nanbeige4.1-3B 部署 POC」） |
+
+**冲突性质**：一方说「不自建不自训语言模型」，一方写「自部署 3B 做 POC」；而二者**直接决定走「生成式AI备案」还是「登记」**（合规后果差异大）。
+**用户裁定（2026-10-12）**：**实现路线 = 调已备案境内大模型 API**；对应合规路径 = **生成式AI服务登记**（**非**备案）。
+
+**二、法规适用判定（结论：触发「登记」）**
+
+- [x] **① 是否属「生成式人工智能服务」** —— 《生成式人工智能服务管理暂行办法》第二条 + GB/T 45654—2025 §3.1（原 TC260-003）：利用生成式AI技术向境内公众提供**生成文本**等内容的服务。T2 由模型生成帖子文案（文本）⇒ **属于**。
+- [x] **② 是否「具有舆论属性或社会动员能力」** —— 同 [150]：本产品为 UGC「信息分享」类 ⇒ **构成**。
+- [x] **③ 走备案还是登记** —— 按网信办公告口径：「**通过 API 接口或其他方式直接调用已备案模型能力的生成式人工智能应用或功能**，由**地方网信办**开展登记」⇒ 本项路线为调 API ⇒ **登记**（获**上线编号**，无需上报国家网信办）。对照：备案（自研/二次开发）由国家网信办完成——截至 2025-12-31 累计备案 748 款、登记 435 款。
+- [x] **④ 硬前提（否则「登记」不成立）** —— 所调模型**必须在国家网信办已备案清单内**且面向境内提供；**禁用境外模型**（境外服务无法完成境内备案/登记，且涉数据出境）。选型须先在国家网信办公告的已备案清单中核对。
+
+**三、与 [150] 的叠加关系（四层义务，均独立、不互替）**
+
+| # | 义务 | 依据 | 主管 / 落点 |
+| --- | --- | --- | --- |
+| 1 | **算法备案** | 《算法推荐管理规定》第二十四条 | T2 = **生成合成类**算法 ⇒ 与 [150] 的 T1（排序精选类）**同一张备案表**，作为第二算法类型填报 |
+| 2 | **生成式AI服务登记** | 《生成式AI暂行办法》第十七条 + 网信办公告 | **属地（安徽）网信办**，领**上线编号** |
+| 3 | **安全评估** | 《生成式AI暂行办法》第十七条 + 算法规定第二十七条 | 上线**前**完成；基线 = **GB/T 45654—2025**（2025-11-01 已实施，取代 TC260-003） |
+| 4 | **生成合成内容标识** | 《人工智能生成合成内容标识办法》（2025-09-01 已施行）+ 强制国标 **GB 45438-2025** | T2 产出**文本** ⇒ **显式标识**（文本起始/末尾/中间适当位置，或在**交互场景界面/文字周边**加显著提示） |
+| 5 | **公示** | 网信办公告 | 已上线应用/功能须在**显著位置或产品详情页面**公示「**模型名称 + 备案号/上线编号**」 |
+
+- **可复用**：④ 公示位与 [150] 的算法备案编号公示位**可合并为同一处**（App 显著位置 / 关于页）。
+
+**四、登记办理要点（材料 + 窗口）**
+
+- **主管**：属地网信办（本产品主体在其 ICP 备案属地，即**安徽省**）。
+- **材料（登记较备案简化）**：① **API 调用证明**（所选模型的备案号 + 调用协议/截图）；② **无新增训练语料、无模型微调**的说明；③ **安全评估报告**（按 GB/T 45654—2025 自评并留证）；④ 应用/功能基本情况 + 公示内容。
+- **窗口**：与备案同为「**提供服务之日起 10 个工作日**」口径（依《算法推荐管理规定》第二十四条，登记为其轻量路径）。**同样须在上线前备齐材料**（沿用 [150] 的倒排结论：10 工作日是提交窗口、不是准备期）。
+- **结果**：审核通过获**上线编号**，**无需**上报国家网信办（区别于备案的「属地初审 → 国家级复审」）。
+
+**五、对 T2 上线的硬约束与产品缺口（新增）**
+
+1. **模型选型约束（新，硬）**：必须在**国家网信办已备案清单**内选型；**禁用境外模型**。⇒ 开 B2-4 开发前须先落定「所选模型 + 其备案号」。
+2. **产品能力缺口（新，必补；当前产品均无）**：
+   - **内容标识落点**（需裁定）：标在 `ai-confirm-screen`（交互场景界面标识，标识办法第四条（一）后半句允许），**还是**标在最终发布的帖子（用户会二次编辑，AI 痕迹是否保留）？**建议两者都做**（界面显著提示 + 帖子保留「AI 辅助生成」标记）。
+   - **公示位**：App 显著位置/产品详情页公示「模型名称 + 上线编号」（与 [150] 备案编号公示位合并）。
+3. **安全评估报告**：须按 GB/T 45654—2025 逐条自评并留证（训练数据 / 模型 / 安全措施 / 评估），登记时提交。
+
+**六、技术路线口径裁定 → 文档回改清单（⚠️ 本次未执行，待确认）**
+
+裁定实现 = **调已备案境内大模型 API**（对齐《技术栈选型说明》§8.2）。需回改**断言了「自部署/自训 3B」或会误导实现口径**的位置（**只改实现口径，不改三色清单的分级语义**）：
+
+| # | 文档 / 位置 | 现状 | 回改方向 |
+| --- | --- | --- | --- |
+| 1 | **MRD §6 假设表 A7** | 「3B 小模型可部署且 ROI 可控 … BOSS Nanbeige4.1-3B 部署 POC」 | 改为「所选**已备案**大模型 API 的解析准确率与单次成本验证」 |
+| 2 | **裁剪与降级 §2.5 技术建议** | 「3B 级开源小模型（BOSS Nanbeige4.1-3B 可部署）」 | 改为「调已备案境内大模型 API（见《技术栈选型说明》§8.2）」 |
+| 3 | **裁剪与降级 §2.7 裁剪表** | 「AI 智能发布（3B 小模型）」 | 括注实现口径改「大模型 API」 |
+| 4 | **PRD §5.9 / §5.10 / §5.11 等约 11 处**（模式②、失败态、Step 3 及 §5.7/§8/§9/§10 引用） | 「3B 小模型」 | 统一为「大模型 API」级表述（**能力档位不变，仅实现口径**） |
+| 5 | **BRD §10.1 三色清单 + §3.4 边界表** | 绿清单「3B 小模型 + 严格 Scope 四步管线」 | **保留分级语义**（绿 = 小模型级能力 + 严格 Scope；红 = 70B 端到端），仅括注「实现 = 调已备案 API」 |
+| 6 | **MRD §5.1 UR-AI-02 / §7.5 GTM** | 含「3B 小模型」 | 同上，仅括注实现口径 |
+| 7 | **派生件重生成** | — | `找鸭找-业务需求文档(BRD).pptx`（三色清单页）、`找鸭找-市场需求文档-v2.1.pptx`（A7/UR-AI-02）、`找鸭找-产品需求文档-v2.1.docx`（PRD 多处）—— 回改后需重跑生成脚本（历史坑：`.pylibs/lxml` 与本机 Python 不兼容，需全局 `python-docx`/`python-pptx` + 预加载绕过） |
+
+> **未执行理由（如实登记）**：回改横跨 6 处真源 + 3 件派生件，且涉及用户已批准的战略件（BRD §10.1 三色清单）措辞，按「最小范围编辑 + 设计文档未覆盖口径先问」纪律，先登记为待执行、待用户确认后再动。
+
+**七、（2026-10-12 追加裁定）实现路线 = 「分阶段」—— 预留自建，不自建当期硬上**
+
+用户提出目标「沉淀垂直领域特有知识，通用模型无法满足」，指向自调自建；经四维核证（合法性 / 具备条件 / 成本 / 可落地）后裁定采用**分阶段**，**原 [151]「阶段① 走登记」结论不变**：
+
+| 阶段 | 时点 | 实现 | 合规路径 |
+| --- | --- | --- | --- |
+| **①** | **Batch2（现在）** | **调已备案境内大模型 API** | 生成式AI服务**登记**（属地网信办，领上线编号） |
+| **②** | 上线后、触发点达成 | **QLoRA 微调 3B**（**Apache 2.0 基座**，如 Nanbeige4.1-3B） | 须先 ③，否则不可上线 |
+| **③** | 阶段②上线前 **6–8 个月**启动 | — | **大模型备案**（属地省网信初审 → 国家网信办终审 + 模型技术测试） |
+
+- **触发点（三者须同时满足）**：① 高质量语料 ≥ 5000 条；② 上线 ≥ 4 周真实数据回流；③ API 月成本 > 常驻 GPU 月成本。
+- **两条不可混的口径（本次核证的关键结论）**：① **微调 ≠ 注入知识** —— 3B 微调只固化「自然语言 → 结构化字段」的**任务模式**；**事实/规则/类目口径等"领域知识"走 RAG/知识库/规则库**（可即时更新、零训练成本、不遗忘）；本项目的 **严格 Scope 四步管线 + 模板引擎 + 三级分类树** 即是知识载体。② **基座许可须逐一核** —— Apache 2.0（可商用/可衍生）≠ 自定义许可（须商用登记+标注）≠ NC（禁商用），按红线过滤。
+- **成本量级（阶段②的代价，勿低估）**：QLoRA 训练很便宜（云 GPU 数小时、几十元/次）；**真正的成本是推理常驻 GPU**（3B FP16 ≈ 6.7GB 显存，须常驻实例），与按 token 计费（当前 10–30 元/月）相差约 **2 个数量级** ⇒ 阶段②启动须以触发点③为准。
+- **阶段① 必须先做的两件事**：① 建**领域语料沉淀机制**（`ai_parse_sample`，用户「确认发布」= 免费标注）→ 新立 **[152]**；② **《用户协议》补「授权将输入与修正用于模型优化」条款**（TC260-003 §5.1 要求使用者授权记录，否则语料不可用）。
+- **回改已执行（本次，用户裁定「按分阶段方案执行」后）**：
+  1. **《技术栈选型说明》新增 §8.3「分阶段路线」** —— 原 §8.2 只说「不自训」，未留自建口子；§8.3 补阶段②③依据 + 触发点 + 两条口径 + 成本提醒。
+  2. **MRD**：A7 假设行（删「BOSS Nanbeige4.1-3B 部署 POC」，改为阶段① API 验证 + 阶段② **微调 POC**）、UR-AI-02、§7.5 Batch2 GTM 行。
+  3. **裁剪与降级**：§2.5 技术建议（「3B 级开源小模型」→ 阶段① API + 阶段② 预留）、§2.7 裁剪表行。
+  4. **PRD**：§0.3 本期边界表行、§5.9（模式② 语音、解析失败态）、§5.10（Step 3）+ **§5.10 末补「实现口径」注**（声明全文其余「3B 小模型」为阶段②目标态）。
+  5. **BRD**：§3.4 边界表行、§10.1 绿清单行 —— **保留分级语义**（绿 = 小模型级能力 + 严格 Scope；红 = 70B 端到端），仅补阶段口径。
+  6. **保留**：所有「3B 小模型」作为**阶段②目标态**保留（未按早期草稿「统一改成 API」抹掉），避免丢失自建意图。
+- **遗留**：派生件（BRD pptx / MRD pptx / PRD docx）重生成**仍待执行**（历史坑：`.pylibs/lxml` 与本机 Python 不兼容，需全局 `python-docx`/`python-pptx` + 预加载绕过）。
+
+**八、（2026-10-12 追加）合规闸门后置 —— 不阻塞开发；并生成协议正文草稿**
+
+- **用户裁定**：功能**尚未开发闭环**期，[150] / [151] / [152] 引出的合规事项**一律不阻塞开发**，改为**上线前闸门**。**「开发前」只保留 1 项**：**B2-4 模型选型须在国家网信办已备案清单内**（禁用境外模型）—— 接错模型会返工，属开发工作本身。
+- **集中挂账（避免散落丢失）**：① T1 上线前 — 第七条规则公开 + 第十七条用户权益 + 安全评估报告；② 上线起 10 工作日 — 算法备案 + 生成式AI「登记」；③ T2 上线前 — 内容标识落点 + 公示位；④ 上架前 — 协议转 HTML 挂自有域名 + 首启门/隐私政策补「AI 解析输入」用途项 + 设置页两入口接线 + `GET /legal/documents` 落真。**[152] 整体后置、不排期**（价值在阶段② 才兑现）。
+- **协议正文草稿已生成（本次）**：`docs/legal/用户协议（草稿）.md` + `docs/legal/隐私政策（草稿）.md`（两份独立文件，对应两个独立 URL）。**已内嵌**：AI 语料授权条款（隐私政策第八条 + 用户协议 9.4）、「AI 辅助生成」标识说明（用户协议 10.3）、上架手册 P6 七项必覆盖、PIPL 敏感信息单独同意、本项目特有口径（实名增益项/未实名受限态、只撮合不担保、零商业化、🟢🟡🔴 只评信息不评人、7 天有效期/14 天下架、不做 IM、举报 ≥60 分自动下架 + 4h SLA、11 类违法 + 9 类不良）。**状态 = ⬜ 待法务审阅、待转 HTML 挂自有域名；【待填】9 项**（公司全称/注册地址/客服邮箱电话/个人信息保护负责人/生效日期/存储地点/高德隐私政策链接/管辖法院/备案与软著号）。
+- **落地动作**：① 决策登记表新增「合规闸门后置」裁定块（含 [152] 整体后置）；② Batch2 清单 B2-3 / B2-4 / B2-13 的「前置」列改按「**开发前 / 上线前**」两档标注；③ 《说明文档》当前节点新增「⏸ 合规闸门挂账」集中清单 + 分册索引新增 `docs/legal/` 行。
+- **未执行（沿前）**：派生件重生成仍待执行。
+
+**落点与依据**
+
+- 法规原文来源：《生成式人工智能服务管理暂行办法》第十七条；国家网信办《关于发布 2025 年生成式人工智能服务已备案信息的公告》（2026-01-09，含备案/登记分工与公示要求）；《人工智能生成合成内容标识办法》（国信办通字〔2025〕2 号，2025-09-01 施行）第三/四/五条；《生成式人工智能服务安全基本要求》TC260-003（2024-02-29）→ **GB/T 45654—2025**（2025-04-25 发布、2025-11-01 实施）第 3/4 章；《互联网信息服务算法推荐管理规定》第二条（生成合成类）、第二十四条。
+- 分册落点：本条目（结论原文） + 《决策登记表》2026-10-12 [151] 裁定 + Batch2 清单 B2-4 行前置/验收点。
+- 门禁结论：**文档类条目，无 `src/` 与 `lib/` 代码改动，未跑 mvn/flutter 门禁**（非跳检）。
+
+---
+
+### 2026-10-12（[B2-3a] T1 匹配骨架 · 阶段 0 规则加权对齐唯一口径 + 双端常量单源）
+
+- **会话属性**：🔴 延续（算法 + 合规红线）⇒ 本会话推进，未新开会话。
+- **拆批裁定（2026-10-12）**：模型训练被**样本量硬阻塞**（LR 需 ≥1 万条 / GBDT 需 ≥10 万条且单类目 ≥2000 条；内测未启动、现 ≈ 0）⇒ **B2-3 拆为 B2-3a（现在做）+ B2-3b（不排期）**。依据《技术栈选型说明》§8.1「GBDT 启用时点由真实行为量决定，不能排进工期」。
+- **`city_id` 归属裁定 = 不加**：Hard Filter 最终形态 = `(l2_category_id, type, status, expire_at)` + 空间网格。**连带事实核查（重要）**：该索引 `idx_l2_type_status` **已在 V1 DDL 建好**（`l2_category_id` 为 STORED 生成列，注释「Hard Filter 候选索引（Batch2 启用）」）⇒ **零迁移**；且启动清单与架构 §5.3 原写的「Batch1 刻意未建 / Batch2 才建」为**旧误述**，已回改架构 §5.3 +《数据库设计文档》§6。
+- **第三处口径冲突已裁定（本次最有价值的发现）**：「阶段 0 规则加权」在**四处**互不相同 —— PRD §6.11（自标「唯一口径」）时效40/距离40/完整度档20 ／ BRD §10.1 QS 加权行 + §2.7 裁剪表（与 PRD **同源 3 项**） ／ 裁剪与降级 §2.5 距离45/时效25/分类20/关键词5/认证5 ／ **代码** `compositeScore` 距离50/时效50。**裁定 = PRD 三权重**；§2.5 五权重判**作废**、PRD §14 运营台可配维度同步为该 3 项。
+- **② 实施完成（双端同口径 + 常量单源，消字面量）**：
+  - `lib/nfr_constants.dart` 的 `NfrMatch` 新增：`compositeWeightTime/Distance/Completeness`（0.40/0.40/0.20）、`completenessFactorGreen/Yellow/Red`（1.0/0.5/0.2）、`compositeMaxDistanceMeters`(20000) / `compositeMaxAgeMinutes`(7 天)。
+  - **新增 Java 镜像** `common/constants/NfrMatch.java` —— 只镜像 Java 侧**实际消费**的成员（+ `completenessFactor(int)` 映射）；Dart 侧 Hard Filter 粒度等无 Java 消费方，按 `NfrPerf` 先例**不预建**（编码规范 §1.1 反冗余）。
+  - `MapService.compositeScore` 与 Dart `_compositeScore` **同步改 3 权重**：新增**完整度档项**（档「越高越好」而该式「越小越靠前」，故取 `1 − 系数` 作代价项）；原 `MapService` 两个私有归一化上界常量**上浮**到 `NfrMatch`。
+  - Dart `sortListings` 新增注入点 `completenessOf`（`Listing` 未携带契约 `completeness_level`，且不为此给列表 DTO 加列 —— 按 `distanceOf` 同法注入）；契约值 → 档位映射**复用** `CompletenessLevel.fromApi`，不另建 0/1/2 映射。
+  - `openapi.yaml` `/posts/search` 的 `sort` 描述同步为 3 权重口径。
+- **③ 切档守门 → 明确移交 B2-3b（本次不写代码，理由充分）**：「全站累计有效行为标签」的计数口径本身**未定义**（PRD §6.11 Step 1 的标签来自 联系点击×5 / 详情点击×2 / 停留 30s×1，横跨**业务库 `contact_event`** 与**埋点库**），且切档达标后**无模型层可调** ⇒ 现在实现只能是「恒返回阶段 0」的空壳。**故只落设计 + 明确移交**，不造无消费方的骨架。
+- **④ 设计章节已补**：后端详设新增 **§5.4.6 综合排序（阶段 0 规则加权 → T1 切档守门）** —— 域归属（规则排序 `map` 自持、模型排序归 `ai`，`ai` 被关不影响 `map`）、契约面（`composite` = 本节得分，**默认排序仍 `distance`**）、得分口径、常量为唯一存放处、三阶段守门表、**SLA 保护**（只改内存比较器、不新增查询、P95 判据不受影响）。
+- **门禁结论（全绿）**：`dart analyze`（3 文件）与**全量 `flutter analyze`** → `No issues found`；`flutter test test/listing_sort_test.dart` → **9/9 passed**（新增「完整度档参与加权：🟢 排在 🔴 之前」）；`mvn -o test -Dtest=MapServiceTest` → **exit 0**（新增「综合排序以完整度档压过同距同时效」）。契约未变（`sort` 枚举值不变，只改描述）⇒ 无需契约快照重生成。
+- **未执行（沿前）**：派生件重生成仍待执行。
+
+---
+
+### 2026-10-12（B2-5 开工 · 前置批 [147] 落地：DEC-11/12/13 三端）
+
+- **会话属性**：B2-5 = 🟢 独立（新面）⇒ 已按约定开工前提醒确认；**用户裁定 = 延续当前会话**。前置 [147] 会话属性同步由「待定」改为 **🔴 延续**（落《Batch1 条目表》）。
+- **用户裁定（记《决策登记表》同批块 · B2-5 开工）**：① **B2-5 交付形态 = 本期只交付后端**（`/admin` 域 API + 4 角色 RBAC + 审计查询接口；Web 管理端界面另立）—— 此前后台「技术交付形态」**全文档未定义**（唯一线索 = PRD §6.7 前「后台运营工作台不在本期前端 APP 内开发」），本裁定补此空白；② B2-5 前置 = **先完成完整 [147]**；③ B2-5 立条目 **[153]**（编号自 [149] 续，[149]–[152] 已占）。
+- **DEC-11 落地（`audit_log.operator_role` 新增 `user`）**：
+  - 新建 Flyway `V8__audit_operator_role_user.sql`：`MODIFY COLUMN operator_role ENUM(…,'user')`（**禁改 V1**，纯 DDL）。
+  - `OperatorRole` 新增 `USER("user")`，类注释改为记 DEC-11 沿革。
+  - **⚠️ 登记口径自相矛盾已澄清**：DEC-11 记「不再用 system 兜底」但又记「调用点不变」—— 二者不能同时成立（4 处用户触发留痕均显式传 `SYSTEM`）。**用户裁定 = 全部用户触发留痕切 `USER`**：`ContactService`（`contact.view` / `report.create`）+ `CertService`（实名提交 / 资质提交）共 4 处由 `SYSTEM` → `USER`。B2-5 前置「审计按角色筛选含脏维度」据此真正解除。
+- **DEC-12 落地（联系熔断修正为第 10 次触发）**：`RateLimitTrack.CONTACT_BURST` 的 limit 改为 `CONTACT_BURST_LIMIT_PER_MINUTE - 1`（对齐 `LOGIN_FAIL` 轨「threshold − 1」口径；`RateLimiter` 超限判定恒 `current > limit`）。常量 `CONTACT_BURST_LIMIT_PER_MINUTE = 10` **不变**（`RateLimitThresholdsTest` 期望值仍成立）；对账测试 `RateLimitTrackTest` 同步改为 `- 1`。既有 `ContactRateGuardTest`（mock 限流器抛错）零回归。
+- **DEC-13 落地（`post` 补 `contact_mask` 列，取方案 B）**：
+  - 新建 Flyway `V9__post_contact_mask.sql`：`post` 加 `contact_mask VARCHAR(64) NULL AFTER contact_value_enc`。
+  - 后端：`PostEntity` 加 `contactMask`；`PostService.createPost` 在 INSERT 前由 `req.contactValue()`（**用户本次提交的明文，非密文回解**）算掩码落库，`assemble` 改取 `post.getContactMask()`；`PostQueryService.getDetail` 由「恒 null」改为读 `contact_mask` 列；`PostQueryMapper.xml` `selectDetailRow` 增 `p.contact_mask`。
+  - **红线保持**：`CryptoFacade.decrypt` 唯一调用点仍在 contact 域 —— 本列由发布端明文派生，详情读取**不触调解密**。
+  - 契约：`openapi.yaml` `PostDetail.contact_mask` 描述由「本接口恒为 null」改为「发布时落库的脱敏值（可空）」。
+  - 前端：`PostDetailDto` 增 `contactMask`（解析 `contact_mask`）；`postDetailToListingDetail` 置 `contactMasked: dto.contactMask`（原恒 null 降级取消）；`contact_screen` 未拉取态改为「优先显示脱敏值、无掩码退回占位文案」（**渠道名仍中性** —— 契约仍不返回 `contact_channel`）。
+  - 测试：`PostQueryServiceTest` 断言由「恒 null」改为「取落库值」；新增 `post_detail_provider_test` 两例（有掩码 / 缺掩码）。
+- **文档回写**：《决策登记表》（B2-5 开工同批块 + DEC-11 澄清）、《Batch1 条目表》（[147] 会话属性）、《Batch2 启动清单》（B2-5 行：交付形态 + 立 [153] + 账号体系待裁定）、《数据库设计文档》（§3.5 `post.contact_mask`、§3.14 `operator_role` 加 user、迁移范围 `V2`–`V6` → `V2`–`V9`）。
+- **门禁结论（全绿）**：`mvn -o clean test` → **Tests run: 360, Failures: 0, Errors: 0, Skipped: 0 / BUILD SUCCESS**；`flutter analyze` → **No issues found**；`flutter test` → **731/731 全绿**。
+- **未决（开 [153] 前须定）**：**后台账号体系**（管理员从哪来、怎么登录、角色存哪）**全文档未定义** —— 16 张业务表无账号/角色载体、`openapi.yaml` 无后台登录端点，已登记《决策登记表》为待裁定，**禁在业务代码中自创口径**。
+
+---
+
+### 2026-10-12（[153] B2-5 运营治理后台 · 后端：admin 域 + 4 角色 RBAC + 审计查询 + ③⑤⑦ 三页）
+
+- **会话属性**：B2-5 = 🟢 独立（新面）；用户裁定 **延续当前会话**。
+- **两项开工前裁定（《决策登记表》2026-10-12 B2-5 开工批）**：① **后台账号载体 = 新建独立 `admin_user` 表**（与 C 端 `user` 隔离）+ 后台登录端点 + 独立后台鉴权链；② **角色枚举扩充覆盖 PRD 四角色**（`operator` 运营专员 / `algo` 算法运营；历史值 `admin` 保留不删）。**交付范围 = 一次做完（含 7 页 API）**；**后台 Token 分离 = 同密钥 + `scope=admin` 声明**。
+- **落地内容**：
+  - **DDL**：Flyway `V10__admin_user.sql` —— 建 `admin_user`（`uk_admin_username` 唯一）+ `audit_log.operator_role` 扩枚举（加 `operator`/`algo`）。
+  - **`OperatorRole`**：新增 `OPERATOR`/`ALGO` + `isAdminRole()` + `fromDbValue()`。**`NfrAdmin`**：后台 Token TTL / PBKDF2 参数 / 分页默认与上限（阈值只引用常量）。
+  - **鉴权**：`AdminPasswordHasher`（PBKDF2-HMAC-SHA256，定长比较）、`AdminContext`（adminId+角色，与 C 端 `AuthContext` 分离）、`AdminInterceptor`（仅 `/admin/**`，登录端点除外）、`JwtIssuer.issueAdmin()`（`scope=admin`，120 分钟）、`JwtVerifier.verifyAdminToken()` + `rejectAdminScope()`（两套 Token 互不认对方）。
+  - **审计查询**（读路径唯一实现处）：`AuditLogFilter`/`AuditLogItem`/`AuditLogPage` + `AuditLogQueryService`（common 域）+ `AuditLogMapper` 自定义分页（显式 LIMIT/OFFSET）。`AdminAuthService`（登录，失败一律 40101 防枚举）+ `AdminAuditService`（**仅超管，其余 40305**）。
+  - **③ 权重/AB 配置 + ⑦ 降级开关**：`AdminConfigKeys` + `AdminConfigService`（RBAC 算法运营/超管；权重和必须为 1；变更同事务写审计）+ `AdminConfigController`；`SystemConfigService` 增 `putValue`（upsert），并新增 `AdminConfigServiceTest`(5 例)。
+  - **⑤ 认证审核队列**：`CertMapper` 增分页查询 + `CertMapper.xml`（按提交时间升序）；`CertService` 增 `listForReview`/`findCert`/`markReviewed`（域间只调 service）；`AdminCertService`（RBAC 内容审核员/超管；驳回强制理由；同事务审计）+ `AdminCertController`。
+  - **① 分类配置**：`CategoryService` 增 `listAllForAdmin`/`createLeaf`（叶子 ID = L2×100+序号，追加不重排）/`updateCategory`/`bumpTreeVersion`（版本 `YYYY-MM-DD.N` + 失效分类树缓存）；`AdminCategoryService`（RBAC 运营专员/超管，同事务审计）+ `AdminCategoryController`；契约 `GET/POST /admin/categories`、`PUT /admin/categories/{id}` + schema。
+  - **② 模板 Schema 编辑器**：`TemplateService` 增 `findRawForAdmin`/`saveForAdmin`（JSON 校验 + 版本 +1 + 清模板缓存）；`AdminTemplateService`（RBAC 运营专员/超管，同事务审计）+ `AdminTemplateController`；契约 `GET/PUT /admin/templates/{template_key}` + schema。**粒度口径**：本工程模板按 **L2 父级** 存储（`template.leaf_category_id` 存 L2 ID），故 `template_key` 实为 L2 类目 ID，与既有查找口径一致。
+  - **④ 举报工单 + 举报分级响应引擎（§9.10.3 全站唯一下架判定口径）**：`ReportRiskScore`（contact 域，原因分表 50/20/20/10/5 × 举报方权重 1.0/1.5，阈值 60，整数千分比避免浮点边界抖动）；`CertService` 增 `isRealnamePassed`/`isEnterpriseVerified`；`PostModerationService`（新建，post 域：`applyRiskDelta` 累计风险分 + `auditTakedown` 审核下架 reason=2，幂等仅 active 可下）；`ContactService.report` 接入**实名门槛（未实名 → 40305）+ 贡献落 `report.weight` + 累计 + ≥60 自动下架**；`ReportMapper` 增分页查询 + `ReportMapper.xml`（联 `post` 按风险分降序）；`ContactService` 增 `listReportsForAdmin`/`handleReport`（false_report 回撤贡献 / offline 审核下架，已处理再处理 → 40001）；`AdminReportService`（RBAC 内容审核员/超管，同事务审计）+ `AdminReportController`；契约 `GET /admin/reports`、`POST /admin/reports/{id}/handle` + schema。
+  - **⑥ 待运营跟进队列（PRD §6.4.4）**：**裁定先行**（《决策登记表》2026-10-12 B2-5 ⑥ 补充批）——① 存储载体 = **新建独立表 `ops_follow_up`**（原 16+1 张表均无载体）；② 入队触发 = **`/posts/search` 返回 `total=0`**（本工程无独立三级兜底段落，以 total=0 为 PRD「空圈且三级兜底均无结果」的等价触发点）。**实施**：Flyway `V11__ops_follow_up.sql`（不存精确经纬度，只存粗粒度 `grid_id`；不建唯一键，去重移入 service）；**新建 `ops` 域**：`OpsFollowUpEntity`/`OpsFollowUpMapper`（+XML 分页）/`OpsFollowUpService`（`enqueue` 去重 / `list` / `handle`）；`MapService.searchPosts` 增 `userId` 入参并在 `total==0` 时入队（controller 经 `AuthContext` 取，游客 null）；`AdminFollowUpService`（RBAC 运营专员/超管，同事务审计）+ `AdminFollowUpController`；契约 `GET /admin/follow-ups`、`POST /admin/follow-ups/{id}/handle` + schema。
+  - **补充①「账号与角色管理」（PRD §9.10.1 超管专属）**：`AdminAccountService`/`AdminAccountController` —— `GET/POST /admin/accounts`、`PUT /admin/accounts/{id}`、`POST /admin/accounts/{id}/password`。**仅超管**（越权 `40305`）；口令经 `AdminPasswordHasher`（PBKDF2）哈希入库，**审计与日志不含口令任何形态**；用户名唯一（重复 → 40001）；口令长度下限 `NfrAdmin.PASSWORD_MIN_LENGTH`；角色必须为 PRD 四角色之一（`system`/`user`/`admin` 一律 40001）。**未自创**「超管不可禁用自己」类规则（PRD 未定义）。
+  - **补充②举报工单「批量处理」（PRD §9.10.1 ④）**：`AdminReportService.handleBatch` + `AdminReportController`（`POST /admin/reports/batch-handle`）。**整批同事务**（任一条失败整体回滚，不留「一半下架」中间态）；单次上限 `NfrAdmin.BATCH_MAX = 100`（超限 → 40001，**不静默截断**）；审计**逐条**写。
+  - **契约**：`openapi.yaml` 新增 tag `admin` + `/admin/login`、`/admin/audit-logs`、`/admin/match-config`（GET/PUT）、`/admin/switches`（GET/PUT）、`/admin/categories`（GET/POST）、`/admin/categories/{id}`（PUT）、`/admin/templates/{template_key}`（GET/PUT）、`/admin/reports`（GET）、`/admin/reports/{id}/handle`（POST）、`/admin/reports/batch-handle`（POST）、`/admin/follow-ups`（GET）、`/admin/follow-ups/{id}/handle`（POST）、`/admin/accounts`（GET/POST）、`/admin/accounts/{id}`（PUT）、`/admin/accounts/{id}/password`（POST）+ 全量 admin schema。
+  - **横切链**：`WebCrosscutConfig` 增 `AdminInterceptor`（`/admin/**`），C 端 `AuthInterceptor` 排除 `/admin/**`；`WebCrosscutConfigOrderTest` 与 `RequestIdFilterTest` 同步。
+- **门禁**：`mvn -o clean test` → **422/422 全绿**；`flutter analyze` 0 issue；`flutter test` 全绿（含契约守门）。⚠️ 中途契约守门一度命中 `POST /admin/login` 缺 `Idempotency-Key`，已补。
+- ✅ **B2-5 后端 7 页 + 账号与角色管理 + 批量处理 全部落地**。**⏸ 未落地（PRD §9.10 剩余）**：**§9.10.1「敏感查看双人复核」**、**审计导出（二次确认）**——**§9.10.2 已于 2026-10-13 落地，见下条**。
+
+### 2026-10-13（[153] B2-5 · §9.10.1 敏感查看双人复核 / 审计导出 + §9.10.2 72h 临时类目通道）
+
+- **会话属性**：B2-5 = 🟢 独立（新面）；用户裁定 **延续当前会话**。
+- **两项开工前裁定（《决策登记表》2026-10-12 B2-5 §9.10.2 裁定批）**：① **存储载体 = 新建两张表** —— `temp_category`（临时叶子生命周期）+ `temp_category_stat`（72h 判定快照）；原 18 张业务表均无载体、PRD §9.10.2 只描述行为未定义存储，按红线「设计文档未覆盖的口径先问」先裁定再实施。② **阈值单源** —— 72h 窗口 / 发布 ≥3 / 被联系 ≥5（PRD 明文），周期 PRD 未定义取实现默认值 300s。
+- **实施**：
+  - **新建 `ops` 域物件**：`TempCategoryEntity` / `TempCategoryStatEntity` / `TempCategoryMapper`（+XML 分页，实现 `countByStatus`/`selectPageByStatus`）/ `TempCategoryStatMapper`；`NfrTempCategory`（阈值唯一落点：`VALIDATION_WINDOW=72h` / `PROMOTE_MIN_PUBLISH=3` / `PROMOTE_MIN_CONTACT=5` / `EXPIRE_SCAN_INTERVAL_SECONDS=300`）。
+  - **`TempCategoryService`**：`createTempLeaf`（经 `CategoryService.createLeaf` 落分类树拿叶子 ID → 同 ID 落 `temp_category`，`expire_at = now + 72h`，两步同事务）/ `settleExpired`（取 `active` 且已到期 → 算窗口内发布/联系数 → 写快照 → 达标 `promoted`，未达标 `expired` 且置 `category.forbidden=1`；状态一改即不再被拾取，天然幂等）/ `list`（分页 + 批量并入快照，避免 N+1）。
+  - **域间取数**：`PostQueryMapper.countByLeafBetween`（+XML）/ `PostQueryService.countPublishedByLeafBetween`；`ContactPostMapper.countContactsByLeafBetween`（+XML）/ `ContactService.countContactsByLeafBetween`。窗口口径 `[created_at, expire_at)`；「被联系」按 `contact_event.created_at` 落窗。
+  - **到期结算定时任务**：`TempCategoryExpireTask`（`@Scheduled(fixedDelay = NfrTempCategory.EXPIRE_SCAN_INTERVAL_SECONDS * 1000)`，周期引用常量单源）。
+  - **后台接入层**：`AdminTempCategoryService`（RBAC 运营专员/超管，越权 `40305`；创建同事务审计）+ `AdminTempCategoryController`；DTO `AdminTempCategoryCreateRequest` / `AdminTempCategoryListResponse`；`ops.dto.TempCategoryView` / `TempCategoryPage`。
+  - **DB**：Flyway `V12__temp_category.sql`（两张表；临时叶子仍落 `category`；下线 = 置 `forbidden=1` 不删行）。
+  - **契约**：`openapi.yaml` 新增 `GET/POST /admin/temp-categories` + `AdminTempCategoryList`/`AdminTempCategoryItem`/`AdminTempCategoryCreateRequest` schema（POST 带 `XInteractionId` + `IdempotencyKey`）。
+  - **文档回写**：《数据库设计文档》（§3.21/§3.22 表字典，业务表数 **18 → 20**，迁移范围 `V2`–`V12`）、《决策登记表》（§9.10.2 裁定批）、`说明文档.md`。
+- **§9.10.1 审计导出（同步 CSV）**：`NfrAdmin` 增 `AUDIT_EXPORT_MAX_ROWS = 10000`（实现默认值）；`AdminAuditService` 抽出 `buildFilter`（查询与导出共用，筛选口径天然一致）+ `exportCsv`（CSV RFC 4180 转义）；`AdminController` 增 `GET /admin/audit-logs/export`；DTO `AdminAuditExportResponse`。**交付形态**：CSV 文本经**统一响应信封** `data.content` 返回（**不直出 `text/csv`**——全站响应统一经套壳器包成 `{code,message,data,request_id}`，直出文件会破坏信封；理由已写进 DTO 类注释与《决策登记表》）。（单测 3 例）
+- **§9.10.1 敏感查看双人复核**：Flyway `V13__admin_cert_access_request.sql`（**新建 1 张表**，业务表数 20 → 21；申请表**不存被查看内容**、**无 reject_reason 列**）；`admin` 域 access 包：`AdminCertAccessRequestEntity` / `AdminCertAccessRequestMapper`（+XML 分页）/ `AdminCertAccessService`（发起去重 → 双人复核 → 发起人打开）/ `AdminCertAccessController`；DTO `AdminCertAccessCreateRequest`/`AdminCertAccessReviewRequest`/`AdminCertAccessPageResponse`/`AdminCertAccessContentResponse`。**流程**：A 发起 → B（≠A）复核（驳回强制理由）→ A 打开（仅 `approved`，非本人 `40305`）；复核写审计 `cert.access_review`，打开写审计 `cert.sensitive_view`（PRD §9.10.1「查看用户脱敏信息」必留）。契约补 4 个 `/admin/cert-access-requests*` 端点。（单测 9 例）
+  - **文档回写**：《数据库设计文档》（§3.23 表字典，业务表数 **20 → 21**，迁移范围 `V2`–`V13`）、《决策登记表》（§9.10.1 裁定批）、`说明文档.md`。
+- **门禁**：`mvn -o clean test` → **444/444 全绿**（§9.10.2 新增 10 例 + §9.10.1 新增 12 例：审计导出 3 + 敏感查看 9）；`flutter analyze` 0 issue；`flutter test` 全绿。
+- ✅ **PRD §9.10 全量落地**：**§9.10.1**（7 页 + 敏感查看双人复核 + 审计导出）、**§9.10.2**（72h 临时类目通道）、**§9.10.3**（举报分级响应引擎）。**无剩余项**。
+
+---
+
+### 2026-10-13（[B2-8]「我的发布」依赖项转真 · 编辑 / 克隆重发 / 本地草稿 / 页内搜索）
+
+> 摘要：DEC-08/09/10 挂账「维持降级到 Batch2」的四项由「点击给降级说明」**转真**。施工前四处 PRD 未覆盖或前后矛盾的口径经用户逐条裁定（见《决策登记表》2026-10-13 B2-8 批）。**四步推进**：口径裁定 → 契约 → 后端 → 前端 → 探针/门禁。**会话属性 🔴 延续**（依赖契约 + 前端编辑态），沿用当前会话。
+
+**① 口径裁定（开工前，4 项 + 1 项实现口径）**
+- **重发** = **服务端克隆 + 前端编辑态**：新增 `POST /posts/{id}/repost` 返回可编辑草稿（**不落库**），前端进发布页（**新建**语义）。副作用：稿侧「刷新重发」由 `republish`（直接上架）**改回** `repost`；`PATCH /status` 的 `republish` 保留为服务端能力（当前无稿侧按钮）。
+- **草稿** = **纯客户端本地**（PRD §8.7）；**服务端不落 `draft`**（维持 `PostStatus` 既有不变量）。澄清：PRD §13.2 的 `draft` 枚举属**库表预留**，不矛盾。
+- **删除** = **本轮不做**（PRD §8.3.1 操作组无此动作、§8.6 状态机无删除态）——稿侧按钮继续降级。
+- **搜索** = **页内本地筛选**（零后端改动）。
+- **编辑字段范围（实现口径）**：复用发布链路字段集 + `version` 乐观锁；**安全收窄** —— 编辑/重发**均不回显完整联系方式**（明文唯一出口仍是 `GET /posts/{id}/contact`）。
+
+**② 契约（openapi.yaml）**
+- `PATCH /posts/{post_id}` 由**占位补真**：请求 `PostUpdateRequest` = `PostDraft` 全字段 + 必填 `version`（`contact_type`/`contact_value` 可空 = 保留原密文）；响应 `PostDetail`；新增 400/401/403/409/500。
+- 新增 `POST /posts/{post_id}/repost` + `RepostDraft` schema（含 `category_available`，`contact_mask` 脱敏）。
+- 新增 schema `PostUpdateRequest` / `RepostDraft`。
+
+**③ 后端（post 域）**
+- `PostUpdateRequest` / `RepostDraft` DTO；`PostService.updatePost`（`WHERE id+user_id+version+status='active'` → 0 行统一 `40903`；重算 `grid_id`/完整度；联系方式可空则**保留原密文**，给了新值才重加密 AAD=post_id；媒体**先解绑再重连**）；`PostService.repost`（不存在/非本人 `41001`、非 `offline`/`expired` `40001`、`template_values` 反序列化、三条件 JSON 取 `address_precise`、`mediaIdsOfPost`）；`PostValidator.isLeafAvailable`（原分类可用性，复用既有 `categoryMapper` 不另开读表）；`assemble` 签名改为 `(entity, attributes, mediaIds)` 供发布/编辑共用；`PostController` 两个端点（编辑带 `@Idempotent`；repost **只读不加** `@Idempotent`，同 `precheck` 取向）。
+- 单测：`PostServiceTest` +7（0 行 40903 / 不传 contact 不重加密 / 传新 contact 重加密 / 不存在或非本人 41001 / 在架 40001 / 克隆草稿字段 / 分类停用标志）。
+
+**④ 前端（Flutter）**
+- `post_dto.dart`：新增 `RepostDraftDto`；`post_repository.dart`：新增 `updatePost` / `repost`（`PostCreatedDto` 同时承载 POST 与 PATCH 回执，字段子集同构）。
+- 新建 `publish_screen_args.dart`（`PublishScreenArgs`：`initialForm` + `editPostId` + `editVersion`）与 `draft_store.dart`（`shared_preferences` 单份草稿：3 秒防抖自动存 + 进入恢复 + 退出询问保存；`kDraftAutosaveInterval`；`draftStoreProvider` / `draftListProvider`）。
+- `publish_screen.dart`：三态（新建/重发/编辑）共用一表单；编辑态提交走 `updatePost`（载荷补 `version`）成功后 `pop(true)` **不进完成页**；`_effectiveBlocker` 对编辑态跳过 `noContact` 与 `agreementUnchecked` 两条「发布仪式」闸门；AppBar 标题「编辑」/主按钮「保存」；返回键接 `_handleExit`；所有表单变更统一走 `_updateForm`（登记自动保存）。
+- `app_router.dart`：`/publish` 透传 `PublishScreenArgs`。
+- `post_status.dart`：`MyPostCardAction.republish` → `repost`；`cardActionsFor` 的 `offline`/`expired` → `[repost, remove]`；`isWired` 由 `apiAction != null` 改为**显式集合语义**（唯一降级动作 = `remove`）。
+- `my_publish_screen.dart`：`_onAction` 按动作分派（`offline`→PATCH status、`edit`→取详情预填进编辑态、`repost`→取克隆草稿进新建态、`remove`→降级提示）；新增 `_openSearch`（独立 `_SearchDialog` StatefulWidget 持有 controller，避免弹层退场动画期「controller used after dispose」）/`_filteredItems`/`_formFromDetail`/`_formFromRepost`；「草稿」页签数据源改为 `draftListProvider`，新增 `_DraftCard`（[继续编辑, 删除]）与 `_NoMatchView`；`_EmptyView` 草稿文案改「还没有草稿」。
+
+**⑤ 探针与门禁**
+- 离线探针 `node prototype-figma/probe-layout-offline.js` → **310/310**（按钮文案未变，`KNOWN_BTN_DOWNGRADES` 仍为空表、`wiredPages` 无新增备案 —— B2-8 是「同一按钮换真实现」而非新增/删除按钮，故探针无需变更）。
+- `mvn -o clean test` → **451/451 全绿**（新增 7 例）；`flutter analyze` → **0 issue**；`flutter test` → **735/735 全绿**（重写 `my_publish_screen_test` 降级用例，新增编辑/重发/草稿/搜索用例；`FakePostRepository` 补 `fetchDetail`/`updatePost`/`repost`；`post_fixtures` 补 `repostDraftPayload`；发布侧测试补 `SharedPreferences.setMockInitialValues`；反冗余判据 C1 基线 **56 → 59**（`RepostDraftDto` 3 处解析点）+ `api_exception.dart` 文件头清单同步）。
+- **已知收窄（如实登记，非缺口）**：① 编辑/重发不回显完整联系方式 → **重发（新建语义）须由用户重新填写手机号**（发布契约 `contact_value` 必填）；② 「门牌号」因 `post.address` 列当前恒空（发布不上送地址）**无法回填原文**，完整度 `address_precise` 需用户重填方可恢复。两条均源于既有口径（联系方式出口收敛、地址不落库），非 B2-8 引入。
+- **文档回写**：《决策登记表》（B2-8 裁定批）、《裁剪与降级》（新增「已转真」行）、`Batch2-启动清单`（B2-8 行改 ✅ 已实施）、`说明文档.md`、本记录。
+
+---
+
+### 2026-10-13（B2-4 模型选型落定 = 通义千问 · 清空「开发前唯一硬前置」）
+
+> 摘要：[151] 留下的 **B2-4 开发前唯一硬前置**（「模型选型须在国家网信办已备案清单内」）经**联网查证官方公示**后由用户裁定落定。**会话属性 🟢 独立**（纯口径核对 + 文档回写，无代码）。
+
+**① 合规路径复核（与 [151] 结论一致，零改口）**
+- 官方口径（中国网信网 2026-09-14 公告，2026 年 7–8 月批次）：「对于通过 API 接口或其他方式**直接调用已备案模型能力**的生成式人工智能**应用或功能**，由**地方网信办**开展**登记**」；截至 2026-08-31 累计 **1112 款备案 / 731 款登记**。→ 阶段①（纯调 API 无微调）**确认走「登记」**，主管 = **安徽省网信办**（属地）。
+- 公示义务（官方原文）：「已上线的应用或功能，应在显著位置或产品详情页面公示……注明**模型名称、备案号或上线编号**」——与已登记的「公示位 = 模型名 + 上线编号」一致。
+- 上线编号格式参考（官方公示样例）：`Shanghai-TongYi-20250512S0081`。
+- 安徽省经办（安徽网信网《关于受理生成式人工智能服务备案的公告》）：属地申报、向**安徽省互联网信息办公室**提交，咨询电话 **0551-62608101**。
+
+**② 候选已备案模型核对（备案号取自官方公示页 / 网信办公告附件，未凭记忆）**
+
+| 模型（服务商） | 生成式AI服务备案号 | 来源 |
+| --- | --- | --- |
+| 通义千问（阿里云百炼） | `ZheJiang-TongYiQianWen-20230901` | 阿里云百炼官方公示 + 安徽网信网官方清单 |
+| DeepSeek（百炼/火山方舟） | `Beijing-DeepseekChat-202404280016` | 阿里云百炼 / 火山方舟官方公示 |
+| 智谱 GLM（百炼/火山方舟） | `Beijing-ChatGLM-20230821` | 阿里云百炼 / 火山方舟官方公示 |
+| 文心一言（百度） | `Beijing-WenXinYiYan-20230821` | 安徽网信网官方清单 |
+| 云雀 / 豆包（火山引擎方舟） | `Beijing-YunQue-20230821` | 火山方舟官方公示 |
+| 讯飞星火（科大讯飞，安徽属地） | `Anhui-XingHuoRenZhiDaMoXing-20230823` | 安徽网信网官方清单 |
+
+**③ 裁定结果（用户选择）**
+- **通义千问（阿里云百炼）**，生成式AI服务备案号 **`ZheJiang-TongYiQianWen-20230901`**（模型名称「通义千问大模型」；备案单位 = 阿里巴巴达摩院（杭州）科技有限公司；属地 = 浙江省）；配套**算法备案号** `网信算备330110507206401230035号`（达摩院交互式多能型合成算法，生成合成类）。
+- **选型理由**：① 与项目既有阿里云体系（实人认证 / OSS）同厂商 ⇒ 登记材料「与应用/模型方合作协议」现成；② `qwen-turbo`/`qwen-flash` 档成本远低于 §8.2 预估的 10–30 元/月；③ 百炼官方《千问大模型应用上架及合规备案》指引可直接取证备案号截图。
+- **纪律**：备案清单**动态**（国家网信办每 1–2 个月新增一批）⇒ **B2-4 开工前须再到官方公告 / 算法备案系统复核该模型仍在册**；换模型须重核，**禁用境外模型**。
+- **性质提醒（不变）**：阶段② 一旦自建/微调 3B（如 Nanbeige4.1-3B）即从「登记」升级为**大模型备案**（省网信初审 + 国家网信办终审，**6–8 个月**），须提前启动。
+
+**④ 文档回写**
+- 《决策登记表》新增「2026-10-13 · B2-4 模型选型落定」裁定批；《技术栈选型说明》§8.2 增「已选定模型」块（含备案号）+ §8.3 阶段① 行补备案号；`Batch2-启动清单` B2-4 行「开发前唯一硬前置」改 ✅ 已清空；`说明文档.md`「开发前（唯一硬前置）」条改 ✅ 已清空 + B2-4 条「模型选型未定」标注落定；本记录。
+- **上线前闸门（登记 / 公示位 / 内容标识 / 协议）全部不变**，仍不阻塞开发。
+
+---
+
+### 2026-10-13（B2-4 开工包整理定稿 · 四项裁定 + 一项新发现）
+
+> 摘要：在模型选型落定后整理 **B2-4「AI 智能发布」开工包**（现状取证 → 施工设计 → 待裁定 → 验收），四项口径经用户裁定，并**新发现一处批次归属冲突**（② 模式语音 ASR）。**会话属性 🟢 独立**（纯开工包整理 + 文档回写，无代码）。
+
+**① 现状取证（8 项实测）**
+- PRD 口径齐备：§5.9 四模式 + 5 态 + 配额消耗口径；§5.10 严格 Scope 四步管线；§5.8 配额二维表；**§2302 T2 接口表**。
+- **契约冲突**：openapi 占位 `/ai/parse` + `/ai/ocr`（无 schema）**与 PRD §2302 的 `/ai/publish/parse` + `/ai/publish/quota` 不一致**。
+- 错误码 `42901`（AI 配额耗尽，带 `Retry-After`）、`50301`（AI 不可用）**已落地** ⇒ 零新增（守红线）。
+- 后端 `com.s2s.server.ai` = **空包**（仅 `package-info.java`）；前端 `ai_confirm_screen.dart`（**5 态全做**）+ `ai_guess_builder.dart`（**本地按 scope 规则出猜测，无推理**）+ `domain/ai_guess.dart`（`GuessSource` U/N/P）+ 路由 `AppRoutes.aiConfirm` + 发布页**临时入口**。
+- **配额计数范式可直接套用**：`DetailQuotaGate`（Redis 先查后增 + 跨天 TTL + 写失败放行）⇒ 新建 `AiQuotaGate`。
+- 缺口：① **无 `NfrAi`**（配额 20/10/3/+10 无落点）；② **无 `lib/features/ai/`**（`ai/package-info.java` 的「与前端同名同构」说法与实现不符，实为 `features/publish/`）；③ §6.13 首页 FAB「AI 帮我发」未做 ⇒ 沿用临时入口。
+
+**② 四项裁定（用户 2026-10-13）**
+1. **契约形态与配额扣减点** = 以 **PRD §2302 两端点为准**（`POST /ai/publish/parse` + `GET /ai/publish/quota`；openapi 占位作废）；**配额扣减点 = 发布成功时**（`POST /posts` 请求带 `ai_assisted` 标记则扣 1），与 §5.9「仅结果待确认页点确认发布才计 1 次」一致，**不新增第三个端点**。
+2. **本期范围 = 四模式全做**（① 多媒体 7 秒 ② 语音零键盘 ③ 对话式一问一答 ④ 抢发模式）。**注：范围大于开工包建议（原建议仅 ①）**。
+3. **合规两落点** = **内容标识两处都做**（`ai-confirm-screen` 界面 + **最终帖子详情页**标「AI 辅助生成」）+ **公示位挂「设置 - 关于」页**（与 [150] 备案编号公示位合并）。
+4. **`ai_parse_sample` 本期不建**（《用户协议》授权条款未生效 ⇒ 采到的语料合法性存疑；[152] 仍保持后置）。
+
+**③ 遗留两项已清（2026-10-13，含联网查证 + 用户裁定）**
+- **① 备案覆盖已核实（联网查证，决定性结论）**：**图识别与语音识别（ASR）均在通义千问既有备案覆盖内，无需另选服务商、无需新增备案**。三项官方依据：① 阿里云百炼《模型备案信息公示》（更新 2026-10-10）——「千问 → 达摩院交互式多能型合成算法 → `网信算备330110507206401230035号`」+「通义千问大模型 → `ZheJiang-TongYiQianWen-20230901`」；② 《千问算法及模型备案信息说明》算法基本原理——「输入：文本 / 代码 / **图片** / **音频** / 视频 / 办公文档……可延伸到多模态任务场景」，并明确「支持输入**图像**和**语音**、输出文本 ⇒ 覆盖**看图说话、视觉问答、语音转文字**」；③ 《平台算法原理及数据处理情况说明》——已将「**对话意图理解（ASR 识别）、图片分类**」直接挂在**通义千问大模型 `ZheJiang-TongYiQianWen-20230901`** 名下。⇒ ② 与 ① **共用同一模型通道**（`qwen-omni` 系列支持文本 + 图像 + 音频同框输入，可一个模型覆盖「拍图 + 说话」），四模式的模型面**收敛为一个通道 + 一套 prompt 模板体系**。
+- **② 批次归属已裁定 = 以 PRD 为准**（2026-10-13 用户裁定）：图识别 + 语音识别**提前至 Batch2**，与 §5.9 四模式「① 拍图 / ② 语音」同批交付；**BRD §371 原「Batch3 立刻做」口径作废并已订正**。裁定理由：与已裁「四模式全做」自洽（若保留 Batch3，则 ① 必需的图识别也做不了）+ 边际成本低（同一通道）+ 无新增服务商与备案。
+- ⇒ **B2-4 开工包零待裁定**。
+
+**④ 施工设计要点（已写入开工包）**
+- 常量：新建 `NfrAi.java` + `nfr_constants.dart` 双端镜像（禁业务代码写死数字）。
+- 数据面：解析结果**不入库**（AI 只是猜测，确认后走既有发布链）；配额计数走 Redis（`AiQuotaGate`，键收口 `RateLimitKeys`）。
+- 后端：`AiParseService`（Step 2 Scope 提取 U∪N∪P → Step 3 调通义千问，prompt 限死「仅用 scope 字段」→ Step 4 逆向比对，越界值移入 `unresolved_fields` 且**留空不猜**）+ `AiQuotaGate` + `AiController` 两端点。
+- 验收：幻觉率 ≈ 0（Step 4）／解析失败与用户拒绝**不计配额**／`50301` 时已输入内容全保留／门禁三件套 + 离线探针 + 契约守门（新端点须补 `XInteractionId` / `IdempotencyKey`）。
+
+**⑤ 文档回写**
+- 《决策登记表》新增「2026-10-13 · B2-4 开工包四项裁定」批（含新发现待裁项）；`Batch2-启动清单` B2-4 行补四项裁定 + 交付验收列加「四模式全部可用 + 双处标识 + 设置页公示位」；`说明文档.md` B2-4 条新增「开工包已整理定稿」；本记录。
 
 ---
 

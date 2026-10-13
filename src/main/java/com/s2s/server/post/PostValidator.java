@@ -118,6 +118,24 @@ public class PostValidator {
     }
 
     /**
+     * 判断叶类目当前是否可用（存在且未被运营禁用）。
+     *
+     * <p>[B2-8] 克隆重发用：原帖分类被运营停用（{@code forbidden != 0}）时须让前端提示重选
+     * （PRD §8.7「重发分类变动」）。判定归本组件（precheck/POST /posts 的类目口径已在此），
+     * 避免 post 域另起一处读 {@code category} 表。</p>
+     *
+     * @param leafCategoryId 叶子类目 ID（可空）
+     * @return boolean；类目存在且 {@code forbidden} 为空/0 时为 {@code true}
+     */
+    public boolean isLeafAvailable(Integer leafCategoryId) {
+        if (leafCategoryId == null) {
+            return false;
+        }
+        CategoryEntity leaf = categoryMapper.selectById(leafCategoryId);
+        return leaf != null && (leaf.getForbidden() == null || leaf.getForbidden() == 0);
+    }
+
+    /**
      * 判断是否已实名认证（Batch1 cert 空壳恒 none → 无资质）。
      */
     private boolean hasQualification(Long userId) {

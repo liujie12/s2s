@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.s2s.server.common.audit.mapper.AuditLogMapper">
+
+    <!--
+      审计留痕查询（[153] B2-5 审计查询接口）。
+      过滤维度全部可选（null 即该维度不参与）；排序固定为「操作时间倒序 + id 倒序」
+      （同一秒内多条时以自增 id 保稳定序）。
+      分页用显式 LIMIT/OFFSET 参数绑定（不依赖 MyBatis-Plus 分页插件，本工程未注册该插件）。
+      两个语句共用同一段过滤条件，禁各自重写（不一致会出现「条数与行数不符」的静默偏差）。
+    -->
+    <sql id="filterConditions">
+        <where>
+            <if test="operatorId != null">AND operator_id = #{operatorId}</if>
+            <if test="operatorRole != null">AND operator_role = #{operatorRole}</if>
+            <if test="action != null">AND action = #{action}</if>
+            <if test="targetType != null">AND target_type = #{targetType}</if>
+            <if test="targetId != null">AND target_id = #{targetId}</if>
+            <if test="from != null">AND created_at &gt;= #{from}</if>
+            <if test="to != null">AND created_at &lt;= #{to}</if>
+        </where>
+    </sql>
+
+    <select id="countByFilter" resultType="long">
+        SELECT COUNT(*)
+        FROM audit_log
+        <include refid="filterConditions"/>
+    </select>
+
+    <select id="selectPageByFilter" resultType="com.s2s.server.common.audit.AuditLogEntity">
+        SELECT id, operator_id, operator_role, action, target_type, target_id,
+               before_value, after_value, reason, created_at
+        FROM audit_log
+        <include refid="filterConditions"/>
+        ORDER BY created_at DESC, id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+</mapper>

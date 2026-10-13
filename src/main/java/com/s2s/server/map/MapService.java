@@ -3,6 +3,7 @@ package com.s2s.server.map;
 import com.s2s.server.category.CategoryService;
 import com.s2s.server.common.constants.NfrApi;
 import com.s2s.server.common.constants.NfrCache;
+import com.s2s.server.common.constants.NfrMatch;
 import com.s2s.server.common.constants.NfrPerf;
 import com.s2s.server.common.dto.AuthorBrief;
 import com.s2s.server.common.error.BizException;
@@ -12,6 +13,7 @@ import com.s2s.server.map.dto.PinsCompactResponse;
 import com.s2s.server.map.dto.PostCard;
 import com.s2s.server.map.dto.SearchPostsResponse;
 import com.s2s.server.map.mapper.MapPostMapper;
+import com.s2s.server.ops.OpsFollowUpService;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Duration;
@@ -55,12 +57,6 @@ public class MapService {
     private static final Set<String> SORT_VALUES = Set.of("distance", "publish_time", "completeness",
             "composite", "price_asc", "price_desc");
 
-    /** 综合排序的距离归一化上界（米）：范围最大档 10km 的一倍余量（与客户端同口径）。 */
-    private static final int MAX_COMPOSITE_DISTANCE_M = 20000;
-
-    /** 综合排序的时效归一化上界（分钟）：7 天，与 §6.4.4 兜底口径一致。 */
-    private static final long MAX_COMPOSITE_AGE_MINUTES = 7L * 24 * 60;
-
     /** 聚合模式字面量。 */
     private static final String MODE_PIN = "pin";
     private static final String MODE_CLUSTER = "cluster";
@@ -77,6 +73,7 @@ public class MapService {
 
     private final MapPostMapper mapPostMapper;
     private final CategoryService categoryService;
+    private final OpsFollowUpService opsFollowUpService;
 
     /**
      * 构造地图域服务。
@@ -84,9 +81,11 @@ public class MapService {
      * @param mapPostMapper   map 只读查询 Mapper
      * @param categoryService 分类树服务（提供版本协商）
      */
-    public MapService(MapPostMapper mapPostMapper, CategoryService categoryService) {
+    public MapService(MapPostMapper mapPostMapper, CategoryService categoryService,
+            OpsFollowUpService opsFollowUpService) {
         this.mapPostMapper = mapPostMapper;
         this.categoryService = categoryService;
+        this.opsFollowUpService = opsFollowUpService;
     }
 
     /**
@@ -141,12 +140,13 @@ public class MapService {
      * @param sort            排序方式（distance/publish_time/completeness，缺省 distance）
      * @param page            页码（从 1 起，缺省 1）
      * @param pageSize        每页条数（缺省/上限见 NfrApi）
+     * @param userId          当前登录用户 ID（游客为 {@code null}；用于空圈入队）
      * @return 分页列表检索响应
      */
     public SearchPostsResponse searchPosts(List<Integer> categoryIds, List<String> postTypes,
             String radius,
             String gridId, String categoryVersion, Double lng, Double lat,
-            String keyword, String sort, Integer page, Integer pageSize) {
+            String keyword, String sort, Integer page, Integer pageSize, Long userId) {
         validateSearchParams(categoryIds, postTypes, radius, gridId, categoryVersion, lng, lat, sort);
 
         List<String> gridIds = expandGridCells(gridId, radius);
@@ -167,6 +167,15 @@ public class MapService {
         int from = (resolvedPage - 1) * resolvedPageSize;
         int to = Math.min(from + resolvedPageSize, total);
         List<PostCard> pageItems = from >= total ? List.of() : cards.subList(from, to);
+
+        if (total == 0) {
+            // [153] B2-5 ⑥ / PRD §6.4.4：空圈（三级兜底均无结果）→ 进「待运营跟进队列」。
+            // 本工程无独立三级兜底段落（单次查询 + 网格按半径扩展），故以 total==0 为等价触发点
+            // （2026-10-12 用户裁定）。入队在检索事务之外也只写队列，不影响检索响应。
+            opsFollowUpService.enqueue(userId, normalizedKeyword,
+                    categoryIds == null || categoryIds.isEmpty() ? null : categoryIds.get(0),
+                    gridId);
+        }
 
         return new SearchPostsResponse(pageItems, total, resolvedPage, resolvedPageSize, stale);
     }
@@ -439,12 +448,16 @@ public class MapService {
     }
 
     /**
-     * 综合排序得分：距离与新鲜度各占一半，**越小越靠前**。
+     * 综合排序得分：**越小越靠前**（PRD §6.11 阶段 0 规则加权，唯一口径）。
      *
-     * <p>与客户端 {@code _compositeScore} 同口径：两者量纲不同（米 vs 分钟），
-     * 直接相加会让换单位就翻转排序，故各自先按业务上界归一化到 0–1 再加权。
-     * 上界取业务边界（距离 20km / 时效 7 天）而非样本极值 —— 用样本极值会让
-     * 同一条信息的排名随其它信息的增删而跳动。</p>
+     * <p>权重：时效 40% + 距离 40% + 完整度档 20%（常量真源 {@link NfrMatch}，
+     * 与客户端 {@code _compositeScore} 同口径 —— 双端结果必须一致）。</p>
+     *
+     * <p>两者量纲不同（米 vs 分钟），直接相加会让换单位就翻转排序，故各自先按
+     * 业务上界归一化到 0–1 再加权。上界取业务边界（距离 20km / 时效 7 天）而非
+     * 样本极值 —— 用样本极值会让同一条信息的排名随其它信息的增删而跳动。</p>
+     *
+     * <p>完整度档「越高越好」，而本式「越小越靠前」，故取 {@code 1 − 系数} 作为代价项。</p>
      *
      * @param card 卡片
      * @return 0–1 的得分（越小越靠前）
@@ -453,12 +466,16 @@ public class MapService {
         Integer distanceM = card.distanceM();
         double distancePart = Math.min(
                 1.0,
-                (distanceM == null ? MAX_COMPOSITE_DISTANCE_M : distanceM)
-                        / (double) MAX_COMPOSITE_DISTANCE_M);
+                (distanceM == null ? NfrMatch.COMPOSITE_MAX_DISTANCE_M : distanceM)
+                        / (double) NfrMatch.COMPOSITE_MAX_DISTANCE_M);
         long ageMinutes = Math.max(
                 0, Duration.between(card.publishAt(), Instant.now()).toMinutes());
-        double agePart = Math.min(1.0, ageMinutes / (double) MAX_COMPOSITE_AGE_MINUTES);
-        return distancePart * 0.5 + agePart * 0.5;
+        double agePart = Math.min(
+                1.0, ageMinutes / (double) NfrMatch.COMPOSITE_MAX_AGE_MINUTES);
+        double completenessCost = 1 - NfrMatch.completenessFactor(card.completenessLevel());
+        return distancePart * NfrMatch.COMPOSITE_WEIGHT_DISTANCE
+                + agePart * NfrMatch.COMPOSITE_WEIGHT_TIME
+                + completenessCost * NfrMatch.COMPOSITE_WEIGHT_COMPLETENESS;
     }
 
     /**
