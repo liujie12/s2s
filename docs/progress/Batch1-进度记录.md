@@ -6890,4 +6890,36 @@ printf '\nMYSQL_SSL_MODE=VERIFY_CA\nMYSQL_TLS_TRUSTSTORE_PASSWORD=%s\n' \
 
 ---
 
+### 2026-10-14（B2-4 续 4 · 媒体直传真桶链路验证通过 + prod 配置键名订正 + 手工发版命令）
+
+> 摘要：**OSS RAM 子账号已授权**后，真桶直传全链路**实测打通**（ticket → PUT → commit）；顺带查实并订正两处会**静默失效**的配置缺陷，补齐手工发版脚本与真机联调文档；代码已推 `origin/main`（`0ed4f8f`）。
+
+**① 真桶直传全链路验证（本机后端 + 真 OSS）**
+- 链路：`POST /auth/sms/send` → `POST /auth/sms/login` → `POST /media/upload/ticket` → `PUT {upload_url}` → `POST /media/{id}/commit`。
+- 结果：**全链 code=0**；`upload_url` 落 `s2s-bucket.oss-cn-beijing.aliyuncs.com`；**PUT → HTTP 200**；`commit` → `audit=pass`。
+- 判据：授权前 PUT 恒 **403 AccessDenied**（`SubUser` 无 `oss:PutObject`），现已消除 ⇒ **授权生效**。
+- 附带复验：Content-Type 签名修复（`AliyunOssClient.signUploadUrl` 改用 `GeneratePresignedUrlRequest.setContentType`）通过（此前报 `SignatureDoesNotMatch`）。
+
+**② 两处配置缺陷（会静默失效，已订正）**
+- `src/main/resources/application.yml`：OSS bucket 变量名 `OSS_BUCKET` → **`OSS_BUCKET_NAME`**（对齐部署侧契约：`deploy/env/.env.<env>`、`backup-mysql.sh`、`deploy-first.sh`、手册 §4）。原值在容器里**恒为空**（env_file 注入的是 `OSS_BUCKET_NAME`）⇒ 真 SDK 路径下桶名空。
+- `deploy/config/app/application-prod.yml`：**死键** `s2s.oss.enabled` / `s2s.llm.enabled`（全仓无 `@Value`/`@ConditionalOnProperty` 读取）订正为真实键 `s2s.oss.mock: false`（生产走真 SDK，安全红线）/ `s2s.ai.dry-run: true`（真实 API 未接入，保持规则桩；**不得**改 false，否则 `QwenAiProvider` 抛 `IllegalStateException` → 50301）。
+
+**③ 交付物**
+- 新增 `deploy/scripts/deploy-manual.sh`：宿主 Maven 不合规机器（本项目 ECS CentOS 7 自带 3.0.5）的**一键发版**，即《部署操作手册》§7.5 手工路径的自动化（编译交 Dockerfile 内 `maven:3.9`）。
+- `deploy/docs/部署操作手册.md` 新增 **§11.7 真机联调包**：给出「指向本机后端」与「指向 prod」两种出包命令，高德 Key **从环境变量 `$env:AMAP_ANDROID_KEY` 取**（此前反复因手工出包漏传 `--dart-define` 而退化为示意底图）。
+
+**④ 门禁与提交**
+- 后端 `mvn -o test` → **exit 0**（全绿）。
+- 提交 `0ed4f8f` 已推 `origin/main`（连带 B2-4 `5efa75a`）。
+
+**⑤ 发版命令（待执行）**
+- 服务器：`cd /mnt/s2s && sudo GATE_MANUAL_CONFIRMED="G5,G7" bash deploy/scripts/deploy-manual.sh prod`
+- 验证：`curl -s -o /dev/null -w '%{http_code}\n' https://s2s.build110.com/ai/publish/quota` → 期望 **401**（需登录）而非 404。
+
+**⑥ 遗留**
+- 录音与音频上传的**真机行为仍未验证**（平台通道未跑：麦克风权限弹窗 / 录音落盘 / 真机直传）；本机后端 dry-run 的 ASR 待接真实 key 后回归。
+- 发版后需复验 prod 环境变量：`OSS_MOCK`（若存在应 = false）、`OSS_BUCKET_NAME`、`OSS_ENDPOINT`（**北京**，不是杭州）。
+
+---
+
 
