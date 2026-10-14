@@ -6915,7 +6915,7 @@ printf '\nMYSQL_SSL_MODE=VERIFY_CA\nMYSQL_TLS_TRUSTSTORE_PASSWORD=%s\n' \
 
 **④ 遗留（挂账）**
 - **未验**：ASR 出声识别 —— 模式② 完整闭环的最后一环。
-- **未修**：`ossutil` 未装（异地备份）；发版脚本回滚提示文案落后一版（V14）。
+- ✅ **已清（当日）**：① `ossutil` 已安装并配置（**prod 实测** `backup-mysql.sh prod` 上传成功、无 WARN，并据此确认子账号策略覆盖 `backup/` 前缀）；② 发版脚本核对提示里写死的迁移版本区间已去掉（`V8–V13` → 「对照 `db/migration/` 最高版本」，防再次失效）。**新增挂账**：OSS **lifecycle 规则（前缀 `backup/`、保留 7 天）尚未配置** —— 不配则远端备份无限累积（脚本刻意不删远端，见 `backup-mysql.sh` 注释）。
 - **观察项**：AMap Flutter 插件在 `location=null` 时每 2 秒自打一条 `location#changed error=======>Null check operator used on a null value`——**纯日志噪声、未出现界面报错**；该字符串不在本仓 `lib/` 内，属插件未判空。
 - **生产安全（非本次引入）**：`SmsService.sendCode` 无条件用 `SmsCodePolicy.DEBUG_CODE`、不接真短信服务商 ⇒ **线上任意手机号 + `888888` 可登录**；内测前须处理。
 
