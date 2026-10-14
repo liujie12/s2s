@@ -6979,4 +6979,27 @@ printf '\nMYSQL_SSL_MODE=VERIFY_CA\nMYSQL_TLS_TRUSTSTORE_PASSWORD=%s\n' \
 - **A 阶段**：阿里云短信开通报备（签名 + 模板，约 2 小时~1 工作日）→ 接入 provider + `s2s.sms.mock` 开关 + 随机 6 位码，随后本白名单可退役（`SmsCodePolicy` 注释里的「KTD8 出包前删后门」即指此事）。
 - 残留窗口（可忽略）：名单收紧前 5 分钟内已发出的码，在 TTL 300s 内仍可登录。
 
+### 2026-10-15（[123] 坏 JSON 错误码订正 —— 一次线上误报的复盘 + 真实缺陷修复）
+
+> 摘要：一轮「线上发码接口恒 50001」的排查，最终查明**是我自己的探针工具发出了坏 JSON**，线上功能一直是好的。排查过程中抓到并修复了一条**真实缺陷**：`GlobalExceptionHandler` 缺 `HttpMessageNotReadableException` 映射，把「客户端输入错误」兜成了 `50001 服务繁忙` —— 正是它把这次误报放大成「后端故障」。
+
+**① 误报经过（如实记录）**
+- 现象：本机 curl 打线上 `POST /auth/sms/send` 恒回 `{"code":50001,...}`；**非白名单号与白名单号结果完全相同**（本该分别 40305 / code=0），连 `{"phone":"123"}`（本该 40001）也是 50001。
+- 误判：据此推断「异常发生在参数校验之前（请求管线）」，进而怀疑 Redis 拒绝写入、磁盘满、镜像陈旧 —— 引导用户查了 Redis `SET`/`persistence`/`df -h`，并**多做了一次发版**（登记为本次误报的代价）。
+- 实因：**PowerShell 向原生程序传参时会吞掉 JSON 的内层双引号**，我实际发出的是 `{phone:13700137000,scene:login}` 这类**坏 JSON** ⇒ 服务端 Jackson 解析失败 ⇒ `HttpMessageNotReadableException` ⇒ 落兜底 50001。改用 `--data-binary "@文件"`（完全绕开引号）后：非白名单号 → `40305`、白名单号 → `code:0`，**线上功能完好**。
+- 排除记录（供后续同类排查省力）：Redis 内存/持久化正常（`SET` 回 OK、`rdb_last_bgsave_status:ok`、`aof_last_write_status:ok`）；磁盘 63%（21G 空闲）；`RateLimiter.incrementAndCheck` **吞异常放行**（详设 §3.4 纪律 3）故限频不可能产生 50001；`IdempotencyCaptureFilter` 只包装 response、不读请求体；全仓**无**自定义 `ObjectMapper` Bean。
+
+**② 真实缺陷与修复**
+- 缺陷：`GlobalExceptionHandler` 原有 `BizException` / `MethodArgumentNotValidException` / `Exception` 三条映射，**缺 `HttpMessageNotReadableException`** ⇒ 坏 JSON 落到 `@ExceptionHandler(Exception.class)` ⇒ `50001 服务繁忙`，把输入错误伪装成服务端故障。
+- 修复：新增 `handleUnreadableBody(...)` → HTTP 400 + `40001`，复用 `errorBody(PARAM_INVALID)`（**不新增错误码**）。
+- 两处刻意：① message 取通用文案，不沿用 `handleValidation` 的「缺少必填参数 X」（体解析失败时字段名未知）；② **只取异常类名、不打异常对象** —— Jackson 解析异常的 message 内嵌原始报文片段（形如 `(String)"{phone:18674750845,...}"`），落日志即**完整手机号泄漏**（编码规范 §4.11 PII 红线）。
+
+**③ 门禁**
+- 后端 `mvn -o clean test` → **475/475**（474 + 新增 1：坏 JSON → 400，且日志不含报文原文与手机号）。
+- 本改动只碰 Java，未跑 Dart 门禁。
+
+**④ 待办**
+- 该修复需**随下次正常发版**才在线上生效（只影响错误码，不影响正常业务，不必单独发版）。
+- 教训（登记）：线上 `50001` 类排查，**先用能确保报文正确的方式复现**（本机改用文件传 body），再下结论 —— 否则探针自身的缺陷会被误读成线上故障，诊断信息的质量直接决定排查方向。
+
 
