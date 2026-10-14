@@ -7002,4 +7002,35 @@ printf '\nMYSQL_SSL_MODE=VERIFY_CA\nMYSQL_TLS_TRUSTSTORE_PASSWORD=%s\n' \
 - 该修复需**随下次正常发版**才在线上生效（只影响错误码，不影响正常业务，不必单独发版）。
 - 教训（登记）：线上 `50001` 类排查，**先用能确保报文正确的方式复现**（本机改用文件传 body），再下结论 —— 否则探针自身的缺陷会被误读成线上故障，诊断信息的质量直接决定排查方向。
 
+### 2026-10-15（B2-4 真机收口 + 竖屏锁 + Step 1 任务书立档）
+
+> 摘要：模式② 确认页此前只看到「三项需补充」，本轮定位为 **dry-run 的必然结果（非缺陷）**；顺手修掉真机暴露的**横屏版式问题**（应用未锁竖屏）；并为「真实模型接入」立自包含任务书，交新会话开工。
+
+**① 模式② 真机链路（成功态确认）**
+- 出包（含 `334773b` 上传态修复）→ 安装（`pm install -r`，**会话保留**）→ 落首页；地图真底图、**首页无报错条**。
+- 链路证据：录音 → 落盘 396KB → 音频上传（ticket → PUT → commit）→ `parse` 返回 → 确认页处于 `_buildReady()` 态「**AI 已识别，请核对**」；分类/标题/价格均「需你补充」+ 确认发布**置灰**。
+- **判定：三项全空是 `s2s.ai.dry-run=true` 的必然结果**（纯规则抽取无从音频取字，ASR 需真实模型），**非缺陷**；而「字段缺失 ⇒ 按钮置灰」正是「AI 猜测不得绕过人工核对」的设计生效。
+- **未点「确认发布」（有意）**：会在 prod 留下真实帖子，而 **B2-8 已裁定「删除」本轮不做** ⇒ 只可下架、删不掉，故不制造垃圾数据。
+
+**② 竖屏锁（真机暴露的版式问题）**
+- 现象：应用**未锁竖屏**（manifest 无 `screenOrientation`），横屏下 AI 四模式弹层**第 3 档被裁到仅剩 12px、第 4 档完全不在可见区**（底栏/地图/确认页等版式均按竖屏设计）。
+- 修复：`MainActivity` 加 `android:screenOrientation="portrait"`，并注明与 `configChanges` 的 `orientation` 不冲突（前者禁止旋转、后者让已发生的配置变更不重建 Activity）。
+- **验证状态（如实分栏）**：静态证据确凿 —— `build/app/intermediates/packaged_manifests/debug/.../AndroidManifest.xml` 含该属性（即打进 APK 的那份）；**行为未验** —— MIUI 不认 adb 的旋转设置（`accelerometer_rotation=0` + `user_rotation=1` 写入成功，但 `mCurrentOrientation` 仍 `0`），无法借 adb 强制横屏，故**不能把静态证据当行为验证**，**真人横屏确认待补**。
+- iOS 侧同样允许横屏（`Info.plist` 的 `UISupportedInterfaceOrientations` 含 Landscape），**未改**：本机无法构建/验证 iOS，不擅自改不可验之物（待裁定）。
+
+**③ B2-4 阶段① 收尾立档（交新会话）**
+- 核对发现**真实 HTTP 调用从未实现**：`QwenAiProvider` 非 dry-run 分支**直接抛异常**（→ `50301`），配置侧亦**没有** `s2s.ai.api-key`/`model`/`endpoint`，且 `generate(scopeJson, …)` **拿不到媒体** ⇒ **光配 key + 关 dry-run 会让 AI 解析全挂**（不是配置活，是开发活）。
+- 裁定**分两步**（2026-10-15 用户）：**Step 1 文本通道 → Step 2 多模态**（图/音经 OSS 只读签名 URL）。
+- 任务书：`docs/plans/2026-10-15-feat-b2-4-qwen-live-plan.md`（自包含；含现状/两步清单/前置/红线/会话属性）。
+- 官方口径已固化（**阿里云文档 `help.aliyun.com/zh/model-studio/get-api-key`，页面更新 2026-10-10**）：Key 入口 `bailian.console.aliyun.com/cn-beijing/model/settings/api-key`（**地域不可混用**）/ **环境变量名 `DASHSCOPE_API_KEY`** / Base URL `https://dashscope.aliyuncs.com/compatible-mode/v1`（OpenAI 兼容）/ Key **无失效期**。
+- Key 已写入服务器 `deploy/env/.env.prod`（600、不入库）。**当前 inert**：尚无代码读它，Step 1 接上才生效。
+
+**④ 门禁**
+- `flutter analyze` → **No issues found**；APK 构建成功并装机（本批**不含后端代码改动**，故未跑后端门禁）。
+
+**⑤ 待办**
+- **竖屏锁行为验证**（真人横屏）—— 本批**唯一未闭环项**。
+- iOS 是否一并锁竖屏 —— 待裁定（本机不可验证，故未改）。
+- B2-4 Step 1 前置：**备案复核**（模型须仍在册）+ 模型档位 / 费用口径。
+
 
