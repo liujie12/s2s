@@ -400,6 +400,24 @@ class NfrMedia {
   /// （2026-09-23 用户裁定；与 PRD §13.2「媒体合计 ≤200MB」自洽：
   /// 9 × 20MB = 180MB < 200MB）。
   static const int maxSizeBytes = 20 * 1024 * 1024;
+
+  /// 允许上传的音频 MIME 白名单（B2-4 模式② 语音零键盘）。口径源：openapi
+  /// `POST /media/upload/ticket` 请求体 `content_type` enum +
+  /// 后端 `NfrMedia.AUDIO_CONTENT_TYPES`。
+  static const List<String> allowedAudioContentTypes = <String>[
+    'audio/mpeg',
+    'audio/mp4',
+    'audio/aac',
+    'audio/wav',
+    'audio/x-m4a',
+  ];
+
+  /// 单条语音录制时长上限（秒）。
+  ///
+  /// **这是实现护栏、而非产品口径**：模式② 的口径是「说一句话」
+  /// （PRD §5.9），无需长录音；加上限是为了防止误触后录成超长文件
+  /// （上传耗时 + ASR 成本不可控）。取值 60s，后续如需调整改此处一处。
+  static const int maxAudioSeconds = 60;
 }
 
 /// §6.12 T1 匹配的 Hard Filter 与精排粒度。
@@ -499,4 +517,27 @@ class NfrCert {
 
   /// 未实名用户每日详情浏览额度（条）。PRD §12.3 / DEC-30（2026-10-11 由 3 条改 5 条）。
   static const int detailQuotaLimitPerDay = 5;
+}
+
+/// §5.8/§5.9/§5.10 AI 智能发布配额（ai 域，B2-4）。
+///
+/// 双端口径：后端 `NfrAi` 镜像（`common/constants/NfrAi.java`）。前端
+/// `dailyAiQuota(...)` 与配额说明文案引用本组常量，禁写死数字
+/// （详设 §0.1「不复制字面量」）。
+///
+/// **改动纪律**：任一值变更须同步后端 `NfrAi.java` 与 PRD §5.8/§5.10。
+class NfrAi {
+  const NfrAi._();
+
+  /// 每日 AI 配额：实名 + 🟢 完整档（次/日）。PRD §5.8/§5.10。
+  static const int quotaVerifiedGreen = 20;
+
+  /// 每日 AI 配额：实名 + 🟡 完整档（次/日）。PRD §5.8/§5.10。
+  static const int quotaVerifiedYellow = 10;
+
+  /// 每日 AI 配额：未实名或 🔴 完整档（次/日）。PRD §5.8/§5.10。
+  static const int quotaUnverifiedOrRed = 3;
+
+  /// 高敏类目在基础配额上的加量（次/日）。PRD §5.8「高敏类目额外 +10 次」。
+  static const int quotaSensitiveBonus = 10;
 }

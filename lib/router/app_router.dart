@@ -33,7 +33,9 @@ import '../features/post/my_publish_screen.dart';
 import '../features/privacy/privacy_consent.dart';
 import '../features/privacy/privacy_gate_screen.dart';
 import '../features/profile/profile_screen.dart';
+import '../features/publish/ai_confirm_args.dart';
 import '../features/publish/ai_confirm_screen.dart';
+import '../features/publish/ai_dialog_screen.dart';
 import '../features/publish/category_selector_screen.dart';
 import '../features/publish/cert_modal_screen.dart';
 import '../features/publish/publish_form_state.dart';
@@ -64,6 +66,7 @@ class AppRoutes {
   static const String detail = '/detail/:id';
   static const String publish = '/publish';
   static const String aiConfirm = '/publish/ai-confirm';
+  static const String aiDialog = '/publish/ai-dialog';
   static const String publishSuccess = '/publish/success';
   static const String contact = '/contact/:id';
 
@@ -194,11 +197,19 @@ final List<RouteBase> _routes = [
   ),
   GoRoute(
     path: AppRoutes.aiConfirm,
-    // extra 传发布页的表单快照 —— 它就是 §5.10 Step 2 的 scope。
-    // 允许为空是为了让路由可被直接访问时不崩，空则退化为空白表单。
+    // extra 传 [AiConfirmArgs] —— 含表单快照（§5.10 Step 2 的 scope）、模式①
+    // 的一句话、图片媒体 ID、是否抢发。允许为空是为了让路由可被直接访问时
+    // 不崩，空则退化为空白表单（同 publish 路由的取向）。
     builder: (context, state) => AiConfirmScreen(
-      form: state.extra as PublishFormState? ?? const PublishFormState(),
+      args: state.extra is AiConfirmArgs
+          ? state.extra as AiConfirmArgs
+          : const AiConfirmArgs(),
     ),
+  ),
+  GoRoute(
+    path: AppRoutes.aiDialog,
+    // 模式③ 对话式一问一答（PRD §5.9）：每屏 1 问，无入参（从头开始问）。
+    builder: (context, state) => const AiDialogScreen(),
   ),
   GoRoute(
     path: AppRoutes.publishSuccess,

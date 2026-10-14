@@ -109,6 +109,7 @@ class ListingDetail {
     this.address,
     this.negotiable = false,
     this.mediaUrls = const [],
+    this.aiAssisted = false,
   });
 
   /// 复用列表模型承载共有字段，避免同一条信息在两个类里各存一份标题与坐标。
@@ -176,6 +177,12 @@ class ListingDetail {
   ///
   /// 空列表＝无图，页面渲染分类色占位块（不退化为「少一块版面」）。
   final List<String> mediaUrls;
+
+  /// 是否由 T2 AI 智能发布辅助生成（B2-4，PRD §5.9）。
+  ///
+  /// 为 true 时详情页展示「AI 辅助生成」内容标识（合规裁定：确认页 + 详情页两处都做）。
+  /// 存量帖/非 AI 帖为 false。
+  final bool aiAssisted;
 
   /// 剩余有效期天数（向上取整）。
   ///

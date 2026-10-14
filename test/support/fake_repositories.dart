@@ -7,6 +7,8 @@
 library;
 
 import 'package:dio/dio.dart';
+import 'package:zhaoyazhao/features/ai/ai_dto.dart';
+import 'package:zhaoyazhao/features/ai/ai_repository.dart';
 import 'package:zhaoyazhao/features/category/category_dto.dart';
 import 'package:zhaoyazhao/features/category/category_repository.dart';
 import 'package:zhaoyazhao/features/post/post_dto.dart';
@@ -211,4 +213,64 @@ class FakePostRepository extends PostRepository {
     if (error != null) throw error;
     return repostToReturn ?? RepostDraftDto.fromJson(repostDraftPayload());
   }
+}
+
+/// 假 ai 仓库：`parse`/`fetchQuota` 全纯微任务（fake async 下 pumpAndSettle 可推进）。
+///
+/// 继承生产类保单一调用面（签名漂移编译期炸）；绝不出网。
+class FakeAiRepository extends AiRepository {
+  /// 构造。dio 占位（本替身不发真请求）。
+  FakeAiRepository() : super(Dio());
+
+  /// `parse` 返回的结果；null 走「空猜测」默认（未选分类、无文本的服务端形态）。
+  AiParseResultDto? resultToReturn;
+
+  /// `parse`/`fetchQuota` 抛出的异常（模拟 42901/50301/传输错误）；null 走正常返回。
+  Object? errorToThrow;
+
+  /// `fetchQuota` 返回的配额；null 走未实名保守档上限。
+  AiQuotaDto? quotaToReturn;
+
+  /// `parse` 调用次数（断言「进页面即解析」）。
+  var parseCount = 0;
+
+  /// 最后一次 `parse` 入参（断言请求组装正确）。
+  AiParseRequestDto? lastRequest;
+
+  @override
+  Future<AiParseResultDto> parse(
+    AiParseRequestDto req, {
+    String? interactionId,
+  }) async {
+    parseCount++;
+    lastRequest = req;
+    final error = errorToThrow;
+    if (error != null) throw error;
+    return resultToReturn ?? _emptyResult();
+  }
+
+  @override
+  Future<AiQuotaDto> fetchQuota({
+    int? completenessLevel,
+    int? leafCategoryId,
+    String? interactionId,
+  }) async {
+    final error = errorToThrow;
+    if (error != null) throw error;
+    return quotaToReturn ??
+        AiQuotaDto(
+          used: 0,
+          limit: NfrAi.quotaUnverifiedOrRed,
+          resetAt: DateTime(2026, 1, 1),
+        );
+  }
+
+  /// 空猜测结果（未选分类、无文本时的服务端返回形态）。
+  ///
+  /// 返回：[AiParseResultDto] 分类/标题/价格三项皆未猜出。
+  static AiParseResultDto _emptyResult() => const AiParseResultDto(
+        guess: AiGuessDto(),
+        scopeVerified: <String, String>{},
+        unresolvedFields: <String>['title', 'price'],
+      );
 }

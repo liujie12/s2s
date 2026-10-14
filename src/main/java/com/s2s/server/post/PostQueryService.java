@@ -151,7 +151,8 @@ public class PostQueryService {
                 toInstant(row.get("created_at")),
                 toInstant(row.get("expire_at")),
                 author,
-                toLong(row.get("version")));
+                toLong(row.get("version")),
+                Boolean.TRUE.equals(toBoolean(row.get("ai_assisted"))));
     }
 
     /**
@@ -318,6 +319,28 @@ public class PostQueryService {
         } catch (Exception e) {
             throw new IllegalStateException("post.template_values 不是合法 JSON 对象: " + json, e);
         }
+    }
+
+    /**
+     * 把 JDBC 取回的 {@code TINYINT(1)} 列归一出 {@link Boolean}。
+     *
+     * <p>不同驱动/配置下 {@code tinyint(1)} 可能映射为 {@link Boolean} 或 {@link Number}，
+     * 故两种都接；{@code null} 透传为 {@code null}（存量行为空，客户端按默认 false 处理）。</p>
+     *
+     * @param value JDBC 取值
+     * @return {@link Boolean} 归一结果；{@code null} 透传
+     */
+    private Boolean toBoolean(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        if (value instanceof Number number) {
+            return number.intValue() != 0;
+        }
+        return Boolean.parseBoolean(value.toString());
     }
 
     // ---------------------------------------------------------------------

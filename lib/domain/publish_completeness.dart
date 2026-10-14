@@ -12,6 +12,7 @@
 /// 「怎么从表单推出这三个条件」是表单自己的事（见 `PublishFormState.completeness`）。
 library;
 
+import '../nfr_constants.dart';
 import 'listing_detail.dart';
 
 /// 🟢 完整档的三个条件（§9.8 表首列「触发条件」的三项拆解）。
@@ -141,12 +142,12 @@ int dailyAiQuota({
   bool sensitiveCategory = false,
 }) {
   // 未实名与 🔴 档合并为同一档，是 §5.10 的原文口径（「未实名或 🔴」），
-  // 不是简化 —— 两者任一成立就落到 3 次。
+  // 不是简化 —— 两者任一成立就落到最低档。
   final base = switch ((verified, level)) {
-    (false, _) => 3,
-    (true, CompletenessLevel.red) => 3,
-    (true, CompletenessLevel.yellow) => 10,
-    (true, CompletenessLevel.green) => 20,
+    (false, _) => NfrAi.quotaUnverifiedOrRed,
+    (true, CompletenessLevel.red) => NfrAi.quotaUnverifiedOrRed,
+    (true, CompletenessLevel.yellow) => NfrAi.quotaVerifiedYellow,
+    (true, CompletenessLevel.green) => NfrAi.quotaVerifiedGreen,
   };
-  return base + (sensitiveCategory ? 10 : 0);
+  return base + (sensitiveCategory ? NfrAi.quotaSensitiveBonus : 0);
 }

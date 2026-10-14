@@ -48,6 +48,7 @@ import '../location/location_permission.dart';
 import '../perf/layer_switch_recorder.dart';
 import '../perf/perf_panel.dart';
 import '../privacy/privacy_consent.dart';
+import '../publish/ai_entry_sheet.dart';
 import 'amap_init_guard.dart';
 import 'clustering/grid_cluster.dart';
 import 'clustering/marker_builder.dart';
@@ -340,6 +341,15 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 right: AppSpacing.md,
                 bottom: AppSpacing.md,
                 child: PerfPanel(),
+              ),
+              // 「AI 帮我发」FAB（PRD §6.13 T6-①）：悬浮于首页右下，唤起四模式。
+              // 放在性能面板上方（+56）避免遮挡 —— 二者同处右下角。
+              Positioned(
+                right: AppSpacing.md,
+                bottom: AppSpacing.md + 56,
+                child: AiPublishFab(
+                  onTap: () => startAiPublish(context, ref),
+                ),
               ),
             ],
           );

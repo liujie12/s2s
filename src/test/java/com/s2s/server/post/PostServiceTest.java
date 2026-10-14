@@ -12,6 +12,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.s2s.server.ai.AiQuotaGate;
 import com.s2s.server.common.crypto.CryptoFacade;
 import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
@@ -46,6 +47,7 @@ class PostServiceTest {
     private PostValidator validator;
     private MediaAssembler mediaAssembler;
     private ObjectMapper objectMapper;
+    private AiQuotaGate aiQuotaGate;
     private PostService postService;
 
     @BeforeEach
@@ -56,7 +58,9 @@ class PostServiceTest {
         validator = mock(PostValidator.class);
         mediaAssembler = mock(MediaAssembler.class);
         objectMapper = new ObjectMapper();
-        postService = new PostService(postMapper, mediaMapper, cryptoFacade, validator, mediaAssembler, objectMapper);
+        aiQuotaGate = mock(AiQuotaGate.class);
+        postService = new PostService(postMapper, mediaMapper, cryptoFacade, validator,
+                mediaAssembler, objectMapper, aiQuotaGate);
 
         when(validator.computeDerived(any(), any(), any()))
                 .thenReturn(new PrecheckResult.Derived(true, false, true));
@@ -88,7 +92,7 @@ class PostServiceTest {
 
         PostCreateRequest req = new PostCreateRequest(
                 "resource", 10101, "标题", 50.0, "小时", "描述", Map.of(), 120.15, 30.28, null,
-                false, List.of(), "phone", "13800138000");
+                false, List.of(), "phone", "13800138000", null);
 
         PostDetail detail = postService.createPost(1L, req);
 
@@ -96,6 +100,67 @@ class PostServiceTest {
         assertThat(detail.version()).isZero();
         // contact 加密 AAD = post_id（INSERT 后取到的 100）
         verify(cryptoFacade).encrypt(eq("13800138000"), eq("100"));
+    }
+
+    /**
+     * 发布：ai_assisted=true → 发布成功后扣 1 次 AI 配额（PRD §5.9「仅确认发布才计 1 次」）。
+     *
+     * @return void；断言失败即 AI 辅助发布不扣配额（配额口径失效）
+     */
+    @Test
+    void createPostAiAssisted扣一次配额() {
+        when(postMapper.selectById(100L)).thenReturn(createSavedRow());
+
+        postService.createPost(1L, createReq(Boolean.TRUE));
+
+        verify(aiQuotaGate).increment(eq(1L), any());
+    }
+
+    /**
+     * 发布：ai_assisted 非 true（false/null）→ 不扣配额。
+     *
+     * @return void；断言失败即普通发布误扣 AI 配额
+     */
+    @Test
+    void createPost非AiAssisted不扣配额() {
+        when(postMapper.selectById(100L)).thenReturn(createSavedRow());
+
+        postService.createPost(1L, createReq(Boolean.FALSE));
+
+        verify(aiQuotaGate, never()).increment(any(), any());
+    }
+
+    /**
+     * 造发布载荷（B2-4）。
+     *
+     * @param aiAssisted 是否 AI 辅助生成（可空）
+     * @return {@link PostCreateRequest} 载荷
+     */
+    private static PostCreateRequest createReq(Boolean aiAssisted) {
+        return new PostCreateRequest(
+                "resource", 10101, "标题", 50.0, "小时", "描述", Map.of(), 120.15, 30.28, null,
+                false, List.of(), "phone", "13800138000", aiAssisted);
+    }
+
+    /**
+     * 造发布落库后重查行（含 STORED 生成列与 NOT NULL 时间列）。
+     *
+     * @return {@link PostEntity} 落库行
+     */
+    private static PostEntity createSavedRow() {
+        PostEntity saved = new PostEntity();
+        saved.setId(100L);
+        saved.setUserId(1L);
+        saved.setType("resource");
+        saved.setLeafCategoryId(10101);
+        saved.setL2CategoryId(101);
+        saved.setTitle("标题");
+        saved.setCompletenessLevel(2);
+        saved.setStatus("active");
+        saved.setVersion(0L);
+        saved.setCreatedAt(LocalDateTime.now());
+        saved.setExpireAt(LocalDateTime.now().plusDays(7));
+        return saved;
     }
 
     @Test

@@ -49,6 +49,7 @@ import java.util.Map;
  * @param expireAt          到期时间
  * @param author            作者摘要（POST /posts 出参不填充，保持 null）
  * @param version           乐观锁版本号
+ * @param aiAssisted        本条是否由 T2 AI 智能发布辅助生成（B2-4，PRD §5.9；详情页标识来源）
  */
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public record PostDetail(
@@ -73,5 +74,6 @@ public record PostDetail(
         Instant publishAt,
         Instant expireAt,
         AuthorBrief author,
-        Long version) {
+        Long version,
+        Boolean aiAssisted) {
 }

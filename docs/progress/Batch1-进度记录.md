@@ -6772,3 +6772,122 @@ printf '\nMYSQL_SSL_MODE=VERIFY_CA\nMYSQL_TLS_TRUSTSTORE_PASSWORD=%s\n' \
 
 ---
 
+### 2026-10-14（B2-4 AI 智能发布 · 后端全域 + 前端核心接线落地）
+
+> 摘要：按 2026-10-13 开工包（零待裁定）实施 **B2-4 T2 AI 智能发布**。契约与双端常量、**后端 AI 域全链路**、**前端数据层 + 确认页接真 + 内容标识两处 + 设置页公示位**均已落地并过门禁；**前端「四模式入口（首页 FAB + 四模式弹层）」与「模式② 语音录音上传（客户端录音）尚未开工**（见「未完成」）。
+
+**① 契约（openapi.yaml）**
+- 用 **PRD §2302 两端点**替换原 `/ai` 占位：`POST /ai/publish/parse`（body `AiParseRequest`，响应 `AiParseResult`）+ `GET /ai/publish/quota`（query `completeness_level` / `leaf_category_id`，响应 `AiQuota`）；新增 schema `AiParseRequest` / `AiGuess` / `AiParseResult` / `AiQuota`。
+- `PostDraft` / `PostCreateRequest` / `PostDetail` 增 `ai_assisted`（详情出参含该字段，前端用于内容标识）。
+- 媒体上传 `content_type` enum 增音频 5 类（`audio/mpeg` / `audio/mp4` / `audio/aac` / `audio/wav` / `audio/x-m4a`），支撑模式② 音频上传。
+
+**② 双端常量单源**
+- 新建 `NfrAi.java` + `lib/nfr_constants.dart` 的 `NfrAi`（配额 `20/10/3` + 高敏 `+10`；单次请求上限等），禁业务代码写死数字。
+
+**③ 后端 AI 域（全链路真实现，dry-run 可联调）**
+- `AiProvider`（抽象）+ 通义千问实现（`qwen-omni` 通道，配置 `s2s.ai.*`；无 key 时走 dry-run，按 scope 规则产出**可溯源**猜测，**不编造**）。
+- `AiParseService`：**§5.10 严格 Scope 四步管线** —— Step 2 Scope 提取（U∪N∪P）→ Step 3 模型生成（prompt 限死 scope 字段）→ **Step 4 逆向比对**（越界/无源值一律**拒绝注入**并移入 `unresolved_fields`，落地「幻觉 ≈ 0」红线）。
+- `AiQuotaGate`（仿 `DetailQuotaGate`：Redis 先查后增 + 跨天 TTL + 写失败放行）、`AiQuotaService`（实名 × 完整度档 × 高敏 取上限）。
+- `AiController`：`POST /ai/publish/parse` + `GET /ai/publish/quota`。
+- 落库与扣减：`V14` 加 `post.ai_assisted`；`POST /posts` 请求带 `ai_assisted=true` 时**发布成功扣 1 次配额**（不新增端点，与 §5.9 一致）；`GET /posts/{id}` 出参含 `ai_assisted`。
+- **音频媒体支持**：`NfrMedia` 新增 `AUDIO_CONTENT_TYPES`；`MediaService.createTicket` 放行音频、`commit` 对音频**跳过** `processImage`/EXIF 删除（音频无 EXIF）。
+- 单测：新增 `AiParseServiceTest`（**Step 4 红线**：编造字段被拒 + 合法猜测保留 + 分类/模板字段越界拒绝 + 上游异常回 `50301` + 输入全空回 `40001` + 配额耗尽回 `42901`）。
+
+**④ 前端数据层 + 确认页接真 + 标识/公示位**
+- 新建 `lib/features/ai/ai_dto.dart`（`AiParseRequestDto`/`AiGuessDto`/`AiParseResultDto`/`AiQuotaDto`，手写 snake_case 映射，`toJson` **只输出非 null 键**）+ `ai_repository.dart`（`parse`/`fetchQuota` + `aiRepositoryProvider`）。
+- `ai_confirm_screen.dart` **接真**：进页面即调 `parse`（解析中 → 待确认 / 失败态保留输入 + 重试）；猜测来源映射「据你已填 / 据分类模板 / 据附近同类」；配额展示**服务端真实值**（`已用 / 上限`，兜底常量文案）；`_confirm()` 走 `precheck` → `createPost`（载荷显式追加 `ai_assisted: true`）；新增「说一句」输入 + 「AI 辅助生成」内容标识（落点一）；`_ParsingView` 的慢文案定时器改**可取消**（修残留定时器）。
+- 内容标识落点二：`PostDetailDto` / `ListingDetail` 贯通 `aiAssisted`，`detail_screen.dart` 当 `ai_assisted=true` 时展示「AI 辅助生成」。
+- 设置页公示位：`settings_screen.dart`「关于」分组新增「AI 生成式服务公示」行 → 弹窗展示模型名（通义千问 · 阿里云百炼）+ 生成式AI服务备案号 + 算法备案号（**上线编号待取得后填入**）。
+- 测试：`test/ai_confirm_screen_test.dart` 改注入 `FakeAiRepository`（21 例）；新增 `test/features/ai/ai_repository_test.dart`（载荷/查询参数/错误）；`test/support/fake_repositories.dart` 增 `FakeAiRepository`。
+
+**⑤ 门禁（全绿）**
+- 后端 `mvn -o clean test` → **471/471**（基线 451 + AI 域新增 20）。
+- 前端 `flutter analyze` → **0 issue**；`flutter test` → **744/744**（基线 735 + 新增 9）；离线探针 `probe-layout-offline.js` → **310/0**。
+
+**⑥ 未完成（下一步）**
+- **前端「四模式入口」**：§6.13 首页 FAB「AI 帮我发」+ 四模式弹层（① 多媒体 / ② 语音零键盘 / ③ 对话式 / ④ 抢发）**未做**，当前仍沿用发布页「临时入口」进确认页。
+- **模式② 语音**：后端音频媒体链路 + 契约已就绪，**前端录音（插件 + 麦克风权限）与音频上传接线未做**。
+- 模式③ 对话式（一问一答）与模式④ 抢发（标题 + 图片立即发布 + 🔴 24h）**未做**。
+
+---
+
+### 2026-10-14（B2-4 续 · 首页 AI 入口 + 模式①/④ 落地）
+
+> 摘要：接续同日「后端全域 + 前端核心接线」，落地 **§6.13 T6-① 首页「AI 帮我发」FAB + 四模式弹层**，并实现**模式① 多媒体（拍图 + 一句话）**与**模式④ 抢发（标题 + 拍照即发布、落 🔴）**；同步**移除发布页临时入口**。
+
+**① 入口（§6.13 T6-①）**
+- 新建 `lib/features/publish/ai_entry_sheet.dart`：`AiPublishFab`（Accent 橙底 + 胶囊 + 白字「AI 帮我发」+ 投影，逐条对齐 prototype-figma `fab/ai-publish`，**不加装饰图标**）+ `startAiPublish(...)`（弹四模式 → 可用性/登录校验 → 快速输入 → 进确认页）。
+- 新建 `lib/features/publish/ai_publish_mode.dart`：`AiPublishMode` 枚举 + 展示属性 + `isAvailable`（①④ 可用，②③ 呈现但禁用并注明「即将开放」——不做假入口）。
+- `lib/features/map/map_screen.dart`：Stack 右上加 FAB（位于 POC-B 性能面板上方 +56，避免遮挡）。
+- `lib/features/publish/publish_screen.dart`：**移除临时入口** `_TempAiEntry` 类 + `_openAiConfirm()` 方法 + ListView 中的调用（其自述的移除条件已达成）。
+
+**② 模式① 多媒体 / 模式④ 抢发**
+- 快速输入弹层 `_AiQuickSheet`：选 1 张图（走统一 `MediaPicker`，白名单/体积校验在链内）→ 上传（`MediaUploadService`：票据 → OSS 直传 → commit）→ 以 `AiConfirmArgs` pop 出去。
+  - 模式①：图 + 一句话；模式④：标题 + 图，`flashMode=true`。
+- 新建 `lib/features/publish/ai_confirm_args.dart`：`AiConfirmArgs{form, initialText, initialMediaId, flashMode}`（同 `publish_screen_args.dart` 范式）。
+- `ai_confirm_screen.dart` 改造：构造改收 `args`；`_runParse` **带上 `media_id`** 并**修正 `kind` 映射**（契约 `resource`/`demand` ≠ 本地 `PublishKind.name` 的 `supply`/`demand`，此前是缺陷）；`_initialSentence` 优先取入口带进来的一句话；抢发模式 `_ConfirmBar(allowIncomplete: true)` —— **未补齐必填也允许发布**并改提示为「抢发：先发布占位，24 小时内补全」（§5.9/§5.11）。
+- `app_router.dart`：`/publish/ai-confirm` 的 `extra` 由 `PublishFormState` 改为 `AiConfirmArgs`（含向后兼容的空值兜底）。
+
+**③ 门禁（全绿）**
+- `flutter analyze` → **0 issue**；`flutter test` → **752/752**（上一轮 744 + 本批新增 8）；离线探针 → **310/0**。
+- 新增测试：`test/features/publish/ai_entry_test.dart`（8 例：入口四模式呈现 / ②③ 禁用标注 / ①④ 弹层与校验）；`test/ai_confirm_screen_test.dart` 增「抢发未补齐也可发布」1 组 + 适配 `AiConfirmArgs` 签名。
+
+**④ 未完成（下一步）**
+- **模式③ 对话式一问一答**（S5）——「每屏 1 问」逐项引导，未开工。
+- **模式② 语音零键盘** —— 后端音频媒体链路 + 契约已就绪，前端录音（插件 + 麦克风权限）与音频上传接线未开工。
+
+---
+
+### 2026-10-14（B2-4 续 2 · 模式③ 对话式一问一答落地）
+
+> 摘要：落地 **模式③ 对话式一问一答**（PRD §5.9「每屏 1 问，新手首选用」）。PRD/Figma 对「问哪些项、什么顺序、问完去哪」**无定义**，属未覆盖口径，经用户三项裁定后实施。至此**四模式中 ①③④ 已可用，仅剩 ② 语音零键盘**。
+
+**① 口径裁定（2026-10-14，用户）**
+1. **问哪些** = 只问必填，**8 问**：类型 → 分类 → 位置 → 标题 → 价格 → 描述 → 联系方式 → 协议勾选（对齐 §5.4.1 必填顺序与 `PublishBlocker` 顺序）；
+2. **问完去哪** = 进 `ai-confirm-screen`（§5.9「四模式共用确认页」），由 AI 补全其余字段并逐项核对；
+3. **导航** = 可「上一步」；必答项未答不允许进入下一问（与发布页主按钮禁用同一取向）。
+
+**② 实施**
+- 新建 `lib/features/publish/ai_dialog_screen.dart`：`AiDialogScreen` + `_DialogStep`（8 步枚举）+ 逐步渲染（类型/分类/位置/协议用单选卡，标题/价格/描述/联系用输入控件；价格附模板单位选项片）；顶部「第 N / 8 问」+ 进度条；底部「上一步 / 下一步」（末问文案「开始识别并发布」）。
+- 复用：分类走全屏级联模态 `AppRoutes.categorySelector`（返回叶子 ID，`withCategory` 换模板清值）；位置沿用发布页同一口径（`locationPermissionProvider` 未授权不塞假点）。
+- `app_router.dart` 新增路由 `AppRoutes.aiDialog = '/publish/ai-dialog'`；`ai_entry_sheet.dart` 的 `startAiPublish` 对模式③ 直接 push 该页（不走选图/输入弹层）；`ai_publish_mode.dart` 的 `isAvailable` 放行 ③（仅 ② 仍禁用并标「即将开放」）。
+
+**③ 门禁（全绿）**
+- `flutter analyze` → **0 issue**；`flutter test` → **757/757**（上一轮 752 + 新增 5）；离线探针 → **310/0**。
+- 新增 `test/features/publish/ai_dialog_screen_test.dart`（5 例：首问与进度 / 前进到分类问 / 必答闸门禁用主按钮 / 可上一步且答案保留 / 末问文案反向守）；`ai_entry_test.dart` 适配 ③ 已可用（「即将开放」由 2 处收敛为 1 处）。
+
+**④ 未完成（下一步）**
+- **模式② 语音零键盘** —— 唯一剩余模式：后端音频媒体链路 + 契约已就绪，缺**客户端录音**（插件 + 麦克风权限）与音频上传接线。
+
+---
+
+### 2026-10-14（B2-4 续 3 · 模式② 语音零键盘落地 —— 四模式全量打通）
+
+> 摘要：落地 **模式② 语音零键盘**（PRD §5.9）。引入录音插件、新增录音抽象与平台权限、接上音频上传链路（后端与契约已于本日早批就绪）。**至此 B2-4 四模式（①多媒体 / ②语音 / ③对话式 / ④抢发）全部可用**。
+
+**① 新增依赖与平台权限**
+- `pubspec.yaml` 新增 `record: ^6.2.1`（`flutter pub add record` 解析，含 record_android/ios/web/macos/windows/linux 平台实现）；`pubspec.lock` 相应变更。
+- `android/app/src/main/AndroidManifest.xml` 增 `android.permission.RECORD_AUDIO`（运行时权限，仅用户点语音发布时才申请）。
+- `ios/Runner/Info.plist` 增 `NSMicrophoneUsageDescription`（文案：用于「语音发布」）。
+
+**② 录音抽象（同 `MediaPicker` 范式，可测）**
+- 新建 `lib/features/media/audio_recorder.dart`：`AudioRecorder` 接口（`hasPermission`/`start`/`stop`/`cancel`/`dispose`）+ `RecordedClip` + `AudioRecordException` + 生产实现 `DeviceAudioRecorder`（包 `record` + `path_provider`，**给 `record` 加前缀**避免插件同名类 `AudioRecorder` 撞本域接口）+ `audioRecorderProvider`。
+- 格式口径：**AAC-LC / m4a → MIME `audio/mp4`**（`record` 默认编码器、各平台通用，且在后端 `NfrMedia.AUDIO_CONTENT_TYPES` 白名单内）。
+- `lib/nfr_constants.dart`：`NfrMedia` 增 `allowedAudioContentTypes`（镜像后端白名单）+ `maxAudioSeconds = 60`（**实现护栏、非产品口径**：防误触录超长导致上传/ASR 成本不可控；PRD 口径是「说一句话」）。
+
+**③ UI 与接线**
+- `ai_entry_sheet.dart` 新增 `_AiVoiceSheet`（点一下开始 → 说一句 → 再点停止 → 上传 → pop）+ `_MicButton`；`startAiPublish` 对 ② 走该弹层，①④ 仍走快速输入弹层，③ 直连引导页。
+- `AiConfirmArgs` 增 `initialVoiceMediaId`；`ai_confirm_screen._runParse` 带上 `voice_media_id`（音频作为解析输入，**不进帖子的图片 media_ids** —— 媒体段只收图片）。
+- `ai_publish_mode.dart`：`isAvailable` 改为恒 true（四模式全开），② 副文案更新为「点一下开始，说一句话，再点停止」。
+
+**④ 门禁（全绿）**
+- `flutter analyze` → **0 issue**；`flutter test` → **759/759**（上一轮 757 + 本批新增 2 净增）；离线探针 → **310/0**。
+- 新增 `test/support/fake_media.dart`（`FakeAudioRecorder` + `FakeMediaUploadService`）；`ai_entry_test.dart` 增「② 权限被拒提示」「② 录音→停止→上传→进确认页（断言 contentType=audio/mp4）」两组，并适配「四模式全可用、无『即将开放』」。
+
+**⑤ 备注 / 待真机验证**
+- 录音与音频上传的**真机行为未验证**（本轮只到 widget 测试层，平台通道未跑）：需在真机/模拟器上验证麦克风权限弹窗、录音落盘、OSS 直传音频、以及后端 ASR（当前后端为 dry-run）。
+- 后端 `AiProvider` 的 ASR 仍走 dry-run；接真实通义千问 key 后需回归音频解析链路。
+
+---
+
+

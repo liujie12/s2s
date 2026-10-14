@@ -673,8 +673,10 @@ paths:
                   example: 1843200
                 content_type:
                   type: string
-                  description: MIME 类型，须在服务端白名单内
-                  enum: [image/jpeg, image/png, image/webp]
+                  description: |
+                    MIME 类型，须在服务端白名单内。图片：image/jpeg、image/png、image/webp；
+                    音频（B2-4 模式② 语音零键盘）：audio/mpeg、audio/mp4、audio/aac、audio/wav、audio/x-m4a。
+                  enum: [image/jpeg, image/png, image/webp, audio/mpeg, audio/mp4, audio/aac, audio/wav, audio/x-m4a]
       responses:
         '200':
           description: 票据签发成功
@@ -1193,32 +1195,120 @@ paths:
         '200': { description: 占位，Batch2 交付 }
 
   # ===========================================================================
-  # 分组四：T2 AI 辅助（共 2 个接口，Batch1 覆盖 0 个）
+  # 分组四：T2 AI 智能发布（共 2 个接口，Batch1 覆盖 0 个）
+  # 2026-10-13 裁定：以 PRD §5.9/§5.10 + §2302 两端点为准；
+  # 原占位 `/ai/parse` + `/ai/ocr` 作废（OCR 非 §5.9 主路径，随语音模式一并撤下）。
   # ===========================================================================
 
-  /ai/parse:
+  /ai/publish/parse:
     post:
       tags: [ai]
-      summary: AI 解析自然语言为结构化发布内容
-      operationId: aiParse
+      summary: AI 智能发布解析（图/语音/文本 → 四件套猜测）
+      operationId: aiPublishParse
       x-batch: Batch2
       x-domain: ai
       description: |
-        占位。Batch2 交付。
-        配额耗尽回 `42901`（携带 `Retry-After`）；上游不可用回 `50301`。
-      responses:
-        '200': { description: 占位，Batch2 交付 }
+        ### 严格 Scope 四步管线（PRD §5.10）
 
-  /ai/ocr:
-    post:
+        `U ∪ N ∪ P` Scope 提取 → 大模型生成（prompt 限死「仅用 scope 字段」）
+        → 逆向比对；越界字段**留空并移入 `unresolved_fields[]`**，
+        服务端**不猜、不编造**（PRD §5.9/§2302 红线）。
+
+        ### 四模式共用本端点（PRD §5.9）
+
+        | 模式 | 输入 |
+        | --- | --- |
+        | ① 多媒体 7 秒 | `media_id`（图片）+ 可空 `text` |
+        | ② 语音零键盘 | `voice_media_id`（音频，服务端走已备案模型 ASR） |
+        | ③ 对话式一问一答 | `text` / `voice_text`（逐轮累积） |
+        | ④ 抢发 | 仅 `media_id` + `text`（标题） |
+
+        ### 配额
+
+        本端点**只读配额、不扣减**（PRD §5.9「仅确认发布才计 1 次」）；
+        扣减点在 `POST /posts`（请求带 `ai_assisted=true`）。
+        配额已耗尽回 `42901`（携带 `Retry-After`）；**解析失败不计配额**。
+
+        ### 失败
+
+        上游超时 / 无返回 / 图不可识别 → `50301`；客户端须保留已输入内容。
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/XDeviceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AiParseRequest'
+      responses:
+        '200':
+          description: 解析完成（同步返回四件套猜测）
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AiParseResult'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+
+  /ai/publish/quota:
+    get:
       tags: [ai]
-      summary: OCR 识别（名片 / 单据）
-      operationId: aiOcr
+      summary: 查询今日 AI 配额
+      operationId: aiPublishQuota
       x-batch: Batch2
       x-domain: ai
-      description: 占位。Batch2 交付。OCR 中间数据由定时任务清理。
+      description: |
+        返回今日已用 / 上限 / 重置时间（PRD §5.8 二维配额表）。
+
+        **上限**按「实名状态 × 完整度档」动态计算：实名+🟢=20、实名+🟡=10、
+        未实名或🔴=3；高敏类目额外 +10。**只读，不扣减。**
+
+        **档位来源（2026-10-14 裁定）**：由客户端传入**当前草稿**的
+        `completeness_level` 与 `leaf_category_id`；缺省视为最保守档（`0`=🔴）。
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/XDeviceId'
+        - name: completeness_level
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            enum: [0, 1, 2]
+            default: 0
+          description: 当前草稿完整度档（0=🔴 / 1=🟡 / 2=🟢）；缺省 0
+        - name: leaf_category_id
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+          description: 当前叶子类目 ID，用于判定高敏类目（+10）
       responses:
-        '200': { description: 占位，Batch2 交付 }
+        '200':
+          description: 配额查询成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AiQuota'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
 
   # ===========================================================================
   # 分组五：首页地图与列表（共 2 个接口，全部 Batch1）—— 全系统性能最敏感路径
@@ -4121,6 +4211,114 @@ components:
           type: string
           enum: [phone, wechat]
         contact_value: { type: string, maxLength: 64 }
+        ai_assisted:
+          type: boolean
+          default: false
+          description: |
+            本条是否由 T2 AI 智能发布辅助生成（PRD §5.9）。`true` 时：
+            ① 发布成功后在 `POST /posts` 扣 1 次 AI 配额；② 帖子详情页展示
+            「AI 辅助生成」内容标识；③ 落 `post.ai_assisted` 列。
+            **由「确认页点确认发布」置 `true`**；用户拒绝结果/手动填写为 `false`。
+
+    AiParseRequest:
+      type: object
+      description: |
+        AI 智能发布解析入参（PRD §5.9 四模式共用）。
+        **至少一项输入非空**：`media_id` / `voice_media_id` / `text` / `voice_text`。
+      properties:
+        media_id:
+          type: string
+          nullable: true
+          description: 图片媒体 ID（模式①/④；须为本人已上传且过审的媒体）
+        voice_media_id:
+          type: string
+          nullable: true
+          description: |
+            音频媒体 ID（模式②）。服务端走**已备案模型**（通义千问，备案覆盖含 ASR）
+            做语音转写后再进 Scope 四步管线。
+        voice_text:
+          type: string
+          nullable: true
+          description: 客户端已转写的语音文本（可选；与 `voice_media_id` 二选一，本字段优先）
+        text:
+          type: string
+          nullable: true
+          description: 自由文本输入（模式③逐轮累积 / 模式④标题 / 模式①补充一句话）
+        kind:
+          $ref: '#/components/schemas/PostTypeEnum'
+        leaf_category_id:
+          type: integer
+          format: int32
+          nullable: true
+          description: 当前已选叶子类目 ID，用于模板 scope（P 集合）
+        completeness_level:
+          type: integer
+          format: int32
+          nullable: true
+          enum: [0, 1, 2]
+          description: 当前草稿完整度档，用于回填本次解析后的配额快照（只读）
+
+    AiParseResult:
+      type: object
+      required: [guess, unresolved_fields]
+      properties:
+        guess:
+          $ref: '#/components/schemas/AiGuess'
+        scope_verified:
+          type: object
+          additionalProperties:
+            type: string
+            enum: [user_input, neighbor_mode, platform]
+          description: |
+            每个**已注入**字段的来源（§5.10 Step 2 的 U/N/P 三集合），
+            供确认页展示「据你已填 / 据附近同类 / 据分类模板」。
+            键为字段名、值为来源枚举。**未列入的字段即未猜出**。
+          example:
+            title: user_input
+            leaf_category_id: platform
+            price: neighbor_mode
+        unresolved_fields:
+          type: array
+          description: |
+            Scope 四步管线判定**不一致或越界**而拒绝注入的字段（§5.10 Step 4），
+            服务端**留空不猜**。确认页对列出的字段标「需你补充」。
+          items: { type: string }
+          example: [price, template_values.floor]
+        quota:
+          $ref: '#/components/schemas/AiQuota'
+          description: 本次解析后的配额快照（只读展示；本端点不扣减）
+
+    AiGuess:
+      type: object
+      description: |
+        四件套猜测（PRD §5.9：标题 / 分类 / 价格 / 模板字段）。
+        **未猜出的字段为 null 或缺省**（不用空串/0 表示「猜不出」）。
+      properties:
+        title: { type: string, nullable: true, description: 标题（需求态含 §7.4.3 前缀） }
+        leaf_category_id: { type: integer, format: int32, nullable: true, description: 三级叶子类目 ID }
+        price: { type: number, format: double, nullable: true, description: 价格（元）；null=面议或未猜出 }
+        price_unit: { type: string, nullable: true, description: 价格单位；须取模板 price_units 之一 }
+        template_values:
+          type: object
+          additionalProperties: true
+          description: 模板字段猜测，键取自模板 `fields[].key`
+
+    AiQuota:
+      type: object
+      required: [used, limit, reset_at]
+      properties:
+        used:
+          type: integer
+          format: int32
+          description: 今日已用 AI 解析次数（仅「确认发布」计入，PRD §5.9）
+        limit:
+          type: integer
+          format: int32
+          description: 今日上限（实名状态 × 完整度档；高敏类目额外 +10）
+        reset_at:
+          type: string
+          format: date-time
+          description: 配额重置时间（次日 00:00，Asia/Shanghai）
 
     PostCreateRequest:
       allOf:
@@ -4263,6 +4461,11 @@ components:
             为 `null`，客户端须按可空处理。
           example: 138****8000
         completeness_level: { $ref: '#/components/schemas/CompletenessLevelEnum' }
+        ai_assisted:
+          type: boolean
+          description: |
+            本条是否由 T2 AI 智能发布辅助生成（PRD §5.9 裁定「最终帖子详情页标
+            『AI 辅助生成』」）。**存量行为 `false`**（迁移前发布），客户端按可空/默认 false 处理。
         status: { $ref: '#/components/schemas/PostStatusEnum' }
         publish_at: { type: string, format: date-time }
         expire_at:

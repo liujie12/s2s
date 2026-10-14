@@ -4,11 +4,13 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.s2s.server.ai.AiQuotaGate;
 import com.s2s.server.common.constants.NfrPost;
 import com.s2s.server.common.crypto.CryptoFacade;
 import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
 import com.s2s.server.common.geo.GridIdCalculator;
+import com.s2s.server.common.ratelimit.RateLimitKeys;
 import com.s2s.server.post.dto.MediaItem;
 import com.s2s.server.post.dto.PostCreateRequest;
 import com.s2s.server.post.dto.PostDetail;
@@ -51,22 +53,27 @@ public class PostService {
     private final PostValidator validator;
     private final MediaAssembler mediaAssembler;
     private final ObjectMapper objectMapper;
+    private final AiQuotaGate aiQuotaGate;
 
     /**
      * 构造发布服务。
+     *
+     * @param aiQuotaGate AI 配额闸（B2-4；ai_assisted 发布成功后扣 1 次）
      */
     public PostService(PostMapper postMapper,
             PostMediaMapper mediaMapper,
             CryptoFacade cryptoFacade,
             PostValidator validator,
             MediaAssembler mediaAssembler,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            AiQuotaGate aiQuotaGate) {
         this.postMapper = postMapper;
         this.mediaMapper = mediaMapper;
         this.cryptoFacade = cryptoFacade;
         this.validator = validator;
         this.mediaAssembler = mediaAssembler;
         this.objectMapper = objectMapper;
+        this.aiQuotaGate = aiQuotaGate;
     }
 
     /**
@@ -111,6 +118,7 @@ public class PostService {
         post.setCompletenessConditions(conditionsJson(derived));
         post.setStatus(STATUS_ACTIVE);
         post.setRestricted(0);
+        post.setAiAssisted(Boolean.TRUE.equals(req.aiAssisted()));
         post.setTemplateVersion(INITIAL_TEMPLATE_VERSION);
         post.setExpireAt(LocalDateTime.now().plusDays(NfrPost.VALID_DAYS));
         postMapper.insert(post);
@@ -124,6 +132,11 @@ public class PostService {
 
         // 关联媒体（post_media.post_id 落位）
         linkMedia(userId, post.getId(), req.mediaIds());
+
+        // [B2-4] AI 配额扣减点：仅 ai_assisted=true 的发布扣 1 次（PRD §5.9「仅确认发布才计 1 次」）
+        if (Boolean.TRUE.equals(req.aiAssisted())) {
+            aiQuotaGate.increment(userId, RateLimitKeys.today());
+        }
 
         // 重查取 STORED 生成列（l2_category_id / completeness_level）
         PostEntity saved = postMapper.selectById(post.getId());
@@ -449,7 +462,8 @@ public class PostService {
                 post.getCreatedAt().toInstant(ZoneOffset.UTC),
                 post.getExpireAt().toInstant(ZoneOffset.UTC),
                 null,
-                post.getVersion());
+                post.getVersion(),
+                Boolean.TRUE.equals(post.getAiAssisted()));
     }
 
     /**

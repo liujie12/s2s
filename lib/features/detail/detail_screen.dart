@@ -79,6 +79,8 @@ class DetailScreen extends ConsumerWidget {
           if (detail.templateFields.isNotEmpty)
             _TemplateSection(fields: detail.templateFields),
           _DescriptionSection(text: detail.description),
+          // B2-4 内容标识落点二：AI 辅助生成的帖子显式标注（PRD §5.9 合规裁定）。
+          if (detail.aiAssisted) const _AiAssistBadge(),
           _PublisherCard(
             publisher: detail.publisher,
             completeness: detail.completeness,
@@ -108,6 +110,42 @@ class DetailScreen extends ConsumerWidget {
       return const _QuotaExhaustedScreen();
     }
     return const _ErrorScreen();
+  }
+}
+
+/// 「AI 辅助生成」内容标识（B2-4；PRD §5.9 合规裁定：确认页 + 详情页两处都做）。
+///
+/// 仅当帖子 `ai_assisted=true` 时展示。样式克制：一行小字 + 图标，不与正文争视觉。
+class _AiAssistBadge extends StatelessWidget {
+  const _AiAssistBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.sm,
+        AppSpacing.lg,
+        0,
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.auto_awesome_outlined,
+            size: 14,
+            color: Color(AppColors.textPlaceholder),
+          ),
+          const SizedBox(width: AppSpacing.xs),
+          Text(
+            'AI 辅助生成',
+            style: TextStyle(
+              fontSize: AppTypeScale.caption.size,
+              color: Color(AppColors.textPlaceholder),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

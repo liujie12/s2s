@@ -300,9 +300,29 @@ public final class RateLimitKeys {
     }
 
     // ------------------------------------------------------------------
-    // 设备 ID 格式校验（KTD14）
+    // 行 14：AI 解析配额（账号维度，B2-4）
     // ------------------------------------------------------------------
 
+    /**
+     * AI 解析配额·账号·1 自然日窗键（B2-4）。
+     *
+     * <p>与 §3.4 限频键表 11 行的区别：本键是「配额闸」而非「限频轨」——超限码
+     * {@code 42901} 为 {@code needRetryAfter=true}（携 {@code Retry-After}），
+     * 「仅确认发布才计 1 次」（PRD §5.9），解析端点只读判定不计数。键拼装仍收口于
+     * 本类（守「键拼装唯一处」，编码规范 §1.2），计数逻辑归 {@code ai.AiQuotaGate}。
+     * 窗口语义同 {@code :1d} 轨：自然日 + 键尾日期片 + 26h TTL（KTD6）。</p>
+     *
+     * @param userId 用户 ID（账号级维度，Long 类型分维，编码规范 §4.7 账号级一律 user_id）
+     * @param date   自然日（Asia/Shanghai，跨零点自动失效）
+     * @return {@link String} 键形 {@code rl:aiquota:uid:{userId}:1d:{yyyyMMdd}}
+     */
+    public static String aiQuotaUidDay(Long userId, LocalDate date) {
+        return KEY_PREFIX + "aiquota:uid:" + userId + ":1d:" + date.format(DATE_FORMAT);
+    }
+
+    // ------------------------------------------------------------------
+    // 设备 ID 格式校验（KTD14）
+    // ------------------------------------------------------------------
     /**
      * 校验设备 ID 是否为合法 UUID v4 格式（KTD14：X-Device-Id 入键前格式校验）。
      * 不合法则设备轨跳过（不写入、不计数），仅 IP 轨照常计数——

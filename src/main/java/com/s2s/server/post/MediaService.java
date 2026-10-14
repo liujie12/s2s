@@ -57,7 +57,8 @@ public class MediaService {
      * @throws BizException content_type 不在白名单 / size 超限 → 40001
      */
     public UploadTicket createTicket(Long userId, String filename, int size, String contentType) {
-        if (!NfrMedia.ALLOWED_CONTENT_TYPES.contains(contentType)) {
+        if (!NfrMedia.ALLOWED_CONTENT_TYPES.contains(contentType)
+                && !NfrMedia.AUDIO_CONTENT_TYPES.contains(contentType)) {
             throw BizException.of(ErrorCode.PARAM_INVALID);
         }
         if (size > NfrMedia.MAX_SIZE_BYTES) {
@@ -100,9 +101,15 @@ public class MediaService {
             throw BizException.of(ErrorCode.PARAM_INVALID);
         }
 
-        // 剥离 EXIF 生成展示图 → 删除含 GPS 原图（同事务）
-        String displayKey = ossClient.processImage(media.getObjectKey());
-        ossClient.deleteObject(media.getObjectKey());
+        // 剥离 EXIF 生成展示图 → 删除含 GPS 原图（同事务）。
+        // B2-4 音频（模式②）：无 EXIF 且 OSS 图片处理不适用，跳过处理链，以原对象为可访问对象。
+        String displayKey;
+        if (NfrMedia.AUDIO_CONTENT_TYPES.contains(media.getContentType())) {
+            displayKey = media.getObjectKey();
+        } else {
+            displayKey = ossClient.processImage(media.getObjectKey());
+            ossClient.deleteObject(media.getObjectKey());
+        }
 
         // Noop 审核（Batch1 立即 pass）
         media.setAuditStatus(AUDIT_PASS);

@@ -2,15 +2,23 @@
 ///
 /// **为什么逻辑已单测过还要这一层**：`ai_guess_builder_test.dart` 证明「猜得对」，
 /// `publish_completeness_test.dart` 证明「档位算得对」，这里证明的是
-/// 「算出来的结果真接到了角标、按钮和冲刺区上」。那根线断掉时前两层全绿，
+/// 「服务端返回的猜测真接到了角标、按钮和冲刺区上」。那根线断掉时前两层全绿，
 /// 而页面上「确认发布」永远可点、或补了门牌号档位不动 —— 原则 133 的病灶。
+///
+/// **B2-4 接真后**：本页进页面即调 `POST /ai/publish/parse`，故注入 [FakeAiRepository]；
+/// 断言改为对「服务端返回结果 → UI」这条线守门（不再依赖本地 `buildLocalGuess`）。
 library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zhaoyazhao/features/ai/ai_dto.dart';
+import 'package:zhaoyazhao/features/ai/ai_repository.dart';
+import 'package:zhaoyazhao/features/publish/ai_confirm_args.dart';
 import 'package:zhaoyazhao/features/publish/ai_confirm_screen.dart';
 import 'package:zhaoyazhao/features/publish/publish_form_state.dart';
+
+import 'support/fake_repositories.dart';
 
 void main() {
   /// 一份填齐必填项的表单（二手闲置，缺门牌号 → 🟡 档）。
@@ -27,21 +35,54 @@ void main() {
     agreed: true,
   );
 
-  /// 挂载确认页。
+  /// 服务端「全猜出」返回（对应 complete() 表单）。
+  AiParseResultDto fullResult() => const AiParseResultDto(
+    guess: AiGuessDto(
+      title: '九成新实木餐桌',
+      leafCategoryId: 40101,
+      price: 350,
+      priceUnit: '元',
+      templateValues: {'condition': '几乎全新', 'pickup': '仅自取'},
+    ),
+    scopeVerified: {
+      'leaf_category_id': 'user_input',
+      'title': 'user_input',
+      'price': 'user_input',
+      'condition': 'user_input',
+      'pickup': 'user_input',
+    },
+    unresolvedFields: <String>[],
+  );
+
+  /// 挂载确认页（注入假 ai 仓库）。
   ///
   /// 参数 [tester] 测试驱动器，[form] 传入的表单快照。
   ///
   /// **为什么要放大视口**：默认 800×600 里，冲刺区与配额说明都在折叠线以下，
   /// 而它们所在的 [ListView] 按需构建 —— 不放大就得到「找不到组件」，
-  /// 那不是缺陷，是没看到（发布页测试用的是 `scrollUntilVisible`，
-  /// 但本页要断言「补门牌号后底部档位实时变化」，需要两处同屏可见）。
-  Future<void> pump(WidgetTester tester, PublishFormState form) async {
+  /// 那不是缺陷，是没看到。**为什么 pumpAndSettle**：进页面即异步解析，
+  /// 不停到稳态就断言会停在 parsing 态。
+  Future<FakeAiRepository> pump(
+    WidgetTester tester,
+    PublishFormState form,
+  ) async {
     tester.view.physicalSize = const Size(800, 2400);
     tester.view.devicePixelRatio = 2;
     addTearDown(tester.view.reset);
+    final ai = FakeAiRepository();
+    // 空表单（未选分类且无标题文本）→ 服务端返回「全未猜出」；
+    // 其余（有分类/有标题）→ 返回「全猜出」。
+    if (form.leafCategoryId != null || form.title.trim().isNotEmpty) {
+      ai.resultToReturn = fullResult();
+    }
     await tester.pumpWidget(
-      ProviderScope(child: MaterialApp(home: AiConfirmScreen(form: form))),
+      ProviderScope(
+        overrides: [aiRepositoryProvider.overrideWithValue(ai)],
+        child: MaterialApp(home: AiConfirmScreen(args: AiConfirmArgs(form: form))),
+      ),
     );
+    await tester.pumpAndSettle();
+    return ai;
   }
 
   /// 取底部「确认发布」是否可点。
@@ -53,6 +94,14 @@ void main() {
   }
 
   group('§5.9 结果待确认态', () {
+    testWidgets('进页面即调服务端解析一次（接真守门）', (tester) async {
+      final ai = await pump(tester, complete());
+      expect(ai.parseCount, 1);
+      // 请求带上了标题文本与已选类目
+      expect(ai.lastRequest?.text, '九成新实木餐桌');
+      expect(ai.lastRequest?.leafCategoryId, 40101);
+    });
+
     testWidgets('标题与副文说明「可以改」—— 不改也能发，但必须知道可以改', (tester) async {
       await pump(tester, complete());
       expect(find.text('AI 已识别，请核对'), findsOneWidget);
@@ -73,6 +122,11 @@ void main() {
       expect(find.text('据你已填'), findsAtLeastNWidgets(4));
     });
 
+    testWidgets('展示「AI 辅助生成」内容标识（§5.9 合规裁定）', (tester) async {
+      await pump(tester, complete());
+      expect(find.textContaining('AI 辅助生成'), findsOneWidget);
+    });
+
     testWidgets('「全部重填」在右上而非底部 —— 放弃动作要与确认动作拉开距离', (tester) async {
       await pump(tester, complete());
       final reset = tester.widget<TextButton>(
@@ -84,6 +138,26 @@ void main() {
         find.descendant(of: find.byType(AppBar), matching: find.text('全部重填')),
         findsOneWidget,
       );
+    });
+  });
+
+  group('§5.9 解析失败态', () {
+    testWidgets('服务端解析失败 → 失败态，保留「已填内容还在」并给重试入口', (tester) async {
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 2;
+      addTearDown(tester.view.reset);
+      final ai = FakeAiRepository()..errorToThrow = Exception('upstream down');
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [aiRepositoryProvider.overrideWithValue(ai)],
+          child: MaterialApp(
+            home: AiConfirmScreen(args: AiConfirmArgs(form: complete())),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.textContaining('识别没成功'), findsOneWidget);
+      expect(find.text('重试'), findsOneWidget);
     });
   });
 
@@ -129,7 +203,8 @@ void main() {
 
     testWidgets('填入门牌号 → 档位实时从半完整跳完整，冲刺区消失', (tester) async {
       await pump(tester, complete());
-      await tester.enterText(find.byType(TextField).first, '3 号楼 2 单元 501');
+      // TextField 顺序：0 = 「说一句」输入，1 = 冲刺区门牌号（B2-4 新增了前者）
+      await tester.enterText(find.byType(TextField).at(1), '3 号楼 2 单元 501');
       await tester.pump();
 
       expect(find.text('当前完整度：完整'), findsOneWidget);
@@ -155,12 +230,35 @@ void main() {
   });
 
   group('§5.10 配额说明', () {
-    testWidgets('只说上限不说剩余（剩余次数的计数在服务端）', (tester) async {
+    testWidgets('未取到配额快照时按常量档展示上限，且不含「剩余」', (tester) async {
       await pump(tester, complete());
       // 未登录 → 未实名 → 3 次
       expect(find.textContaining('你当前每日 AI 额度 3 次'), findsOneWidget);
       expect(find.textContaining('未实名'), findsOneWidget);
       expect(find.textContaining('剩余'), findsNothing);
+    });
+
+    testWidgets('取到服务端配额快照时展示已用/上限', (tester) async {
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 2;
+      addTearDown(tester.view.reset);
+      final ai = FakeAiRepository()
+        ..resultToReturn = AiParseResultDto(
+          guess: fullResult().guess,
+          scopeVerified: fullResult().scopeVerified,
+          unresolvedFields: const <String>[],
+          quota: AiQuotaDto(used: 2, limit: 20, resetAt: DateTime(2026, 1, 2)),
+        );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [aiRepositoryProvider.overrideWithValue(ai)],
+          child: MaterialApp(
+            home: AiConfirmScreen(args: AiConfirmArgs(form: complete())),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.textContaining('今日 AI 额度已用 2 / 20 次'), findsOneWidget);
     });
 
     testWidgets('高敏类目在文案里标出 +10（家政需个人资质）', (tester) async {
@@ -208,6 +306,35 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('350 元'), findsOneWidget);
       expect(find.text('999'), findsNothing);
+    });
+  });
+
+  group('§5.9 抢发模式（④）', () {
+    testWidgets('未补齐必填也可发布，提示为 24h 补全口径', (tester) async {
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 2;
+      addTearDown(tester.view.reset);
+      // 空猜测 → 分类/标题/价格全「需你补充」，常规模式本应禁用主按钮。
+      final ai = FakeAiRepository();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [aiRepositoryProvider.overrideWithValue(ai)],
+          child: MaterialApp(
+            home: AiConfirmScreen(
+              args: AiConfirmArgs(
+                form: const PublishFormState(),
+                flashMode: true,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // 抢发是「先发占位」——未补齐也允许发布（§5.9 模式④）
+      expect(confirmEnabled(tester), isTrue);
+      expect(find.textContaining('24 小时内补全'), findsWidgets);
+      expect(find.text('还有字段标着「需你补充」，补完才能发布'), findsNothing);
     });
   });
 }

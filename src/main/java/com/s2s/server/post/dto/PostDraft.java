@@ -26,6 +26,7 @@ import java.util.Map;
  * @param mediaIds       媒体 ID 列表（maxItems 9）
  * @param contactType    联系方式渠道（phone/wechat）
  * @param contactValue   联系方式值（maxLength 64）
+ * @param aiAssisted     本条是否由 T2 AI 智能发布辅助生成（B2-4，PRD §5.9；可空，默认 false）
  */
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public record PostDraft(
@@ -42,5 +43,6 @@ public record PostDraft(
         Boolean addressPrecise,
         List<String> mediaIds,
         String contactType,
-        String contactValue) {
+        String contactValue,
+        Boolean aiAssisted) {
 }

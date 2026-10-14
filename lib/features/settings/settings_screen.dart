@@ -116,8 +116,40 @@ class SettingsScreen extends ConsumerWidget {
         _SettingRow(label: '版本号', value: _appVersionLabel, onTap: () => _notOpen(context)),
         _SettingRow(label: '用户协议', value: null, onTap: () => _notOpen(context)),
         _SettingRow(label: '隐私政策', value: null, onTap: () => _notOpen(context)),
+        // B2-4 合规公示位（PRD §5.9 裁定：挂「设置-关于」，与备案编号公示合并）。
+        _SettingRow(
+          label: 'AI 生成式服务公示',
+          value: null,
+          onTap: () => _showAiDisclosure(context),
+        ),
         const SizedBox(height: AppSpacing.xl),
       ],
+    );
+  }
+
+  /// 展示「AI 生成式服务公示」（B2-4；含模型名与备案号）。
+  ///
+  /// 参数：[context] 构建上下文。
+  /// 返回：[void]。
+  void _showAiDisclosure(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('AI 生成式服务公示'),
+        content: const Text(
+          '本应用的「AI 智能发布」由以下已备案生成式人工智能服务提供：\n\n'
+          '模型名称：通义千问（阿里云百炼）\n'
+          '生成式AI服务备案号：ZheJiang-TongYiQianWen-20230901\n'
+          '算法备案号：网信算备330110507206401230035号\n\n'
+          '上线编号：待取得后公示。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('知道了'),
+          ),
+        ],
+      ),
     );
   }
 

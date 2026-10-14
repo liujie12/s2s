@@ -100,6 +100,8 @@ ListingDetail postDetailToListingDetail(PostDetailDto dto) {
     // 只取 url：他人视角契约已保证 `media[]` 仅含 audit_status=pass 的项，
     // 客户端不再二次过滤（过滤反而会掩盖「服务端下发未过审图」这一违约）。
     mediaUrls: [for (final item in dto.media) item.url],
+    // B2-4：[内容标识落点二] 帖子是否由 AI 智能发布辅助生成（PRD §5.9）。
+    aiAssisted: dto.aiAssisted,
   );
 }
 

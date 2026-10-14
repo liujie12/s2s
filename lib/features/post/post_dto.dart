@@ -233,6 +233,7 @@ class PostDetailDto {
     required this.author,
     this.media = const [],
     this.contactMask,
+    this.aiAssisted = false,
   });
 
   /// 由信封 data 构造。
@@ -278,6 +279,7 @@ class PostDetailDto {
       author: PostAuthorDto.fromJson(map['author']),
       media: media,
       contactMask: optString(map, 'contact_mask', 'PostDetail'),
+      aiAssisted: optBool(map, 'ai_assisted', 'PostDetail') ?? false,
     );
   }
 
@@ -336,6 +338,11 @@ class PostDetailDto {
   /// 完整明文仍只由 `GET /posts/{id}/contact` 返回。可空：存量行（迁移前发布）
   /// 为 null。
   final String? contactMask;
+
+  /// 是否由 T2 AI 智能发布辅助生成（B2-4，PRD §5.9；详情页「AI 辅助生成」标识来源）。
+  ///
+  /// 契约 `ai_assisted` 非 required，缺失/JSON null 均按 false（存量行 = 非 AI 辅助）。
+  final bool aiAssisted;
 }
 
 /// 解析必填 date-time 字段（RFC3339 UTC，服务端保证合法）。

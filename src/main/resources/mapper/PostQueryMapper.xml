@@ -24,6 +24,7 @@
                p.address,
                p.contact_mask,
                p.completeness_level,
+               p.ai_assisted,
                p.status,
                p.status_reason,
                p.created_at,

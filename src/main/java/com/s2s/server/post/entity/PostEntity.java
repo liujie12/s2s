@@ -101,6 +101,9 @@ public class PostEntity {
     /** 未实名先发后审受限态。 */
     private Integer restricted;
 
+    /** 本条是否由 T2 AI 智能发布辅助生成（B2-4，PRD §5.9；详情页「AI 辅助生成」标识来源）。 */
+    private Boolean aiAssisted;
+
     /** 状态机：draft/active/archived/hidden。 */
     private String status;
 
@@ -295,6 +298,14 @@ public class PostEntity {
 
     public void setRestricted(Integer restricted) {
         this.restricted = restricted;
+    }
+
+    public Boolean getAiAssisted() {
+        return aiAssisted;
+    }
+
+    public void setAiAssisted(Boolean aiAssisted) {
+        this.aiAssisted = aiAssisted;
     }
 
     public String getStatus() {

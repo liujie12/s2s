@@ -21,6 +21,16 @@ public final class NfrMedia {
             Set.of("image/jpeg", "image/png", "image/webp");
 
     /**
+     * 允许的音频 MIME 白名单（B2-4 模式② 语音零键盘；服务端走已备案模型 ASR）。
+     *
+     * <p>与图片分列而非并入 {@link #ALLOWED_CONTENT_TYPES}：commit 链对音频**不做**
+     * EXIF 剥离与 {@code processImage}（音频无 EXIF，OSS 图片处理不适用），列分开
+     * 让「是否需图片处理」由所属集合决定（见 {@code MediaService#commit}）。</p>
+     */
+    public static final Set<String> AUDIO_CONTENT_TYPES =
+            Set.of("audio/mpeg", "audio/mp4", "audio/aac", "audio/wav", "audio/x-m4a");
+
+    /**
      * 单文件字节上限（session-settled: user-directed，2026-09-23 定 20MB）。
      *
      * <p>设计文档未覆盖单文件上限（PRD §13.2 仅给「媒体合计 ≤200MB / 图片 ≤9」），
