@@ -400,7 +400,7 @@ if [[ "${ENV_NAME}" != "dev" ]]; then
   echo "发版后建议核对（见《部署操作手册》§7.4）："
   echo "  docker inspect s2s-app --format '{{.Config.Image}}'    # 确认在跑的就是本次镜像"
   echo "  docker ps --format '{{.Names}}\t{{.Status}}' | grep s2s-"
-  echo "  docker logs s2s-app --tail 200 2>&1 | grep -iE 'flyway|migrat'   # V8–V13 迁移应已应用"
+  echo "  docker logs s2s-app --tail 200 2>&1 | grep -iE 'flyway|migrat'   # 迁移应已应用到最新版本（对照 src/main/resources/db/migration/ 的最高版本号；勿写死区间，以免再次失效）"
   echo
   echo "回滚提示："
   echo "  1. 回滚到上一个镜像 tag（镜像仍在本机时最快）："
