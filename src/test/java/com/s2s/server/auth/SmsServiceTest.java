@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -31,7 +32,9 @@ import org.springframework.data.redis.core.ValueOperations;
  * <ol>
  *   <li>发送成功 → 返回 {@code expire_in=300}，Redis 写 {@code sms:{phone}} 键；</li>
  *   <li>限频四轨拼装 → 手机号 1m/1h/1d + IP 1h 共 4 条 entry；</li>
- *   <li>限频超限 → 传播 {@code BizException}(42905 + Retry-After)。</li>
+ *   <li>限频超限 → 传播 {@code BizException}(42905 + Retry-After)；</li>
+ *   <li>内测白名单闸（2026-10-14）→ 未命中拒 {@code 40305} 且不占限频/不写 Redis、命中放行、
+ *       白名单原文含空白项时解析健壮。</li>
  * </ol>
  *
  * <p>测试策略：Redis 与限频计数器用 Mockito mock（计数/存储逻辑在各自单测覆盖），
@@ -65,7 +68,18 @@ class SmsServiceTest {
         when(redisTemplate.opsForValue()).thenReturn(valueOps);
         rateLimiter = mock(RateLimiter.class);
         ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
-        smsService = new SmsService(redisTemplate, rateLimiter, objectMapper);
+        smsService = new SmsService(redisTemplate, rateLimiter, objectMapper, "");
+    }
+
+    /**
+     * 用指定白名单原文重建被测服务（本测试专用；mock 复用 {@link #setUp()} 建好的那批）。
+     *
+     * @param whitelistRaw 逗号分隔白名单原文；空串 = 不启用白名单
+     * @return void；结果写入 {@link #smsService}
+     */
+    private void rebuildWithWhitelist(String whitelistRaw) {
+        ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
+        smsService = new SmsService(redisTemplate, rateLimiter, objectMapper, whitelistRaw);
     }
 
     /**
@@ -130,5 +144,55 @@ class SmsServiceTest {
                     assertThat(biz.getErrorCode()).isEqualTo(ErrorCode.SMS_LIMIT);
                     assertThat(biz.getRetryAfterSeconds()).isEqualTo(60L);
                 });
+    }
+
+    /**
+     * 场景四：白名单启用且手机号命中 → 正常发码。
+     *
+     * @return void；断言失败即命中被判成拒绝
+     */
+    @Test
+    void sendCodeAllowsWhitelistedPhone() {
+        rebuildWithWhitelist("13800138000,13900139000");
+        SendCodeRequest request = new SendCodeRequest("13800138000", "login");
+
+        SendCodeResult result = smsService.sendCode(request, "127.0.0.1");
+
+        assertThat(result.expireIn()).isEqualTo(300);
+        verify(rateLimiter).incrementAndCheck(anyList());
+    }
+
+    /**
+     * 场景五：白名单启用且手机号未命中 → {@code 40305}，且**不占限频、不写 Redis**。
+     *
+     * <p>「先于限频」是本闸的关键设计：被拒请求不得产生任何副作用（否则名单外的号
+     * 能靠刷请求把限频额度占掉，或在校验前就在 Redis 留下 {@code sms:} 键）。</p>
+     *
+     * @return void；断言失败即拒绝路径产生了副作用或错误码不符
+     */
+    @Test
+    void sendCodeRejectsPhoneOutsideWhitelistWithoutSideEffects() {
+        rebuildWithWhitelist("13800138000");
+        SendCodeRequest request = new SendCodeRequest("13700137000", "login");
+
+        assertThatThrownBy(() -> smsService.sendCode(request, "127.0.0.1"))
+                .isInstanceOf(BizException.class)
+                .satisfies(ex -> assertThat(((BizException) ex).getErrorCode())
+                        .isEqualTo(ErrorCode.NO_PERMISSION));
+        verify(rateLimiter, never()).incrementAndCheck(anyList());
+        verify(valueOps, never()).set(anyString(), anyString(), any(Duration.class));
+    }
+
+    /**
+     * 场景六：白名单原文含首尾空白与空项 → 忽略空项、仅命中有效项（解析健壮性）。
+     *
+     * @return void；断言失败即解析把空白项当成有效号码或漏掉有效项
+     */
+    @Test
+    void sendCodeParsesWhitelistIgnoringBlankItems() {
+        rebuildWithWhitelist(" 13800138000 , ,13900139000 ");
+        SendCodeRequest request = new SendCodeRequest("13900139000", "login");
+
+        assertThat(smsService.sendCode(request, "127.0.0.1").expireIn()).isEqualTo(300);
     }
 }

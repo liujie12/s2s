@@ -142,6 +142,13 @@ s2s:
     #   （容器里只有 OSS_BUCKET_NAME），2026-10-14 修正。
     endpoint: ${OSS_ENDPOINT:}
     bucket: ${OSS_BUCKET_NAME:}
+  # --- 登录短信验证码（[123]；2026-10-14 裁定加内测白名单闸）---
+  sms:
+    # 内测可登录手机号白名单（逗号分隔）。**留空 = 不启用（dev/staging 全放行）**。
+    # prod 侧由 application-prod.yml 以【无默认值】占位覆盖 ⇒ 忘配 SMS_WHITELIST 则启动失败。
+    # 刻意如此：宁可起不来，也不要「忘配 ⇒ 静默全放行」——2026-10-14 当天已修过两处同类
+    # 静默失效（OSS_BUCKET 变量名错、application-prod.yml 死键）。
+    whitelist: ${SMS_WHITELIST:}
   # --- 可观测性定时任务的输入路径（[148]）---
   observability:
     # 定时任务 #8 的 T3 判据要读的主看板 SQL 清单路径（《可观测性架构方案》§9.1.1）。

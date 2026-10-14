@@ -66,3 +66,9 @@ s2s:
     # B2-4 阶段①：真实通义千问 API 尚未接入，保持 dry-run（纯规则桩，不调模型）。
     # ⚠ 接入真实 API 前【不得】改 false —— QwenAiProvider 会抛 IllegalStateException → 50301。
     dry-run: true
+  sms:
+    # 内测白名单（2026-10-14 裁定，A+B 分阶段的 B 阶段临时收口）。
+    # 【无默认值】占位：未注入 SMS_WHITELIST 时**启动即失败** —— 宁可起不来，也不接受
+    # 「忘配 ⇒ 验证码固定 888888 且全放行」这类静默失效（同日已修过两处同源缺陷）。
+    # 取值：逗号分隔手机号；写入 deploy/env/.env.prod，见手册 §4.2。
+    whitelist: ${SMS_WHITELIST}
