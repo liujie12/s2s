@@ -17,9 +17,15 @@
         android:allowNativeHeapPointerTagging="false">
         <!-- allowNativeHeapPointerTagging="false" 为高德 SDK 必配项（PRD §6.7）：
              targetSDK ≥30 时若不声明，从地图页返回会闪退。属 🔴 上架驳回点，不得删除。 -->
+        <!-- screenOrientation="portrait"（2026-10-15 真机发现）：
+             本应用原先未锁竖屏，横屏下 AI 四模式弹层第 3 档被裁到只剩 12px、第 4 档完全
+             不在可见区（底栏/地图/确认页等版式均按竖屏设计）。锁定竖屏是最小且彻底的修法。
+             screenOrientation 与下方 configChanges 中的 orientation 不冲突：
+             前者禁止旋转，后者让已发生的配置变更不重建 Activity。 -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:screenOrientation="portrait"
             android:launchMode="singleTop"
             android:taskAffinity=""
             android:theme="@style/LaunchTheme"
