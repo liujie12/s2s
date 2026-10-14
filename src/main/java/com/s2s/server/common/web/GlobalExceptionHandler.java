@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -19,7 +20,9 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
  * <p>本条目（U-3，KTD-10）落地两条映射：{@link BizException} → 取其 {@link ErrorCode}；
  * 兜底 {@link Exception} → {@code 50001}（日志打全栈、响应体无堆栈）。
  * {@link MethodArgumentNotValidException} → {@code 40001}（message 拼字段名）随 [123] U4
- * （首个带 {@code @Valid} 的业务接口 {@code POST /auth/sms/send}）补充。以下为剩余扩展点，
+ * （首个带 {@code @Valid} 的业务接口 {@code POST /auth/sms/send}）补充；
+ * {@link HttpMessageNotReadableException} → {@code 40001} 随 2026-10-15 线上实测补充
+ * （原缺此映射，坏 JSON 被兜成 {@code 50001}，把输入错误伪装成服务端故障）。以下为剩余扩展点，
  * 随业务条目补充，禁止提前实现（KTD-10）：
  * <ul>
  *   <li>{@code MissingRequestHeaderException} / {@code ConstraintViolationException} →
@@ -84,6 +87,34 @@ public class GlobalExceptionHandler {
                 .body(new ApiResponse<>(ErrorCode.PARAM_INVALID.getCode(),
                         "缺少必填参数 " + field, null,
                         ResponseBodyWrapper.resolveOrCreateRequestId()));
+    }
+
+    /**
+     * 映射请求体解析失败：返回 {@code 40001}，不让「客户端输入错误」伪装成服务端故障。
+     *
+     * <p>背景（2026-10-15 线上实测）：本类原先无此映射，坏 JSON（语法错误、缺引号等）会落到
+     * {@link #handleUnexpected(Exception)} 兜成 {@code 50001 服务繁忙}，读起来像后端挂了。
+     * 该伪装在一次排查中直接把定位带偏——真相是探针工具发出了缺引号的报文，与后端无关。</p>
+     *
+     * <p>message 取 {@link ErrorCode#PARAM_INVALID} 的通用文案，<b>不</b>沿用
+     * {@link #handleValidation(MethodArgumentNotValidException)} 的「缺少必填参数 X」：
+     * 体解析失败时字段名未知，拼不出来。</p>
+     *
+     * <p><b>刻意不打印异常堆栈、只取类名</b>：Jackson 解析异常的 message 内嵌原始报文片段
+     * （形如 {@code (String)"{phone:18674750845,...}"}），落日志即泄漏完整手机号
+     * （编码规范 §4.11 PII 红线）。故只记一行不含报文的 WARN，排障经访问日志的 path/code。</p>
+     *
+     * @param exception 请求体解析异常（其消息内嵌原始报文，故只取类名、不打印对象）
+     * @return {@link ResponseEntity}：HTTP 400，响应体
+     *         {@code ApiResponse(40001, ErrorCode.PARAM_INVALID.message, null, requestId)}
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiResponse<Void>> handleUnreadableBody(
+            HttpMessageNotReadableException exception) {
+        log.warn("请求体解析失败，映射 40001（{}；异常消息含原始报文故不落堆栈）",
+                exception.getClass().getSimpleName());
+        return ResponseEntity.status(ErrorCode.PARAM_INVALID.getHttpStatus())
+                .body(errorBody(ErrorCode.PARAM_INVALID));
     }
 
     /**

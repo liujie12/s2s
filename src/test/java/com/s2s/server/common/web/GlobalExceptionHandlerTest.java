@@ -5,16 +5,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 
 /**
  * {@link GlobalExceptionHandler} 异常映射测试。
@@ -23,6 +26,8 @@ import org.springframework.http.ResponseEntity;
  * {@code BizException(42902, retryAfterSeconds=3600)} → HTTP 429、响应体 code=42902、
  * 整数秒 {@code Retry-After: 3600} 响应头（全系统唯一写该头的位置，详设 §2.2 纪律）；
  * 未知 {@link RuntimeException} → 50001 且响应体无堆栈字段（日志打全栈、响应体无堆栈）。
+ * 场景四（2026-10-15 线上实测补充）：请求体解析失败 → 40001（原缺此映射时被兜成 50001，
+ * 把客户端输入错误伪装成服务端故障），并绊线「原始报文不入日志」的 PII 红线。
  * 另补泳道 C 测试伞一例（P2 登记 #3-①）：needRetryAfter=false 高频路径（40001）无秒数正常
  * 返回、无 {@code Retry-After} 头、不触发 WARN。原 #3-②「needRetryAfter=true 码缺秒数时
  * WARN 绊线」场景因 [122] U6 落地 P2 #4（of() 对 true 码构造期拒收）而不可达——该行为
@@ -131,6 +136,47 @@ class GlobalExceptionHandlerTest {
         JsonNode json = objectMapper.valueToTree(body);
         assertThat(json.fieldNames()).toIterable()
                 .containsExactlyInAnyOrder("code", "message", "data", "request_id");
+    }
+
+    /**
+     * 场景四（2026-10-15 线上实测补充）：请求体解析失败映射为 HTTP 400 + {@code 40001}，
+     * <b>不再</b>兜成 {@code 50001 服务繁忙}。原缺此映射时，客户端发来的坏 JSON（语法错误、
+     * 缺引号等）会被读成「后端故障」——该伪装曾在一次线上排查中把定位直接带偏。
+     *
+     * <p>同时绊线 PII 红线（编码规范 §4.11）：Jackson 解析异常的 message 内嵌原始报文片段
+     * （本用例故意植入手机号），handler 只取异常类名、不打印异常对象，故日志中不得出现该号码
+     * 与报文原文。</p>
+     *
+     * @return void；断言失败即「输入错误→50001」回归，或原始报文经异常 message 泄漏进日志
+     */
+    @Test
+    void unreadableBodyMapsTo40001AndKeepsRawBodyOutOfLog() {
+        ListAppender<ILoggingEvent> appender = attachListAppender();
+        try {
+            HttpMessageNotReadableException exception = new HttpMessageNotReadableException(
+                    "JSON parse error: Unrecognized token 'phone': was expecting "
+                            + "(String)\"{phone:18674750845,scene:login}\"",
+                    new JsonParseException(null, "boom"));
+
+            ResponseEntity<ApiResponse<Void>> response = handler.handleUnreadableBody(exception);
+
+            assertThat(response.getStatusCode().value()).isEqualTo(400);
+            ApiResponse<Void> body = response.getBody();
+            assertThat(body).isNotNull();
+            assertThat(body.code()).isEqualTo(40001);
+            assertThat(body.message()).isEqualTo(ErrorCode.PARAM_INVALID.getMessage());
+            assertThat(body.data()).isNull();
+            assertThat(body.requestId()).isEqualTo("req-handler-1");
+
+            String logged = appender.list.stream()
+                    .map(ILoggingEvent::getFormattedMessage)
+                    .collect(Collectors.joining("\n"));
+            assertThat(logged).isNotEmpty();
+            assertThat(logged).doesNotContain("18674750845");
+            assertThat(logged).doesNotContain("JSON parse error");
+        } finally {
+            detachListAppender(appender);
+        }
     }
 
     /**
