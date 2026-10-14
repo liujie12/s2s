@@ -6964,17 +6964,18 @@ printf '\nMYSQL_SSL_MODE=VERIFY_CA\nMYSQL_TLS_TRUSTSTORE_PASSWORD=%s\n' \
 
 **② 实施（B）**
 - `SmsService`：构造注入 `@Value("${s2s.sms.whitelist:}")` 并解析为集合；`sendCode` 首行加 `ensureWhitelisted(phone)`，**位置刻意在四维限频之前** —— 被拒请求不占限频计数、不写 Redis（防「名单外的号刷请求把限频额度占掉」、也避免留下 `sms:` 键）。**空集 = 不启用（全放行）**。
-- `application.yml`：新增 `s2s.sms.whitelist: ${SMS_WHITELIST:}`（**带默认值** ⇒ dev/staging 零影响）。
-- `deploy/config/app/application-prod.yml`：新增 `s2s.sms.whitelist: ${SMS_WHITELIST}`（**无默认值**）⇒ **变量缺失则生产启动失败**。刻意 fail-fast：本日已两次修过「配置静默失效」（`OSS_BUCKET` 变量名、prod 死键），不接受同类风险再犯。
-- `deploy/env/.env.{prod,dev,staging}.example`：prod 增必填项，取值写**故意不可用的** `change_me_phone_*`（忘改 ⇒ 谁都登不进 = fail-closed、立刻暴露，而非静默放开）；dev/staging 增留空项（= 不启用）。
-- `deploy/docs/部署操作手册.md` §4.2 新增「短信登录白名单（必填）」小节，写明**两种失败方式**（缺失 ⇒ 起不来；空值 ⇒ 全放行）。
+- `application.yml`：新增 `s2s.sms.whitelist: ""`（**默认不启用 ⇒ dev/staging 零影响**）。
+- `deploy/config/app/application-prod.yml`：**直写** `whitelist: "CHANGE_ME_PHONE_1,CHANGE_ME_PHONE_2"`（占位待填真实名单）。
+- **载体变更裁定（2026-10-14，用户）**：初版走环境变量（`.env.prod` 的 `SMS_WHITELIST` + prod 侧无默认值占位 ⇒ 缺变量启动失败），用户判定「配环境变量太麻烦」，改为**直写配置中心 yml**（该文件由 compose 按环境挂载，改完 `docker restart s2s-app` 即生效）。**代价已知并接受**：① 真实手机号随之**进 git 仓库**（该 yml 是 tracked）；② 直接改服务器上那份会让下次 `git pull` 冲突（需先 commit/stash，或改仓库后走正常发版）。**已撤回**三份 `.env.*.example` 里的该变量（与 `57e3207` 逐字节一致）。
+- **fail-closed 改由占位实现**（不再是「缺变量 ⇒ 启动失败」）：保持 `CHANGE_ME_PHONE_*` ⇒ **谁都登不进**（立刻暴露）；**写成空串 ⇒ 不启用 = 全放行**（严禁）。两者都不再依赖环境变量。
+- `deploy/docs/部署操作手册.md` §4.2 新增「短信登录白名单（必填，直写在配置中心）」小节，写明落点、生效方式与上面两条禁忌。
 
 **③ 门禁**
 - 后端 `mvn -o test` → **474/474**（原 471 + 新增 3：命中放行 / 未命中拒 40305 且**不占限频不写 Redis** / 原文含空白项解析健壮）。
-- `ApplicationYamlTest` 只断言 `s2s.secrets.*` 具名键、不对 `${}` 做全量正则扫描，故新增的**带默认值**占位不影响其与 `.env.example` 的双向核对。
+- `ApplicationYamlTest` 只断言 `s2s.secrets.*` 具名键、不对 `${}` 做全量正则扫描 ⇒ 本次新增的 `s2s.sms.whitelist`（纯字面量、无 `${}` 占位）与 `.env.example` 的双向核对**无任何交互**（撤回 env 变量后更无影响）。
 
 **④ 待办**
-- 🔴 **发版前必须在服务器 `deploy/env/.env.prod` 写入 `SMS_WHITELIST=<内测手机号,逗号分隔>`**，否则 prod 应用起不来（刻意的 fail-fast，不是缺陷）。
+- 🔴 **发版前必须把 `deploy/config/app/application-prod.yml` 里的 `whitelist` 占位换成真实内测手机号**（逗号分隔）。保持占位 ⇒ 谁都登不进（fail-closed、立刻暴露）；**写成空串 ⇒ 全放行（严禁）**。
 - **A 阶段**：阿里云短信开通报备（签名 + 模板，约 2 小时~1 工作日）→ 接入 provider + `s2s.sms.mock` 开关 + 随机 6 位码，随后本白名单可退役（`SmsCodePolicy` 注释里的「KTD8 出包前删后门」即指此事）。
 - 残留窗口（可忽略）：名单收紧前 5 分钟内已发出的码，在 TTL 300s 内仍可登录。
 
