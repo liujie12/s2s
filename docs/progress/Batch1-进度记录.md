@@ -6890,6 +6890,37 @@ printf '\nMYSQL_SSL_MODE=VERIFY_CA\nMYSQL_TLS_TRUSTSTORE_PASSWORD=%s\n' \
 
 ---
 
+### 2026-10-14（B2-4 · prod 发版 + 真机端到端验证）
+
+> 摘要：把 B2-4 推上生产（`s2s.build110.com`），并在真机（Redmi 21091116C / `s8t4wgsww479inif`）上完成**模式② 录音与音频上传的端到端验证** —— 同日「续 3」那条「待真机验证」正式关闭。全程走**线上后端 + 真 OSS 桶**，不再依赖本机后端与 `adb reverse`。
+
+**① 发版 prod（21:59 完成）**
+- **卡点一 · ECS 直连 GitHub 间歇不通**：`Encountered end of file` / `curl: (52) Empty reply`，`git pull` 失败使发版脚本在第 `[1/6]` 步中止（连锁都没打）。GitHub 恢复后 `git fetch origin main` 成功。**踩坑记录**：`git fetch origin main` **只写 `FETCH_HEAD`、不更新 `origin/main` 引用**，故 `git log origin/main` 仍显示旧提交——这是假象，代码其实已落地。发版以 `--skip-pull` 跳过拉码步骤完成。
+- **卡点二 · `.env.prod` 的 `OSS_ENDPOINT` 写成杭州**（桶实际在**北京**）：已改为 `https://oss-cn-beijing.aliyuncs.com`。不改则「发版成功」但 OSS 直传照样 403。
+- 结果：镜像 `s2s-app:20261014-215838`；门禁 **PASS 13 / FAIL 0 / SKIP 0 / N-A 1**；数据库备份完成；健康检查 UP。
+- 线上复核（本机 `curl.exe`）：`/ai/publish/quota` **404 → 401**（端点已上线）、`/ai/publish/parse`（v4 `Idempotency-Key` + 无 token）→ 401、`/actuator/health` 200、`/categories/tree` 200。
+- **顺带查清一条链（非缺陷，勿误判为鉴权漏洞）**：`parse` 无 token 时返 **40001** 而非 401 —— `IdempotencyInterceptor` 先校验 `Idempotency-Key` 是否 **UUID v4**，非法即 40001，**先于**登录态判定（详设 §3.3）；换成真 v4 立即 40101。
+- 发版日志两处 WARN 挂账：① 未安装 `ossutil` ⇒ 备份**未上传 OSS**（不满足异地备份要求）；② 脚本回滚提示文案仍写「V8–V13 迁移应已应用」，实际本次已到 **V14**。
+- **本次自查捕获的缺陷（自己引入、自己修）**：新增的 `deploy/scripts/deploy-manual.sh` 在 git 索引中是 **100644**（缺执行位），被 Dart 门禁 `G-Q3`（`quality_gate_test.dart`）拦下。根因 = 该提交当时只跑了后端 `mvn -o test`、未跑 Dart 门禁。修复：`git update-index --chmod=+x deploy/scripts/deploy-manual.sh`。
+
+**② 真机验证（线上包）**
+- 出包口径：`--dart-define=S2S_API_BASE_URL=https://s2s.build110.com` + `S2S_IS_RELEASE=false` + `AMAP_ANDROID_KEY`（**从环境变量取，不再手抄**）；小米机 `adb install` 被限，走 `adb push` + `pm install -r` 绕过。
+- **三件套全通过**：① 高德 Key 生效（**真底图**，非示意底图）且首页**无报错条**；② 四模式入口完整（①拍图说一句 / ②语音零键盘 / ③一问一答 / ④抢发占位）；③ **模式② 录音**：`RECORD_AUDIO` 已授 → 真实启动（状态栏出现**麦克风占用图标**）→ 停止后落盘 `/data/.../cache/<uuid>.m4a`（**396 KB** 实测）→ **上传成功**（`_stop()` 只在 `upload()` 成功后带 `voiceMediaId` pop）→ 进入「确认信息」页。
+- 登录用**用户本人账号**（`186****0845`）；`ACCESS_FINE_LOCATION` 已授。
+- **本次修复（UX）**：`_AiVoiceSheet` 的 `_busy`（上传中）此前与空闲态**视觉完全一致**——文案仍是「点击开始录音」、麦克风仍是空闲样式，仅把 `onTap` 置 null。现场第一轮我据此误判为「录音失败」，实为**上传中**。已补：busy 时文案改「上传中…」+ 麦克风按钮换 `CircularProgressIndicator`。
+- **已知未验**：ASR 识别质量（两次录制均为**静音**，AI 未填出任何字段属**预期**）；需人工出声后补验一次。
+
+**③ 门禁**
+- `flutter analyze` → **0 issue**；`flutter test` → **759/759**（含修复后的 `G-Q3`）。
+
+**④ 遗留（挂账）**
+- **未验**：ASR 出声识别 —— 模式② 完整闭环的最后一环。
+- **未修**：`ossutil` 未装（异地备份）；发版脚本回滚提示文案落后一版（V14）。
+- **观察项**：AMap Flutter 插件在 `location=null` 时每 2 秒自打一条 `location#changed error=======>Null check operator used on a null value`——**纯日志噪声、未出现界面报错**；该字符串不在本仓 `lib/` 内，属插件未判空。
+- **生产安全（非本次引入）**：`SmsService.sendCode` 无条件用 `SmsCodePolicy.DEBUG_CODE`、不接真短信服务商 ⇒ **线上任意手机号 + `888888` 可登录**；内测前须处理。
+
+---
+
 ### 2026-10-14（B2-4 续 4 · 媒体直传真桶链路验证通过 + prod 配置键名订正 + 手工发版命令）
 
 > 摘要：**OSS RAM 子账号已授权**后，真桶直传全链路**实测打通**（ticket → PUT → commit）；顺带查实并订正两处会**静默失效**的配置缺陷，补齐手工发版脚本与真机联调文档；代码已推 `origin/main`（`0ed4f8f`）。

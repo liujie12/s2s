@@ -636,7 +636,9 @@ class _AiVoiceSheetState extends ConsumerState<_AiVoiceSheet> {
                 ),
                 const SizedBox(height: AppSpacing.sm),
                 Text(
-                  _recording ? '${_seconds}s · 点击停止' : '点击开始录音',
+                  _recording
+                      ? '${_seconds}s · 点击停止'
+                      : (_busy ? '上传中…' : '点击开始录音'),
                   style: TextStyle(
                     fontSize: AppTypeScale.small.size,
                     color: const Color(AppColors.textSecondary),
@@ -694,13 +696,22 @@ class _MicButton extends StatelessWidget {
             width: 2,
           ),
         ),
-        child: Icon(
-          recording ? Icons.stop : Icons.mic_none,
-          size: 40,
-          color: recording
-              ? const Color(AppColors.surface)
-              : const Color(AppColors.primary),
-        ),
+        child: busy
+            ? const SizedBox(
+                width: 36,
+                height: 36,
+                child: CircularProgressIndicator(
+                  strokeWidth: 3,
+                  color: Color(AppColors.primary),
+                ),
+              )
+            : Icon(
+                recording ? Icons.stop : Icons.mic_none,
+                size: 40,
+                color: recording
+                    ? const Color(AppColors.surface)
+                    : const Color(AppColors.primary),
+              ),
       ),
     );
   }
