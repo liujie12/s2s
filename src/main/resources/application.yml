@@ -136,8 +136,12 @@ s2s:
     # 直传开关：true = dev 桩（默认，真桶未就绪兜底），false = 真阿里云 SDK
     mock: ${OSS_MOCK:true}
     # 真 SDK 路径的 endpoint/bucket（mock=false 时必填；dev 桩不消费）
+    # ⚠ bucket 的变量名是 OSS_BUCKET_NAME（不是 OSS_BUCKET）：部署侧
+    #   deploy/env/.env.<env>（env_file 全量注入）、backup-mysql.sh、deploy-first.sh
+    #   与手册 §4 均用 OSS_BUCKET_NAME。原写 OSS_BUCKET 使线上 bucket 恒为空
+    #   （容器里只有 OSS_BUCKET_NAME），2026-10-14 修正。
     endpoint: ${OSS_ENDPOINT:}
-    bucket: ${OSS_BUCKET:}
+    bucket: ${OSS_BUCKET_NAME:}
   # --- 可观测性定时任务的输入路径（[148]）---
   observability:
     # 定时任务 #8 的 T3 判据要读的主看板 SQL 清单路径（《可观测性架构方案》§9.1.1）。

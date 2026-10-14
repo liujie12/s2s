@@ -53,9 +53,16 @@ management:
       show-details: never
 
 # --- 业务开关 ---------------------------------------------------------------
+# ⚠ 键名必须是代码真正读取的。本文件原写的 s2s.oss.enabled / s2s.llm.enabled
+#   都是死键（全仓无 @Value / @ConditionalOnProperty 读取），已订正为下列真实键名：
+#     OSS    → s2s.oss.mock    （true = dev 桩 DevOssClient / false = 真 SDK AliyunOssClient）
+#     大模型 → s2s.ai.dry-run  （true = 纯规则桩 / false = 真 API）
 s2s:
   oss:
-    enabled: true
-  llm:
-    # 生产环境启用 LLM 真实调用
-    enabled: true
+    # 生产必须走真 SDK（OssClient 头注安全红线：生产路径必须为真 SDK）。
+    # 依赖 OSS_ENDPOINT 与 OSS_BUCKET_NAME 非空，见 deploy/env/.env.prod。
+    mock: false
+  ai:
+    # B2-4 阶段①：真实通义千问 API 尚未接入，保持 dry-run（纯规则桩，不调模型）。
+    # ⚠ 接入真实 API 前【不得】改 false —— QwenAiProvider 会抛 IllegalStateException → 50301。
+    dry-run: true

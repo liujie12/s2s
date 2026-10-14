@@ -3,6 +3,7 @@ package com.s2s.server.post;
 import com.aliyun.oss.HttpMethod;
 import com.aliyun.oss.OSS;
 import com.aliyun.oss.OSSClientBuilder;
+import com.aliyun.oss.model.GeneratePresignedUrlRequest;
 import com.aliyun.oss.model.ObjectMetadata;
 import com.aliyun.oss.model.ProcessObjectRequest;
 import com.s2s.server.common.config.SecretsProperties;
@@ -51,11 +52,22 @@ public class AliyunOssClient implements OssClient {
 
     /**
      * 签发直传 PUT 签名 URL。
+     *
+     * <p><b>Content-Type 必须纳入签名</b>：OSS V1 直传签名的 StringToSign 含 Content-Type
+     * 一行，客户端 PUT 时按契约必带与签发一致的 {@code Content-Type}（App 侧
+     * {@code MediaUploadService} 如此，见其 PUT options）。若签发时不绑定，客户端带上
+     * Content-Type 即触发 {@code SignatureDoesNotMatch}(403)——2026-10-14 真桶联调实测复现。
+     * 故此处用 {@link GeneratePresignedUrlRequest} 显式 {@code setContentType}，使签名与
+     * 客户端实际发送的头一致；同时 OSS 会以该 Content-Type 落对象，供 commit 的 HEAD 二次校验比对。</p>
      */
     @Override
     public String signUploadUrl(String objectKey, String contentType) {
         Date expiration = new Date(System.currentTimeMillis() + SIGN_EXPIRATION_MILLIS);
-        return oss.generatePresignedUrl(bucket, objectKey, expiration, HttpMethod.PUT).toString();
+        GeneratePresignedUrlRequest request =
+                new GeneratePresignedUrlRequest(bucket, objectKey, HttpMethod.PUT);
+        request.setExpiration(expiration);
+        request.setContentType(contentType);
+        return oss.generatePresignedUrl(request).toString();
     }
 
     /**
