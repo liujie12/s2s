@@ -6975,7 +6975,7 @@ printf '\nMYSQL_SSL_MODE=VERIFY_CA\nMYSQL_TLS_TRUSTSTORE_PASSWORD=%s\n' \
 - `ApplicationYamlTest` 只断言 `s2s.secrets.*` 具名键、不对 `${}` 做全量正则扫描 ⇒ 本次新增的 `s2s.sms.whitelist`（纯字面量、无 `${}` 占位）与 `.env.example` 的双向核对**无任何交互**（撤回 env 变量后更无影响）。
 
 **④ 待办**
-- 🔴 **发版前必须把 `deploy/config/app/application-prod.yml` 里的 `whitelist` 占位换成真实内测手机号**（逗号分隔）。保持占位 ⇒ 谁都登不进（fail-closed、立刻暴露）；**写成空串 ⇒ 全放行（严禁）**。
+- ✅ **已填（2026-10-14）**：`application-prod.yml` 的 `whitelist` 已写入 2 个真实内测手机号。此后增删名单 = 改这一行 + `docker restart s2s-app`（或改仓库后走正常发版）。**忌**：写成空串 = 不启用 = 全放行；清空/删除 = 谁都登不进。
 - **A 阶段**：阿里云短信开通报备（签名 + 模板，约 2 小时~1 工作日）→ 接入 provider + `s2s.sms.mock` 开关 + 随机 6 位码，随后本白名单可退役（`SmsCodePolicy` 注释里的「KTD8 出包前删后门」即指此事）。
 - 残留窗口（可忽略）：名单收紧前 5 分钟内已发出的码，在 TTL 300s 内仍可登录。
 
