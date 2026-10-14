@@ -63,8 +63,13 @@ s2s:
     # 依赖 OSS_ENDPOINT 与 OSS_BUCKET_NAME 非空，见 deploy/env/.env.prod。
     mock: false
   ai:
-    # B2-4 阶段①：真实通义千问 API 尚未接入，保持 dry-run（纯规则桩，不调模型）。
-    # ⚠ 接入真实 API 前【不得】改 false —— QwenAiProvider 会抛 IllegalStateException → 50301。
+    # B2-4 阶段①：真实通义千问（百炼 OpenAI 兼容）通道已实现（2026-10-15）。
+    # true = 纯规则桩（不调模型、不产生费用）；false = 真实 HTTP 调用。
+    # ⚠ 改 false 的【前置】：DASHSCOPE_API_KEY 必须已注入（deploy/env/.env.prod），
+    #   否则每次请求抛 IllegalStateException → 50301（刻意不静默回退）。
+    # ⚠ Key 由 .env.prod 在【容器创建时】注入 —— 改完须「重建容器」（compose up -d --no-deps app），
+    #   docker restart 不生效；domain/模型名默认取 application.yml（AI_MODEL/AI_ENDPOINT 可覆盖）。
+    # 备案复核（开工/上线前）：模型须仍在国家网信办已备案清单内（禁用境外模型）。
     dry-run: true
   sms:
     # 内测白名单（2026-10-14 裁定，A+B 分阶段的 B 阶段临时收口）。

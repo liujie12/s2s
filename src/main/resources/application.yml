@@ -142,6 +142,19 @@ s2s:
     #   （容器里只有 OSS_BUCKET_NAME），2026-10-14 修正。
     endpoint: ${OSS_ENDPOINT:}
     bucket: ${OSS_BUCKET_NAME:}
+  # --- AI 智能发布（B2-4 阶段①：通义千问 / 阿里云百炼 OpenAI 兼容）---
+  ai:
+    # API Key（凭证族；dry-run 阶段可空）。真实通道（s2s.ai.dry-run=false）必填，
+    # 缺失即每次请求抛 IllegalStateException → 50301（刻意不回退 dry-run，避免静默降级）。
+    # 变量名取官方口径 DASHSCOPE_API_KEY；【带空默认值】占位，故不匹配 .env.example 双向核对
+    # 正则（同 OSS_ENDPOINT/OSS_BUCKET_NAME），本机/dev 在 dry-run 下无需该变量。
+    # ⚠ 生效方式：本键从环境变量取，容器创建时注入（改 .env.<env> 后须重建容器，非 docker restart）。
+    api-key: ${DASHSCOPE_API_KEY:}
+    # 模型名（Step 1 = 文本档）。默认 qwen-plus；Step 2 多模态（图/音）再评估切 qwen-omni-turbo。
+    model: ${AI_MODEL:qwen-plus}
+    # 上游 base URL（百炼 OpenAI 兼容，华北2·北京）。官方文档明确「Key 与 endpoint 必须同地域」，
+    # 换地域须同时换 Key；建议域名可换为业务空间专属域名（{WorkspaceId}.cn-beijing.maas.aliyuncs.com）。
+    endpoint: ${AI_ENDPOINT:https://dashscope.aliyuncs.com/compatible-mode/v1}
   # --- 登录短信验证码（[123]；2026-10-14 裁定加内测白名单闸）---
   sms:
     # 内测可登录手机号白名单（逗号分隔）。**留空 = 不启用（dev/staging 全放行）**。
