@@ -70,7 +70,11 @@ s2s:
     # ⚠ Key 由 .env.prod 在【容器创建时】注入 —— 改完须「重建容器」（compose up -d --no-deps app），
     #   docker restart 不生效；domain/模型名默认取 application.yml（AI_MODEL/AI_ENDPOINT 可覆盖）。
     # 备案复核（开工/上线前）：模型须仍在国家网信办已备案清单内（禁用境外模型）。
-    dry-run: true
+    #   2026-10-15 复核通过：ZheJiang-TongYiQianWen-20230901 仍在册。
+    # 【2026-10-15 临时置 false】：Step 1（文本通道）真实接口验收需要真通道；
+    #   验收完成后须按裁定回退 true 或保留 —— 生成式AI「登记」（属地网信办，领上线编号）
+    #   属「上线前闸门」，未取得上线编号前不宜对内测用户长期开放真通道。
+    dry-run: false
   sms:
     # 内测白名单（2026-10-14 裁定，A+B 分阶段的 B 阶段临时收口）。
     # 背景：短信渠道仍是 dev 桩（验证码固定 888888、不接真服务商），不收口则线上任何
