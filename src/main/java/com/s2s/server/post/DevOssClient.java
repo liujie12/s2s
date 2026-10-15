@@ -39,7 +39,7 @@ public class DevOssClient implements OssClient {
      */
     @Override
     public String processImage(String objectKey) {
-        return "display/" + objectKey;
+        return OssClient.displayKeyOf(objectKey);
     }
 
     /**

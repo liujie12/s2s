@@ -26,4 +26,18 @@ public interface AiProvider {
      * @throws IllegalStateException 上游模型服务不可用（由调用方映射为 {@code 50301}）
      */
     String generate(String scopeJson, String systemPrompt);
+
+    /**
+     * 音频转写（ASR，模式②；B2-4 阶段① Step 2）。
+     *
+     * <p><b>独立转写调用</b>（2026-10-15 用户裁定）：先于四件套生成执行，产物作为用户文本
+     * （U 集合）并入 scope 后再走 {@link #generate}——Step 4 逆向比对以转写文本为溯源基准，
+     * 四步管线口径不变。</p>
+     *
+     * @param audioUrl         音频只读短时效 URL（调用方已完成归属校验）
+     * @param audioContentType 音频 MIME 类型（实现方据此映射上游 {@code format} 参数）
+     * @return {@link String} 转写纯文本，<b>未校验</b>；由调用方并入 U 集合
+     * @throws IllegalStateException 上游不可用（调用方映射 {@code 50301}）
+     */
+    String transcribe(String audioUrl, String audioContentType);
 }

@@ -12,6 +12,7 @@ import com.s2s.server.category.dto.TemplateFieldDto;
 import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
 import com.s2s.server.common.ratelimit.RateLimitKeys;
+import com.s2s.server.post.MediaService;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -68,6 +69,8 @@ public class AiParseService {
             + "\"price\":数字（必须是 text 中出现过的数字，没有则省略）,"
             + "\"price_unit\":字符串（必须是 text 中出现过的单位，没有则省略）,"
             + "\"template_values\":对象（键必须来自 template_fields 的 key，值必须是该字段 options 之一或 text 中出现过）}。"
+            + "scope.media=用户上传的图片（经 image_url 附带）：仅可用来理解 text 含义并在 options 中做选择，"
+            + "禁止输出仅在图片中出现而 text/options 里不存在的实体。"
             + "无法从 scope 确定的字段一律省略，不要猜测。";
 
     /** 猜测字段名（scope_verified / unresolved_fields 的键）。 */
@@ -83,6 +86,7 @@ public class AiParseService {
     private final AiQuotaService aiQuotaService;
     private final AiQuotaGate aiQuotaGate;
     private final TemplateService templateService;
+    private final MediaService mediaService;
     private final ObjectMapper objectMapper;
 
     /**
@@ -92,17 +96,20 @@ public class AiParseService {
      * @param aiQuotaService  配额档位解析
      * @param aiQuotaGate     配额闸（只读判定）
      * @param templateService 模板服务（scope 的 P 集合）
+     * @param mediaService    媒体服务（AI 只读签名，模式①/④ 图、模式② 音频入参）
      * @param objectMapper    JSON 解析器
      */
     public AiParseService(AiProvider aiProvider,
             AiQuotaService aiQuotaService,
             AiQuotaGate aiQuotaGate,
             TemplateService templateService,
+            MediaService mediaService,
             ObjectMapper objectMapper) {
         this.aiProvider = aiProvider;
         this.aiQuotaService = aiQuotaService;
         this.aiQuotaGate = aiQuotaGate;
         this.templateService = templateService;
+        this.mediaService = mediaService;
         this.objectMapper = objectMapper;
     }
 
@@ -127,10 +134,21 @@ public class AiParseService {
         int limit = aiQuotaService.resolveLimit(userId, req.completenessLevel(), req.leafCategoryId());
         aiQuotaGate.ensureAvailable(userId, limit, RateLimitKeys.today());
 
-        // Step 2：Scope 提取（U ∪ N ∪ P；N 本期无数据源）
+        // 模式② 服务端 ASR（独立转写，2026-10-15 用户裁定）：客户端未给 voiceText 时，
+        // 真实通路把 voiceMediaId 转成文本并入 U 集合，转写产物同样过 Step 4 逆向比对；
+        // dry-run 桩返回空串（模式② 依赖客户端 voiceText，行为与 Step 2 前一致）。
+        if (notBlank(req.voiceMediaId()) && !notBlank(req.voiceText())) {
+            String transcript = transcribeVoice(userId, req.voiceMediaId());
+            if (!transcript.isBlank()) {
+                userText = joinUserText(transcript, userText);
+            }
+        }
+
+        // Step 2：Scope 提取（U ∪ N ∪ P；N 本期无数据源；模式①/④ 图片经只读签名 URL 进 media）
         TemplateDto template = resolveTemplate(req.leafCategoryId());
         Integer scopeLeafId = template == null ? null : req.leafCategoryId();
-        String scopeJson = buildScopeJson(userText, req.kind(), scopeLeafId, template);
+        String scopeJson = buildScopeJson(userText, req.kind(), scopeLeafId, template,
+                resolveImageMedia(userId, req.mediaId()));
 
         // Step 3：大模型生成（上游异常 → 50301）
         String raw = generate(scopeJson);
@@ -141,6 +159,44 @@ public class AiParseService {
         AiQuota quota = aiQuotaService.snapshot(userId, limit);
         return new AiParseResult(
                 verified.guess(), verified.scopeVerified(), verified.unresolvedFields(), quota);
+    }
+
+    /**
+     * 模式② 音频转写：归属校验 + 只读签名 → 独立 ASR（失败映射 {@code 50301}）。
+     *
+     * @param userId       当前用户 ID
+     * @param voiceMediaId 音频媒体 ID
+     * @return {@link String} 转写文本（可空串，dry-run 桩恒空）
+     * @throws BizException 上游不可用 → {@code 50301}；媒体非本人 → {@code 40001}
+     */
+    private String transcribeVoice(Long userId, String voiceMediaId) {
+        MediaService.AiMediaAccess access = mediaService.signAiReadAccess(userId, voiceMediaId);
+        try {
+            String transcript = aiProvider.transcribe(access.accessUrl(), access.contentType());
+            return transcript == null ? "" : transcript.strip();
+        } catch (RuntimeException e) {
+            // 不打印 URL（含签名）与内容；仅映射错误码
+            throw BizException.of(ErrorCode.AI_UNAVAILABLE);
+        }
+    }
+
+    /**
+     * 模式①/④ 图片入参：归属校验 + 只读签名 URL，组装 scope 的 {@code media} 段。
+     *
+     * @param userId  当前用户 ID
+     * @param mediaId 图片媒体 ID（可空）
+     * @return {@link List} 单项 media 列表；无图片返回空表
+     * @throws BizException 媒体非本人 → {@code 40001}
+     */
+    private List<Map<String, Object>> resolveImageMedia(Long userId, String mediaId) {
+        if (!notBlank(mediaId)) {
+            return List.of();
+        }
+        MediaService.AiMediaAccess access = mediaService.signAiReadAccess(userId, mediaId);
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("type", "image");
+        item.put("url", access.accessUrl());
+        return List.of(item);
     }
 
     /**
@@ -178,18 +234,17 @@ public class AiParseService {
     }
 
     /**
-     * 构造 Step 2 的 scope JSON（U ∪ P）。
+     * 构造 Step 2 的 scope JSON（U ∪ P，含模式①/④ 的 media 段）。
      *
-     * <p><b>ASR TODO</b>：模式② {@code voiceMediaId} 的语音转写应由真实通路在此前完成
-     * （通义千问 ASR，备案覆盖内）；dry-run 阶段仅依赖客户端已给的 {@code voiceText}。</p>
-     *
-     * @param userText  用户文本（U）
+     * @param userText  用户文本（U，含已转写的语音文本）
      * @param kind      类型（可空）
      * @param leafId    有效叶子类目 ID（可空）
      * @param template  模板（可空）
+     * @param media     图片 media 段（模式①/④；元素含 type/url，空表表示无图）
      * @return {@link String} scope JSON 文本
      */
-    private String buildScopeJson(String userText, String kind, Integer leafId, TemplateDto template) {
+    private String buildScopeJson(String userText, String kind, Integer leafId,
+            TemplateDto template, List<Map<String, Object>> media) {
         Map<String, Object> scope = new LinkedHashMap<>();
         scope.put("text", userText);
         if (kind != null && !kind.isBlank()) {
@@ -209,6 +264,7 @@ public class AiParseService {
                 fields.add(item);
             }
         }
+        scope.put("media", media);
         scope.put("template_fields", fields);
         try {
             return objectMapper.writeValueAsString(scope);

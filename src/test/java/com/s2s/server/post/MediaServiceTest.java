@@ -85,4 +85,82 @@ class MediaServiceTest {
                 .extracting(e -> ((BizException) e).getErrorCode().getCode())
                 .isEqualTo(40001);
     }
+
+    /**
+     * AI 只读签名（B2-4 Step 2）：音频 commit 不删原对象 → 始终用原键。
+     */
+    @Test
+    void signAiReadAccess音频用原键() {
+        when(mediaMapper.selectById(1L)).thenReturn(
+                media(1L, "k-audio", "audio/wav", MediaService.AUDIT_PASS));
+        when(ossClient.signAccessUrl("k-audio")).thenReturn("https://oss.test/signed");
+
+        MediaService.AiMediaAccess access = mediaService.signAiReadAccess(1L, "1");
+
+        assertThat(access.accessUrl()).isEqualTo("https://oss.test/signed");
+        assertThat(access.contentType()).isEqualTo("audio/wav");
+    }
+
+    /**
+     * AI 只读签名：图片已 commit（pass）原图已删 → 用展示图键。
+     */
+    @Test
+    void signAiReadAccess图片已commit用展示键() {
+        when(mediaMapper.selectById(1L)).thenReturn(
+                media(1L, "k-img", "image/jpeg", MediaService.AUDIT_PASS));
+        when(ossClient.signAccessUrl("display/k-img")).thenReturn("https://oss.test/signed");
+
+        MediaService.AiMediaAccess access = mediaService.signAiReadAccess(1L, "1");
+
+        assertThat(access.accessUrl()).isEqualTo("https://oss.test/signed");
+    }
+
+    /**
+     * AI 只读签名：图片未 commit（pending）原图尚在 → 用原键。
+     */
+    @Test
+    void signAiReadAccess图片未commit用原键() {
+        when(mediaMapper.selectById(1L)).thenReturn(
+                media(1L, "k-img", "image/jpeg", MediaService.AUDIT_PENDING));
+        when(ossClient.signAccessUrl("k-img")).thenReturn("https://oss.test/signed");
+
+        MediaService.AiMediaAccess access = mediaService.signAiReadAccess(1L, "1");
+
+        assertThat(access.accessUrl()).isEqualTo("https://oss.test/signed");
+    }
+
+    /**
+     * AI 只读签名：非本人媒体 → 40001（防 IDOR）。
+     */
+    @Test
+    void signAiReadAccess非本人拒绝() {
+        PostMediaEntity entity = media(1L, "k", "image/jpeg", MediaService.AUDIT_PASS);
+        entity.setUserId(2L);
+        when(mediaMapper.selectById(1L)).thenReturn(entity);
+
+        assertThatThrownBy(() -> mediaService.signAiReadAccess(1L, "1"))
+                .isInstanceOf(BizException.class)
+                .extracting(e -> ((BizException) e).getErrorCode().getCode())
+                .isEqualTo(40001);
+    }
+
+    /**
+     * 造归属当前用户（user_id=1）的媒体实体。
+     *
+     * @param id          媒体 ID
+     * @param key         OSS 对象键
+     * @param contentType MIME 类型
+     * @param auditStatus 审核状态
+     * @return {@link PostMediaEntity} 实体
+     */
+    private static PostMediaEntity media(Long id, String key, String contentType,
+            String auditStatus) {
+        PostMediaEntity entity = new PostMediaEntity();
+        entity.setId(id);
+        entity.setUserId(1L);
+        entity.setObjectKey(key);
+        entity.setContentType(contentType);
+        entity.setAuditStatus(auditStatus);
+        return entity;
+    }
 }

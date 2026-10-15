@@ -5,7 +5,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.s2s.server.common.constants.NfrAi;
+import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.springframework.beans.factory.annotation.Value;
@@ -32,6 +35,11 @@ import org.springframework.web.client.RestClientException;
  * {@code messages[].role/content}）。<b>本类仍不信任模型产物</b>——Step 4 逆向比对由
  * {@link AiParseService} 独立承担。</p>
  *
+ * <p><b>多模态（Step 2，2026-10-15）</b>：scope 含 {@code media} 图片时 user 消息改 content
+ * 数组（text + image_url 部件）并切 {@code s2s.ai.omni-model}；模式② 音频经
+ * {@link #transcribe} 独立转写（input_audio 部件），产物由 {@code AiParseService} 并入
+ * U 集合后再走本类 {@link #generate}。图/音均以 OSS 只读签名 URL 入参（官方兼容口径）。</p>
+ *
  * <p><b>安全</b>：本类不写任何日志（scope 与模型输出均含用户输入明文，编码规范 §4.11）。</p>
  */
 @Component
@@ -47,6 +55,28 @@ public class QwenAiProvider implements AiProvider {
     private static final String ROLE_SYSTEM = "system";
     private static final String ROLE_USER = "user";
 
+    /** 多模态 content 部件类型（官方 OpenAI 兼容口径）。 */
+    private static final String PART_TYPE_TEXT = "text";
+    private static final String PART_TYPE_IMAGE = "image_url";
+    private static final String PART_TYPE_AUDIO = "input_audio";
+
+    /** 转写指令（模式② ASR；只要求逐字转写，不夹带生成任务，避免引入转写外产物）。 */
+    private static final String TRANSCRIBE_INSTRUCTION =
+            "请将这段语音逐字转写为文字，仅输出转写文本，不要输出任何解释。";
+
+    /**
+     * 音频 MIME → 上游 {@code input_audio.format} 映射。
+     *
+     * <p>官方示例取值为扩展名风格（已核实 {@code "wav"}；其余按上传白名单
+     * （{@code NfrMedia.AUDIO_CONTENT_TYPES}）逐一对应，真机验收时校准）。</p>
+     */
+    private static final Map<String, String> AUDIO_FORMAT_BY_MIME = Map.of(
+            "audio/mpeg", "mp3",
+            "audio/mp4", "m4a",
+            "audio/aac", "aac",
+            "audio/wav", "wav",
+            "audio/x-m4a", "m4a");
+
     /** 数字抽取正则（价格猜测用；简单取首个数字，不做单位推断）。 */
     private static final Pattern NUMBER_PATTERN = Pattern.compile("\\d+(?:\\.\\d+)?");
 
@@ -59,8 +89,11 @@ public class QwenAiProvider implements AiProvider {
     /** 百炼 API Key（{@code s2s.ai.api-key}，环境变量 DASHSCOPE_API_KEY）；dry-run 不消费。 */
     private final String apiKey;
 
-    /** 模型名（{@code s2s.ai.model}，如 qwen-plus）；dry-run 不消费。 */
+    /** 文本模型名（{@code s2s.ai.model}，如 qwen-plus）；dry-run 不消费。 */
     private final String model;
+
+    /** 多模态模型名（{@code s2s.ai.omni-model}；图入参与 ASR 用）；dry-run 不消费。 */
+    private final String omniModel;
 
     /** 上游 HTTP 客户端（baseUrl + 超时，见 {@code AiClientConfig}）；dry-run 不消费。 */
     private final RestClient aiRestClient;
@@ -73,7 +106,8 @@ public class QwenAiProvider implements AiProvider {
      *
      * @param dryRun       是否走 dry-run mock（配置 {@code s2s.ai.dry-run}，默认 true）
      * @param apiKey       百炼 API Key（配置 {@code s2s.ai.api-key}，默认空；真实通道必填）
-     * @param model        模型名（配置 {@code s2s.ai.model}）
+     * @param model        文本模型名（配置 {@code s2s.ai.model}）
+     * @param omniModel    多模态模型名（配置 {@code s2s.ai.omni-model}）
      * @param aiRestClient 上游 HTTP 客户端（{@code AiClientConfig#aiRestClient}）
      * @param objectMapper JSON 解析器
      */
@@ -81,11 +115,13 @@ public class QwenAiProvider implements AiProvider {
             @Value("${s2s.ai.dry-run:true}") boolean dryRun,
             @Value("${s2s.ai.api-key:}") String apiKey,
             @Value("${s2s.ai.model}") String model,
+            @Value("${s2s.ai.omni-model}") String omniModel,
             RestClient aiRestClient,
             ObjectMapper objectMapper) {
         this.dryRun = dryRun;
         this.apiKey = apiKey;
         this.model = model;
+        this.omniModel = omniModel;
         this.aiRestClient = aiRestClient;
         this.objectMapper = objectMapper;
     }
@@ -112,14 +148,13 @@ public class QwenAiProvider implements AiProvider {
      * @throws IllegalStateException 未配置 Key / 上游异常 / 响应结构非法
      */
     private String generateByModel(String scopeJson, String systemPrompt) {
-        if (apiKey == null || apiKey.isBlank()) {
-            // 配置缺失属部署缺陷：不打印 Key，也不回退到 dry-run（静默降级会掩盖线上故障）
-            throw new IllegalStateException(
-                    "s2s.ai.dry-run=false，但未配置 s2s.ai.api-key（环境变量 DASHSCOPE_API_KEY）");
-        }
+        requireApiKey();
+        List<String> imageUrls = extractImageUrls(scopeJson);
         String payload;
         try {
-            payload = buildChatPayload(scopeJson, systemPrompt);
+            payload = imageUrls.isEmpty()
+                    ? buildChatPayload(scopeJson, systemPrompt, model)
+                    : buildMultimodalPayload(scopeJson, systemPrompt, imageUrls);
         } catch (Exception e) {
             throw new IllegalStateException("构造通义千问请求体失败", e);
         }
@@ -144,12 +179,14 @@ public class QwenAiProvider implements AiProvider {
      *
      * @param scopeJson    scope JSON（user 消息内容）
      * @param systemPrompt 系统提示词（system 消息内容）
+     * @param modelName    模型名（文本档）
      * @return {@link String} 请求体 JSON
      * @throws Exception JSON 序列化失败
      */
-    private String buildChatPayload(String scopeJson, String systemPrompt) throws Exception {
+    private String buildChatPayload(String scopeJson, String systemPrompt, String modelName)
+            throws Exception {
         ObjectNode root = objectMapper.createObjectNode();
-        root.put("model", model);
+        root.put("model", modelName);
         ArrayNode messages = root.putArray("messages");
         ObjectNode system = messages.addObject();
         system.put("role", ROLE_SYSTEM);
@@ -161,6 +198,183 @@ public class QwenAiProvider implements AiProvider {
         // 兼容表内确认的参数会带来不确定性，产物的确定性由 Step 4 逆向比对而非采样参数保证
         root.put("max_tokens", NfrAi.UPSTREAM_MAX_TOKENS);
         return objectMapper.writeValueAsString(root);
+    }
+
+    /**
+     * 音频转写（模式② ASR，独立调用；2026-10-15 用户裁定）。
+     *
+     * <p>dry-run 返回空串（桩不做 ASR，模式② 依赖客户端 {@code voiceText}，与 Step 2 前
+     * 行为一致）；真实通道把音频 URL 交多模态模型逐字转写，取回纯文本（不做 JSON 抽取）。</p>
+     *
+     * @param audioUrl         音频只读短时效 URL
+     * @param audioContentType 音频 MIME 类型
+     * @return {@link String} 转写文本；dry-run 恒为空串
+     * @throws IllegalStateException 未配置 Key / MIME 无 format 映射 / 上游异常 / 响应结构非法
+     */
+    @Override
+    public String transcribe(String audioUrl, String audioContentType) {
+        if (dryRun) {
+            return "";
+        }
+        requireApiKey();
+        String format = audioFormatOf(audioContentType);
+        String payload;
+        try {
+            payload = buildTranscribePayload(audioUrl, format);
+        } catch (Exception e) {
+            throw new IllegalStateException("构造通义千问转写请求体失败", e);
+        }
+        String body;
+        try {
+            body = aiRestClient.post()
+                    .uri(CHAT_COMPLETIONS_PATH)
+                    .header(HttpHeaders.AUTHORIZATION, BEARER_PREFIX + apiKey)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(payload)
+                    .retrieve()
+                    .body(String.class);
+        } catch (RestClientException e) {
+            // 含网络超时与非 2xx；口径与 generateByModel 一致
+            throw new IllegalStateException("通义千问转写调用失败", e);
+        }
+        return extractPlainText(body);
+    }
+
+    /**
+     * 真实通道前置：API Key 必须已配置。
+     *
+     * @throws IllegalStateException 未配置 Key（配置缺失属部署缺陷：不打印 Key，也不回退
+     *         dry-run——静默降级会掩盖线上故障）
+     */
+    private void requireApiKey() {
+        if (apiKey == null || apiKey.isBlank()) {
+            throw new IllegalStateException(
+                    "s2s.ai.dry-run=false，但未配置 s2s.ai.api-key（环境变量 DASHSCOPE_API_KEY）");
+        }
+    }
+
+    /**
+     * 构造多模态对话补全请求体（scope 含图片时）：user 消息为 content 数组
+     * （text + image_url 部件，官方 OpenAI 兼容口径），模型切多模态档。
+     *
+     * @param scopeJson    scope JSON（text 部件内容）
+     * @param systemPrompt 系统提示词（system 消息内容）
+     * @param imageUrls    图片只读签名 URL 列表（image_url 部件）
+     * @return {@link String} 请求体 JSON
+     * @throws Exception JSON 序列化失败
+     */
+    private String buildMultimodalPayload(String scopeJson, String systemPrompt,
+            List<String> imageUrls) throws Exception {
+        ObjectNode root = objectMapper.createObjectNode();
+        root.put("model", omniModel);
+        ArrayNode messages = root.putArray("messages");
+        ObjectNode system = messages.addObject();
+        system.put("role", ROLE_SYSTEM);
+        system.put("content", systemPrompt == null ? "" : systemPrompt);
+        ObjectNode user = messages.addObject();
+        user.put("role", ROLE_USER);
+        ArrayNode content = user.putArray("content");
+        ObjectNode textPart = content.addObject();
+        textPart.put("type", PART_TYPE_TEXT);
+        textPart.put("text", scopeJson == null ? "{}" : scopeJson);
+        for (String url : imageUrls) {
+            ObjectNode imagePart = content.addObject();
+            imagePart.put("type", PART_TYPE_IMAGE);
+            imagePart.putObject("image_url").put("url", url);
+        }
+        root.put("max_tokens", NfrAi.UPSTREAM_MAX_TOKENS);
+        return objectMapper.writeValueAsString(root);
+    }
+
+    /**
+     * 构造音频转写请求体（input_audio 部件，官方 OpenAI 兼容口径）；转写恒走多模态档。
+     *
+     * @param audioUrl 音频只读签名 URL
+     * @param format   上游 {@code input_audio.format}（由 MIME 映射）
+     * @return {@link String} 请求体 JSON
+     * @throws Exception JSON 序列化失败
+     */
+    private String buildTranscribePayload(String audioUrl, String format) throws Exception {
+        ObjectNode root = objectMapper.createObjectNode();
+        root.put("model", omniModel);
+        ArrayNode messages = root.putArray("messages");
+        ObjectNode user = messages.addObject();
+        user.put("role", ROLE_USER);
+        ArrayNode content = user.putArray("content");
+        ObjectNode textPart = content.addObject();
+        textPart.put("type", PART_TYPE_TEXT);
+        textPart.put("text", TRANSCRIBE_INSTRUCTION);
+        ObjectNode audioPart = content.addObject();
+        audioPart.put("type", PART_TYPE_AUDIO);
+        ObjectNode inputAudio = audioPart.putObject("input_audio");
+        inputAudio.put("data", audioUrl);
+        inputAudio.put("format", format);
+        root.put("max_tokens", NfrAi.UPSTREAM_MAX_TOKENS);
+        return objectMapper.writeValueAsString(root);
+    }
+
+    /**
+     * 从 scope JSON 提取图片 URL（{@code media[]} 中 {@code type=image} 项）。
+     *
+     * @param scopeJson scope JSON
+     * @return {@link List} 图片 URL 列表；无 media / 解析失败返回空表（不阻塞文本通道，
+     *         scope 合法性由 Step 4 兜底）
+     */
+    private List<String> extractImageUrls(String scopeJson) {
+        List<String> urls = new ArrayList<>();
+        try {
+            JsonNode media = objectMapper.readTree(scopeJson == null ? "{}" : scopeJson)
+                    .path("media");
+            if (media.isArray()) {
+                for (JsonNode item : media) {
+                    if ("image".equals(item.path("type").asText(""))) {
+                        String url = item.path("url").asText("");
+                        if (!url.isBlank()) {
+                            urls.add(url);
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            return List.of();
+        }
+        return urls;
+    }
+
+    /**
+     * 音频 MIME 映射上游 {@code input_audio.format}。
+     *
+     * @param contentType 音频 MIME 类型
+     * @return {@link String} format 取值
+     * @throws IllegalStateException 白名单外 MIME（调用方映射 50301）
+     */
+    private String audioFormatOf(String contentType) {
+        String format = AUDIO_FORMAT_BY_MIME.get(contentType == null ? "" : contentType);
+        if (format == null) {
+            throw new IllegalStateException("音频 MIME 无上游 format 映射");
+        }
+        return format;
+    }
+
+    /**
+     * 从对话补全响应取纯文本（转写用；不做 JSON 对象抽取）。
+     *
+     * @param body 响应体文本（可空）
+     * @return {@link String} choices[0].message.content 原文（去首尾空白）
+     * @throws IllegalStateException 响应非 JSON / 缺 content
+     */
+    private String extractPlainText(String body) {
+        JsonNode root;
+        try {
+            root = objectMapper.readTree(body == null ? "" : body);
+        } catch (Exception e) {
+            throw new IllegalStateException("通义千问响应不是 JSON", e);
+        }
+        JsonNode content = root.path("choices").path(0).path("message").path("content");
+        if (content.isMissingNode() || content.asText("").isBlank()) {
+            throw new IllegalStateException("通义千问响应缺少 choices[0].message.content");
+        }
+        return content.asText("").strip();
     }
 
     /**

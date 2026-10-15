@@ -135,6 +135,37 @@ public class MediaService {
     }
 
     /**
+     * AI 上行读取授权（B2-4 阶段① Step 2）：为「本人媒体」签发只读短时效 GET 签名 URL。
+     *
+     * <p>可读对象键解析：音频 commit 不走 EXIF 链、原对象始终保留 → 用原键；图片已 commit
+     * （{@code pass}）原图已删（见 {@link #commit}）→ 用展示图键；图片未 commit
+     * （{@code pending}）原图尚在 → 用原键。</p>
+     *
+     * @param userId  当前用户 user_id（归属校验，防 IDOR）
+     * @param mediaId 媒体 ID
+     * @return {@link AiMediaAccess} 只读签名 URL + 媒体 MIME（音频转写按 MIME 推上游 format）
+     * @throws BizException 媒体不存在/非本人 → 40001
+     */
+    public AiMediaAccess signAiReadAccess(Long userId, String mediaId) {
+        PostMediaEntity media = loadOwned(userId, mediaId);
+        boolean audio = NfrMedia.AUDIO_CONTENT_TYPES.contains(media.getContentType());
+        boolean committedImage = !audio && AUDIT_PASS.equals(media.getAuditStatus());
+        String key = committedImage
+                ? OssClient.displayKeyOf(media.getObjectKey())
+                : media.getObjectKey();
+        return new AiMediaAccess(ossClient.signAccessUrl(key), media.getContentType());
+    }
+
+    /**
+     * AI 只读访问载体（B2-4 阶段① Step 2）。
+     *
+     * @param accessUrl   只读短时效 GET 签名 URL（与上传 PUT 签名两套，勿复用）
+     * @param contentType 媒体 MIME 类型
+     */
+    public record AiMediaAccess(String accessUrl, String contentType) {
+    }
+
+    /**
      * 加载当前用户拥有的媒体（归属校验）。
      *
      * <p>媒体不存在或非本人一律 40001（不透露资源是否存在，防 IDOR 枚举）。</p>

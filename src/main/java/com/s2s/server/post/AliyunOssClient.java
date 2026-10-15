@@ -84,7 +84,7 @@ public class AliyunOssClient implements OssClient {
      */
     @Override
     public String processImage(String objectKey) {
-        String displayKey = "display/" + objectKey;
+        String displayKey = OssClient.displayKeyOf(objectKey);
         ProcessObjectRequest request = new ProcessObjectRequest(bucket, objectKey, EXIF_STRIP_PROCESS);
         // 处理结果写回展示图键；详情以真桶联调为准
         oss.processObject(request);

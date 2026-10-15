@@ -11,12 +11,12 @@
 | 步骤 | 状态 | 说明 |
 | --- | --- | --- |
 | **Step 1 · 文本通道** | 🟡 **编码侧已完成** | 真实 HTTP 调用已落地（`QwenAiProvider#generateByModel`，百炼 OpenAI 兼容 `/chat/completions` + Bearer）；配置三键已加（`s2s.ai.api-key`/`model`/`endpoint`）；提示词补输出结构；新增 `QwenAiProviderTest` 8 例（HTTP 打桩）。**门禁**：`mvn -o clean test` BUILD SUCCESS、8/8 |
-| Step 1 · 真机/接口验收 | ⬜ **未做（缺 Key）** | 需真实 `DASHSCOPE_API_KEY`；本轮不持有 Key ⇒ **无真实调用证据** |
-| **Step 2 · 多模态** | ⬜ 未开工 | 按正文 §四；待 Step 1 验收后开 |
+| Step 1 · 真机/接口验收 | ⬜ **未做（发版押后）** | `DASHSCOPE_API_KEY` 已注入服务器 `/mnt/s2s/deploy/env/.env.prod`；**发版 + curl 验收用户裁定押后**（§7.5 手工单行命令已交付） |
+| **Step 2 · 多模态** | 🟡 **编码侧已完成**（2026-10-15） | 媒体进 scope（`generate` 签名/对外契约不破）+ 图片/语音走 **OSS 只读 GET 签名**（`MediaService.signAiReadAccess`，归属校验防 IDOR；音频原键/图片 pass 展示键/图片 pending 原键）+ **独立 ASR**（`AiProvider.transcribe`，用户裁定）+ 多模态 content 数组双档（`s2s.ai.omni-model`，默认 **`qwen3.8-omni-flash`** —— 原拟 `qwen-omni-turbo` 已被官方换代）。**门禁**：`mvn -o clean test` BUILD SUCCESS、**498/498**（+15 例）。**真机验收未做**（模式② 须真人出声；音频 format 映射真机校准） |
 
-**Step 1 遗留前置（用户侧）**：① 备案复核（模型须仍在册）；② 模型档位确认（当前默认 `qwen-plus` 文本档）；③ 费用口径（是否设日上限）；④ 服务器 `deploy/env/.env.prod` 的 Key **变量名须为 `DASHSCOPE_API_KEY`**（改动须**重建容器**，非 `docker restart`）。
+**Step 1 遗留前置（用户侧）**：① 备案复核 ✅ 已在册；② 模型档位确认（当前默认 `qwen-plus` 文本档；多模态档 `qwen3.8-omni-flash` 已配置化）；③ 费用口径（是否设日上限）；④ ✅ Key 已注入 `deploy/env/.env.prod`（变量名 `DASHSCOPE_API_KEY`，改动须**重建容器**，非 `docker restart`）。
 
-> 详见进度记录 2026-10-15（B2-4 阶段① Step 1）条。
+> 详见进度记录 2026-10-15（B2-4 阶段① Step 1 / Step 2）条。
 
 ## 一、现状（立档时 = Step 1 施工前的代码事实，非推测）
 

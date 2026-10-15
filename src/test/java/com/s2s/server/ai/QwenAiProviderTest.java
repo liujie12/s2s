@@ -43,6 +43,9 @@ class QwenAiProviderTest {
     /** 打桩用 API Key（假值）。 */
     private static final String API_KEY = "sk-test";
 
+    /** 打桩用多模态模型名（断言模型切换用）。 */
+    private static final String OMNI_MODEL = "qwen-omni-test";
+
     private MockRestServiceServer server;
     private RestClient restClient;
     private ObjectMapper objectMapper;
@@ -156,7 +159,7 @@ class QwenAiProviderTest {
     @Test
     void 未配置Key抛异常且不发请求() {
         QwenAiProvider provider =
-                new QwenAiProvider(false, "  ", "qwen-plus", restClient, objectMapper);
+                new QwenAiProvider(false, "  ", "qwen-plus", OMNI_MODEL, restClient, objectMapper);
 
         assertThatThrownBy(() -> provider.generate("{\"text\":\"x\"}", "p"))
                 .isInstanceOf(IllegalStateException.class)
@@ -170,7 +173,7 @@ class QwenAiProviderTest {
     @Test
     void dryRun分支不触发HTTP() {
         QwenAiProvider provider =
-                new QwenAiProvider(true, "", "qwen-plus", restClient, objectMapper);
+                new QwenAiProvider(true, "", "qwen-plus", OMNI_MODEL, restClient, objectMapper);
 
         String out = provider.generate(
                 "{\"text\":\"楼下超市卖苹果 5 元\",\"leaf_category_id\":10101}", "p");
@@ -182,12 +185,112 @@ class QwenAiProviderTest {
     }
 
     /**
+     * Step 2 多模态：scope 含 media 图 → user 消息为 content 数组（text + image_url），
+     * 模型切多模态档。
+     *
+     * @throws Exception 构造打桩响应体失败
+     */
+    @Test
+    void 含图scope走多模态请求体() throws Exception {
+        String scope = "{\"text\":\"转让手机\","
+                + "\"media\":[{\"type\":\"image\",\"url\":\"https://oss.test/signed\"}]}";
+        server.expect(requestTo(ENDPOINT))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(content().string(containsString("\"model\":\"" + OMNI_MODEL + "\"")))
+                .andExpect(content().string(containsString("\"type\":\"image_url\"")))
+                .andExpect(content().string(containsString("https://oss.test/signed")))
+                .andRespond(withSuccess(chatCompletion("{\"title\":\"转让手机\"}"),
+                        MediaType.APPLICATION_JSON));
+
+        String out = liveProvider().generate(scope, "p");
+
+        assertThat(out).isEqualTo("{\"title\":\"转让手机\"}");
+        server.verify();
+    }
+
+    /**
+     * scope 无图片（media 空表）→ 仍走文本档，不切多模态。
+     *
+     * @throws Exception 构造打桩响应体失败
+     */
+    @Test
+    void 无图scope不切多模态() throws Exception {
+        server.expect(requestTo(ENDPOINT))
+                .andExpect(content().string(containsString("\"model\":\"qwen-plus\"")))
+                .andRespond(withSuccess(chatCompletion("{\"title\":\"x\"}"),
+                        MediaType.APPLICATION_JSON));
+
+        liveProvider().generate("{\"text\":\"x\",\"media\":[]}", "p");
+
+        server.verify();
+    }
+
+    /**
+     * Step 2 ASR：input_audio 部件（data + format）上送，返回纯文本（不做 JSON 抽取）。
+     *
+     * @throws Exception 构造打桩响应体失败
+     */
+    @Test
+    void 转写返回纯文本() throws Exception {
+        server.expect(requestTo(ENDPOINT))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(content().string(containsString("\"model\":\"" + OMNI_MODEL + "\"")))
+                .andExpect(content().string(containsString("\"type\":\"input_audio\"")))
+                .andExpect(content().string(containsString("\"format\":\"wav\"")))
+                .andRespond(withSuccess(chatCompletion("楼下超市苹果五元"),
+                        MediaType.APPLICATION_JSON));
+
+        String out = liveProvider().transcribe("https://oss.test/audio", "audio/wav");
+
+        assertThat(out).isEqualTo("楼下超市苹果五元");
+        server.verify();
+    }
+
+    /**
+     * 音频 MIME 映射：audio/mpeg → format=mp3。
+     *
+     * @throws Exception 构造打桩响应体失败
+     */
+    @Test
+    void mpeg音频映射mp3格式() throws Exception {
+        server.expect(requestTo(ENDPOINT))
+                .andExpect(content().string(containsString("\"format\":\"mp3\"")))
+                .andRespond(withSuccess(chatCompletion("ok"), MediaType.APPLICATION_JSON));
+
+        liveProvider().transcribe("https://oss.test/audio", "audio/mpeg");
+
+        server.verify();
+    }
+
+    /**
+     * 白名单外音频 MIME → IllegalStateException，不发请求。
+     */
+    @Test
+    void 未知音频MIME抛异常且不发请求() {
+        assertThatThrownBy(() -> liveProvider().transcribe("https://oss.test/a", "audio/ogg"))
+                .isInstanceOf(IllegalStateException.class);
+        server.verify();
+    }
+
+    /**
+     * dry-run 转写返回空串且不触发任何 HTTP（模式② 依赖客户端 voiceText）。
+     */
+    @Test
+    void dryRun转写返回空串() {
+        QwenAiProvider provider =
+                new QwenAiProvider(true, "", "qwen-plus", OMNI_MODEL, restClient, objectMapper);
+
+        assertThat(provider.transcribe("https://oss.test/a", "audio/wav")).isEmpty();
+        server.verify();
+    }
+
+    /**
      * 造真分支 provider（dry-run=false）。
      *
      * @return {@link QwenAiProvider} 真通道实例
      */
     private QwenAiProvider liveProvider() {
-        return new QwenAiProvider(false, API_KEY, "qwen-plus", restClient, objectMapper);
+        return new QwenAiProvider(false, API_KEY, "qwen-plus", OMNI_MODEL, restClient, objectMapper);
     }
 
     /**

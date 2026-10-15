@@ -52,6 +52,20 @@ public interface OssClient {
     String signAccessUrl(String objectKey);
 
     /**
+     * 展示图对象键约定（EXIF 剥离后的可读副本）：{@code "display/" + 原对象键}。
+     *
+     * <p>单源提取（编码规范 §1.1）：图片 commit 后原图被删、只余展示图，两个
+     * {@code processImage} 实现与 AI 只读签名（{@code MediaService#signAiReadAccess}）
+     * 共用同一推导，禁各处复制 {@code "display/"} 字面量。</p>
+     *
+     * @param objectKey 原对象键
+     * @return {@link String} 展示图对象键
+     */
+    static String displayKeyOf(String objectKey) {
+        return "display/" + objectKey;
+    }
+
+    /**
      * OSS 对象元数据（HEAD 二次校验结果）。
      *
      * @param sizeBytes   实际字节数

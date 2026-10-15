@@ -7,6 +7,8 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -18,10 +20,12 @@ import com.s2s.server.category.dto.TemplateDto;
 import com.s2s.server.category.dto.TemplateFieldDto;
 import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
+import com.s2s.server.post.MediaService;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 /**
  * {@link AiParseService} 严格 Scope 四步管线测试（B2-4；PRD §5.9/§5.10）。
@@ -36,6 +40,7 @@ class AiParseServiceTest {
     private AiQuotaService aiQuotaService;
     private AiQuotaGate aiQuotaGate;
     private TemplateService templateService;
+    private MediaService mediaService;
     private AiParseService service;
 
     @BeforeEach
@@ -44,8 +49,9 @@ class AiParseServiceTest {
         aiQuotaService = mock(AiQuotaService.class);
         aiQuotaGate = mock(AiQuotaGate.class);
         templateService = mock(TemplateService.class);
+        mediaService = mock(MediaService.class);
         service = new AiParseService(provider, aiQuotaService, aiQuotaGate, templateService,
-                new ObjectMapper());
+                mediaService, new ObjectMapper());
 
         when(aiQuotaService.resolveLimit(any(), any(), any())).thenReturn(20);
         when(aiQuotaService.snapshot(any(), anyInt()))
@@ -181,6 +187,94 @@ class AiParseServiceTest {
                 .isInstanceOf(BizException.class)
                 .extracting(e -> ((BizException) e).getErrorCode())
                 .isEqualTo(ErrorCode.AI_QUOTA_EXCEEDED);
+    }
+
+    /**
+     * Step 2 模式②：voiceMediaId 无 voiceText → 独立 ASR 转写并入用户文本（U 集合），
+     * 转写文本可溯源通过 Step 4。
+     */
+    @Test
+    void 语音转写并入用户文本() {
+        when(mediaService.signAiReadAccess(1L, "9"))
+                .thenReturn(new MediaService.AiMediaAccess("https://oss.test/a", "audio/wav"));
+        when(provider.transcribe("https://oss.test/a", "audio/wav")).thenReturn("转让电动车");
+        when(provider.generate(anyString(), anyString()))
+                .thenReturn("{\"title\":\"转让电动车\"}");
+
+        AiParseResult result = service.parse(1L, req(null, null, "9"));
+
+        assertThat(result.guess().title()).isEqualTo("转让电动车");
+        ArgumentCaptor<String> scopeCaptor = ArgumentCaptor.forClass(String.class);
+        verify(provider).generate(scopeCaptor.capture(), anyString());
+        assertThat(scopeCaptor.getValue()).contains("转让电动车");
+    }
+
+    /**
+     * Step 2 模式②：客户端已带 voiceText → 不触发 ASR（行为与 Step 1 一致）。
+     */
+    @Test
+    void 已有voiceText不触发ASR() {
+        when(provider.generate(anyString(), anyString()))
+                .thenReturn("{\"title\":\"转让电动车\"}");
+
+        AiParseResult result = service.parse(1L,
+                new AiParseRequest(null, "9", "转让电动车", null, "resource", null, 0));
+
+        assertThat(result.guess().title()).isEqualTo("转让电动车");
+        verify(provider, never()).transcribe(anyString(), anyString());
+    }
+
+    /**
+     * Step 2 模式②：ASR 上游失败 → 50301（不新增错误码）。
+     */
+    @Test
+    void 转写失败回50301() {
+        when(mediaService.signAiReadAccess(1L, "9"))
+                .thenReturn(new MediaService.AiMediaAccess("https://oss.test/a", "audio/wav"));
+        when(provider.transcribe(anyString(), anyString()))
+                .thenThrow(new IllegalStateException("upstream down"));
+
+        assertThatThrownBy(() -> service.parse(1L, req(null, null, "9")))
+                .isInstanceOf(BizException.class)
+                .extracting(e -> ((BizException) e).getErrorCode())
+                .isEqualTo(ErrorCode.AI_UNAVAILABLE);
+    }
+
+    /**
+     * Step 2 模式②：转写为空串（dry-run 口径）→ 按原文本继续管线。
+     */
+    @Test
+    void 空转写按原样继续() {
+        when(mediaService.signAiReadAccess(1L, "9"))
+                .thenReturn(new MediaService.AiMediaAccess("https://oss.test/a", "audio/wav"));
+        when(provider.transcribe(anyString(), anyString())).thenReturn("");
+        when(provider.generate(anyString(), anyString()))
+                .thenReturn("{\"title\":\"家电维修\"}");
+
+        AiParseResult result = service.parse(1L, req(null, "家电维修", "9"));
+
+        assertThat(result.guess().title()).isEqualTo("家电维修");
+    }
+
+    /**
+     * Step 2 模式①：mediaId 图片经归属校验后签只读 URL，进 scope.media。
+     */
+    @Test
+    void 图片签名URL进scope() {
+        when(mediaService.signAiReadAccess(1L, "7"))
+                .thenReturn(new MediaService.AiMediaAccess("https://oss.test/img", "image/jpeg"));
+        when(provider.generate(anyString(), anyString()))
+                .thenReturn("{\"title\":\"转让手机\"}");
+
+        AiParseResult result = service.parse(1L,
+                new AiParseRequest("7", null, null, "转让手机", "resource", null, 0));
+
+        assertThat(result.guess().title()).isEqualTo("转让手机");
+        ArgumentCaptor<String> scopeCaptor = ArgumentCaptor.forClass(String.class);
+        verify(provider).generate(scopeCaptor.capture(), anyString());
+        assertThat(scopeCaptor.getValue())
+                .contains("https://oss.test/img")
+                .contains("\"type\":\"image\"");
     }
 
     /**

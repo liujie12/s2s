@@ -145,6 +145,7 @@
 - 2026-10-12（[151] B2-4 大模型备案评估 · 结论：分阶段（阶段① 调已备案 API 走「登记」/ 阶段② 微调 3B 预留））
 - 2026-10-15（B2-4 阶段① Step 1 · 通义千问真实通道落地 —— 文本通道）
 - 2026-10-15（B2-6a 微信登录 · 开工包立档 + 微信开放平台资质申请方案）
+- 2026-10-15（B2-4 阶段① Step 2 · 多模态通道落地 —— 图片 OSS 只读签名 + 独立 ASR 语音转写）
 
 ---
 
@@ -7115,6 +7116,45 @@ printf '\nMYSQL_SSL_MODE=VERIFY_CA\nMYSQL_TLS_TRUSTSTORE_PASSWORD=%s\n' \
 
 **⑧ 知识沉淀表态**（编码规范 §8 要求）
 - **不需要**单独 `ce-compound` learning：本轮为「核实外部行政口径 + 立档交接」，无代码方法论增量；微信开放平台口径已**就地写入任务书**。
+
+---
+
+### 2026-10-15（B2-4 阶段① Step 2 · 多模态通道落地 —— 图片 OSS 只读签名 + 独立 ASR 语音转写）
+
+> 摘要：用户裁定「**继续开发吧，发布放后面**」+「**独立 ASR 调用**」，按任务书 §四 开 Step 2（沿用 Step 1 会话）。媒体进 scope（`generate` 签名 / 对外契约均不破）、图/音经 **OSS 只读短时效 GET 签名**入参、`AiProvider` 新增 `transcribe`、`QwenAiProvider` 多模态 content 数组 + 双档模型。新增 **15 例**单测；门禁 `mvn -o clean test` **BUILD SUCCESS（498/498，483→498）**。真机验收（模式① 图 + 模式② **须真人出声**）与发版**未做**（用户裁定押后）。
+
+**① 官方口径核实（禁凭记忆；help.aliyun.com/zh/model-studio 现场核实，页面更新 2026-10-15）**
+- 多模态 user 消息 = content 数组，部件三类：`{"type":"text"}` / `{"type":"image_url","image_url":{"url"}}` / `{"type":"input_audio","input_audio":{"data","format"}}`；图、音**均吃公网 URL** ⇒ OSS 只读签名 URL 可直接入参；官方示例 `input_audio.format="wav"`。
+- **模型换代**：任务书原拟 `qwen-omni-turbo` 已被官方换代 ⇒ 现档 **`qwen3.8-omni-flash`**；做成配置键 `s2s.ai.omni-model`（带默认值、可 `AI_OMNI_MODEL` 覆盖），换代事实写进 yml 注释。
+- 旧域名 `dashscope.aliyuncs.com/compatible-mode/v1` 仍完全可用 ⇒ 现有 endpoint 配置不动。
+
+**② 实现（8 文件）**
+- `MediaService.signAiReadAccess`（**AI 上行读取唯一入口**）：`loadOwned` 归属校验防 IDOR（非本人 40001）；键解析 —— **音频→原键**（commit 不走 EXIF 链、原对象保留）、**图片 pass→`display/` 展示键**（commit 后原图被删，直接签 objectKey 会签到已删对象——本轮自查发现的正确性问题）、**图片 pending→原键**。
+- `OssClient.displayKeyOf(objectKey)` 接口静态方法**单源提取**（§1.1 第二次出现即提取），`AliyunOssClient` / `DevOssClient` 两处 `processImage` 同步改引用。
+- `AiProvider` 新增 `transcribe(audioUrl, audioContentType)`（独立 ASR：先转写 → 并入 userText（U 集合）→ 再走 `generate`，**四步管线口径不变**；`generate` 签名不变——媒体走 scope，对外契约不破）。
+- `QwenAiProvider`：`generateByModel` 重构 —— `requireApiKey()` 提取；scope 含图（`extractImageUrls` 非空）→ `buildMultimodalPayload`（content 数组 + omni 档），无图 → 原文本档 `buildChatPayload`。`transcribe` 真通道 = `buildTranscribePayload`（input_audio 部件，data=URL、format=`AUDIO_FORMAT_BY_MIME` 白名单映射，白名单外 MIME 抛 `IllegalStateException`）→ POST → `extractPlainText`（不剥 JSON）；**dry-run 返回空串**（模式② 继续依赖客户端 `voiceText`，行为与 Step 2 前一致）。转写指令 = 「逐字转写，仅输出转写文本」。
+- `AiParseService`：配额判定后插入「voiceMediaId 非空且 voiceText 空 → `transcribeVoice`（签名 + 转写，`RuntimeException` → `BizException.of(AI_UNAVAILABLE)` = 50301，不新增错误码）；转写非空 → `joinUserText` 并入 userText」；`resolveImageMedia`（mediaId 非空 → 签 URL → `scope.media=[{"type":"image","url"}]`）。`SYSTEM_PROMPT` **限制性补充**（图片仅辅助理解 text 与 options 选择，禁输出图片独有实体）——**Step 4 验证语义刻意不动**（图片派生实体仍会被 Step 4 拒；图片实际价值 = 驱动 `template_values` 的 options 命中，任务书未要求改验证语义）。
+- `application.yml`：`s2s.ai` 下新增 `omni-model: ${AI_OMNI_MODEL:qwen3.8-omni-flash}`（带默认值 ⇒ **不参与 `.env.example` 双向核对**）。
+
+**③ 测试与门禁**
+- `MediaServiceTest` **+4 例**：音频用原键 / 图片已 commit 用展示键（断言 `signAccessUrl("display/k-img")`）/ 图片未 commit 用原键 / 非本人 40001。
+- `QwenAiProviderTest` **+6 例**（3 处构造器补第 4 参 `omniModel`）：含图 scope 走多模态请求体（断言 omni 模型名 + `image_url` 部件 + 签名 URL）/ 无图不切换 / 转写返回纯文本（`input_audio` + `format:"wav"`）/ mpeg→mp3 映射 / 未知音频 MIME 抛异常且不发请求 / dry-run 转写返空串。
+- `AiParseServiceTest` 构造器第 5 参 `mediaService` mock **+5 例**：语音转写并入用户文本（`ArgumentCaptor` 断言 scope 含转写文本）/ 已有 voiceText 不触发 ASR（`never()`）/ 转写失败回 50301 / 空转写按原样继续 / 图片签名 URL 进 scope。
+- 命令与结果：`mvn -o clean test` → **BUILD SUCCESS**；**Tests run: 498, Failures: 0, Errors: 0, Skipped: 0**。
+
+**④ 未完成 / 待办（Step 2 尚未闭环）**
+- **真机验收未做**：模式① 图 + 模式② 语音（**须真人出声**验 ASR 质量，不能只看链路通）；音频 format 映射（mp3 已断言、m4a/aac 仅按官方示例推断）需真机校准。
+- **服务器发版押后**（用户裁定）：§7.5 手工发版单行命令已交付（git pull → `compose build app` → 锁 tag `TS` → `gate-check.sh prod`（`GATE_MANUAL_CONFIRMED="G5,G7"`）→ `backup-mysql.sh prod` → `up -d --no-deps --wait app` → 验证含 `docker exec s2s-app printenv | grep -c '^DASHSCOPE_API_KEY='` 期望 1）。⚠ `.env.prod` 改动须**重建容器**，`docker restart` 不生效。
+- **Step 1 真接口验收同步押后**：三条 curl（发码 → 登录固定码 888888 → `/ai/publish/parse` 带计时）+ 判读表（50301=Key 缺失 / 毫秒级+title 原样=仍是桩 / 百毫秒~数秒+title 改写=真通道）；验收后裁定 dry-run 回退 `true` 或保留（生成式AI「登记」属上线前闸门，默认建议回退）。
+
+**⑤ 会话属性**
+- B2-4 = 🟢 独立；本轮沿用 Step 1 会话续作 Step 2（用户裁定发布/验收移交后续）。
+
+**⑥ 文档回写**
+- 任务书 §零进度表：Step 1 验收行改「未做（发版押后）」、Step 2 行改 🟡 编码侧已完成、遗留前置 ①/④ 标 ✅；`说明文档.md` §三（Step 1 条修订 + Step 2 条改 ✅）；本记录（索引 + 本条）。**未改**：`Batch2-启动清单` / `决策登记表`（本轮无新口径裁定，独立 ASR 属实现结构选择）。
+
+**⑦ 知识沉淀表态**（编码规范 §8 要求）
+- **不需要**单独 `ce-compound` learning：本轮是「按官方文档接多模态部件 + 一次结构选择（独立 ASR）」；两条易踩坑（① 图片 commit 删原图 ⇒ AI 签名必须用 `display/` 展示键，已单源化；② ASR 独立调用保持四步管线口径、转写文本作 Step 4 溯源基准）已**就地写进代码注释与本条**。
 
 
 

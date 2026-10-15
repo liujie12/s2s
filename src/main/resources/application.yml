@@ -150,8 +150,11 @@ s2s:
     # 正则（同 OSS_ENDPOINT/OSS_BUCKET_NAME），本机/dev 在 dry-run 下无需该变量。
     # ⚠ 生效方式：本键从环境变量取，容器创建时注入（改 .env.<env> 后须重建容器，非 docker restart）。
     api-key: ${DASHSCOPE_API_KEY:}
-    # 模型名（Step 1 = 文本档）。默认 qwen-plus；Step 2 多模态（图/音）再评估切 qwen-omni-turbo。
+    # 文本模型名（Step 1）。默认 qwen-plus；scope 含 media 图或 ASR 转写时切下方 omni-model。
     model: ${AI_MODEL:qwen-plus}
+    # 多模态模型名（Step 2：图片入参 + ASR 转写）。官方现行文本分析档 qwen3.8-omni-flash
+    # （2026-10-15 文档口径；任务书原拟 qwen-omni-turbo 已换代）。图/音以 OSS 只读签名 URL 入参。
+    omni-model: ${AI_OMNI_MODEL:qwen3.8-omni-flash}
     # 上游 base URL（百炼 OpenAI 兼容，华北2·北京）。官方文档明确「Key 与 endpoint 必须同地域」，
     # 换地域须同时换 Key；建议域名可换为业务空间专属域名（{WorkspaceId}.cn-beijing.maas.aliyuncs.com）。
     endpoint: ${AI_ENDPOINT:https://dashscope.aliyuncs.com/compatible-mode/v1}
