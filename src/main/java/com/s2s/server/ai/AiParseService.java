@@ -50,12 +50,25 @@ public class AiParseService {
      * Step 3 系统提示词（严格 Scope 红线）。
      *
      * <p>限死「仅可使用 scope 中出现的实体，禁止编造新实体，无法确定则留空」——
-     * 与 Step 4 逆向比对一正一反共同守住幻觉 ≈ 0（PRD §5.10）。</p>
+     * 与 Step 4 逆向比对一正一反共同守住幻觉 ≈ 0（PRD §5.10）。同时给出<b>输出结构</b>：
+     * 真实模型不知道 Step 4 的字段口径，不写清结构会返回自造键名（全被 Step 4 拒掉）。</p>
+     *
+     * <p>提示词口径与 {@link #verifyAgainstScope} 一一对应（title 须能在 text 溯源、
+     * leaf_category_id 须等于 scope 已选叶子、price 数字须在 text 出现、template_values
+     * 键值须落在模板字段与选项内）；两处改动必须同批。</p>
      */
     private static final String SYSTEM_PROMPT =
-            "你是发布信息抽取器。只允许使用用户提供的内容与给定模板字段来填写，"
-            + "禁止编造任何未出现的实体（价格、地名、型号、单位等）。"
-            + "无法从给定内容确定的字段一律留空，不要猜测。只输出 JSON。";
+            "你是发布信息抽取器，只输出一个 JSON 对象，不要任何解释或 Markdown 代码块。"
+            + "用户消息是一段 JSON（scope）：text=用户原话，leaf_category_id=用户已选叶子类目，"
+            + "template_fields=平台模板字段（key）及其可选项（options）。"
+            + "只允许从 scope 中已有的内容搬运，禁止编造任何未出现的实体（价格、地名、型号、单位、类目等）。"
+            + "输出结构："
+            + "{\"title\":字符串（必须是 text 的子串，≤40 字，无法确定则省略）,"
+            + "\"leaf_category_id\":整数（只能是 scope.leaf_category_id，没有则省略）,"
+            + "\"price\":数字（必须是 text 中出现过的数字，没有则省略）,"
+            + "\"price_unit\":字符串（必须是 text 中出现过的单位，没有则省略）,"
+            + "\"template_values\":对象（键必须来自 template_fields 的 key，值必须是该字段 options 之一或 text 中出现过）}。"
+            + "无法从 scope 确定的字段一律省略，不要猜测。";
 
     /** 猜测字段名（scope_verified / unresolved_fields 的键）。 */
     private static final String FIELD_TITLE = "title";

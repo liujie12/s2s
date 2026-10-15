@@ -48,4 +48,13 @@ public final class NfrAi {
      * 仍属可接受等待；超时即回 {@code 50301}，客户端保留已输入内容。</p>
      */
     public static final int UPSTREAM_TIMEOUT_SECONDS = 10;
+
+    /**
+     * 上游大模型单次生成的输出 token 上限。
+     *
+     * <p><b>实现默认值</b>（PRD 未定义）：产物是一段小 JSON（标题/类目/价格/单位/模板字段），
+     * 512 token 对中文已绰绰有余；设上限只为封住「模型失控长输出」的时延与费用，不改变
+     * Step 4 逆向比对口径（越界字段照样被拒）。</p>
+     */
+    public static final int UPSTREAM_MAX_TOKENS = 512;
 }

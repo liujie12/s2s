@@ -143,6 +143,7 @@
 - 2026-10-12（B2-2 S1 双向推送 · 阶段 1：契约 + token 落库 + 站内写入 + 配额闸 + 下发编排）
 - 2026-10-12（[150] 算法备案评估 · 结论：触发备案 + 10 工作日窗口应对 + 自评估报告清单）
 - 2026-10-12（[151] B2-4 大模型备案评估 · 结论：分阶段（阶段① 调已备案 API 走「登记」/ 阶段② 微调 3B 预留））
+- 2026-10-15（B2-4 阶段① Step 1 · 通义千问真实通道落地 —— 文本通道）
 
 ---
 
@@ -7032,5 +7033,46 @@ printf '\nMYSQL_SSL_MODE=VERIFY_CA\nMYSQL_TLS_TRUSTSTORE_PASSWORD=%s\n' \
 - **竖屏锁行为验证**（真人横屏）—— 本批**唯一未闭环项**。
 - iOS 是否一并锁竖屏 —— 待裁定（本机不可验证，故未改）。
 - B2-4 Step 1 前置：**备案复核**（模型须仍在册）+ 模型档位 / 费用口径。
+
+### 2026-10-15（B2-4 阶段① Step 1 · 通义千问真实通道落地 —— 文本通道）
+
+> 摘要：按任务书 `docs/plans/2026-10-15-feat-b2-4-qwen-live-plan.md` 开 **Step 1（文本通道）**。`QwenAiProvider` 非 dry-run 分支由「**直接抛异常**」改为**真实 HTTP 调用**（百炼 OpenAI 兼容），配置三键补齐，提示词补输出结构，新增 8 例 HTTP 打桩单测。**门禁**：`mvn -o clean test` **BUILD SUCCESS**（全量）、`QwenAiProviderTest` **8/8**。**真机/接口验收（需真实 Key）与 Step 2（多模态）未做** —— 本批**无真实调用证据**（见 ⑤）。
+
+**① 官方口径核实（禁凭记忆）**
+- 以阿里云百炼《OpenAI Chat 接口兼容》官方文档（页面更新 **2026-10-13**）为准：`POST {BASE_URL}/chat/completions`；鉴权 `Authorization: Bearer $DASHSCOPE_API_KEY`；请求体 `{model, messages:[{role,content}]…}`；响应取 `choices[0].message.content`。
+- **跨地域调用**：官方明确 API Key 与 endpoint **必须同地域**，跨地域回 401 `invalid_api_key`；另建议迁至**业务空间专属域名**（`{WorkspaceId}.cn-beijing.maas.aliyuncs.com`），**现有 `dashscope.aliyuncs.com` 仍可用** ⇒ 故把 endpoint 设为**可配置**（`s2s.ai.endpoint`），不写死。
+- 两处 API 用法经 **Context7** 核实（非记忆）：Spring Boot 3.5 `ClientHttpRequestFactorySettings` / `ClientHttpRequestFactoryBuilder`（超时装配）、Spring 6.1+ `MockRestServiceServer.bindTo(RestClient.Builder)`（打桩方式）。
+
+**② 实现（后端 ai 域）**
+- `QwenAiProvider`：新增真分支 `generateByModel`（POST + Bearer + 取 `content`）；**先剥离 ```json 代码块/前后文字再交 Step 4**；失败（未配 Key / 非 2xx / 网络超时 / 响应非 JSON / 缺 content / content 无 JSON 对象）**统一 `IllegalStateException` → `50301`**（复用既有码，**不新增**），且**不静默回退 dry-run**。dry-run 分支原逻辑**逐字节保留**（仅抽为 `generateByRules`）。
+- **新增 `config/AiClientConfig`**：装配带 baseUrl + 连接/读取超时的 `RestClient` bean。**为何必须由 bean 装配**：测试要用 `MockRestServiceServer.bindTo(builder)` 换掉请求工厂，若 provider 自建并 `requestFactory(...)` 会把桩覆盖掉（顺序依赖、测试脆）。
+- `NfrAi` 增 `UPSTREAM_MAX_TOKENS = 512`（**实现默认值**，PRD 未定义；用途 = 封输出上限防失控长输出；与同类的 `UPSTREAM_TIMEOUT_SECONDS` 同惯例；服务端单端，无需 Dart 镜像）。
+- `AiParseService.SYSTEM_PROMPT` 补**输出结构**：原提示词只说「只输出 JSON」，**真实模型不知 Step 4 的字段口径**，会返回自造键名 → 全被 Step 4 拒掉（dry-run 无此问题）。新提示词与 `verifyAgainstScope` **逐字段对应**并注明「两处改动必须同批」。
+- **未动**：`AiProvider` 接口签名（Step 2 才需扩展）、`AiParseService` 四步管线与 Step 4 校验逻辑、对外契约、dry-run 默认值。
+
+**③ 配置（两处模板 + 一处口径订正）**
+- `src/main/resources/application.yml` 新增 `s2s.ai` 三键：`api-key: ${DASHSCOPE_API_KEY:}` / `model: ${AI_MODEL:qwen-plus}` / `endpoint: ${AI_ENDPOINT:https://dashscope.aliyuncs.com/compatible-mode/v1}`。**三者均带默认值** ⇒ 不匹配 `.env.example` 双向核对正则 ⇒ **仓库根 `.env.example` 保持零差异**（**已实测**：占位集合仍为原 11 个变量，未增未减）。
+- `deploy/config/app/application-prod.yml`：`dry-run` 注释由「真实 API 尚未接入、**不得**改 false」订正为「**通道已实现**；改 false 前须已注入 `DASHSCOPE_API_KEY`，且该变量**容器创建时**注入 ⇒ 须**重建容器**（`compose up -d --no-deps app`），`docker restart` 不生效」。
+- `deploy/env/.env.{dev,staging,prod}.example`：**删除死的 `LLM_API_KEY` / `LLM_API_BASE_URL`**（全仓无代码读取，且指向**已禁用的境外** `api.openai.com`），改为官方变量名 **`DASHSCOPE_API_KEY`**（dev 留空 = dry-run）。
+
+**④ 测试与门禁**
+- 新增 `src/test/java/com/s2s/server/ai/QwenAiProviderTest`（**8 例，HTTP 全打桩、不出网**）：真分支正常返回（并断言请求头 `Bearer` 与请求体含 `model`/`system`/`user`/scope 文本）、` ```json ` 代码块剥离、非 2xx、网络超时（`IOException` → `ResourceAccessException`）、响应缺 `content`、`content` 非 JSON 对象、**未配 Key 立即抛且不发请求**、**dry-run 回归不触发任何 HTTP**。
+- 命令与结果：`mvn -o clean test` → **BUILD SUCCESS**；`mvn -o test -Dtest=QwenAiProviderTest` → **Tests run: 8, Failures: 0, Errors: 0, Skipped: 0**。
+
+**⑤ 未完成 / 待办（Step 1 尚未闭环）**
+- **真机 / 接口验收（需真实 Key）未做** —— 任务书 §三.6 明确「需 key」；本次不持有 Key，故**无真实调用证据**（正式能力未经真实百炼验证）。
+- 前置三项仍待用户侧：① **备案复核**（模型须仍在国家网信办已备案清单内）；② **模型档位确认**（当前默认 `qwen-plus` **文本档**；Step 2 多模态再评估 `qwen-omni-turbo`）；③ **费用口径**（是否设日上限）。
+- **服务器 `.env.prod` 的 Key 变量名待核对**：2026-10-15 早先写入的 Key 当时无代码读；Step 1 生效要求其变量名恰为 **`DASHSCOPE_API_KEY`**，否则须改名（且该变量改动须**重建容器**）。
+- **Step 2（多模态）**：任务书 §四 —— 需扩 `generate` 签名 / scope 结构把**媒体传进作用域**（现签名拿不到媒体）+ 图/音走 **OSS 只读、短时效 GET 签名**（与上传 PUT 签名两套，**勿复用**）+ 模式② 需**真人出声**验识别质量。
+
+**⑥ 会话属性**
+- B2-4 = 🟢 独立；本轮即按任务书在新会话开工。**Step 2 仍建议新开会话**（任务书 §四自包含）。
+
+**⑦ 文档回写**
+- `说明文档.md`「三、当前节点」：B2-4 阶段① 条改 ✅（Step 1 编码侧完成）+ 新增 Step 2 条；本记录（索引 + 本条）。**未改**：`Batch2-启动清单` / `决策登记表`（本轮无新裁定，均为设计文档已定口径的落地）。
+
+**⑧ 知识沉淀表态**（编码规范 §8 要求）
+- **不需要**单独 `ce-compound` learning：本轮是「按已定口径接一条外部 HTTP 调用」，无新方法论增量；两处易踩坑（① `.env.<env>` 容器创建时注入 vs 挂载 yml 改完 restart 即生效；② `MockRestServiceServer` 打桩要求请求工厂由 bean 装配、provider 不得自建）已**就地写进代码注释与任务书**，属既有口径的复用而非新沉淀。
+
 
 
