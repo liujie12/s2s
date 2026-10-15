@@ -11,7 +11,7 @@
 | 步骤 | 状态 | 说明 |
 | --- | --- | --- |
 | **Step 1 · 文本通道** | 🟡 **编码侧已完成** | 真实 HTTP 调用已落地（`QwenAiProvider#generateByModel`，百炼 OpenAI 兼容 `/chat/completions` + Bearer）；配置三键已加（`s2s.ai.api-key`/`model`/`endpoint`）；提示词补输出结构；新增 `QwenAiProviderTest` 8 例（HTTP 打桩）。**门禁**：`mvn -o clean test` BUILD SUCCESS、8/8 |
-| Step 1 · 真机/接口验收 | ⬜ **未做（发版押后）** | `DASHSCOPE_API_KEY` 已注入服务器 `/mnt/s2s/deploy/env/.env.prod`；**发版 + curl 验收用户裁定押后**（§7.5 手工单行命令已交付） |
+| Step 1 · 真机/接口验收 | ✅ **已完成（2026-10-15）** | 发版走 §7.5 手工路径（Key 注入容器=1 / 健康 UP / 公网 `/categories/tree` code:0）；三 curl **一口气**验收 ⇒ **真通道确认**：`TIME_TOTAL=1218ms` + title 改写「楼下超市卖苹果」+ `price=5.0` + `scope_verified` 全 `user_input`、`unresolved_fields` 空。验收教训：验证码 TTL 300s 且错 5 次锁 15 分钟 ⇒ 发码/登录/parse 同一命令连跑；parse 必须带 UUID v4 `Idempotency-Key`；PS 5.1 中文 mojibake 属显示侧伪影（服务端 UTF-8 正确）。**dry-run 回退裁定待用户**（建议 Step 2 真机验收后回退） |
 | **Step 2 · 多模态** | 🟡 **编码侧已完成**（2026-10-15） | 媒体进 scope（`generate` 签名/对外契约不破）+ 图片/语音走 **OSS 只读 GET 签名**（`MediaService.signAiReadAccess`，归属校验防 IDOR；音频原键/图片 pass 展示键/图片 pending 原键）+ **独立 ASR**（`AiProvider.transcribe`，用户裁定）+ 多模态 content 数组双档（`s2s.ai.omni-model`，默认 **`qwen3.8-omni-flash`** —— 原拟 `qwen-omni-turbo` 已被官方换代）。**门禁**：`mvn -o clean test` BUILD SUCCESS、**498/498**（+15 例）。**真机验收未做**（模式② 须真人出声；音频 format 映射真机校准） |
 
 **Step 1 遗留前置（用户侧）**：① 备案复核 ✅ 已在册；② 模型档位确认（当前默认 `qwen-plus` 文本档；多模态档 `qwen3.8-omni-flash` 已配置化）；③ 费用口径（是否设日上限）；④ ✅ Key 已注入 `deploy/env/.env.prod`（变量名 `DASHSCOPE_API_KEY`，改动须**重建容器**，非 `docker restart`）。

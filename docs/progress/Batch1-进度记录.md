@@ -146,6 +146,7 @@
 - 2026-10-15（B2-4 阶段① Step 1 · 通义千问真实通道落地 —— 文本通道）
 - 2026-10-15（B2-6a 微信登录 · 开工包立档 + 微信开放平台资质申请方案）
 - 2026-10-15（B2-4 阶段① Step 2 · 多模态通道落地 —— 图片 OSS 只读签名 + 独立 ASR 语音转写）
+- 2026-10-15（B2-4 阶段① 发版 + Step 1 真接口验收 —— 真通道确认）
 
 ---
 
@@ -7155,6 +7156,35 @@ printf '\nMYSQL_SSL_MODE=VERIFY_CA\nMYSQL_TLS_TRUSTSTORE_PASSWORD=%s\n' \
 
 **⑦ 知识沉淀表态**（编码规范 §8 要求）
 - **不需要**单独 `ce-compound` learning：本轮是「按官方文档接多模态部件 + 一次结构选择（独立 ASR）」；两条易踩坑（① 图片 commit 删原图 ⇒ AI 签名必须用 `display/` 展示键，已单源化；② ASR 独立调用保持四步管线口径、转写文本作 Step 4 溯源基准）已**就地写进代码注释与本条**。
+
+---
+
+### 2026-10-15（B2-4 阶段① 发版 + Step 1 真接口验收 —— 真通道确认）
+
+> 摘要：用户裁定「先执行 B2-4 收尾，跑完发版和验收」。发版走《部署操作手册》§7.5 手工路径（含 Step 2 多模态代码随 `314ba16` 上台）；随后三 curl 一口气完成 Step 1 验收 —— **判读 = 真通道 ✅**（1218ms + title 被模型改写 + Step 4 溯源全 `user_input`）。验收过程排掉三坑（验证码 TTL / parse 幂等键 / PS 显示 mojibake），方法论已登记。**dry-run 回退裁定留用户**。
+
+**① 发版（服务器 /mnt/s2s，§7.5 手工六步）**
+- git pull 至 `314ba16` → `compose build app` → 锁 tag → `gate-check.sh prod`（`GATE_MANUAL_CONFIRMED="G5,G7"`）→ `backup-mysql.sh prod` → `up -d --no-deps --wait app`，全部通过。
+- 发版验证三连：`docker exec s2s-app printenv | grep -c '^DASHSCOPE_API_KEY='` = **1**（Key 随容器重建注入生效）/ 容器健康 **UP** / 公网 `/categories/tree` **code:0**。
+- 小坑：容器为 alpine 精简镜像**无 curl**，容器内健康检查改用手册 §7.4 权威命令 `busybox wget -qO-`（我当时给的 `docker exec curl` 版本不成立，已按手册订正）。
+
+**② Step 1 验收（三 curl 从本地 PowerShell 一口气跑通）**
+- **坑一 · 登录恒 40001（真实根因 = 验证码过期）**：先排掉两个假嫌疑 —— ① 粘贴弄坏 JSON（换 PS 原生 `Invoke-RestMethod` + `ConvertTo-Json` 程序化构造体仍 40001 ⇒ 与传输无关）；② `X-Device-Id` 非 UUID（代码核实 `UuidV4` 不合规则**跳过设备轨**，宽容不拒）。真因在 [AuthService#loginBySms](file:///d:/developer/code/aicoding/s2s/src/main/java/com/s2s/server/auth/AuthService.java)：**验证码错误/过期抛 40001**（javadoc 明写），而验证码 **TTL 仅 300 秒**，发码与登录之间隔了多轮对话早已过期；且**每次失败累计错误计数，已 4 次 —— 再错 1 次即 40105 锁 15 分钟**。补救 = 发码 + 登录 + parse **合并单命令**，几秒内一口气跑完 ⇒ `LOGIN_OK token_len=232`。
+- **坑二 · parse 40001**：`/ai/publish/parse` 带 `@Idempotent` ⇒ 必须带 **UUID v4** `Idempotency-Key` 头（与 2026-10-14 复核记录互证）；`/auth/*` 无此注解。
+- **验收输出判读（全部命中真通道判据）**：`TIME_TOTAL=1218ms`（非毫秒级 ⇒ 非桩）；`title` = 「楼下超市卖苹果」（**模型改写** —— 输入去掉「 5 元」）；`price=5.0` / `price_unit=元`；`scope_verified` 三字段全 `user_input`、`unresolved_fields` 空（Step 4 幻觉防线正常）；配额 `used:0 / limit:3`（未实名档）链路通。
+- **坑三 · 中文 mojibake**：title 显示为 `æ¥¼ä¸è¶…` 类乱码 —— 「楼」的 UTF-8 字节（E6 A5 BC）被 PS 5.1 按拉丁码页显示，**纯显示侧伪影**；服务端 UTF-8 正确（SSH curl `/categories/tree` 中文正常可交叉印证），App 端消费无影响。
+- **验收方法论（登记）**：短信验证码 5 分钟有效期 + 错 5 次锁 15 分钟 ⇒ **短信登录类验收必须发码/登录连跑同一命令**；PS 5.1 显示 UTF-8 JSON 为 mojibake，判读按字节溯源而非字面。
+
+**③ dry-run 回退裁定（待用户）**
+- 真通道已确认。**建议：暂留 `dry-run=false`** —— Step 2 真机验收（模式① 图 + 模式② 真人出声）依赖真通道且回退须重建容器；待真机验收完成后、**上架前**回退（生成式AI「登记」属上线前闸门，[152]/[151] 口径不变）。
+
+**④ 遗留**
+- Step 2 真机验收未做（模式① 图 + 模式② **真人出声**验 ASR 质量；m4a/aac format 真机校准）。
+- 费用口径（百炼是否设日上限）仍未裁定。
+- 2026-10-14 遗留「接真实 key 后回归 ASR 链路」→ 服务端链路本轮已通，**出声识别质量**仍待真机。
+
+**⑤ 文档回写**
+- 任务书 §零：Step 1 验收行 ✅；`说明文档.md` §三 Step 1 条更新验收结论；本记录（索引 + 本条）。**未改**：`Batch2-启动清单` / `决策登记表`（无新口径裁定，dry-run 回退为既有闸门口径的执行时机问题）。
 
 
 
