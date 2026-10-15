@@ -199,6 +199,7 @@ class QwenAiProviderTest {
                 .andExpect(content().string(containsString("\"model\":\"" + OMNI_MODEL + "\"")))
                 .andExpect(content().string(containsString("\"type\":\"image_url\"")))
                 .andExpect(content().string(containsString("https://oss.test/signed")))
+                .andExpect(content().string(containsString("\"enable_thinking\":false")))
                 .andRespond(withSuccess(chatCompletion("{\"title\":\"转让手机\"}"),
                         MediaType.APPLICATION_JSON));
 
@@ -237,6 +238,7 @@ class QwenAiProviderTest {
                 .andExpect(content().string(containsString("\"model\":\"" + OMNI_MODEL + "\"")))
                 .andExpect(content().string(containsString("\"type\":\"input_audio\"")))
                 .andExpect(content().string(containsString("\"format\":\"wav\"")))
+                .andExpect(content().string(containsString("\"enable_thinking\":false")))
                 .andRespond(withSuccess(chatCompletion("楼下超市苹果五元"),
                         MediaType.APPLICATION_JSON));
 

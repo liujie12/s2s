@@ -60,6 +60,17 @@ public class QwenAiProvider implements AiProvider {
     private static final String PART_TYPE_IMAGE = "image_url";
     private static final String PART_TYPE_AUDIO = "input_audio";
 
+    /**
+     * omni 档是否开启思考（官方 {@code enable_thinking} 参数，非 OpenAI 标准参数）。
+     *
+     * <p>固定 {@code false}：Qwen3.8-Omni-Flash 属混合思考模式且<b>默认开启思考</b>
+     * （官方《深度思考》《Qwen-Omni》文档，2026-10-15 口径），带思考的看图解析耗时
+     * 超过 {@link NfrAi#UPSTREAM_TIMEOUT_SECONDS}（实测超时 → 50301，真机模式① 复现）；
+     * 关闭后实测 2.1s 内返回且产物 JSON 正常。官方 Qwen-Omni 文档明确该模型
+     * 「支持通过 enable_thinking 开启或关闭思考」，参数合规性已核实。</p>
+     */
+    private static final boolean OMNI_ENABLE_THINKING = false;
+
     /** 转写指令（模式② ASR；只要求逐字转写，不夹带生成任务，避免引入转写外产物）。 */
     private static final String TRANSCRIBE_INSTRUCTION =
             "请将这段语音逐字转写为文字，仅输出转写文本，不要输出任何解释。";
@@ -282,6 +293,7 @@ public class QwenAiProvider implements AiProvider {
             imagePart.put("type", PART_TYPE_IMAGE);
             imagePart.putObject("image_url").put("url", url);
         }
+        root.put("enable_thinking", OMNI_ENABLE_THINKING);
         root.put("max_tokens", NfrAi.UPSTREAM_MAX_TOKENS);
         return objectMapper.writeValueAsString(root);
     }
@@ -309,6 +321,7 @@ public class QwenAiProvider implements AiProvider {
         ObjectNode inputAudio = audioPart.putObject("input_audio");
         inputAudio.put("data", audioUrl);
         inputAudio.put("format", format);
+        root.put("enable_thinking", OMNI_ENABLE_THINKING);
         root.put("max_tokens", NfrAi.UPSTREAM_MAX_TOKENS);
         return objectMapper.writeValueAsString(root);
     }
