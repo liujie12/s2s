@@ -7,6 +7,7 @@ import com.s2s.server.auth.dto.LoginResult;
 import com.s2s.server.auth.dto.RefreshResult;
 import com.s2s.server.auth.dto.SendCodeRequest;
 import com.s2s.server.auth.dto.SendCodeResult;
+import com.s2s.server.auth.dto.WechatLoginRequest;
 import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
 import com.s2s.server.common.web.AuthContext;
@@ -86,6 +87,26 @@ public class AuthController {
     public LoginResult smsLogin(@Valid @RequestBody LoginRequest request,
             HttpServletRequest httpRequest) {
         return authService.loginBySms(request, httpRequest.getHeader(X_DEVICE_ID_HEADER));
+    }
+
+    /**
+     * 微信授权登录（{@code POST /auth/wechat/login}，B2-6a，含首次自动注册）。
+     *
+     * <p>客户端经微信 SDK 拉起授权后拿到一次性 {@code code}（最长 64 字符），
+     * 服务端向微信服务器交换 {@code openid}（身份归一化键）+ {@code access_token}，
+     * 再用 openid 查/建 {@code user_identity}（identity_type=wechat），未命中则自动注册。
+     * Token 签发与短信登录完全复用 {@link JwtIssuer}。</p>
+     *
+     * @param request     登录请求（code + agreed + 可选 platform/push_token）
+     * @param httpRequest 当前 HTTP 请求（取 X-Device-Id 头作设备指纹）
+     * @return {@link LoginResult}（token + expire_at + is_new_user + user）
+     * @throws BizException agreed=false → 40002；code 无效/过期 → 40001；
+     *                     微信服务器不可用 → 50302；凭据未配置 → 50001
+     */
+    @PostMapping("/auth/wechat/login")
+    public LoginResult wechatLogin(@Valid @RequestBody WechatLoginRequest request,
+            HttpServletRequest httpRequest) {
+        return authService.loginByWechat(request, httpRequest.getHeader(X_DEVICE_ID_HEADER));
     }
 
     /**

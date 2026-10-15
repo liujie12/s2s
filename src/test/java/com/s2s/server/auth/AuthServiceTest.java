@@ -88,6 +88,9 @@ class AuthServiceTest {
     /** mock 的 JWT 验签器（续期验签允许过期）。 */
     private JwtVerifier jwtVerifier;
 
+    /** mock 的微信 code 交换器（短信登录测试不触发，仅作构造注入占位）。 */
+    private WechatCodeVerifier wechatCodeVerifier;
+
     /** 真实 ObjectMapper（反序列化 SmsCode）。 */
     private ObjectMapper objectMapper;
 
@@ -111,11 +114,13 @@ class AuthServiceTest {
         deviceMapper = mock(DeviceMapper.class);
         jwtIssuer = mock(JwtIssuer.class);
         jwtVerifier = mock(JwtVerifier.class);
+        wechatCodeVerifier = mock(WechatCodeVerifier.class);
         objectMapper = new ObjectMapper().findAndRegisterModules();
         List<Pepper> peppers = List.of(
                 Pepper.of(1, "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"));
         authService = new AuthService(redisTemplate, rateLimiter, objectMapper, peppers,
-                cryptoFacade, userMapper, userIdentityMapper, deviceMapper, jwtIssuer, jwtVerifier);
+                cryptoFacade, userMapper, userIdentityMapper, deviceMapper, jwtIssuer, jwtVerifier,
+                wechatCodeVerifier);
     }
 
     /**

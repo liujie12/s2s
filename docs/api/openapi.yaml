@@ -290,6 +290,67 @@ paths:
         '429': { $ref: '#/components/responses/TooManyRequests' }
         '500': { $ref: '#/components/responses/InternalError' }
 
+  /auth/wechat/login:
+    post:
+      tags: [auth]
+      summary: 微信授权登录（含首次自动注册）
+      operationId: wechatLogin
+      x-batch: Batch2
+      x-domain: auth
+      security: []
+      description: |
+        客户端经微信 SDK 拉起授权后拿到一次性 code（最长 64 字符），服务端向微信服务器
+        交换 openid（HTTPS GET api.weixin.qq.com/sns/oauth2/access_token），openid 不存在
+        则自动注册（user + user_identity，同事务）。Token 签发与短信登录完全复用 JwtIssuer
+        （单 Token 模型，30 天有效期）。
+
+        错误码不新增（遵循编码红线"不新增错误码"）：凭据未配置 → 50001 INTERNAL_ERROR；
+        code 无效/过期 → 40001 PARAM_INVALID；微信服务器不可用 → 50302 CERT_UNAVAILABLE。
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/XDeviceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, agreed]
+              properties:
+                code:
+                  type: string
+                  maxLength: 64
+                  description: 微信授权 code（一次性，来自客户端微信 SDK）
+                agreed:
+                  type: boolean
+                  description: 必为 true，缺或 false → 40002 AGREEMENT_REQUIRED
+                platform:
+                  type: string
+                  enum: [android, ios]
+                  description: 可选，设备 OS（写入 device.platform）
+                push_token:
+                  type: string
+                  maxLength: 128
+                  description: 可选，推送 token（写入 device.push_token）
+      responses:
+        '200':
+          description: 登录成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/LoginResult'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+
   /auth/token/refresh:
     post:
       tags: [auth]

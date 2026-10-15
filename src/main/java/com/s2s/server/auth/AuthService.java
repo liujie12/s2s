@@ -8,6 +8,7 @@ import com.s2s.server.auth.dto.LoginRequest;
 import com.s2s.server.auth.dto.LoginResult;
 import com.s2s.server.auth.dto.MyProfile;
 import com.s2s.server.auth.dto.RefreshResult;
+import com.s2s.server.auth.dto.WechatLoginRequest;
 import com.s2s.server.auth.entity.DeviceEntity;
 import com.s2s.server.auth.entity.UserEntity;
 import com.s2s.server.auth.entity.UserIdentityEntity;
@@ -32,6 +33,8 @@ import java.util.List;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * 认证服务（[123] U3 骨架 → U5 实现 {@code loginBySms}）。
@@ -62,8 +65,13 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class AuthService {
 
+    private static final Logger log = LoggerFactory.getLogger(AuthService.class);
+
     /** 身份类型：手机号（Batch1 唯一身份来源）。 */
     private static final String IDENTITY_TYPE_PHONE = "phone";
+
+    /** 身份类型：微信 openid（Batch2 打开；code 换 openid 后以此为身份归一化键）。 */
+    private static final String IDENTITY_TYPE_WECHAT = "wechat";
 
     /** 实名状态默认值：未实名（Batch1 无实名流程，恒 {@code none}）。 */
     private static final String REALNAME_STATUS_NONE = "none";
@@ -71,11 +79,17 @@ public class AuthService {
     /** 默认搜索半径档（详设 §5.1 user 表默认值 {@code 3}）。 */
     private static final String DEFAULT_RADIUS = "3";
 
-    /** 首次注册的默认昵称前缀（用户 2026-09-29 裁定：昵称 = 前缀 + 手机号后 4 位）。 */
-    private static final String DEFAULT_NICKNAME_PREFIX = "用户";
+    /** 首次注册的默认昵称前缀（手机号登录，用户 2026-09-29 裁定）。 */
+    private static final String DEFAULT_NICKNAME_PREFIX_PHONE = "用户";
 
-    /** 默认昵称取手机号末位位数（与 {@link #DEFAULT_NICKNAME_PREFIX} 合成为「用户8000」）。 */
+    /** 默认昵称取手机号末位位数（与 {@link #DEFAULT_NICKNAME_PREFIX_PHONE} 合成为「用户8000」）。 */
     private static final int DEFAULT_NICKNAME_PHONE_SUFFIX_LENGTH = 4;
+
+    /** 首次注册的默认昵称前缀（微信登录）。 */
+    private static final String DEFAULT_NICKNAME_PREFIX_WECHAT = "微信用户";
+
+    /** 微信登录默认昵称取 openid 末位位数（openid 为 28 位，取后 6 位足够区分）。 */
+    private static final int DEFAULT_NICKNAME_WECHAT_SUFFIX_LENGTH = 6;
 
     /** Redis 字符串模板（验证码读取、失败计数清除）。 */
     private final StringRedisTemplate redisTemplate;
@@ -107,6 +121,9 @@ public class AuthService {
     /** JWT 验签器（续期验签允许过期）。 */
     private final JwtVerifier jwtVerifier;
 
+    /** 微信开放平台 code→openid 交换组件（B2-6a）。 */
+    private final WechatCodeVerifier wechatCodeVerifier;
+
     /**
      * 构造认证服务，注入 Redis、限频、加解密、持久层与 JWT 签发器。
      *
@@ -120,11 +137,13 @@ public class AuthService {
      * @param deviceMapper       设备 Mapper
      * @param jwtIssuer          JWT 签发器
      * @param jwtVerifier        JWT 验签器（续期验签允许过期）
+     * @param wechatCodeVerifier 微信 code→openid 交换组件（B2-6a）
      */
     public AuthService(StringRedisTemplate redisTemplate, RateLimiter rateLimiter,
             ObjectMapper objectMapper, List<Pepper> peppers, CryptoFacade cryptoFacade,
             UserMapper userMapper, UserIdentityMapper userIdentityMapper,
-            DeviceMapper deviceMapper, JwtIssuer jwtIssuer, JwtVerifier jwtVerifier) {
+            DeviceMapper deviceMapper, JwtIssuer jwtIssuer, JwtVerifier jwtVerifier,
+            WechatCodeVerifier wechatCodeVerifier) {
         this.redisTemplate = redisTemplate;
         this.rateLimiter = rateLimiter;
         this.objectMapper = objectMapper;
@@ -135,6 +154,7 @@ public class AuthService {
         this.deviceMapper = deviceMapper;
         this.jwtIssuer = jwtIssuer;
         this.jwtVerifier = jwtVerifier;
+        this.wechatCodeVerifier = wechatCodeVerifier;
     }
 
     /**
@@ -165,17 +185,51 @@ public class AuthService {
         clearLoginFailure(phone);
         deleteCode(phone);
 
-        UserEntity user = resolveUser(phone);
-        boolean isNewUser = user == null;
-        if (isNewUser) {
-            user = register(phone);
+        ResolveResult resolve = resolveOrRegisterByIdentity(IDENTITY_TYPE_PHONE, phone);
+        writeDevice(resolve.user().getId(), deviceId, request.platform(), request.pushToken());
+
+        String token = jwtIssuer.issue(resolve.user().getId());
+        Instant expireAt = Instant.now().plus(Duration.ofDays(NfrAuth.TOKEN_TTL_DAYS));
+        return new LoginResult(token, expireAt, resolve.isNewUser(), MyProfile.from(resolve.user()));
+    }
+
+    /**
+     * 微信授权登录（含首次自动注册，B2-6a）。
+     *
+     * <p>执行顺序：
+     * <ol>
+     *   <li>{@code agreed=false} → 40002（协议门禁与短信登录同口径）；</li>
+     *   <li>调 {@link WechatCodeVerifier#verify(String)} 用客户端传来的 {@code code}
+     *       向微信服务器交换 {@code openid}（微信 API 内部错误 → 50302）；</li>
+     *   <li>用 {@code openid} 作为身份归一化键，复用 {@link #resolveOrRegisterByIdentity}
+     *       查/建 {@code user_identity}（identity_type=wechat），未命中则自动注册；</li>
+     *   <li>写 {@code device}；</li>
+     *   <li>签发 JWT，返回 {@link LoginResult}。</li>
+     * </ol>
+     *
+     * <p>首次注册默认昵称 = 「微信用户」 + openid 后 6 位（如 {@code 微信用户a1b2c3}）；
+     * 微信昵称/头像待 access_token 可选拉取，当前 B2-6a 只保证登录闭环。</p>
+     *
+     * @param request  登录请求（code + agreed + 可选 platform/push_token）
+     * @param deviceId X-Device-Id 头值（可能为 null 或非法，写 device 用）
+     * @return {@link LoginResult}（token + expire_at + is_new_user + user）
+     * @throws BizException agreed=false → 40002；code 无效/过期 → 40001；
+     *                     微信服务器不可用 → 50302；凭据未配置 → 50001
+     */
+    @Transactional
+    public LoginResult loginByWechat(WechatLoginRequest request, String deviceId) {
+        if (!Boolean.TRUE.equals(request.agreed())) {
+            throw BizException.of(ErrorCode.AGREEMENT_REQUIRED);
         }
 
-        writeDevice(user.getId(), deviceId, request.platform(), request.pushToken());
+        WechatCodeVerifier.WechatTokenResult token = wechatCodeVerifier.verify(request.code());
 
-        String token = jwtIssuer.issue(user.getId());
+        ResolveResult resolve = resolveOrRegisterByIdentity(IDENTITY_TYPE_WECHAT, token.openid());
+        writeDevice(resolve.user().getId(), deviceId, request.platform(), request.pushToken());
+
+        String jwt = jwtIssuer.issue(resolve.user().getId());
         Instant expireAt = Instant.now().plus(Duration.ofDays(NfrAuth.TOKEN_TTL_DAYS));
-        return new LoginResult(token, expireAt, isNewUser, MyProfile.from(user));
+        return new LoginResult(jwt, expireAt, resolve.isNewUser(), MyProfile.from(resolve.user()));
     }
 
     /**
@@ -312,68 +366,125 @@ public class AuthService {
     }
 
     /**
-     * 手机号盲索引解析用户：HMAC 盲索引查 {@code user_identity}，命中则回表查
-     * {@code user}。未命中返回 {@code null}（调用方据此走注册）。
+     * 按身份类型 + 明文归一化键 查/建用户：HMAC 盲索引查 {@code user_identity}，命中则回表查
+     * {@code user}；未命中则自动注册（建 {@code user} + {@code user_identity} 同事务）。
      *
-     * @param phone 手机号明文
-     * @return {@link UserEntity} 已注册用户；未命中返回 {@code null}
+     * <p>是短信登录与微信登录的共享主路径（loginBySms / loginByWechat 共用）。
+     * 盲索引/密文范式完全复用：{@code identity_hash}（HMAC-SHA256+pepper）承载
+     * {@code uk_type_hash} 等值查询；{@code identity_value_enc}（AES-GCM-256 随机 IV）
+     * 仅解密展示；AAD = {@code user_id + identity_type}，故写入顺序必须先 user 后 identity。</p>
+     *
+     * @param identityType 身份类型（{@code phone} / {@code wechat}；Batch1 只写 phone，
+     *                      Batch2 打开 wechat）
+     * @param identityValue 身份归一化明文键（手机号明文 / 微信 openid）
+     * @return {@link ResolveResult} 含 {@code user}（已存在或新注册）+ {@code isNewUser}
      */
-    private UserEntity resolveUser(String phone) {
-        byte[] phoneHash = BlindIndex.hmac(phone, peppers);
+    private ResolveResult resolveOrRegisterByIdentity(String identityType, String identityValue) {
+        byte[] identityHash = BlindIndex.hmac(identityValue, peppers);
         UserIdentityEntity identity = userIdentityMapper.selectOne(
                 new QueryWrapper<UserIdentityEntity>()
-                        .eq("identity_hash", phoneHash)
-                        .eq("identity_type", IDENTITY_TYPE_PHONE));
-        if (identity == null) {
-            return null;
+                        .eq("identity_hash", identityHash)
+                        .eq("identity_type", identityType));
+        if (identity != null) {
+            UserEntity user = userMapper.selectById(identity.getUserId());
+            if (user != null) {
+                return new ResolveResult(user, false);
+            }
+            // 身份行孤儿（user 被删）—— 按新用户处理，重建 user 并复用原 identity 行
+            log.warn("user_identity 指向不存在的 user_id={}（identity_type={}），重建 user 并复用 identity",
+                    identity.getUserId(), identityType);
         }
-        return userMapper.selectById(identity.getUserId());
+
+        UserEntity user = createNewUser(identityType, identityValue);
+
+        CryptoFacade.EncryptResult encrypted = cryptoFacade.encrypt(
+                identityValue, String.valueOf(user.getId()) + identityType);
+
+        UserIdentityEntity newIdentity = new UserIdentityEntity();
+        newIdentity.setUserId(user.getId());
+        newIdentity.setIdentityType(identityType);
+        newIdentity.setIdentityHash(identityHash);
+        newIdentity.setIdentityValueEnc(encrypted.ciphertext());
+        newIdentity.setKeyVersion(encrypted.keyVersion());
+        userIdentityMapper.insert(newIdentity);
+
+        return new ResolveResult(user, true);
     }
 
     /**
-     * 自动注册：建 {@code user}（脱敏手机号 + 默认昵称/实名/半径档）与
-     * {@code user_identity}（盲索引 + AEAD 密文 + 版本号，AAD = user_id + identity_type）。
-     * 两步在同一事务内（由 {@link #loginBySms} 的 {@code @Transactional} 保证）。
+     * 自动注册的 user 行写入：不同身份类型生成不同的默认昵称与 phoneMask。
      *
-     * @param phone 手机号明文
-     * @return {@link UserEntity} 新建的用户
+     * <p>两种身份类型的默认昵称口径：
+     * <ul>
+     *   <li>phone = 「用户」 + 手机号后 4 位（如 {@code 用户8000}，2026-09-29 用户裁定）</li>
+     *   <li>wechat = 「微信用户」 + openid 后 6 位（如 {@code 微信用户a1b2c3}）</li>
+     * </ul>
+     * phoneMask 对 wechat 身份类型复用「用户 + openid 后 6 位」（展示占位），
+     * 后续可按 scope=snsapi_userinfo 拉取真实头像/昵称再更新。</p>
+     *
+     * @param identityType  身份类型（{@code phone} / {@code wechat}）
+     * @param identityValue 身份明文（手机号 / openid）
+     * @return 新建的 UserEntity（已 insert，id 已赋值）
      */
-    private UserEntity register(String phone) {
+    private UserEntity createNewUser(String identityType, String identityValue) {
         UserEntity user = new UserEntity();
-        user.setPhoneMask(maskPhone(phone));
-        user.setNickname(defaultNickname(phone));
+        user.setPhoneMask(defaultDisplayMask(identityType, identityValue));
+        user.setNickname(defaultNickname(identityType, identityValue));
         user.setRealnameStatus(REALNAME_STATUS_NONE);
         user.setDefaultRadius(DEFAULT_RADIUS);
         userMapper.insert(user);
-
-        byte[] phoneHash = BlindIndex.hmac(phone, peppers);
-        CryptoFacade.EncryptResult encrypted =
-                cryptoFacade.encrypt(phone, String.valueOf(user.getId()) + IDENTITY_TYPE_PHONE);
-
-        UserIdentityEntity identity = new UserIdentityEntity();
-        identity.setUserId(user.getId());
-        identity.setIdentityType(IDENTITY_TYPE_PHONE);
-        identity.setIdentityHash(phoneHash);
-        identity.setIdentityValueEnc(encrypted.ciphertext());
-        identity.setKeyVersion(encrypted.keyVersion());
-        userIdentityMapper.insert(identity);
-
         return user;
     }
 
     /**
-     * 生成首次注册的默认昵称：「用户」+ 手机号后 4 位（如 {@code 用户8000}）。
+     * 不同身份类型的默认展示掩码（user.phoneMask 列）。
      *
-     * <p>为什么在应用层生成而非依赖列默认值：{@code user.nickname} 按设计为
-     * {@code NOT NULL} 且<b>无</b>默认值（数据库设计文档 §3.1），且昵称属对外视图
-     * 白名单字段，必须由注册流程显式给定；口径由用户 2026-09-29 裁定。</p>
-     *
-     * @param phone 手机号明文（已通过契约 {@code ^1[3-9]\d{9}$} 校验，长度恒 11）
-     * @return {@link String} 默认昵称
+     * @param identityType  身份类型（{@code phone} / {@code wechat}）
+     * @param identityValue 身份明文（手机号 / openid）
+     * @return 脱敏展示串
      */
-    private String defaultNickname(String phone) {
-        return DEFAULT_NICKNAME_PREFIX
-                + phone.substring(phone.length() - DEFAULT_NICKNAME_PHONE_SUFFIX_LENGTH);
+    private String defaultDisplayMask(String identityType, String identityValue) {
+        if (IDENTITY_TYPE_PHONE.equals(identityType)) {
+            return maskPhone(identityValue);
+        }
+        // wechat：复用默认昵称（openid 后 6 位）作为 phoneMask 列的占位展示
+        String suffix = identityValue.substring(Math.max(0, identityValue.length() - DEFAULT_NICKNAME_WECHAT_SUFFIX_LENGTH));
+        return DEFAULT_NICKNAME_PREFIX_WECHAT + suffix;
+    }
+
+    /**
+     * 不同身份类型的默认昵称。
+     *
+     * @param identityType  身份类型（{@code phone} / {@code wechat}）
+     * @param identityValue 身份明文（手机号 / openid）
+     * @return 默认昵称
+     */
+    private String defaultNickname(String identityType, String identityValue) {
+        if (IDENTITY_TYPE_PHONE.equals(identityType)) {
+            return DEFAULT_NICKNAME_PREFIX_PHONE
+                    + identityValue.substring(identityValue.length() - DEFAULT_NICKNAME_PHONE_SUFFIX_LENGTH);
+        }
+        String suffix = identityValue.substring(Math.max(0, identityValue.length() - DEFAULT_NICKNAME_WECHAT_SUFFIX_LENGTH));
+        return DEFAULT_NICKNAME_PREFIX_WECHAT + suffix;
+    }
+
+    /**
+     * 手机号脱敏：前 3 位 + {@code ****} + 后 4 位（如 {@code 138****8000}）。
+     *
+     * @param phone 11 位手机号明文
+     * @return {@link String} 脱敏串（仅展示，不参与任何查询）
+     */
+    private String maskPhone(String phone) {
+        return phone.substring(0, 3) + "****" + phone.substring(7);
+    }
+
+    /**
+     * resolveOrRegisterByIdentity 返回值（值对象）。
+     *
+     * @param user     已存在或新注册的 UserEntity
+     * @param isNewUser true 表示本次同时完成注册（客户端应引导完善资料）
+     */
+    private record ResolveResult(UserEntity user, boolean isNewUser) {
     }
 
     /**
@@ -383,13 +494,6 @@ public class AuthService {
      * + {@code push_token}；本接口写的是 {@code push_platform}（推送通道）+ {@code push_token}。
      * 二者写的是**不同列**，混用会让「设备是什么系统」与「下发走哪家」互相顶替
      * （故 {@code writeDevice} 刻意不碰 {@code push_platform}，本方法刻意不碰 {@code platform}）。</p>
-     *
-     * <p><b>与登录的容错口径不同</b>：登录无合法 {@code X-Device-Id} 时**跳过写入**（不拦截登录）；
-     * 本接口的设备指纹是唯一判据（没有它无法定位 {@code device} 行），缺失/非法 → {@code 40001}。</p>
-     *
-     * <p><b>新增行时的 {@code platform} 兜底</b>：该列 {@code NOT NULL}，而本接口入参不含 OS，
-     * 故按推送通道推导（{@code apns}→ios，其余→android，见 {@link PushPlatform#osPlatform()}）。
-     * 正常路径设备行已由登录写入，此兜底仅在行缺失时生效。</p>
      *
      * @param userId      当前登录用户 ID（调用方保证非 null）
      * @param deviceId    {@code X-Device-Id} 头值（设备指纹）
@@ -415,7 +519,6 @@ public class AuthService {
         if (existing == null) {
             DeviceEntity device = new DeviceEntity();
             device.setUserId(userId);
-            // platform 为 NOT NULL：本接口无 OS 入参，按通道兜底推导（见方法注释）。
             device.setPlatform(platform.osPlatform());
             device.setPushToken(token);
             device.setPushPlatform(platform.wire());
@@ -436,21 +539,12 @@ public class AuthService {
      * 写设备：X-Device-Id 合法则按指纹查/插（命中更新 push_token/platform/last_active_at），
      * 缺失或非法则<b>不写 device 行</b>（KTD3：不拦截登录，登录照常成功）。
      *
-     * <p><b>为什么无合法指纹时不建行</b>：{@code device.fingerprint} 是
-     * {@code NOT NULL + UNIQUE} 列，而文档定义它是「客户端首启生成的 UUID v4」
-     * （PRD §12.1 / openapi {@code X-Device-Id}）。没有合法头就没有设备身份：
-     * 塞常量占位会撞 {@code uk_fingerprint} 唯一键（第二个匿名客户端仍 50001），
-     * 塞随机 UUID 则每次登录新增一行且不可复认（行爆炸）。{@code device} 表语义是
-     * 「设备指纹 / push_token」载体，无指纹即无设备行可言 —— 故跳过写入，
-     * 匿名客户端的限频由 IP 维承担（PRD §7.7 三维限频，IP 维独立生效）。</p>
-     *
      * @param userId    用户 ID
      * @param deviceId  X-Device-Id 头值（可能 null/非法）
      * @param platform  平台（可空）
      * @param pushToken 推送 token（可空）
      */
     private void writeDevice(Long userId, String deviceId, String platform, String pushToken) {
-        // 无合法指纹：不拦截登录，也不建 device 行（理由见方法注释）
         if (deviceId == null || !UuidV4.isValid(deviceId)) {
             return;
         }
@@ -472,16 +566,6 @@ public class AuthService {
             existing.setLastActiveAt(LocalDateTime.now());
             deviceMapper.updateById(existing);
         }
-    }
-
-    /**
-     * 手机号脱敏：前 3 位 + {@code ****} + 后 4 位（如 {@code 138****8000}）。
-     *
-     * @param phone 11 位手机号明文
-     * @return {@link String} 脱敏串（仅展示，不参与任何查询）
-     */
-    private String maskPhone(String phone) {
-        return phone.substring(0, 3) + "****" + phone.substring(7);
     }
 
     /**

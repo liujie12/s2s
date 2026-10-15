@@ -70,6 +70,10 @@ import org.springframework.validation.annotation.Validated;
  *                           未注入/占位未解析/空白统一归一为 null，[123] 落地时收紧为硬守卫
  * @param amapKey            高德地图 Key（逆地理/POI 服务凭证）；本条目可选绑定（OQ-3），
  *                           未注入/占位未解析/空白统一归一为 null，[126] 落地时收紧为硬守卫
+ * @param wechatAppId        微信开放平台移动应用 AppID（B2-6a 微信登录 code→openid 交换凭证）；
+ *                           本条目可选绑定（资质审批中，凭据未到位），未注入/占位未解析/空白统一归一为 null
+ * @param wechatAppSecret    微信开放平台移动应用 AppSecret（B2-6a 微信登录 code→openid 交换凭证）；
+ *                           本条目可选绑定（资质审批中，凭据未到位），未注入/占位未解析/空白统一归一为 null
  */
 @Validated
 @ConfigurationProperties(prefix = "s2s.secrets")
@@ -82,7 +86,9 @@ public record SecretsProperties(
         @NotBlank String ossAccessKeySecret,
         @NotBlank String jwtSecret,
         String smsKey,
-        String amapKey) {
+        String amapKey,
+        String wechatAppId,
+        String wechatAppSecret) {
 
     /** JWT HS256 签名密钥最小原始长度（字节）= 256 bit。RFC 7518 §3.2 要求 HS256 密钥
      * 位宽不小于哈希输出（256 bit = 32 字节），jjwt 运行期对短密钥抛
@@ -107,6 +113,8 @@ public record SecretsProperties(
         requireMinBytes(jwtSecret, JWT_SECRET_MIN_BYTES, "JWT_SECRET");
         smsKey = normalizeOptional(smsKey);
         amapKey = normalizeOptional(amapKey);
+        wechatAppId = normalizeOptional(wechatAppId);
+        wechatAppSecret = normalizeOptional(wechatAppSecret);
     }
 
     /**
