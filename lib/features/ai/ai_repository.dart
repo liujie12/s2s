@@ -34,6 +34,9 @@ class AiRepository {
   /// 返回：[AiParseResultDto]（四件套猜测 + 来源 + 未解析字段 + 配额快照）。
   /// 抛出：信封业务错误（40001 参数非法 / 40101 未登录 / 42901 配额耗尽 /
   ///   50301 AI 不可用）与传输错误归一后的异常。
+  ///
+  /// 读超时按 [aiParseOptions] 的 AI 专用收紧档单独覆盖（理由见该函数与
+  /// `NfrNetwork.aiParseReadTimeoutSec`）。
   Future<AiParseResultDto> parse(
     AiParseRequestDto req, {
     String? interactionId,
@@ -41,7 +44,7 @@ class AiRepository {
     final response = await _dio.post<Object?>(
       '/ai/publish/parse',
       data: req.toJson(),
-      options: _interactionOptions(interactionId),
+      options: aiParseOptions(interactionId: interactionId),
     );
     return AiParseResultDto.fromJson(response.data);
   }

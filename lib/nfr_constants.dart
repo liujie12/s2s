@@ -261,6 +261,15 @@ class NfrNetwork {
   /// 10s 才超时时用户早已离开页面。按请求 Options 覆盖，不改全局读取超时。
   static const int mapPinsReadTimeoutSec = 3;
 
+  /// `/ai/publish/parse` 读取超时（秒，收紧档）。
+  ///
+  /// 收紧理由：AI 带图解析是**用户主动等待**的同步交互，客户端不应比用户有耐心 ——
+  /// 骨架屏在 `kParsingSlowSeconds`（domain/ai_guess.dart）秒后已改文案为
+  /// 「稍等，马上好」，再让用户干等 10s 等于把「慢」暴露成「卡死」。按请求 Options
+  /// 覆盖，不改全局读取超时；后端已同步把思考档降到实测最快档
+  /// （`reasoning_effort=none`）+ 给上游传缩略图，确保端到端留有余量。
+  static const int aiParseReadTimeoutSec = 5;
+
   /// 全链路重试总次数（首发之外）。详设 §14.1（详设:1386）。
   ///
   /// 是**全链路总数**，不是每层 2 次 —— 网络层与业务层双重试会把次数放大成

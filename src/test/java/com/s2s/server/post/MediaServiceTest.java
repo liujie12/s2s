@@ -112,7 +112,10 @@ class MediaServiceTest {
 
         MediaService.AiMediaAccess access = mediaService.signAiReadAccess(1L, "1");
 
-        assertThat(access.accessUrl()).isEqualTo("https://oss.test/signed");
+        // 图片额外追加 OSS 等比缩放参数（AI 入参缩略图提速，2026-10-17）
+        assertThat(access.accessUrl())
+                .startsWith("https://oss.test/signed")
+                .contains("x-oss-process=image/resize,w_");
     }
 
     /**
@@ -126,7 +129,10 @@ class MediaServiceTest {
 
         MediaService.AiMediaAccess access = mediaService.signAiReadAccess(1L, "1");
 
-        assertThat(access.accessUrl()).isEqualTo("https://oss.test/signed");
+        // 未 commit 的图片同样走缩略参数（只按「是否音频」分流）
+        assertThat(access.accessUrl())
+                .startsWith("https://oss.test/signed")
+                .contains("x-oss-process=image/resize,w_");
     }
 
     /**

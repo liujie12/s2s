@@ -57,4 +57,19 @@ public final class NfrAi {
      * Step 4 逆向比对口径（越界字段照样被拒）。</p>
      */
     public static final int UPSTREAM_MAX_TOKENS = 512;
+
+    /**
+     * AI 入参图片的目标宽度上限（像素，等比缩放）。
+     *
+     * <p><b>为什么缩</b>：上游多模态要先从 OSS 下载图片再编码，耗时随像素量上升；而带图
+     * 链路受「后端读超时 {@link #UPSTREAM_TIMEOUT_SECONDS} 秒 + 客户端读取超时收紧档
+     * {@code NfrNetwork.aiParseReadTimeoutSec}」双重约束。2026-10-17 实测同一张图
+     * {@code reasoning_effort=none} 档仍为 6.3s，超客户端 5s 线 ⇒ 给上游传等比缩放的
+     * 展示图副本。缩得越狠越快，但图内小字（价格/品牌）识别精度随之下降，故取 1024 折中；
+     * 真机验收须同时核对识别质量（识别退化则向上调）。</p>
+     *
+     * <p>仅对图片生效：音频转写走原对象、不加任何图片处理参数（见 {@code MediaService}
+     * 的 AI 只读签名）。</p>
+     */
+    public static final int AI_INPUT_IMAGE_WIDTH_PX = 1024;
 }

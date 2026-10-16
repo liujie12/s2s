@@ -159,6 +159,39 @@ const List<RegisteredSecretFinding> registeredSecretFindings = [
     reason: '[122] 单元测试固定 UUID 作非法 deviceId 样例，非真实凭据',
     remediation: '无需作废（假值）；如测试改用随机生成值，可移除本登记',
   ),
+  // ── 以下 4 条为同一枚 Android 签名证书的 MD5 指纹（2026-10-17 门禁实测命中）──
+  // 为什么是「正当例外」而非泄露：MD5 是证书**指纹**、不可反推私钥，且微信/华为等
+  // 平台申请时**必须照抄该值**（即它本就是对外公开的）；keystore 本体在仓库外
+  // （D:/developer/soft/s2s-keystore/），android/key.properties 已 gitignore 未入库。
+  // 命中原因：弱判据按「32 位 hex + 密钥上下文」形态识别，指纹天然长这样。
+  RegisteredSecretFinding(
+    file: 'docs/P11-推送凭据办理操作清单.md',
+    lineContains: '30FBC1A8A7A4D57E9CB87BFD9B22D076',
+    provider: 'Android 签名证书 MD5 指纹（公开信息，非私钥）',
+    reason: 'B2-6a 厂商填报须照抄的应用签名字段（各推送/开放平台以此校验包名归属）',
+    remediation: '无需作废；如后续统一改为省略式写法（30FBC1A8…B22D076），可移除本登记',
+  ),
+  RegisteredSecretFinding(
+    file: 'docs/plans/2026-10-15-b2-6a-wechat-login-plan.md',
+    lineContains: '30FBC1A8A7A4D57E9CB87BFD9B22D076',
+    provider: 'Android 签名证书 MD5 指纹（公开信息，非私钥）',
+    reason: 'B2-6a 任务书「开发信息（Android）」栏的应用签名答案',
+    remediation: '无需作废；同上',
+  ),
+  RegisteredSecretFinding(
+    file: 'docs/progress/Batch1-进度记录.md',
+    lineContains: '30FBC1A8A7A4D57E9CB87BFD9B22D076',
+    provider: 'Android 签名证书 MD5 指纹（公开信息，非私钥）',
+    reason: 'B2-6a 开工包立档条目内的证书指纹与 SHA1 备查值（原文已注明 keystore 在仓库外、未入库）',
+    remediation: '无需作废；同上',
+  ),
+  RegisteredSecretFinding(
+    file: '说明文档.md',
+    lineContains: '30FBC1A8A7A4D57E9CB87BFD9B22D076',
+    provider: 'Android 签名证书 MD5 指纹（公开信息，非私钥）',
+    reason: '§三「当前节点」B2-6a 条目摘要引用了任务书的表单答案',
+    remediation: '无需作废；同上',
+  ),
 ];
 
 /// 不参与密钥扫描的路径后缀/目录（依赖锁、生成物、第三方资产、二进制文档）。

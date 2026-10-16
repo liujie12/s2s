@@ -209,6 +209,23 @@ Options mapPinsOptions() => Options(
   receiveTimeout: Duration(seconds: NfrNetwork.mapPinsReadTimeoutSec),
 );
 
+/// 构造 `/ai/publish/parse` 的按请求选项（B2-4：读超时收紧为
+/// [NfrNetwork.aiParseReadTimeoutSec]，可选注入 X-Interaction-Id）。
+///
+/// 收紧理由见 [NfrNetwork.aiParseReadTimeoutSec]：AI 带图解析是**用户主动等待**的同步
+/// 交互，10s 才超时等于把「慢」暴露成「卡死」。与 [mapPinsOptions] 同为「只覆盖读超时」，
+/// 连接超时继续继承 BaseOptions 全局值。
+///
+/// 参数：[interactionId] 交互起点生成的 X-Interaction-Id；null 时不注入头（**不传空表**，
+///   否则会覆盖拦截器的兜底生成）。
+/// 返回：[Options] receiveTimeout 取 AI 专用收紧档 + 可选交互头。
+Options aiParseOptions({String? interactionId}) => Options(
+  receiveTimeout: Duration(seconds: NfrNetwork.aiParseReadTimeoutSec),
+  headers: interactionId == null
+      ? null
+      : {HeaderInterceptor.interactionIdHeader: interactionId},
+);
+
 /// 生产同款 dio 唯一装配函数（harness 与 [dioProvider] 共用，R9）。
 ///
 /// 参数：

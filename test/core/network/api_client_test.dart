@@ -4,6 +4,8 @@
 ///   - 全局超时引 NfrNetwork 常量（连接 5s、读 10s），不复制字面量；
 ///   - `/map/pins` 以 Per-Request Options 覆盖读超时为 3s（§14.1），
 ///     mock 延迟触发真实 receiveTimeout（DioException 类型）；
+///   - `/ai/publish/parse` 以 Per-Request Options 覆盖读超时为 5s（B2-4，
+///     含可选 X-Interaction-Id 注入）；
 ///   - KTD8：release==true 且 baseUrl 非 https → 启动快速失败；
 ///     release==false 允许 http mock 地址（两态各一测）；
 ///   - KTD2：validateStatus: (_) => true，HTTP 429 不交给 dio 抛，
@@ -55,6 +57,24 @@ void main() {
       expect(options.connectTimeout, isNull,
           reason: 'Per-Request Options 只覆盖读超时，全局 5s 连接超时继续生效');
       expect(NfrNetwork.mapPinsReadTimeoutSec, 3);
+      expect(NfrNetwork.readTimeoutSec, 10);
+    });
+
+    test('aiParseOptions 覆盖读超时为 5s，并可选注入 X-Interaction-Id', () {
+      final options = aiParseOptions();
+      expect(options.receiveTimeout?.inSeconds,
+          NfrNetwork.aiParseReadTimeoutSec,
+          reason: 'AI 带图解析读 5s（收紧档）：客户端不应比用户有耐心（2026-10-17）');
+      // 只收紧读超时；连接超时不随单请求选项漂移。
+      expect(options.connectTimeout, isNull,
+          reason: 'Per-Request Options 只覆盖读超时，全局 5s 连接超时继续生效');
+      expect(options.headers, isNull,
+          reason: '不传 interactionId 时不注入空表头，保留拦截器兜底生成');
+
+      final withId = aiParseOptions(interactionId: 'ix-1');
+      expect(withId.headers?[HeaderInterceptor.interactionIdHeader], 'ix-1',
+          reason: '显式传 interactionId 时按契约注入 X-Interaction-Id');
+      expect(NfrNetwork.aiParseReadTimeoutSec, 5);
       expect(NfrNetwork.readTimeoutSec, 10);
     });
   });

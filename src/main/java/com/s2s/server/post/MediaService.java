@@ -1,6 +1,7 @@
 package com.s2s.server.post;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.s2s.server.common.constants.NfrAi;
 import com.s2s.server.common.constants.NfrMedia;
 import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
@@ -140,6 +141,10 @@ public class MediaService {
      * <p>可读对象键解析见 {@link #readableKeyOf}（音频→原键；图片 pass→展示键；
      * 图片 pending→原键）。</p>
      *
+     * <p><b>图片额外追加等比缩放</b>（2026-10-17 提速）：上游需先下载图片再编码，耗时随
+     * 像素量上升，故图片 URL 追加 {@code x-oss-process} 缩略参数，目标宽度取
+     * {@link NfrAi#AI_INPUT_IMAGE_WIDTH_PX}。音频不加任何图片处理参数（原对象、转写用）。</p>
+     *
      * @param userId  当前用户 user_id（归属校验，防 IDOR）
      * @param mediaId 媒体 ID
      * @return {@link AiMediaAccess} 只读签名 URL + 媒体 MIME（音频转写按 MIME 推上游 format）
@@ -147,8 +152,11 @@ public class MediaService {
      */
     public AiMediaAccess signAiReadAccess(Long userId, String mediaId) {
         PostMediaEntity media = loadOwned(userId, mediaId);
-        return new AiMediaAccess(
-                ossClient.signAccessUrl(readableKeyOf(media)), media.getContentType());
+        String accessUrl = ossClient.signAccessUrl(readableKeyOf(media));
+        if (!NfrMedia.AUDIO_CONTENT_TYPES.contains(media.getContentType())) {
+            accessUrl = OssClient.withImageResize(accessUrl, NfrAi.AI_INPUT_IMAGE_WIDTH_PX);
+        }
+        return new AiMediaAccess(accessUrl, media.getContentType());
     }
 
     /**

@@ -70,6 +70,29 @@ public interface OssClient {
     }
 
     /**
+     * OSS 图片等比缩放处理参数前缀（AI 入参缩略图；末尾接目标宽度像素值）。
+     *
+     * <p>单源提取：仅 {@code MediaService} 的 AI 只读签名引用，禁各处复制字面量。</p>
+     */
+    String IMAGE_RESIZE_PROCESS_PREFIX = "x-oss-process=image/resize,w_";
+
+    /**
+     * 给已签名 URL 追加 OSS 图片等比缩放参数（AI 上游入参缩略图，B2-4 提速）。
+     *
+     * <p><b>为什么可以直接追加</b>：OSS V1 签名的 CanonicalizedResource 只覆盖固定子资源
+     * 列表（{@code ?acl}/{@code ?uploadId} 等），{@code x-oss-process} 不在其列、不参与
+     * 签名（官方「图片处理」与「签名 URL」口径），故追加不会触发 {@code SignatureDoesNotMatch}。</p>
+     *
+     * @param signedUrl 带签名的只读访问 URL
+     * @param widthPx   等比缩放的目标宽度（像素）
+     * @return {@link String} 追加缩放参数后的 URL
+     */
+    static String withImageResize(String signedUrl, int widthPx) {
+        String separator = signedUrl.contains("?") ? "&" : "?";
+        return signedUrl + separator + IMAGE_RESIZE_PROCESS_PREFIX + widthPx;
+    }
+
+    /**
      * OSS 对象元数据（HEAD 二次校验结果）。
      *
      * @param sizeBytes   实际字节数
