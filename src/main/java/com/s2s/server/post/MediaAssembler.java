@@ -43,7 +43,7 @@ public class MediaAssembler {
         String rejectReason = isOwner ? entity.getRejectReason() : null;
         return new MediaItem(
                 String.valueOf(entity.getId()),
-                ossClient.signAccessUrl(entity.getObjectKey()),
+                ossClient.signAccessUrl(MediaService.readableKeyOf(entity)),
                 auditStatus,
                 rejectReason);
     }

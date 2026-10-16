@@ -35,7 +35,7 @@ public class DevOssClient implements OssClient {
     }
 
     /**
-     * 返回 mock 展示图键（原图键前加 display/ 前缀）。
+     * 返回 mock 展示图键（沿用 {@link OssClient#displayKeyOf} 约定）。
      */
     @Override
     public String processImage(String objectKey) {

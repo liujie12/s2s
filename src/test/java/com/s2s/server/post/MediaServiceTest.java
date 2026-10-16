@@ -108,7 +108,7 @@ class MediaServiceTest {
     void signAiReadAccess图片已commit用展示键() {
         when(mediaMapper.selectById(1L)).thenReturn(
                 media(1L, "k-img", "image/jpeg", MediaService.AUDIT_PASS));
-        when(ossClient.signAccessUrl("display/k-img")).thenReturn("https://oss.test/signed");
+        when(ossClient.signAccessUrl("display/k-img.jpg")).thenReturn("https://oss.test/signed");
 
         MediaService.AiMediaAccess access = mediaService.signAiReadAccess(1L, "1");
 

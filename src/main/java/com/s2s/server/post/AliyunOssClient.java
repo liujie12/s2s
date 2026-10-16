@@ -7,6 +7,8 @@ import com.aliyun.oss.model.GeneratePresignedUrlRequest;
 import com.aliyun.oss.model.ObjectMetadata;
 import com.aliyun.oss.model.ProcessObjectRequest;
 import com.s2s.server.common.config.SecretsProperties;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.Date;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -31,6 +33,9 @@ public class AliyunOssClient implements OssClient {
 
     /** EXIF 剥离处理串：重编码去除元数据（TODO：真桶联调验证样式）。 */
     private static final String EXIF_STRIP_PROCESS = "image/format,jpg";
+
+    /** 另存为指令前缀：同步图片处理默认不落盘，须显式 {@code sys/saveas} 指定目标键与桶。 */
+    private static final String SAVE_AS_PREFIX = "|sys/saveas,o_";
 
     private final OSS oss;
     private final String bucket;
@@ -80,15 +85,39 @@ public class AliyunOssClient implements OssClient {
     }
 
     /**
-     * 剥离 EXIF 生成展示图（OSS 图片处理，重编码去除元数据）。
+     * 剥离 EXIF 生成展示图（OSS 图片处理 + 另存为，重编码去除元数据）。
+     *
+     * <p><b>必须显式携带 {@code sys/saveas}</b>：OSS 同步图片处理默认「不保存」处理结果，
+     * 只把处理后的字节作为响应流返回（官方「另存为（sys/saveas）」口径）。原实现仅调用
+     * 处理、未落盘，而 {@code MediaService.commit} 随后删除原图 → {@code display/<key>}
+     * 从未存在、对象全失。2026-10-16 真机模式①排障实证：上游 DashScope 报
+     * {@code Failed to download multimodal content}，用服务器 AK/SK 直探该键与已删原键均 404。</p>
+     *
+     * <p>{@code o_}/{@code b_} 取值须为 <b>URL 安全 Base64</b>（{@code +}→{@code -}、
+     * {@code /}→{@code _}、去尾 {@code =}）：处理串会进入请求参数，标准 Base64 的
+     * {@code +}/{@code /} 会被解码错。</p>
+     *
+     * @param objectKey 原图对象键
+     * @return 展示图对象键（{@code display/<原键>.jpg}）
      */
     @Override
     public String processImage(String objectKey) {
         String displayKey = OssClient.displayKeyOf(objectKey);
-        ProcessObjectRequest request = new ProcessObjectRequest(bucket, objectKey, EXIF_STRIP_PROCESS);
-        // 处理结果写回展示图键；详情以真桶联调为准
-        oss.processObject(request);
+        String process = EXIF_STRIP_PROCESS + SAVE_AS_PREFIX + urlSafeBase64(displayKey)
+                + ",b_" + urlSafeBase64(bucket);
+        oss.processObject(new ProcessObjectRequest(bucket, objectKey, process));
         return displayKey;
+    }
+
+    /**
+     * URL 安全 Base64 编码（去尾填充），用于 {@code sys/saveas} 的 {@code o_}/{@code b_} 取值。
+     *
+     * @param value 待编码文本（目标对象键 / 桶名）
+     * @return URL 安全 Base64 字符串（无 {@code =} 填充）
+     */
+    private static String urlSafeBase64(String value) {
+        return Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(value.getBytes(StandardCharsets.UTF_8));
     }
 
     /**

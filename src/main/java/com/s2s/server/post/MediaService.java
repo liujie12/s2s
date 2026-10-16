@@ -137,9 +137,8 @@ public class MediaService {
     /**
      * AI 上行读取授权（B2-4 阶段① Step 2）：为「本人媒体」签发只读短时效 GET 签名 URL。
      *
-     * <p>可读对象键解析：音频 commit 不走 EXIF 链、原对象始终保留 → 用原键；图片已 commit
-     * （{@code pass}）原图已删（见 {@link #commit}）→ 用展示图键；图片未 commit
-     * （{@code pending}）原图尚在 → 用原键。</p>
+     * <p>可读对象键解析见 {@link #readableKeyOf}（音频→原键；图片 pass→展示键；
+     * 图片 pending→原键）。</p>
      *
      * @param userId  当前用户 user_id（归属校验，防 IDOR）
      * @param mediaId 媒体 ID
@@ -148,12 +147,24 @@ public class MediaService {
      */
     public AiMediaAccess signAiReadAccess(Long userId, String mediaId) {
         PostMediaEntity media = loadOwned(userId, mediaId);
-        boolean audio = NfrMedia.AUDIO_CONTENT_TYPES.contains(media.getContentType());
-        boolean committedImage = !audio && AUDIT_PASS.equals(media.getAuditStatus());
-        String key = committedImage
-                ? OssClient.displayKeyOf(media.getObjectKey())
-                : media.getObjectKey();
-        return new AiMediaAccess(ossClient.signAccessUrl(key), media.getContentType());
+        return new AiMediaAccess(
+                ossClient.signAccessUrl(readableKeyOf(media)), media.getContentType());
+    }
+
+    /**
+     * 解析媒体「可签名读取」的 OSS 对象键（同源口径单点，禁各处自行判分支）。
+     *
+     * <p>音频 {@code commit} 不走 EXIF 链、原对象始终保留 → 用原键；图片已 commit
+     * （{@code pass}）原图已删（见 {@link #commit}）→ 用展示图键；图片未 commit
+     * （{@code pending}）原图尚在 → 用原键。</p>
+     *
+     * @param media 媒体实体
+     * @return 可签名访问的对象键
+     */
+    static String readableKeyOf(PostMediaEntity media) {
+        boolean committedImage = !NfrMedia.AUDIO_CONTENT_TYPES.contains(media.getContentType())
+                && AUDIT_PASS.equals(media.getAuditStatus());
+        return committedImage ? OssClient.displayKeyOf(media.getObjectKey()) : media.getObjectKey();
     }
 
     /**

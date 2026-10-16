@@ -52,17 +52,21 @@ public interface OssClient {
     String signAccessUrl(String objectKey);
 
     /**
-     * 展示图对象键约定（EXIF 剥离后的可读副本）：{@code "display/" + 原对象键}。
+     * 展示图对象键约定（EXIF 剥离后的可读副本）：{@code "display/" + 原对象键 + ".jpg"}。
      *
      * <p>单源提取（编码规范 §1.1）：图片 commit 后原图被删、只余展示图，两个
-     * {@code processImage} 实现与 AI 只读签名（{@code MediaService#signAiReadAccess}）
+     * {@code processImage} 实现与媒体可读键解析（{@code MediaService#readableKeyOf}）
      * 共用同一推导，禁各处复制 {@code "display/"} 字面量。</p>
+     *
+     * <p>末段 {@code .jpg} 不可省：展示图由 {@code image/format,jpg} 重编码而来，
+     * 带扩展名既使 OSS 能按扩展名推定 {@code Content-Type}，也让按 URL 尾缀嗅探
+     * 图片类型的消费方（如 AI 上游多模态下载）拿到正确类型。</p>
      *
      * @param objectKey 原对象键
      * @return {@link String} 展示图对象键
      */
     static String displayKeyOf(String objectKey) {
-        return "display/" + objectKey;
+        return "display/" + objectKey + ".jpg";
     }
 
     /**
