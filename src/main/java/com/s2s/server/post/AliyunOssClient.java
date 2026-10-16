@@ -129,11 +129,23 @@ public class AliyunOssClient implements OssClient {
     }
 
     /**
-     * 返回展示图带签名访问 URL。
+     * 返回对象带签名访问 URL（可选 OSS 图片处理参数）。
+     *
+     * <p>{@code imageProcess} 必须走 {@link GeneratePresignedUrlRequest#setProcess}，与签名
+     * 一并计算：{@code x-oss-process} 属 V1 签名子资源，字符串拼接已签名 URL 会导致
+     * {@code 403 SignatureDoesNotMatch}（2026-10-17 线上踩坑）。传 null/空 = 原图直出
+     * （与加处理参数前的行为一致，供详情页展示图使用）。</p>
      */
     @Override
-    public String signAccessUrl(String objectKey) {
+    public String signAccessUrl(String objectKey, String imageProcess) {
         Date expiration = new Date(System.currentTimeMillis() + SIGN_EXPIRATION_MILLIS);
-        return oss.generatePresignedUrl(bucket, objectKey, expiration, HttpMethod.GET).toString();
+        if (imageProcess == null || imageProcess.isBlank()) {
+            return oss.generatePresignedUrl(bucket, objectKey, expiration, HttpMethod.GET).toString();
+        }
+        GeneratePresignedUrlRequest request =
+                new GeneratePresignedUrlRequest(bucket, objectKey, HttpMethod.GET);
+        request.setExpiration(expiration);
+        request.setProcess(imageProcess);
+        return oss.generatePresignedUrl(request).toString();
     }
 }

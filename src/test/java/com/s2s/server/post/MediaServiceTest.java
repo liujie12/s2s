@@ -5,8 +5,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.s2s.server.common.constants.NfrAi;
 import com.s2s.server.common.error.BizException;
 import com.s2s.server.post.entity.PostMediaEntity;
 import com.s2s.server.post.mapper.PostMediaMapper;
@@ -93,12 +95,14 @@ class MediaServiceTest {
     void signAiReadAccess音频用原键() {
         when(mediaMapper.selectById(1L)).thenReturn(
                 media(1L, "k-audio", "audio/wav", MediaService.AUDIT_PASS));
-        when(ossClient.signAccessUrl("k-audio")).thenReturn("https://oss.test/signed");
+        when(ossClient.signAccessUrl("k-audio", null)).thenReturn("https://oss.test/signed");
 
         MediaService.AiMediaAccess access = mediaService.signAiReadAccess(1L, "1");
 
         assertThat(access.accessUrl()).isEqualTo("https://oss.test/signed");
         assertThat(access.contentType()).isEqualTo("audio/wav");
+        // 音频不带任何图片处理参数（process 必须为 null）
+        verify(ossClient).signAccessUrl("k-audio", null);
     }
 
     /**
@@ -108,14 +112,16 @@ class MediaServiceTest {
     void signAiReadAccess图片已commit用展示键() {
         when(mediaMapper.selectById(1L)).thenReturn(
                 media(1L, "k-img", "image/jpeg", MediaService.AUDIT_PASS));
-        when(ossClient.signAccessUrl("display/k-img.jpg")).thenReturn("https://oss.test/signed");
+        when(ossClient.signAccessUrl("display/k-img.jpg",
+                        OssClient.imageResizeProcess(NfrAi.AI_INPUT_IMAGE_WIDTH_PX)))
+                .thenReturn("https://oss.test/signed");
 
         MediaService.AiMediaAccess access = mediaService.signAiReadAccess(1L, "1");
 
-        // 图片额外追加 OSS 等比缩放参数（AI 入参缩略图提速，2026-10-17）
-        assertThat(access.accessUrl())
-                .startsWith("https://oss.test/signed")
-                .contains("x-oss-process=image/resize,w_");
+        assertThat(access.accessUrl()).isEqualTo("https://oss.test/signed");
+        // 缩略参数必须经签名一并传入，**不得**拼进 URL（x-oss-process 属 V1 子资源，拼接会 403）
+        verify(ossClient).signAccessUrl("display/k-img.jpg",
+                OssClient.imageResizeProcess(NfrAi.AI_INPUT_IMAGE_WIDTH_PX));
     }
 
     /**
@@ -125,14 +131,16 @@ class MediaServiceTest {
     void signAiReadAccess图片未commit用原键() {
         when(mediaMapper.selectById(1L)).thenReturn(
                 media(1L, "k-img", "image/jpeg", MediaService.AUDIT_PENDING));
-        when(ossClient.signAccessUrl("k-img")).thenReturn("https://oss.test/signed");
+        when(ossClient.signAccessUrl("k-img",
+                        OssClient.imageResizeProcess(NfrAi.AI_INPUT_IMAGE_WIDTH_PX)))
+                .thenReturn("https://oss.test/signed");
 
         MediaService.AiMediaAccess access = mediaService.signAiReadAccess(1L, "1");
 
-        // 未 commit 的图片同样走缩略参数（只按「是否音频」分流）
-        assertThat(access.accessUrl())
-                .startsWith("https://oss.test/signed")
-                .contains("x-oss-process=image/resize,w_");
+        // 未 commit 的图片同样带缩略参数（只按「是否音频」分流）
+        assertThat(access.accessUrl()).isEqualTo("https://oss.test/signed");
+        verify(ossClient).signAccessUrl("k-img",
+                OssClient.imageResizeProcess(NfrAi.AI_INPUT_IMAGE_WIDTH_PX));
     }
 
     /**

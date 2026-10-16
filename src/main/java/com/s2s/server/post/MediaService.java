@@ -141,9 +141,11 @@ public class MediaService {
      * <p>可读对象键解析见 {@link #readableKeyOf}（音频→原键；图片 pass→展示键；
      * 图片 pending→原键）。</p>
      *
-     * <p><b>图片额外追加等比缩放</b>（2026-10-17 提速）：上游需先下载图片再编码，耗时随
-     * 像素量上升，故图片 URL 追加 {@code x-oss-process} 缩略参数，目标宽度取
-     * {@link NfrAi#AI_INPUT_IMAGE_WIDTH_PX}。音频不加任何图片处理参数（原对象、转写用）。</p>
+     * <p><b>图片额外携带等比缩放</b>（2026-10-17 提速）：上游需先下载图片再编码，耗时随
+     * 像素量上升，故图片签名 URL 携带 {@code x-oss-process} 缩略参数，目标宽度取
+     * {@link NfrAi#AI_INPUT_IMAGE_WIDTH_PX}。<b>该参数必须经
+     * {@link OssClient#signAccessUrl(String, String)} 与签名一并计算</b> —— 它属 V1 签名
+     * 子资源，拼到已签名 URL 上会 403。音频不加（走原对象、转写用）。</p>
      *
      * @param userId  当前用户 user_id（归属校验，防 IDOR）
      * @param mediaId 媒体 ID
@@ -152,10 +154,10 @@ public class MediaService {
      */
     public AiMediaAccess signAiReadAccess(Long userId, String mediaId) {
         PostMediaEntity media = loadOwned(userId, mediaId);
-        String accessUrl = ossClient.signAccessUrl(readableKeyOf(media));
-        if (!NfrMedia.AUDIO_CONTENT_TYPES.contains(media.getContentType())) {
-            accessUrl = OssClient.withImageResize(accessUrl, NfrAi.AI_INPUT_IMAGE_WIDTH_PX);
-        }
+        String imageProcess = NfrMedia.AUDIO_CONTENT_TYPES.contains(media.getContentType())
+                ? null
+                : OssClient.imageResizeProcess(NfrAi.AI_INPUT_IMAGE_WIDTH_PX);
+        String accessUrl = ossClient.signAccessUrl(readableKeyOf(media), imageProcess);
         return new AiMediaAccess(accessUrl, media.getContentType());
     }
 

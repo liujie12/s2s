@@ -51,10 +51,10 @@ public class DevOssClient implements OssClient {
     }
 
     /**
-     * 返回 mock 访问地址。
+     * 返回 mock 访问地址（忽略图片处理参数：dev 桩不做真签名，处理参数无从体现）。
      */
     @Override
-    public String signAccessUrl(String objectKey) {
+    public String signAccessUrl(String objectKey, String imageProcess) {
         return MOCK_BASE + "/access/" + objectKey;
     }
 }
