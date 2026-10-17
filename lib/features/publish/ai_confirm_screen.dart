@@ -472,6 +472,8 @@ class _AiConfirmScreenState extends ConsumerState<AiConfirmScreen> {
       // B2-4：AI 辅助标记（服务端据此扣配额 + 落内容标识）。
       'ai_assisted': true,
     };
+    // 诊断阶段标记：失败时据此判断断在 precheck / createPost / 转场。
+    var stage = 'precheck';
     try {
       final repo = ref.read(postRepositoryProvider);
       final precheck = await repo.precheck(payload);
@@ -489,6 +491,7 @@ class _AiConfirmScreenState extends ConsumerState<AiConfirmScreen> {
       }
       await repo.createPost(payload);
       if (!mounted) return;
+      stage = 'navigate';
       // 成功必须有明确信号：
       // ① 先给一条 SnackBar 兜底 —— 即便页面转场被误触/打断，用户也能看到结果；
       // ② 用 pushReplacement 把确认页换成成功页：发布流程到此结束，
@@ -502,10 +505,38 @@ class _AiConfirmScreenState extends ConsumerState<AiConfirmScreen> {
         extra: _form,
       );
     } on ApiException catch (error) {
-      if (mounted) _toast(error.uiMessage);
+      // ignore: avoid_print
+      print('[PUBLISH][$stage] ApiException code=${error.code} msg=${error.message}');
+      if (mounted) await _showFailure(error.uiMessage);
+    } catch (error, stack) {
+      // 非信封异常此前会被静默吞掉：按钮从「发布中…」复原，用户却什么都看不到。
+      // 这里必须让失败可见，同时把阶段与异常打到 logcat 便于定位。
+      // ignore: avoid_print
+      print('[PUBLISH][$stage] unexpected error: $error\n$stack');
+      if (mounted) await _showFailure('发布失败，请稍后重试');
     } finally {
       if (mounted) setState(() => _publishing = false);
     }
+  }
+
+  /// 发布失败对话框（模态，必须手动关闭）。
+  ///
+  /// 参数：[message] 用户可读文案。
+  /// 返回：[Future] 关闭时完成。
+  Future<void> _showFailure(String message) {
+    return showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('发布未完成'),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('知道了'),
+          ),
+        ],
+      ),
+    );
   }
 
   /// 轻量提示（SnackBar，用于闸门阻断与业务错误）。
