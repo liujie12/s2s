@@ -37,6 +37,8 @@ import '../../router/app_router.dart';
 import '../ai/ai_dto.dart';
 import '../ai/ai_repository.dart';
 import '../auth/auth_repository.dart';
+import '../location/location_center.dart';
+import '../location/location_permission.dart';
 import '../post/post_repository.dart';
 import 'ai_confirm_args.dart';
 import 'publish_form_state.dart';
@@ -66,6 +68,9 @@ class _AiConfirmScreenState extends ConsumerState<AiConfirmScreen> {
   /// 「说一句」输入框（模式① 的文本输入；B2-4）。
   final TextEditingController _sentenceCtrl = TextEditingController();
 
+  /// 联系方式输入框（契约 `contact_value` 必填，AI 入口不采集故必须在此补）。
+  final TextEditingController _contactCtrl = TextEditingController();
+
   /// 服务端返回的逐字段猜测（Step 4 已校验；未猜出者为 null）。
   List<FieldGuess> _guesses = const [];
 
@@ -86,6 +91,7 @@ class _AiConfirmScreenState extends ConsumerState<AiConfirmScreen> {
   void initState() {
     super.initState();
     _doorCtrl.text = _form.doorNumber;
+    _contactCtrl.text = _form.contact;
     _runParse();
   }
 
@@ -93,6 +99,7 @@ class _AiConfirmScreenState extends ConsumerState<AiConfirmScreen> {
   void dispose() {
     _doorCtrl.dispose();
     _sentenceCtrl.dispose();
+    _contactCtrl.dispose();
     super.dispose();
   }
 
@@ -142,6 +149,11 @@ class _AiConfirmScreenState extends ConsumerState<AiConfirmScreen> {
           );
       if (!mounted) return;
       setState(() {
+        // 猜测必须回填表单：确认页展示的是 [_edited] 覆盖层，而发布载荷
+        // 由 [_form] 构造 —— 只写展示就会出现「页面有标题、载荷没 title」
+        // 的 400（2026-10-17 真机实测）。重新识别视为接受新结果，手改清空。
+        _form = _applyGuessToForm(result);
+        _edited.clear();
         _guesses = _toFieldGuesses(result);
         _quota = result.quota;
         _status = AiParseStatus.ready;
@@ -216,6 +228,113 @@ class _AiConfirmScreenState extends ConsumerState<AiConfirmScreen> {
       }
     }
     return fields;
+  }
+
+  /// 把服务端猜测回填进表单（发布载荷的唯一真源）。
+  ///
+  /// 参数：[result] 服务端解析结果（Step 4 已剔除越界字段）。
+  /// 返回：[PublishFormState] 回填后的新快照。
+  PublishFormState _applyGuessToForm(AiParseResultDto result) {
+    final guess = result.guess;
+    var next = _form;
+    // 只在表单还没选分类时采用猜测：用户已选的叶子优先，
+    // 否则「先选分类再识别」会把用户的选择换掉。
+    final leafId = guess.leafCategoryId;
+    if (leafId != null && next.leafCategoryId == null) {
+      next = next.withCategory(leafId);
+    }
+    final title = guess.title?.trim() ?? '';
+    if (title.isNotEmpty) next = next.copyWith(title: title);
+    final price = guess.price;
+    if (price != null) {
+      final unit = guess.priceUnit?.trim() ?? '';
+      next = next.copyWith(
+        priceText: _trimNumber(price),
+        priceUnit: unit.isEmpty ? next.priceUnit : unit,
+      );
+    } else if ((guess.priceUnit?.trim() ?? '').isNotEmpty) {
+      next = next.copyWith(priceUnit: guess.priceUnit!.trim());
+    }
+    final templateValues = guess.templateValues;
+    if (templateValues != null && templateValues.isNotEmpty) {
+      final merged = <String, String>{...next.templateValues};
+      for (final entry in templateValues.entries) {
+        final value = entry.value?.toString().trim() ?? '';
+        if (value.isNotEmpty) merged[entry.key] = value;
+      }
+      next = next.copyWith(templateValues: merged);
+    }
+    return next;
+  }
+
+  /// 把确认页的手改值同步进表单。
+  ///
+  /// 参数：[fieldKey] 字段键（同 [FieldGuess.fieldKey]）；
+  ///       [value] 新值（空串表示撤回到 AI 原猜测值）。
+  /// 返回：[PublishFormState] 同步后的新快照。
+  PublishFormState _applyEditToForm(String fieldKey, String value) {
+    // 分类是 ID 语义，标签文本反解不出 ID：ID 已由 withCategory 写入。
+    if (fieldKey == 'category') return _form;
+    if (fieldKey == 'title') return _form.copyWith(title: value.trim());
+    if (fieldKey == 'price') {
+      // 展示值是「数值 + 单位」的合成串（如「50 元/月」），回写必须拆开：
+      // 整串进 priceText 会让 priceValue 解析失败，价格静默丢失。
+      final match =
+          RegExp(r'^(\d+(?:\.\d+)?)\s*(.*)$').firstMatch(value.trim());
+      if (match == null) return _form.copyWith(priceText: '');
+      final unit = match.group(2)!.trim();
+      return _form.copyWith(
+        priceText: match.group(1)!,
+        priceUnit: unit.isEmpty ? _form.priceUnit : unit,
+      );
+    }
+    return _form.copyWith(
+      templateValues: {..._form.templateValues, fieldKey: value.trim()},
+    );
+  }
+
+  /// 采集当前位置（与发布页同一口径：定位未授权不塞假点）。
+  ///
+  /// 返回：[void]。
+  void _useCurrentLocation() {
+    if (ref.read(locationPermissionProvider) !=
+        LocationPermissionPhase.granted) {
+      _toast('请先开启定位权限，再使用当前位置');
+      return;
+    }
+    final center = ref.read(locationCenterProvider);
+    setState(() => _form = _form.copyWith(lng: center.lng, lat: center.lat));
+  }
+
+  /// 契约必填是否齐（分类 / 标题 / 位置 / 联系方式）。
+  ///
+  /// 不用 [PublishFormState.blocker]：它把手动页的描述与协议也算必填；
+  /// AI 快速发布按契约 `PostCreateRequest` 的必填集执行（2026-10-17 裁定）。
+  bool get _requiredReady =>
+      _form.leafCategoryId != null &&
+      _form.title.trim().isNotEmpty &&
+      _form.hasLocation &&
+      _form.contact.trim().isNotEmpty;
+
+  /// 本页完整度。不复用 `_form.completeness`：其必填口径含描述，
+  /// 会让角标永远显示「还差 1 项升 🟢」而页面上无处可补。
+  CompletenessAssessment get _assessment => CompletenessAssessment(
+        requiredFieldsComplete: _requiredReady,
+        hasDoorNumber: _form.doorNumber.trim().isNotEmpty,
+        leafCategoryPrecise: _form.leafCategoryId != null &&
+            leafCategoryById(_form.leafCategoryId!) != null,
+      );
+
+  /// 契约必填缺项的可读文案（按表单段落顺序）。
+  ///
+  /// 返回：[String] 如「位置、联系方式」；无缺项返回空串。
+  String _missingRequiredText() {
+    final missing = <String>[];
+    if (_form.leafCategoryId == null) missing.add('分类');
+    if (_form.title.trim().isEmpty) missing.add('标题');
+    if (!_form.hasLocation) missing.add('位置');
+    if (_form.contact.trim().isEmpty) missing.add('联系方式');
+    return missing.join('、');
   }
 
   /// 数值去掉无意义的小数尾巴（50.0 → 50）。
@@ -314,12 +433,15 @@ class _AiConfirmScreenState extends ConsumerState<AiConfirmScreen> {
     );
     if (value == null || !mounted) return;
     setState(() {
+      // 展示覆盖层与表单必须同步写：发布载荷只认 [_form]（见 _applyGuessToForm）。
       if (value.isEmpty) {
         // 改成空 = 撤回这次修改，回到 AI 原猜测值。
         // 若存空串会得到「有值但是空」这种既不是猜出也不是未猜出的第三态。
         _edited.remove(guess.fieldKey);
+        _form = _applyEditToForm(guess.fieldKey, guess.value ?? '');
       } else {
         _edited[guess.fieldKey] = value;
+        _form = _applyEditToForm(guess.fieldKey, value);
       }
     });
   }
@@ -333,6 +455,16 @@ class _AiConfirmScreenState extends ConsumerState<AiConfirmScreen> {
   /// 返回：[Future] 完成信号（发布成功已 push 成功页）。
   Future<void> _confirm() async {
     if (_publishing) return;
+    // 本地闸门：缺必填不请求。服务端会 40001 秒拒，用户只能得到
+    // 「参数错误」这种无法指向动作的提示（2026-10-17 真机实证）。
+    // 抢发模式按 §5.11 允许先发后补，不做此拦截。
+    if (!widget.args.flashMode) {
+      final missing = _missingRequiredText();
+      if (missing.isNotEmpty) {
+        _toast('还差$missing，补齐后才能发布');
+        return;
+      }
+    }
     setState(() => _publishing = true);
     final payload = <String, Object?>{
       ..._form.postDraftPayload(),
@@ -415,8 +547,10 @@ class _AiConfirmScreenState extends ConsumerState<AiConfirmScreen> {
       },
       bottomNavigationBar: _status == AiParseStatus.ready
           ? _ConfirmBar(
-              assessment: _form.completeness,
+              assessment: _assessment,
               allFilled: _result.allFilled,
+              requiredReady: _requiredReady,
+              busy: _publishing,
               allowIncomplete: widget.args.flashMode,
               onConfirm: _confirm,
             )
@@ -458,7 +592,7 @@ class _AiConfirmScreenState extends ConsumerState<AiConfirmScreen> {
         ],
         const SizedBox(height: AppSpacing.sm),
         _GreenSprint(
-          assessment: _form.completeness,
+          assessment: _assessment,
           doorController: _doorCtrl,
           onDoorChanged: (v) => setState(() {
             _form = _form.copyWith(doorNumber: v);
@@ -471,9 +605,20 @@ class _AiConfirmScreenState extends ConsumerState<AiConfirmScreen> {
               : categoryPathLabel(_form.leafCategoryId!),
         ),
         const SizedBox(height: AppSpacing.md),
+        // 契约必填区放在冲刺区之后：位置/联系方式是硬门槛，
+        // 而「升 🟢」是可选的加成，顺序不能让可选项挡住必填项。
+        _RequiredSection(
+          hasLocation: _form.hasLocation,
+          onUseCurrentLocation: _useCurrentLocation,
+          contactController: _contactCtrl,
+          onContactChanged: (v) => setState(() {
+            _form = _form.copyWith(contact: v);
+          }),
+        ),
+        const SizedBox(height: AppSpacing.md),
         _QuotaNote(
           verified: ref.watch(isLoggedInProvider),
-          level: _form.completeness.level,
+          level: _assessment.level,
           sensitive: _form.requiredCert != RequiredCert.none,
           quota: _quota,
         ),
@@ -684,6 +829,98 @@ class _GuessRow extends StatelessWidget {
               ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// 发布必填区（位置 + 联系方式）。
+///
+/// AI 快速入口只带「图片 + 一句话」，位置与联系方式在表单里本就是空的；
+/// 而契约 `PostCreateRequest` 把 `lng`/`lat`/`contact_value` 列为必填，
+/// 缺任一项都被服务端 40001 秒拒（2026-10-17 真机：precheck 200、`POST /posts` 400）。
+class _RequiredSection extends StatelessWidget {
+  const _RequiredSection({
+    required this.hasLocation,
+    required this.onUseCurrentLocation,
+    required this.contactController,
+    required this.onContactChanged,
+  });
+
+  /// 是否已采集到坐标（表单 `hasLocation` 的唯一判据）。
+  final bool hasLocation;
+
+  /// 「使用当前位置」回调（权限判定在父级）。
+  final VoidCallback onUseCurrentLocation;
+
+  /// 联系方式控制器（父级持有并负责 dispose）。
+  final TextEditingController contactController;
+
+  /// 联系方式变更回调。
+  final ValueChanged<String> onContactChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: const Color(AppColors.surface),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: const Color(AppColors.border)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '发布必填',
+            style: TextStyle(
+              fontSize: AppTypeScale.h3.size,
+              fontWeight: FontWeight.w600,
+              color: const Color(AppColors.textPrimary),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Row(
+            children: [
+              Icon(
+                hasLocation ? Icons.place : Icons.place_outlined,
+                size: 16,
+                color: hasLocation
+                    ? const Color(AppColors.success)
+                    : const Color(AppColors.warningText),
+              ),
+              const SizedBox(width: AppSpacing.xs),
+              Expanded(
+                child: Text(
+                  hasLocation ? '已获取当前位置' : '还未获取位置',
+                  style: TextStyle(
+                    fontSize: AppTypeScale.small.size,
+                    color: const Color(AppColors.textSecondary),
+                  ),
+                ),
+              ),
+              TextButton(
+                onPressed: onUseCurrentLocation,
+                child: Text(
+                  hasLocation ? '重新获取' : '使用当前位置',
+                  style: TextStyle(fontSize: AppTypeScale.small.size),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          TextField(
+            controller: contactController,
+            keyboardType: TextInputType.phone,
+            onChanged: onContactChanged,
+            decoration: const InputDecoration(
+              isDense: true,
+              labelText: '联系方式',
+              hintText: '手机号',
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -956,7 +1193,9 @@ class _ConfirmBar extends StatelessWidget {
   const _ConfirmBar({
     required this.assessment,
     required this.allFilled,
+    required this.requiredReady,
     required this.onConfirm,
+    this.busy = false,
     this.allowIncomplete = false,
   });
 
@@ -964,6 +1203,13 @@ class _ConfirmBar extends StatelessWidget {
 
   /// 是否所有字段都有值（§5.9「必填项未补齐时『确认发布』保持禁用」）。
   final bool allFilled;
+
+  /// 契约必填（分类/标题/位置/联系方式）是否齐 —— 比 [allFilled] 更硬：
+  /// AI 猜全不等于后端 `PostCreateRequest` 能过（位置与联系方式不在猜测集内）。
+  final bool requiredReady;
+
+  /// 发布中（防重入兼可见反馈，否则点击后界面毫无变化）。
+  final bool busy;
 
   /// 是否允许「未补齐也发布」（抢发模式④：§5.9「只填标题 + 拍照就发布」，
   /// 落 🔴 并在 24h 内补全）。为 true 时按钮恒可点，提示改为抢发口径。
@@ -973,7 +1219,10 @@ class _ConfirmBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool canPublish = allFilled || allowIncomplete;
+    // 契约必填是硬门槛（普通模式）；抢发模式按 §5.11 先发后补。
+    final bool canPublish = !busy &&
+        (allFilled || allowIncomplete) &&
+        (requiredReady || allowIncomplete);
     final level = assessment.level;
     final (dot, textColor) = switch (level) {
       CompletenessLevel.green => (AppColors.success, AppColors.successText),
@@ -1044,6 +1293,16 @@ class _ConfirmBar extends StatelessWidget {
                 color: const Color(AppColors.warningText),
               ),
             ),
+          ] else if (!requiredReady && !allowIncomplete) ...[
+            // 猜测已齐但位置/联系方式仍空（AI 入口不采集这两项）。
+            const SizedBox(height: AppSpacing.xs),
+            Text(
+              '还差发布必填项（位置 / 联系方式），补齐后才能发布',
+              style: TextStyle(
+                fontSize: AppTypeScale.caption.size,
+                color: const Color(AppColors.warningText),
+              ),
+            ),
           ],
           if (allowIncomplete && !allFilled) ...[
             const SizedBox(height: AppSpacing.xs),
@@ -1069,7 +1328,7 @@ class _ConfirmBar extends StatelessWidget {
                 shape: const StadiumBorder(),
               ),
               child: Text(
-                '确认发布',
+                busy ? '发布中…' : '确认发布',
                 style: TextStyle(
                   fontSize: AppTypeScale.body.size,
                   fontWeight: FontWeight.w600,

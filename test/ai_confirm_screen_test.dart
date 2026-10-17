@@ -12,8 +12,11 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zhaoyazhao/core/network/api_error_code.dart';
+import 'package:zhaoyazhao/core/network/api_exception.dart';
 import 'package:zhaoyazhao/features/ai/ai_dto.dart';
 import 'package:zhaoyazhao/features/ai/ai_repository.dart';
+import 'package:zhaoyazhao/features/post/post_repository.dart';
 import 'package:zhaoyazhao/features/publish/ai_confirm_args.dart';
 import 'package:zhaoyazhao/features/publish/ai_confirm_screen.dart';
 import 'package:zhaoyazhao/features/publish/publish_form_state.dart';
@@ -335,6 +338,63 @@ void main() {
       expect(confirmEnabled(tester), isTrue);
       expect(find.textContaining('24 小时内补全'), findsWidgets);
       expect(find.text('还有字段标着「需你补充」，补完才能发布'), findsNothing);
+    });
+  });
+
+  group('B2-4 发布载荷（真机 400 回归守门）', () {
+    testWidgets('AI 猜测必须进载荷 —— 只写展示层会让 POST /posts 400', (tester) async {
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 2;
+      addTearDown(tester.view.reset);
+      final ai = FakeAiRepository()..resultToReturn = fullResult();
+      final postRepo = FakePostRepository();
+      // 成功后本页会 push 成功页，而本用例没有 GoRouter；让 createPost 抛业务错
+      // 停在原页即可 —— 载荷在抛错前已记录（lastCreateDraft）。
+      postRepo.createErrorToThrow = const ApiException(
+        code: ApiErrorCode.paramInvalid,
+        message: '测试用阻断',
+        requestId: 'req_test',
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            aiRepositoryProvider.overrideWithValue(ai),
+            postRepositoryProvider.overrideWithValue(postRepo),
+          ],
+          child: MaterialApp(
+            home: AiConfirmScreen(
+              // 模拟 AI 快速入口：位置与联系方式由确认页补，其余靠 AI 猜测。
+              args: const AiConfirmArgs(
+                form: PublishFormState(
+                  lng: 120.1551,
+                  lat: 30.2741,
+                  contact: '13800138000',
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('确认发布'));
+      await tester.pumpAndSettle();
+
+      final draft = postRepo.lastCreateDraft;
+      expect(draft, isNotNull);
+      expect(draft!['title'], '九成新实木餐桌');
+      expect(draft['leaf_category_id'], 40101);
+      // 价格此前完全不上送（帖子落库无价），这条守的是跨层漏字段。
+      expect(draft['price'], 350);
+      expect(draft['price_unit'], '元');
+      // 契约必填的位置与联系方式
+      expect(draft['lng'], 120.1551);
+      expect(draft['lat'], 30.2741);
+      expect(draft['contact_value'], '13800138000');
+      expect(draft['ai_assisted'], isTrue);
+      // 模板字段同样来自猜测，不能丢
+      expect((draft['attributes'] as Map)['condition'], '几乎全新');
     });
   });
 }

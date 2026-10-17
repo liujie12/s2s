@@ -204,6 +204,16 @@ class PublishFormState {
   bool get templatePending =>
       leafCategoryId != null && loadedTemplate == null;
 
+  /// 价格数值（契约 `PostDraft.price`）。
+  ///
+  /// **「面议」按契约上送 null**：契约写明 `price` 为 null 表示面议，不是
+  /// 一个待填的空位。非法/空白同样回到 null —— 半成品预校验允许价格缺省，
+  /// 真正拦截交给 [priceSettled]/[blocker]。
+  double? get priceValue {
+    if (priceUnit == '面议') return null;
+    return num.tryParse(priceText.trim())?.toDouble();
+  }
+
   /// 价格是否已交代清楚 —— 填了数字，或选了「面议」。
   ///
   /// §5.8：「允许选『面议』不填数字；其他情况必须填数字」。
@@ -354,6 +364,11 @@ class PublishFormState {
       'type': kind == PublishKind.supply ? 'resource' : 'demand',
       if (leafCategoryId != null) 'leaf_category_id': leafCategoryId,
       if (title.trim().isNotEmpty) 'title': title.trim(),
+      // 契约 `price`/`price_unit` 必须上送，否则帖子入库后没有价格 ——
+      // 此前只有展示层有价格，条目落库恒为 null（跨层漏字段，2026-10-17 修）。
+      if (priceValue != null) 'price': priceValue,
+      if (priceValue != null && (priceUnit ?? '').trim().isNotEmpty)
+        'price_unit': priceUnit!.trim(),
       if (description.trim().isNotEmpty) 'description': description.trim(),
       'attributes': <String, String>{
         for (final field in template.extraFields)
