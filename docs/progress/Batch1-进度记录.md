@@ -151,6 +151,7 @@
 - 2026-10-17（B2-4 阶段① Step 2 真机复验通过 · rt_ms=2159 · AI-DIAG 补丁移除）
 - 2026-10-17（B2-4 模式② 语音验收通过 + 价格中文数字/分类 category_options 两项增强）
 - 2026-10-17（发布定位精度优化：会话最优点 + 发布前单次高精度定位，真机 20m）
+- 2026-10-17（发布页地图选点接真 + 高德 Web 逆地理地址展示 + AI FAB 可拖动/避让）
 
 ---
 
@@ -7288,6 +7289,23 @@ printf '\nMYSQL_SSL_MODE=VERIFY_CA\nMYSQL_TLS_TRUSTSTORE_PASSWORD=%s\n' \
 **门禁**：`flutter analyze` 0 issue；`flutter test` **772/772**（+3 例 `wgs84ToGcj02` 转换用例）。
 
 **结论**：`amap_flutter_location` 方案作废，原因与实测证据见上；发布取点链路 = `geolocator`（系统定位）→ GCJ-02 → `locationFixProvider` → 表单。`[PUBLISH-LOCATE]` 打点仅 `kDebugMode` 生效，保留用于后续真机复核。
+
+### 2026-10-17（发布页地图选点接真 + 位置名称 / AI FAB 拖动）
+
+**地图选点**
+- 原 `mapSelector` 路由是 PlaceholderScreen、发布页按钮禁用。新增 `map_selector_screen.dart`：高德地图 + 中心准星，拖动/点按选点，确认回传 `MapPickResult`（GCJ-02 + 门牌号 + 地址文案）；发布页 `_pickOnMap` 写回表单并自动保存草稿。
+- 页内门牌号输入 + PIPL 告知「门牌号将对所有看到这条信息的人可见」（安全方案 §642）；`formatPlacemark` 不再拼接重复 POI 名。
+- 路由改为真实页面，`extra` 传已选坐标/门牌。
+
+**位置名称（跨机型一致）**
+- 先接系统 `Geocoder`（`geocoding`）：真机把准星「北城世纪城鑫徽苑」反成「长丰县阜公路」；同时发现系统 Geocoder 只认 WGS-84（已补 GCJ→WGS 反算）但数据源仍由 ROM 决定。
+- 高德 Web 服务实测同坐标返回「…双墩镇北城世纪城鑫徽苑」，与地图同源。最终**只用高德 Web 逆地理**（`AMAP_WEBSERVICE_KEY` 构建期注入，`NfrLocation.reverseGeocodeTimeoutMs`=3s、半径 200m），**删除系统兜底与 `geocoding` 依赖**；失败显示「暂时无法获取位置名称」，不展示错误地址。
+- release 门禁脚本补 `AMAP_WEBSERVICE_KEY` 注入与缺失告警。
+
+**AI 帮我发 FAB**
+- 真机反馈：固定右下会压住筛选面板的分类胶囊（分类点不到）。改为**可拖动**（边界夹取、点击不冲突）；面板展开时**帧后测量面板顶边并把 FAB 抬到其上方**（不隐藏，入口始终可见）。
+
+**门禁**：`flutter analyze` 0 issue；`flutter test` **772/772**。真机验证：地图选点地址与准星一致、FAB 可拖动且面板展开时不再遮挡。
 
 
 

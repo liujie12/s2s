@@ -13,8 +13,8 @@
 /// ① **第 2 段位置**：「使用当前位置」已接真 —— 从 [locationFixProvider]（本次
 /// 会话最优定位点）
 ///    取 GCJ-02 坐标写入表单（`POST /posts` 契约要求 `lng`/`lat` 必填，
-///    坐标随载荷上送）；「地图选点」（拖图选点）按钮保留但禁用并注明原因
-///    —— 隐藏它会让验收时无法判断是漏做还是待前置。
+///    坐标随载荷上送）；「地图选点」已接真（全屏模态 `map_selector_screen`），
+///    拖动准星微调并把坐标与可选门牌号回写表单。
 /// ② **第 6 段媒体**：[B2-11] 已由占位转真（见 `media_section.dart`）——
 ///    选图（`image_picker`）→ OSS 直传 → commit，成功后的 mediaId 进
 ///    [PublishFormState.mediaIds] 随载荷上送。本轮**仅图片**（视频待单列）。
@@ -55,9 +55,11 @@ import '../auth/auth_repository.dart';
 import '../location/high_accuracy_locator.dart';
 import '../location/location_center.dart';
 import '../location/location_permission.dart';
+import '../location/reverse_geocode.dart';
 import '../post/post_dto.dart';
 import '../post/post_repository.dart';
 import 'draft_store.dart';
+import 'map_selector_screen.dart';
 import 'media_section.dart';
 import 'precheck_sheet.dart';
 import 'publish_form_state.dart';
@@ -482,9 +484,42 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
           const SnackBar(content: Text('高精度定位未成功，已使用最近定位点')),
         );
       }
+      // 位置名称用于用户核对；逆地理失败不阻断发布（只在位置段显示「已使用当前位置」）。
+      final label = await reverseGeocodeLabel(
+        lat: coordinate.lat,
+        lng: coordinate.lng,
+      );
+      if (!mounted || label.isEmpty) return;
+      _updateForm(_form.copyWith(locationLabel: label));
     } finally {
       _locating = false;
     }
+  }
+
+  /// 打开地图选点模态并把选点结果写回表单（§5.4.1 第 2 段「地图选点」）。
+  ///
+  /// 入参带上当前坐标与门牌号，模态里可直接微调；返回 null 表示用户取消，
+  /// 此时不改动表单。
+  ///
+  /// 返回：void。
+  Future<void> _pickOnMap() async {
+    final result = await context.push<MapPickResult>(
+      AppRoutes.mapSelector,
+      extra: MapSelectorArgs(
+        lat: _form.lat,
+        lng: _form.lng,
+        doorNumber: _form.doorNumber,
+      ),
+    );
+    if (result == null || !mounted) return;
+    _updateForm(
+      _form.copyWith(
+        lng: result.lng,
+        lat: result.lat,
+        locationLabel: result.address,
+        doorNumber: result.doorNumber,
+      ),
+    );
   }
 
   @override
@@ -580,7 +615,10 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
             done: _form.hasLocation,
             child: _LocationRow(
               hasLocation: _form.hasLocation,
+              locationLabel: _form.locationLabel,
+              doorNumber: _form.doorNumber,
               onUseCurrent: _useCurrentLocation,
+              onPickOnMap: _pickOnMap,
             ),
           ),
           _SectionCard(
@@ -898,10 +936,39 @@ class _CategoryRow extends StatelessWidget {
 
 /// 第 2 段：位置。
 class _LocationRow extends StatelessWidget {
-  const _LocationRow({required this.hasLocation, required this.onUseCurrent});
+  const _LocationRow({
+    required this.hasLocation,
+    required this.locationLabel,
+    required this.doorNumber,
+    required this.onUseCurrent,
+    required this.onPickOnMap,
+  });
 
   final bool hasLocation;
+
+  /// 逆地理得到的地址文案（空串 = 未取到），用于让用户核对选点是否正确。
+  final String locationLabel;
+
+  /// 已填门牌号（空串 = 未填）。非空时附带展示，让用户知道 🟢 条件二已达成。
+  final String doorNumber;
+
   final VoidCallback onUseCurrent;
+
+  /// 打开地图选点模态（§5.4.1 第 2 段「地图选点」）。
+  final VoidCallback onPickOnMap;
+
+  /// 拼出位置段的展示文案：地址（取不到时退回「已使用当前位置」）+ 门牌号。
+  ///
+  /// 参数：无。
+  ///
+  /// 返回：供 [Text] 直接渲染的摘要串。
+  String _locationSummary() {
+    final base = locationLabel.trim().isEmpty
+        ? _currentLocationLabel
+        : locationLabel.trim();
+    final door = doorNumber.trim();
+    return door.isEmpty ? base : '$base · $door';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -920,7 +987,9 @@ class _LocationRow extends StatelessWidget {
             const SizedBox(width: AppSpacing.sm),
             Expanded(
               child: Text(
-                hasLocation ? _currentLocationLabel : '尚未选择位置',
+                hasLocation
+                    ? _locationSummary()
+                    : '尚未选择位置',
                 style: TextStyle(
                   fontSize: AppTypeScale.body.size,
                   color: hasLocation
@@ -948,11 +1017,11 @@ class _LocationRow extends StatelessWidget {
             ),
             const SizedBox(width: AppSpacing.sm),
             OutlinedButton(
-              // 禁用而非隐藏：§5.4.1 明列「地图选点」，隐藏后无从确认它是待做还是不做。
-              // 高德 Key 已配置（[149] 后），缺的是拖图选点页（mapSelector 路由）本身。
-              onPressed: null,
+              // §5.4.1 明列「地图选点」：全屏模态里拖图微调，可顺手补门牌号。
+              onPressed: onPickOnMap,
               style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: Color(AppColors.border)),
+                side: const BorderSide(color: Color(AppColors.primary)),
+                foregroundColor: const Color(AppColors.primary),
                 shape: const StadiumBorder(),
               ),
               child: Text(
@@ -963,7 +1032,7 @@ class _LocationRow extends StatelessWidget {
           ],
         ),
         const SizedBox(height: AppSpacing.xs),
-        _HintText('可见范围默认 5km；「地图选点」（拖图微调）待接入'),
+        _HintText('可见范围默认 5km；可拖动地图微调到门牌号'),
       ],
     );
   }

@@ -136,6 +136,22 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   /// 连续取点失败次数（§6.8「≥ [NfrLocation.locateFailThreshold] 次 → C 态降级」）。
   int _locateFailCount = 0;
 
+  /// AI FAB 的左上角位置（相对地图 Stack）。null = 默认右下角。
+  ///
+  /// 允许拖动的原因：筛选面板展开后占满底部，FAB 固定在右下会压住分类胶囊，
+  /// 导致「全部/工作/房屋」点不到（2026-10-17 真机反馈）。
+  Offset? _aiFabPosition;
+
+  /// FAB 与地图 Stack 的 key：拖动时用两者换算当前位置并做边界夹取。
+  final GlobalKey _aiFabKey = GlobalKey();
+  final GlobalKey _mapStackKey = GlobalKey();
+
+  /// 筛选面板 key：展开时测量其顶边，用于把 FAB 自动抬到面板上方。
+  final GlobalKey _filterPanelKey = GlobalKey();
+
+  /// 是否已排过「FAB 避让筛选面板」的帧后校正（防重复调度）。
+  bool _fabAvoidScheduled = false;
+
   @override
   void initState() {
     super.initState();
@@ -244,7 +260,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           final bool allOffScreen =
               pinsAsync.asData != null && pinList.isNotEmpty && !hasVisibleMarker;
 
+          final bool panelExpanded = ref.watch(filterPanelExpandedProvider);
+          // 面板展开时排一次帧后避让，让 FAB 抬到面板上方（入口保持可见）。
+          if (panelExpanded) _avoidFilterPanel();
+
           return Stack(
+            key: _mapStackKey,
             children: [
               _buildMapBody(
                 consent,
@@ -312,14 +333,17 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 top: AppSpacing.md + 44 + AppSpacing.sm,
                 child: _ListViewEntryButton(),
               ),
-              if (ref.watch(filterPanelExpandedProvider))
-                const Positioned(
+              if (panelExpanded)
+                Positioned(
                   left: AppSpacing.md,
                   right: AppSpacing.md,
                   bottom: AppSpacing.md,
                   // 只有地图页把分类切换计为图层切换耗时（[140]）：列表页复用同一
                   // 控件但没有 Pin 渲染终点，量不出这条链路（见 FilterPanel 的注释）。
-                  child: FilterPanel(measureLayerSwitch: true),
+                  child: FilterPanel(
+                    key: _filterPanelKey,
+                    measureLayerSwitch: true,
+                  ),
                 ),
               if (_selectedListingId != null)
                 Positioned(
@@ -343,19 +367,97 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 child: PerfPanel(),
               ),
               // 「AI 帮我发」FAB（PRD §6.13 T6-①）：悬浮于首页右下，唤起四模式。
-              // 放在性能面板上方（+56）避免遮挡 —— 二者同处右下角。
-              Positioned(
-                right: AppSpacing.md,
-                bottom: AppSpacing.md + 56,
-                child: AiPublishFab(
-                  onTap: () => startAiPublish(context, ref),
-                ),
-              ),
+              // 可拖动；筛选面板展开时自动抬到面板上方（不隐藏，保证入口始终可见）。
+              _buildAiFab(constraints),
             ],
           );
         },
       ),
     );
+  }
+
+  /// 构建可拖动的「AI 帮我发」FAB。
+  ///
+  /// 未拖动过时仍用右下角定位（`right/bottom`），拖动过一次后改用
+  /// 左上角坐标（[_aiFabPosition]），让按钮停在用户放下的位置。
+  ///
+  /// 参数：[constraints] 地图 Stack 的尺寸约束（拖动边界夹取用）。
+  ///
+  /// 返回：定位好的 FAB 控件。
+  Widget _buildAiFab(BoxConstraints constraints) {
+    final position = _aiFabPosition;
+    final fab = GestureDetector(
+      key: _aiFabKey,
+      // 只接管拖动；点击仍由内部 InkWell 处理（位移小于 slop 时两个手势不冲突）。
+      onPanUpdate: (details) => _moveAiFab(details.delta, constraints),
+      child: AiPublishFab(onTap: () => startAiPublish(context, ref)),
+    );
+    if (position == null) {
+      return Positioned(
+        right: AppSpacing.md,
+        bottom: AppSpacing.md + 56,
+        child: fab,
+      );
+    }
+    return Positioned(left: position.dx, top: position.dy, child: fab);
+  }
+
+  /// 按拖动增量移动 FAB，并把左上角夹在 Stack 可见范围内。
+  ///
+  /// 参数：
+  /// - [delta] 本次拖动位移；
+  /// - [constraints] Stack 尺寸约束。
+  ///
+  /// 返回：void。
+  void _moveAiFab(Offset delta, BoxConstraints constraints) {
+    final fabBox = _aiFabKey.currentContext?.findRenderObject() as RenderBox?;
+    final stackBox =
+        _mapStackKey.currentContext?.findRenderObject() as RenderBox?;
+    if (fabBox == null || stackBox == null) return;
+    // 当前位置从渲染树读：无论此刻由 right/bottom 还是 left/top 定位都成立。
+    final current = fabBox.localToGlobal(Offset.zero, ancestor: stackBox);
+    final next = Offset(
+      (current.dx + delta.dx).clamp(
+        0.0,
+        math.max(0.0, constraints.maxWidth - fabBox.size.width),
+      ),
+      (current.dy + delta.dy).clamp(
+        0.0,
+        math.max(0.0, constraints.maxHeight - fabBox.size.height),
+      ),
+    );
+    setState(() => _aiFabPosition = next);
+  }
+
+  /// 筛选面板展开后，把 FAB 抬到面板顶边之上（帧后测量，避免遮挡分类胶囊）。
+  ///
+  /// **不隐藏 FAB**：它是发布主入口之一，展开筛选时消失会让用户以为功能没了
+  /// （2026-10-17 真机反馈）。只做位置避让，入口始终可见。
+  ///
+  /// 参数：无。
+  ///
+  /// 返回：void（实际移动在帧后回调里完成）。
+  void _avoidFilterPanel() {
+    if (_fabAvoidScheduled) return;
+    _fabAvoidScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _fabAvoidScheduled = false;
+      if (!mounted) return;
+      final fabBox = _aiFabKey.currentContext?.findRenderObject() as RenderBox?;
+      final stackBox =
+          _mapStackKey.currentContext?.findRenderObject() as RenderBox?;
+      final panelBox =
+          _filterPanelKey.currentContext?.findRenderObject() as RenderBox?;
+      if (fabBox == null || stackBox == null || panelBox == null) return;
+      final panelTop =
+          panelBox.localToGlobal(Offset.zero, ancestor: stackBox).dy;
+      final fabTopLeft = fabBox.localToGlobal(Offset.zero, ancestor: stackBox);
+      final gap = AppSpacing.md.toDouble();
+      // 已经在面板上方（含安全间距）就不动，避免每帧抖动。
+      if (fabTopLeft.dy + fabBox.size.height + gap <= panelTop) return;
+      final nextTop = math.max(0.0, panelTop - fabBox.size.height - gap);
+      setState(() => _aiFabPosition = Offset(fabTopLeft.dx, nextTop));
+    });
   }
 
   /// 导航栏（PRD §6.4.1：实体 48px，含搜索框与通知铃）。

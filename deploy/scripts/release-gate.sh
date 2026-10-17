@@ -57,6 +57,7 @@ readonly RELEASE_ENV="prod"
 readonly DEFINE_BASE_URL="S2S_API_BASE_URL=https://s2s.build110.com"
 readonly DEFINE_IS_RELEASE="S2S_IS_RELEASE=true"
 readonly DEFINE_AMAP_KEY_NAME="AMAP_ANDROID_KEY"
+readonly DEFINE_AMAP_WEB_KEY_NAME="AMAP_WEBSERVICE_KEY"
 
 readonly DEFAULT_APK_REL="build/app/outputs/flutter-apk/app-release.apk"
 readonly LOG_REL="build/release-gate.log"
@@ -434,8 +435,12 @@ $(tail -n 25 "${REPO}/build/release-gate.test.log" | sed 's/^/        /')"
     if [[ -z "${AMAP_ANDROID_KEY:-}" ]]; then
       skip "S6-Key" "未提供 AMAP_ANDROID_KEY，构建出的包地图将走降级底图（P0 五环之一不可验）"
     fi
+    if [[ -z "${AMAP_WEBSERVICE_KEY:-}" ]]; then
+      skip "S6-WebKey" "未提供 AMAP_WEBSERVICE_KEY，发布页/地图选点页将无法显示位置名称"
+    fi
     DEFINES="--dart-define=${DEFINE_BASE_URL} --dart-define=${DEFINE_IS_RELEASE}"
     [[ -n "${AMAP_ANDROID_KEY:-}" ]] && DEFINES="${DEFINES} --dart-define=${DEFINE_AMAP_KEY_NAME}=${AMAP_ANDROID_KEY}"
+    [[ -n "${AMAP_WEBSERVICE_KEY:-}" ]] && DEFINES="${DEFINES} --dart-define=${DEFINE_AMAP_WEB_KEY_NAME}=${AMAP_WEBSERVICE_KEY}"
     if run_win "${FLUTTER_WIN}" build apk --release ${DEFINES} > "${REPO}/build/release-gate.build.log" 2>&1; then
       pass "S6 flutter build apk --release 成功（输出见 build/release-gate.build.log）"
     else

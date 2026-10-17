@@ -28,7 +28,6 @@ import '../features/discovery/list_screen.dart';
 import '../features/favorite/favorite_screen.dart';
 import '../features/map/map_screen.dart';
 import '../features/notify/notification_screen.dart';
-import '../features/placeholder/placeholder_screen.dart';
 import '../features/post/my_publish_screen.dart';
 import '../features/privacy/privacy_consent.dart';
 import '../features/privacy/privacy_gate_screen.dart';
@@ -38,6 +37,7 @@ import '../features/publish/ai_confirm_screen.dart';
 import '../features/publish/ai_dialog_screen.dart';
 import '../features/publish/category_selector_screen.dart';
 import '../features/publish/cert_modal_screen.dart';
+import '../features/publish/map_selector_screen.dart';
 import '../features/publish/publish_form_state.dart';
 import '../features/publish/publish_screen.dart';
 import '../features/publish/publish_screen_args.dart';
@@ -278,14 +278,19 @@ final List<RouteBase> _routes = [
   ),
   GoRoute(
     path: AppRoutes.mapSelector,
-    pageBuilder: (context, state) => const MaterialPage(
-      fullscreenDialog: true,
-      child: PlaceholderScreen(
-        pageId: 'map-selector',
-        pageName: '地图选点（模态）',
-        note: '地图打点选位',
-      ),
-    ),
+    // extra 传入已选坐标与门牌（可空），用于打开时把准星定位到当前位置。
+    // 回传 [MapPickResult]；取消/返回时为 null。
+    pageBuilder: (context, state) {
+      final args = state.extra as MapSelectorArgs?;
+      return MaterialPage(
+        fullscreenDialog: true,
+        child: MapSelectorScreen(
+          initialLat: args?.lat,
+          initialLng: args?.lng,
+          initialDoorNumber: args?.doorNumber ?? '',
+        ),
+      );
+    },
   ),
   GoRoute(
     path: AppRoutes.certModal,

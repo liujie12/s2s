@@ -501,6 +501,15 @@ class NfrLocation {
 
   /// 发布定位的「足够好」精度（米）：达到即提前结束，不再等满超时。
   static const double publishGoodAccuracyMeters = 20;
+
+  /// 逆地理查询的超时（毫秒）。
+  ///
+  /// 地址只用于核对选点，不能因为它拖慢选点/发布交互；超时即放弃并退回
+  /// 系统逆地理或「无法获取位置名称」。
+  static const int reverseGeocodeTimeoutMs = 3000;
+
+  /// 高德逆地理的搜索半径（米）：200m 内取最近的道路/POI。
+  static const int reverseGeocodeRadiusMeters = 200;
 }
 
 /// §6.10.1 性能降级开关触发条件（预留，本期不实施 —— PRD:2379）。

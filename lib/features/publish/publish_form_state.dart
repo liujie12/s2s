@@ -104,6 +104,7 @@ class PublishFormState {
     this.leafCategoryId,
     this.lng,
     this.lat,
+    this.locationLabel = '',
     this.doorNumber = '',
     this.title = '',
     this.priceText = '',
@@ -136,12 +137,19 @@ class PublishFormState {
   /// 400」。位置是否就绪只由「坐标是否采集到」回答，两者无从漂移。
   bool get hasLocation => lng != null && lat != null;
 
+  /// 所选位置的名称/地址文案（仅用于展示，不上送）。
+  ///
+  /// 来源是地图选点页的系统逆地理结果（`geocoding`），也可能是空串（逆地理
+  /// 不可用）。**为什么不落库**：`post.address` 属公开字段，本期只解决
+  /// 「用户确认选点是否正确」的展示问题，地址公开口径尚未裁定。
+  final String locationLabel;
+
   /// 门牌号（§9.8 条件二「位置到门牌号」）。
   ///
   /// **为什么要有一个手填框而不是只靠地图选点**：§9.8 的兜底列写明
   /// 「地址库无该门牌时，允许手填自由文本并视为达成，不卡用户」。
-  /// 而本期没有高德 Key，「取当前定位门牌」拿不到真值 —— 若只留那个按钮，
-  /// 🟢 档在本期将无人可达，完整度三档就退化成「只有 🟡 和 🔴」，
+  /// 系统逆地理只给到街道/POI 级，「取当前定位门牌」拿不到门牌真值 —— 若只留
+  /// 那个快捷按钮，🟢 档在本期将无人可达，完整度三档就退化成「只有 🟡 和 🔴」，
   /// 那么 §5.9 冲刺区与 §9.8 权益卡都没法验收。
   final String doorNumber;
 
@@ -296,6 +304,7 @@ class PublishFormState {
     int? leafCategoryId,
     double? lng,
     double? lat,
+    String? locationLabel,
     String? doorNumber,
     String? title,
     String? priceText,
@@ -313,6 +322,7 @@ class PublishFormState {
       leafCategoryId: leafCategoryId ?? this.leafCategoryId,
       lng: lng ?? this.lng,
       lat: lat ?? this.lat,
+      locationLabel: locationLabel ?? this.locationLabel,
       doorNumber: doorNumber ?? this.doorNumber,
       title: title ?? this.title,
       priceText: priceText ?? this.priceText,
@@ -402,7 +412,8 @@ class PublishFormState {
       leafCategoryId: leafId,
       lng: lng,
       lat: lat,
-      // 门牌号跟着位置走，与分类无关，故换分类时保留
+      // 位置名称与门牌号跟着位置走，与分类无关，故换分类时保留
+      locationLabel: locationLabel,
       doorNumber: doorNumber,
       title: title,
       priceText: priceText,

@@ -1,12 +1,11 @@
-/// 发布取点坐标系转换测试（PRD §6.4.1：全工程统一 GCJ-02）。
+/// 坐标系转换测试（PRD §6.4.1：全工程统一 GCJ-02）。
 ///
-/// 系统定位（geolocator）返回 WGS-84，若直接落库/上图会有约 500m 偏移。
-/// 这里钉住 [wgs84ToGcj02] 的三件事：境外不偏移、境内偏移方向正确、偏移量在
-/// 中国范围内的合理区间 —— 公式写错（漏转换/经纬颠倒/符号错）都会被放大暴露。
+/// 系统定位（geolocator）返回 WGS-84 → [wgs84ToGcj02] 入表；写错会造成
+/// 约 500m 偏移。逆地理走高德 Web 服务（GCJ-02 原生），不吃这里的结果。
 library;
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:zhaoyazhao/features/location/high_accuracy_locator.dart';
+import 'package:zhaoyazhao/features/location/coordinate_transform.dart';
 
 void main() {
   group('wgs84ToGcj02', () {

@@ -126,12 +126,12 @@ void main() {
       expect(find.textContaining('0 / 9'), findsOneWidget);
     });
 
-    testWidgets('地图选点按钮呈现但禁用 —— 不隐藏，以便验收时确认它是待前置', (tester) async {
+    testWidgets('地图选点按钮可点 —— 打开全屏选点模态', (tester) async {
       await pumpPublish(tester);
       final button = tester.widget<OutlinedButton>(
         find.widgetWithText(OutlinedButton, '地图选点'),
       );
-      expect(button.onPressed, isNull);
+      expect(button.onPressed, isNotNull);
     });
   });
 
