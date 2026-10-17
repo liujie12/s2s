@@ -32,7 +32,7 @@ extension AiPublishModeX on AiPublishMode {
 
   /// 模式副文案（弹层说明）。
   String get description => switch (this) {
-    AiPublishMode.media => '拍 1 张图 + 说 1 句话，AI 自动填好（约 7 秒）',
+    AiPublishMode.media => '拍 1 张图 + 说 1 句话，AI 自动填好（约 3 秒）',
     AiPublishMode.voice => '点一下开始，说一句话，再点停止',
     AiPublishMode.dialog => '每屏 1 问，8 问填完即发布，新手首选',
     AiPublishMode.flash => '只填标题 + 拍照即发布，24 小时内补全',
