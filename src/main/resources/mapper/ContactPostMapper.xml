@@ -29,10 +29,11 @@
     <!--
       统计某叶子类目下帖子在给定时间窗内被联系次数（[153] B2-5 §9.10.2 达标判定用）。
 
-      EXPLAIN 结论：驱动表 `post` 走 `idx_leaf_category`（leaf_category_id 等值），
-      再按 post_id 关联 `contact_event` 的 `idx_post`；属「小范围驱动 + 索引关联」，
-      无全表扫。窗口条件写在 `contact_event.created_at` 上（判定的是「窗口内被联系」，
-      而非「窗口内发布的帖子」）。
+      EXPLAIN 结论（2026-10-17 容量复核订正）：`post` 上**没有** leaf_category_id 前缀索引
+      （V1–V14 从未建过 `idx_leaf_category`，原注释失实），驱动侧为全表扫 post；窗口条件写在
+      `contact_event.created_at` 上（判定的是「窗口内被联系」，而非「窗口内发布的帖子」）。
+      当前仅临时类目 72h 达标判定（低频运营动作）调用，内测规模可接受；post ≥ 20 万行时按
+      《数据库设计文档》§6.4.1 决策建 `idx_leaf_created(leaf_category_id, created_at)`。
 
       只读、只出 COUNT：不 SELECT 任何密文/联系方式列。
     -->

@@ -147,6 +147,7 @@
 - 2026-10-15（B2-6a 微信登录 · 开工包立档 + 微信开放平台资质申请方案）
 - 2026-10-15（B2-4 阶段① Step 2 · 多模态通道落地 —— 图片 OSS 只读签名 + 独立 ASR 语音转写）
 - 2026-10-15（B2-4 阶段① 发版 + Step 1 真接口验收 —— 真通道确认）
+- 2026-10-17（B2-10 容量复核 · 索引/机型决策 + 两处失实 EXPLAIN 注释订正）
 
 ---
 
@@ -7185,6 +7186,32 @@ printf '\nMYSQL_SSL_MODE=VERIFY_CA\nMYSQL_TLS_TRUSTSTORE_PASSWORD=%s\n' \
 
 **⑤ 文档回写**
 - 任务书 §零：Step 1 验收行 ✅；`说明文档.md` §三 Step 1 条更新验收结论；本记录（索引 + 本条）。**未改**：`Batch2-启动清单` / `决策登记表`（无新口径裁定，dry-run 回退为既有闸门口径的执行时机问题）。
+
+### 2026-10-17（B2-10 容量复核 · 索引/机型决策）
+
+**结论正文**：《数据库设计文档》**§6.4.1**（v1.2）。复核口径：行宽沿用 §6.2 实测量（索引 248B/行），不重新造数；执行环境无 MySQL 客户端与直连条件，**未取线上行数/命中率**。
+
+**① 索引决策 = 本期零 DDL**
+- 5 个二级索引逐个核对消费方：`idx_pins_cover`（/map/pins 三查询，index-only）、`idx_user_status_created`（我的发布）、`idx_status_expire`（到期扫描）、`idx_l2_type_status`（T1 Hard Filter 预留，B2-3b 未排期）均保留；
+- `idx_status_completeness` **无 SQL 消费方** —— 列表三种排序都在 `MapService.sortCards` 应用层，SQL 无 `ORDER BY completeness_level`，判定可回收（2.5MB/10 万行）；
+- `post` ≥ **20 万行**（或相关查询 p95 > 500ms）时一次性执行：`ADD KEY idx_leaf_created(leaf_category_id, created_at)` + `DROP KEY idx_status_completeness`（个数不变、体积净零），执行前须 EXPLAIN 两条查询 + `/map/pins` 回归。
+
+**② 发现的缺口（顺带订正）**
+- `PostQueryMapper.countByLeafBetween` 与 `ContactPostMapper.countContactsByLeafBetween` 的 EXPLAIN 注释称走 `idx_leaf_category`，但 V1–V14 从未建过该索引 ⇒ 实际全表扫 `post`；
+- 影响面仅临时类目 72h 达标判定（B2-5 §9.10.2，低频运营动作），当前规模可接受；两处注释已改为实况并指向 §6.4.1。
+
+**③ 机型决策 = 不升配**
+- 宿主实测 31GB，「2 核 2G」的 2G 前提已于 2026-10-09 作废（部署架构 §3.1）；真正约束是 MySQL 容器 `mem_limit=768m` + `innodb_buffer_pool_size=256M`；
+- 阈值：`post` 50 万行（索引 124MB/48%）或命中率 <99% 连续 7 天 ⇒ MySQL `mem_limit→1536m`、BP `→1G`，同步部署架构 §3.1/§3.3/§14.3 + compose override + my.cnf（staging 同改）；
+- 不换机型：`/map/pins` 是 index-only 单表范围扫描，2 核 CPU 非瓶颈。
+
+**④ 登记更早触顶的风险位**
+- `/posts/search`（`MapService.searchPosts`）SQL **不带 LIMIT**，全量候选拉进 JVM 后内存排序分页；`post` ≥ 10 万行时压测，p95 超 SLA（300ms）先加候选上限/键集分页，**不得先加索引**。
+
+**⑤ 文档回写**
+- 《数据库设计文档》v1.2：版本行 + §3.5 索引注 + §4.1 场景表订正 + 新增 §6.4.1 + §6.6 未验证项；
+- 《Batch2-启动清单》B2-10 → ✅ 复核完成；`说明文档.md` §三新增 B2-10 条；本记录（索引 + 本条）。
+- **未改**：DDL/Flyway（零 DDL 决策）、`决策登记表`（无新口径裁定）。
 
 
 

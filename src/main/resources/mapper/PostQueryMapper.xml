@@ -100,8 +100,10 @@
     <!--
       统计某叶子类目在时间窗内的发布数（[153] B2-5 §9.10.2 达标判定用）。
 
-      EXPLAIN 结论：`idx_leaf_category` 等值 + `created_at` 范围，属「等值前缀 + 范围」
-      组合，命中该索引的单前缀区间，无全表扫。
+      EXPLAIN 结论（2026-10-17 容量复核订正）：`post` 上**没有** leaf_category_id 前缀索引
+      （V1–V14 从未建过 `idx_leaf_category`，原注释失实），本查询为全表扫 post。仅临时类目
+      72h 达标判定（低频）调用，内测规模可接受；post ≥ 20 万行时按《数据库设计文档》
+      §6.4.1 决策建 `idx_leaf_created(leaf_category_id, created_at)`。
 
       窗口语义：`post.created_at ∈ [from, to)`，即「该临时类目挂出后 72h 内发布的帖子数」
       —— PRD §9.10.2「3 天内该类目发布数」。
