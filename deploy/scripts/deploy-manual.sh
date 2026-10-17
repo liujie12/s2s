@@ -9,7 +9,8 @@
 # 与 deploy.sh 的唯一差异：本脚本【跳过宿主 mvn】，编译交给 Dockerfile 内的
 #   builder 阶段（maven:3.9-eclipse-temurin-21）完成，宿主只需 Docker。
 #   其余五步语义与 deploy.sh 完全一致：
-#     拉代码 → 构建镜像 → 门禁自查（硬卡点） → 备份数据库 → 滚动重启 app → 健康校验
+#     拉代码（含 GitHub 断线自动重试 3 次 × 15s） → 构建镜像
+#       → 门禁自查（硬卡点） → 备份数据库 → 滚动重启 app → 健康校验
 #
 # 适用：宿主 Maven 过老、执行 deploy.sh 第 2 步 mvn package 必然失败的机器
 #       （本项目生产 ECS CentOS 7 自带 Maven 3.0.5，解析不了 Spring Boot 3 POM）。
@@ -43,11 +44,19 @@
 
 set -euo pipefail
 
+# 本机 git 1.8.3.1：不设 GIT_PAGER 时 git 输出会进 less 占住终端，后续命令被吞
+# （《部署操作手册》§7.5 踩坑记录）。
+export GIT_PAGER=cat
+
 DEPLOY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT_DIR="$(cd "${DEPLOY_DIR}/.." && pwd)"
 BASE_FILE="${DEPLOY_DIR}/docker-compose.yml"
 STATE_FILE="${DEPLOY_DIR}/.current-env"
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
+
+# 步骤 1 拉代码的重试策略（生产 ECS 到 GitHub 出口间歇不通，详见 pull_with_retry 说明）
+GIT_PULL_MAX_ATTEMPTS=3
+GIT_PULL_RETRY_DELAY_SECONDS=15
 
 # G6 判据所需域名。允许调用方覆盖，默认取生产域名。
 SITE_DOMAIN="${SITE_DOMAIN:-s2s.build110.com}"
@@ -214,6 +223,37 @@ resolve_log_file() {
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "${LOG_FILE}"; }
 
 # ---------------------------------------------------------------------------
+# 函数：pull_with_retry
+# 功能：拉取远程 main，针对生产 ECS 直连 GitHub 的间歇性失败做有限重试
+# 参数：无（使用全局 PROJECT_DIR / GIT_PULL_MAX_ATTEMPTS / GIT_PULL_RETRY_DELAY_SECONDS）
+# 返回：0 — 拉取成功；1 — 重试耗尽仍失败
+# 说明：生产 ECS 到 github.com:443 的出口会**间歇性**中断，实测三种形态：
+#         Encountered end of file / Empty reply from server / 连接超时（15s）。
+#       与「权限」「仓库配置」无关，**隔十几秒重试即可通过**
+#       （诊断与处置铁律见《部署操作手册》§10.11）。
+#       历史事故：无重试时 git pull 一失败就被 set -e 中止在第 [1/6] 步，
+#       连镜像都没开始构建，一次网络抖动就把整段发版废掉，只能人工逐条重来。
+#       重试上限与间隔**刻意取小**（3 次 × 15s）：GitHub 长时间不可达属另一类故障，
+#       此时应当中止交人处置，而不是让脚本长时间空转、让人以为还在跑。
+# ---------------------------------------------------------------------------
+pull_with_retry() {
+  local attempt=1
+  while [[ "${attempt}" -le "${GIT_PULL_MAX_ATTEMPTS}" ]]; do
+    if git pull origin main; then
+      return 0
+    fi
+    if [[ "${attempt}" -lt "${GIT_PULL_MAX_ATTEMPTS}" ]]; then
+      log "[WARN] git pull 第 ${attempt}/${GIT_PULL_MAX_ATTEMPTS} 次失败（ECS 直连 GitHub 间歇不通，见《部署操作手册》§10.11），${GIT_PULL_RETRY_DELAY_SECONDS}s 后重试"
+      sleep "${GIT_PULL_RETRY_DELAY_SECONDS}"
+    else
+      log "[FAIL] git pull 连续 ${GIT_PULL_MAX_ATTEMPTS} 次失败（已重试 ${GIT_PULL_RETRY_DELAY_SECONDS}s 间隔）"
+    fi
+    attempt=$((attempt + 1))
+  done
+  return 1
+}
+
+# ---------------------------------------------------------------------------
 # 函数：check_app_health
 # 功能：校验应用健康端点是否返回 status:UP
 # 参数：无
@@ -338,9 +378,12 @@ COMPOSE_ARGS=(
 if [[ "${SKIP_PULL}" -eq 1 ]]; then
   log "[1/6] 跳过 git pull（--skip-pull）"
 else
-  log "[1/6] 拉取最新代码"
+  log "[1/6] 拉取最新代码（ECS 直连 GitHub 间歇不通，失败自动重试 ${GIT_PULL_MAX_ATTEMPTS} 次）"
   cd "${PROJECT_DIR}"
-  git pull origin main
+  pull_with_retry || die "git pull 连续 ${GIT_PULL_MAX_ATTEMPTS} 次失败：属 ECS 到 GitHub 出口不可达，
+      不是权限或仓库配置问题。诊断与处置见《部署操作手册》§10.11。
+      网络恢复后重跑本脚本即可；已确认工作区代码版本正确时，也可带 --skip-pull 执行：
+        sudo bash deploy/scripts/deploy-manual.sh ${ENV_NAME} --skip-pull"
 fi
 
 # --- 步骤 2：构建应用镜像（编译交给 Dockerfile 内 maven:3.9）-----------------
