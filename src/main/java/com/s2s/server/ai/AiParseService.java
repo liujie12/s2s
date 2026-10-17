@@ -55,7 +55,8 @@ public class AiParseService {
      * 真实模型不知道 Step 4 的字段口径，不写清结构会返回自造键名（全被 Step 4 拒掉）。</p>
      *
      * <p>提示词口径与 {@link #verifyAgainstScope} 一一对应（title 须能在 text 溯源、
-     * leaf_category_id 须等于 scope 已选叶子、price 数字须在 text 出现、template_values
+     * leaf_category_id 须等于 scope 已选叶子、price 数字须在 text 出现（中文数字价格如
+     * 「五元」按标准读法归一后比对）、template_values
      * 键值须落在模板字段与选项内）；两处改动必须同批。</p>
      */
     private static final String SYSTEM_PROMPT =
@@ -66,7 +67,7 @@ public class AiParseService {
             + "输出结构："
             + "{\"title\":字符串（必须是 text 的子串，≤40 字，无法确定则省略）,"
             + "\"leaf_category_id\":整数（只能是 scope.leaf_category_id，没有则省略）,"
-            + "\"price\":数字（必须是 text 中出现过的数字，没有则省略）,"
+            + "\"price\":数字（必须是 text 中出现过的数字；text 中以中文数字表达的价格（如「五元」「十五块」）须归一为阿拉伯数字输出，没有则省略）,"
             + "\"price_unit\":字符串（必须是 text 中出现过的单位，没有则省略）,"
             + "\"template_values\":对象（键必须来自 template_fields 的 key，值必须是该字段 options 之一或 text 中出现过）}。"
             + "scope.media=用户上传的图片（经 image_url 附带）：仅可用来理解 text 含义并在 options 中做选择，"
@@ -81,6 +82,15 @@ public class AiParseService {
 
     /** 数字抽取正则（价格溯源用）。 */
     private static final Pattern NUMBER_PATTERN = Pattern.compile("\\d+(?:\\.\\d+)?");
+
+    /**
+     * 中文数字价格抽取正则（语音场景：{@code 「五元」「十五块」} 等）。
+     *
+     * <p>刻意只匹配<b>后接价格单位</b>的中文数字串，避免把「一套」「二手」等非价格
+     * 数量词归一化后误命中价格。</p>
+     */
+    private static final Pattern CHINESE_PRICE_NUMERAL_PATTERN =
+            Pattern.compile("([零〇一二两三四五六七八九十百千万亿]+)(?=\\s*(?:元|块|圆|毛|角))");
 
     private final AiProvider aiProvider;
     private final AiQuotaService aiQuotaService;
@@ -407,12 +417,30 @@ public class AiParseService {
     /**
      * 数值是否出现在用户文本中（抽取文本数字逐一比较）。
      *
+     * <p>先按原文比对阿拉伯数字；未命中时再对「后接价格单位的中文数字」做归一化后比对
+     * （语音转写常见「五元」「十五块」）。归一化只展开原文已有数字，不引入新实体，
+     * 不放松严格 Scope 口径。</p>
+     *
      * @param value    模型价格
      * @param userText 用户文本
      * @return boolean 文本中存在相等数字返回 {@code true}
      */
     private boolean isNumberInText(Double value, String userText) {
-        Matcher matcher = NUMBER_PATTERN.matcher(userText);
+        if (containsNumber(userText, value)) {
+            return true;
+        }
+        return containsNumber(normalizeChinesePriceNumerals(userText), value);
+    }
+
+    /**
+     * 从文本中抽取阿拉伯数字并与目标值比较。
+     *
+     * @param text  待扫描文本
+     * @param value 目标数值
+     * @return boolean 存在相等数字返回 {@code true}
+     */
+    private boolean containsNumber(String text, Double value) {
+        Matcher matcher = NUMBER_PATTERN.matcher(text);
         while (matcher.find()) {
             try {
                 if (Math.abs(Double.parseDouble(matcher.group()) - value) < 1e-9) {
@@ -423,6 +451,122 @@ public class AiParseService {
             }
         }
         return false;
+    }
+
+    /**
+     * 把「后接价格单位的中文数字」归一化为阿拉伯数字。
+     *
+     * <p>例：{@code 「五元」→「5元」}、{@code 「十五块」→「15块」}。仅替换能被
+     * {@link #chineseNumeralToLong} 标准读法解析的数字串；无法解析时保留原文。</p>
+     *
+     * @param text 用户文本
+     * @return {@link String} 归一化后的文本
+     */
+    private String normalizeChinesePriceNumerals(String text) {
+        Matcher matcher = CHINESE_PRICE_NUMERAL_PATTERN.matcher(text);
+        StringBuilder sb = new StringBuilder();
+        while (matcher.find()) {
+            long parsed = chineseNumeralToLong(matcher.group(1));
+            String replacement = parsed >= 0 ? Long.toString(parsed) : matcher.group(1);
+            matcher.appendReplacement(sb, Matcher.quoteReplacement(replacement));
+        }
+        matcher.appendTail(sb);
+        return sb.toString();
+    }
+
+    /**
+     * 中文数字标准读法转数值（仅支持价格常见量级，不支持口语省略式）。
+     *
+     * <p>支持：{@code 零〇一二两三四五六七八九十百千万亿}；例：{@code 五→5}、
+     * {@code 十五→15}、{@code 一百二十→120}、{@code 两千→2000}。
+     * 口语省略式（如「一百二」=120、「一万二」=12000）刻意不支持：结果存在歧义，
+     * 宁可让该价格留在 {@code unresolved_fields} 由用户手填。</p>
+     *
+     * @param numeral 中文数字串
+     * @return long 数值；含非法字符时返回 {@code -1}
+     */
+    private long chineseNumeralToLong(String numeral) {
+        // 口语省略式（「一百二」=120、「一万二」=12000）无法与标准读法区分：
+        // 结尾为数字且前一位是百/千/万/亿时一律拒绝，避免把 120 误算成 102。
+        char last = numeral.charAt(numeral.length() - 1);
+        if (chineseDigitOf(last) >= 0 && numeral.length() >= 2) {
+            char prev = numeral.charAt(numeral.length() - 2);
+            if ((prev == '百' || prev == '千' || prev == '万' || prev == '亿')
+                    && last != '零' && last != '〇') {
+                return -1;
+            }
+        }
+        long total = 0;
+        long section = 0;
+        long number = 0;
+        for (int i = 0; i < numeral.length(); i++) {
+            char c = numeral.charAt(i);
+            int digit = chineseDigitOf(c);
+            if (digit >= 0) {
+                number = digit;
+                continue;
+            }
+            long unit = chineseUnitOf(c);
+            if (unit == 10000L) {
+                section += number;
+                total += section * unit;
+                section = 0;
+                number = 0;
+            } else if (unit == 100000000L) {
+                section += number;
+                total = (total + section) * unit;
+                section = 0;
+                number = 0;
+            } else if (unit > 0) {
+                if (number == 0) {
+                    number = 1;
+                }
+                section += number * unit;
+                number = 0;
+            } else {
+                return -1;
+            }
+        }
+        return total + section + number;
+    }
+
+    /**
+     * 中文数字字符转阿拉伯数字。
+     *
+     * @param c 单个字符
+     * @return int 0–9；非数字字符返回 {@code -1}
+     */
+    private int chineseDigitOf(char c) {
+        return switch (c) {
+            case '零', '〇' -> 0;
+            case '一' -> 1;
+            case '二', '两' -> 2;
+            case '三' -> 3;
+            case '四' -> 4;
+            case '五' -> 5;
+            case '六' -> 6;
+            case '七' -> 7;
+            case '八' -> 8;
+            case '九' -> 9;
+            default -> -1;
+        };
+    }
+
+    /**
+     * 中文单位字符转数值。
+     *
+     * @param c 单个字符
+     * @return long 十/百/千/万/亿 对应数值；非单位字符返回 {@code -1}
+     */
+    private long chineseUnitOf(char c) {
+        return switch (c) {
+            case '十' -> 10L;
+            case '百' -> 100L;
+            case '千' -> 1000L;
+            case '万' -> 10000L;
+            case '亿' -> 100000000L;
+            default -> -1L;
+        };
     }
 
     /**

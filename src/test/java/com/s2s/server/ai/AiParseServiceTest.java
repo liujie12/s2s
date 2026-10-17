@@ -92,6 +92,63 @@ class AiParseServiceTest {
     }
 
     /**
+     * 语音场景中文数字价格可溯源：原文「五元」、模型返回 5 ⇒ 保留。
+     */
+    @Test
+    void 中文数字价格可溯源保留() {
+        when(provider.generate(anyString(), anyString()))
+                .thenReturn("{\"title\":\"楼下超市卖水果\",\"price\":5}");
+
+        AiParseResult result = service.parse(1L, req(null, "楼下超市卖水果五元就在小区门口", null));
+
+        assertThat(result.guess().price()).isEqualTo(5.0);
+        assertThat(result.scopeVerified()).containsEntry("price", "user_input");
+        assertThat(result.unresolvedFields()).doesNotContain("price");
+    }
+
+    /**
+     * 中文数字价格带十位可溯源：原文「十五块」、模型返回 15 ⇒ 保留。
+     */
+    @Test
+    void 中文数字价格带十位可溯源() {
+        when(provider.generate(anyString(), anyString()))
+                .thenReturn("{\"title\":\"卖水果\",\"price\":15}");
+
+        AiParseResult result = service.parse(1L, req(null, "卖水果十五块", null));
+
+        assertThat(result.guess().price()).isEqualTo(15.0);
+        assertThat(result.scopeVerified()).containsEntry("price", "user_input");
+    }
+
+    /**
+     * 中文数字价格与模型值不一致时仍拒绝（严格 Scope 不放松）。
+     */
+    @Test
+    void 中文数字价格不匹配仍拒绝() {
+        when(provider.generate(anyString(), anyString()))
+                .thenReturn("{\"title\":\"楼下超市卖水果\",\"price\":6}");
+
+        AiParseResult result = service.parse(1L, req(null, "楼下超市卖水果五元", null));
+
+        assertThat(result.guess().price()).isNull();
+        assertThat(result.unresolvedFields()).contains("price");
+    }
+
+    /**
+     * 口语省略式「一百二」存在歧义（120 还是 102）⇒ 不归一化，价格留待用户手填。
+     */
+    @Test
+    void 口语省略式价格不归一化() {
+        when(provider.generate(anyString(), anyString()))
+                .thenReturn("{\"title\":\"卖水果\",\"price\":120}");
+
+        AiParseResult result = service.parse(1L, req(null, "卖水果一百二元", null));
+
+        assertThat(result.guess().price()).isNull();
+        assertThat(result.unresolvedFields()).contains("price");
+    }
+
+    /**
      * 分类仅在等于用户已选叶子类目（P 集合）时保留，来源 platform。
      */
     @Test
