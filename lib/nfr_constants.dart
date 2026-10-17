@@ -493,6 +493,14 @@ class NfrLocation {
   /// 口径：本值专指「已授权但取点失败」的失败计数（§6.8 本行明示），
   /// 「从未授权」与「曾授权后被关」是权限问题不是失败问题，不计入。
   static const int locateFailThreshold = 3;
+
+  /// 发布前单次高精度定位的超时（毫秒）。
+  ///
+  /// 到点即停止并返回窗口内精度最好的点；不无限等待，避免发布页卡住。
+  static const int publishFixTimeoutMs = 5000;
+
+  /// 发布定位的「足够好」精度（米）：达到即提前结束，不再等满超时。
+  static const double publishGoodAccuracyMeters = 20;
 }
 
 /// §6.10.1 性能降级开关触发条件（预留，本期不实施 —— PRD:2379）。

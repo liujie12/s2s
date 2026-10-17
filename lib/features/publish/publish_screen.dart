@@ -52,6 +52,7 @@ import '../../domain/publish_template.dart';
 import '../../core/network/api_exception.dart';
 import '../../router/app_router.dart';
 import '../auth/auth_repository.dart';
+import '../location/high_accuracy_locator.dart';
 import '../location/location_center.dart';
 import '../location/location_permission.dart';
 import '../post/post_dto.dart';
@@ -439,29 +440,51 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
     return showPrecheckBlocks(context, blocks);
   }
 
+  /// 单次高精度定位进行中的防重入标记。
+  bool _locating = false;
+
   /// 采集当前位置写入表单（§5.4.1 第 2 段「使用当前位置」）。
   ///
-  /// 坐标取自 [readPublishCoordinate]（本次会话最优定位点，GCJ-02），
-  /// 一次写入 [PublishFormState.lng]/[PublishFormState.lat] —— 位置是否就绪
+  /// 先拉起一次高精度定位（[locateForPublish]，5s 窗口取最优点）；失败则退化到
+  /// 本次会话最优点（[readPublishCoordinate]），两者都没有才提示失败。
+  /// 坐标写入 [PublishFormState.lng]/[PublishFormState.lat] —— 位置是否就绪
   /// 以坐标为准（见 `PublishFormState.hasLocation`）。
   ///
   /// **为什么先判权限**：未授权时不会有任何有效定位点，不能塞假点把
   /// [PublishBlocker.noLocation] 蒙过去；已授权但尚未取到点则提示稍候。
-  void _useCurrentLocation() {
+  Future<void> _useCurrentLocation() async {
     if (ref.read(locationPermissionProvider) != LocationPermissionPhase.granted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('请先开启定位权限，再使用当前位置')),
       );
       return;
     }
-    final coordinate = readPublishCoordinate(ref);
-    if (coordinate == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('正在定位，请稍候…')),
-      );
-      return;
+    if (_locating) return;
+    _locating = true;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('正在获取高精度定位…')),
+    );
+    try {
+      final high = await locateForPublish(ref);
+      if (!mounted) return;
+      final coordinate = high != null
+          ? (lat: high.lat, lng: high.lng)
+          : readPublishCoordinate(ref);
+      if (coordinate == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('定位失败，请到开阔处重试')),
+        );
+        return;
+      }
+      _updateForm(_form.copyWith(lng: coordinate.lng, lat: coordinate.lat));
+      if (high == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('高精度定位未成功，已使用最近定位点')),
+        );
+      }
+    } finally {
+      _locating = false;
     }
-    _updateForm(_form.copyWith(lng: coordinate.lng, lat: coordinate.lat));
   }
 
   @override

@@ -94,10 +94,10 @@ dependencies:
 
   # 运行时权限（定位三态 PRD §6.4.4，DEC-23 裁定新增）。
   #
-  # 只做「权限状态查询 / 主动请求 / 跳系统设置」三件事，**取点仍走 amap_map 的
-  # onLocationChanged** —— 因而它不构成第二套定位权限模型（前端详设 §41 定案
-  # 「复用已有地图 SDK 定位能力，不引 geolocator」仍成立）。若高德插件将来自带
-  # 权限能力，再移除此依赖。
+  # 只做「权限状态查询 / 主动请求 / 跳系统设置」三件事。
+  # 地图居中仍走 amap_map 的 onLocationChanged；**发布取点走 geolocator**
+  # （2026-10-17 真机实测：amap_flutter_location 3.0.0 在 Android 13 上只返回
+  # 550m 缓存点，原生网络定位持续抛 NumberFormatException，改取系统定位）。
   permission_handler: ^12.0.1
 
   # 网络图片加载与磁盘缓存（§6.4.3 列表卡片缩略图 / §7.4.1 详情图集）。
@@ -113,6 +113,10 @@ dependencies:
   path_provider: ^2.1.5
   flutter_secure_storage: ^11.2.0
   record: ^6.2.1
+
+  # 发布前单次高精度定位（§5.3）。直接取系统定位（GPS/Fused），
+  # 精度与耗时优于高德定位插件，且不受其 5.x 原生链路在 Android 13 的缺陷影响。
+  geolocator: ^14.0.1
 
 dev_dependencies:
   flutter_test:

@@ -150,7 +150,7 @@
 - 2026-10-17（B2-10 容量复核 · 索引/机型决策 + 两处失实 EXPLAIN 注释订正）
 - 2026-10-17（B2-4 阶段① Step 2 真机复验通过 · rt_ms=2159 · AI-DIAG 补丁移除）
 - 2026-10-17（B2-4 模式② 语音验收通过 + 价格中文数字/分类 category_options 两项增强）
-- 2026-10-17（发布定位精度优化：发布取会话最优定位点，不再用首点/默认城市中心）
+- 2026-10-17（发布定位精度优化：会话最优点 + 发布前单次高精度定位，真机 20m）
 
 ---
 
@@ -7274,7 +7274,20 @@ printf '\nMYSQL_SSL_MODE=VERIFY_CA\nMYSQL_TLS_TRUSTSTORE_PASSWORD=%s\n' \
 
 **门禁**：`flutter analyze` 0 issue；`flutter test` **769/769**（+5 例 `location_center_test`）。
 
-**未做（可选下一步）**：若仍不够准（目标 5–15m），引入 `amap_flutter_location` 在发布时做单次高精度定位（GPS first + 超时），属新增原生依赖，需单独立项确认。
+**追加：发布前单次高精度定位（同日）**
+
+用户裁定按「方案 1」引入 `amap_flutter_location` 做发布时单次高精度定位，实施与真机复验过程：
+
+1. 引入 `amap_flutter_location: ^3.0.0`，补隐私三开关 + Key 注入，新建 `high_accuracy_locator.dart`（5s 窗口取样、取最小 `accuracy`、≤20m 提前结束）。
+2. 该插件 3.0.0（2021 停更）未声明 AGP 8 `namespace`，在 `android/build.gradle.kts` 反射补丁后构建通过。
+3. **真机第一轮**：`accuracy=null`。根因是插件在 `setLocationOption` 创建原生客户端时捕获当时的 EventSink，而代码先设参数后订阅 ⇒ sink 为 null，定位回调被原生侧全部丢弃。改为「先订阅 → 预热 50ms → 设参数/启动」。
+4. **真机第二轮**：只回调一条 `locationType=4`（缓存定位）、`accuracy=550m` 的点，窗口内无 GPS/网络新点；同进程原生线程持续抛 `NumberFormatException: s == null`（网络定位解析失败）。补授 `ACCESS_COARSE_LOCATION` 后结果不变。同期系统定位给本进程的精度是 1.7–15m ⇒ 判定为高德定位 SDK 5.x 在 Android 13/小米机型的取点链路缺陷。
+5. **终版改型（用户选定「改用 geolocator 取系统定位」）**：移除 `amap_flutter_location`（含 AGP 补丁与独立 Key/隐私调用），改为 `geolocator` 单次 `LocationAccuracy.best` 取点 + **WGS-84 → GCJ-02** 转换（系统坐标是 WGS-84，工程统一 GCJ-02，漏转会偏移约 500m）。
+6. **真机终验**：`[PUBLISH-LOCATE] accuracy=20.0`（由 550m / 30–100m 收敛到 20m）。
+
+**门禁**：`flutter analyze` 0 issue；`flutter test` **772/772**（+3 例 `wgs84ToGcj02` 转换用例）。
+
+**结论**：`amap_flutter_location` 方案作废，原因与实测证据见上；发布取点链路 = `geolocator`（系统定位）→ GCJ-02 → `locationFixProvider` → 表单。`[PUBLISH-LOCATE]` 打点仅 `kDebugMode` 生效，保留用于后续真机复核。
 
 
 

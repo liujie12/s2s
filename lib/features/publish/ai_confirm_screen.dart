@@ -38,6 +38,7 @@ import '../../router/app_router.dart';
 import '../ai/ai_dto.dart';
 import '../ai/ai_repository.dart';
 import '../auth/auth_repository.dart';
+import '../location/high_accuracy_locator.dart';
 import '../location/location_center.dart';
 import '../location/location_permission.dart';
 import '../post/post_repository.dart';
@@ -69,6 +70,9 @@ class _AiConfirmScreenState extends ConsumerState<AiConfirmScreen> {
 
   /// 联系方式输入框（契约 `contact_value` 必填，AI 入口不采集故必须在此补）。
   final TextEditingController _contactCtrl = TextEditingController();
+
+  /// 单次高精度定位进行中的防重入标记。
+  bool _locating = false;
 
   /// 服务端返回的逐字段猜测（Step 4 已校验；未猜出者为 null）。
   List<FieldGuess> _guesses = const [];
@@ -290,23 +294,37 @@ class _AiConfirmScreenState extends ConsumerState<AiConfirmScreen> {
     );
   }
 
-  /// 采集当前位置（与发布页同一口径：定位未授权不塞假点）。
+  /// 采集当前位置（与发布页同一口径：先高精度，失败退化到会话最优点）。
   ///
-  /// 返回：[void]。
-  void _useCurrentLocation() {
+  /// 返回：[Future]，定位完成时结束。
+  Future<void> _useCurrentLocation() async {
     if (ref.read(locationPermissionProvider) !=
         LocationPermissionPhase.granted) {
       _toast('请先开启定位权限，再使用当前位置');
       return;
     }
-    final coordinate = readPublishCoordinate(ref);
-    if (coordinate == null) {
-      _toast('正在定位，请稍候…');
-      return;
+    if (_locating) return;
+    _locating = true;
+    _toast('正在获取高精度定位…');
+    try {
+      final high = await locateForPublish(ref);
+      if (!mounted) return;
+      final coordinate = high != null
+          ? (lat: high.lat, lng: high.lng)
+          : readPublishCoordinate(ref);
+      if (coordinate == null) {
+        _toast('定位失败，请到开阔处重试');
+        return;
+      }
+      setState(
+        () => _form = _form.copyWith(lng: coordinate.lng, lat: coordinate.lat),
+      );
+      if (high == null) {
+        _toast('高精度定位未成功，已使用最近定位点');
+      }
+    } finally {
+      _locating = false;
     }
-    setState(
-      () => _form = _form.copyWith(lng: coordinate.lng, lat: coordinate.lat),
-    );
   }
 
   /// 契约必填是否齐（分类 / 标题 / 位置 / 联系方式）。
