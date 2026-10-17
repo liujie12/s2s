@@ -3,6 +3,10 @@ package com.s2s.server.ai;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.hamcrest.Matchers.containsString;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.content;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
@@ -49,6 +53,7 @@ class QwenAiProviderTest {
     private MockRestServiceServer server;
     private RestClient restClient;
     private ObjectMapper objectMapper;
+    private AiCostLedger costLedger;
 
     /**
      * 每例新建打桩服务器与客户端，保证用例间零串扰。
@@ -56,6 +61,7 @@ class QwenAiProviderTest {
     @BeforeEach
     void setUp() {
         objectMapper = new ObjectMapper();
+        costLedger = mock(AiCostLedger.class);
         RestClient.Builder builder = RestClient.builder();
         server = MockRestServiceServer.bindTo(builder).build();
         restClient = builder.baseUrl(BASE_URL).build();
@@ -78,7 +84,7 @@ class QwenAiProviderTest {
                 .andRespond(withSuccess(chatCompletion("{\"title\":\"家电维修\"}"),
                         MediaType.APPLICATION_JSON));
 
-        String out = liveProvider().generate("{\"text\":\"家电维修\"}", "严格Scope提示词");
+        String out = liveProvider().generate(1L, "{\"text\":\"家电维修\"}", "严格Scope提示词");
 
         assertThat(out).isEqualTo("{\"title\":\"家电维修\"}");
         server.verify();
@@ -96,7 +102,7 @@ class QwenAiProviderTest {
                         chatCompletion("```json\n{\"title\":\"家电维修\"}\n```"),
                         MediaType.APPLICATION_JSON));
 
-        assertThat(liveProvider().generate("{\"text\":\"家电维修\"}", "p"))
+        assertThat(liveProvider().generate(1L, "{\"text\":\"家电维修\"}", "p"))
                 .isEqualTo("{\"title\":\"家电维修\"}");
     }
 
@@ -108,7 +114,7 @@ class QwenAiProviderTest {
         server.expect(requestTo(ENDPOINT))
                 .andRespond(withStatus(HttpStatus.UNAUTHORIZED));
 
-        assertThatThrownBy(() -> liveProvider().generate("{\"text\":\"x\"}", "p"))
+        assertThatThrownBy(() -> liveProvider().generate(1L, "{\"text\":\"x\"}", "p"))
                 .isInstanceOf(IllegalStateException.class);
     }
 
@@ -122,7 +128,7 @@ class QwenAiProviderTest {
                     throw new IOException("read timed out");
                 });
 
-        assertThatThrownBy(() -> liveProvider().generate("{\"text\":\"x\"}", "p"))
+        assertThatThrownBy(() -> liveProvider().generate(1L, "{\"text\":\"x\"}", "p"))
                 .isInstanceOf(IllegalStateException.class);
     }
 
@@ -134,7 +140,7 @@ class QwenAiProviderTest {
         server.expect(requestTo(ENDPOINT))
                 .andRespond(withSuccess("{\"choices\":[]}", MediaType.APPLICATION_JSON));
 
-        assertThatThrownBy(() -> liveProvider().generate("{\"text\":\"x\"}", "p"))
+        assertThatThrownBy(() -> liveProvider().generate(1L, "{\"text\":\"x\"}", "p"))
                 .isInstanceOf(IllegalStateException.class);
     }
 
@@ -149,7 +155,7 @@ class QwenAiProviderTest {
                 .andRespond(withSuccess(chatCompletion("抱歉，我无法完成"),
                         MediaType.APPLICATION_JSON));
 
-        assertThatThrownBy(() -> liveProvider().generate("{\"text\":\"x\"}", "p"))
+        assertThatThrownBy(() -> liveProvider().generate(1L, "{\"text\":\"x\"}", "p"))
                 .isInstanceOf(IllegalStateException.class);
     }
 
@@ -159,9 +165,9 @@ class QwenAiProviderTest {
     @Test
     void 未配置Key抛异常且不发请求() {
         QwenAiProvider provider =
-                new QwenAiProvider(false, "  ", "qwen-plus", OMNI_MODEL, restClient, objectMapper);
+                new QwenAiProvider(false, "  ", "qwen-plus", OMNI_MODEL, restClient, objectMapper, costLedger);
 
-        assertThatThrownBy(() -> provider.generate("{\"text\":\"x\"}", "p"))
+        assertThatThrownBy(() -> provider.generate(1L, "{\"text\":\"x\"}", "p"))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("DASHSCOPE_API_KEY");
         server.verify();
@@ -173,15 +179,17 @@ class QwenAiProviderTest {
     @Test
     void dryRun分支不触发HTTP() {
         QwenAiProvider provider =
-                new QwenAiProvider(true, "", "qwen-plus", OMNI_MODEL, restClient, objectMapper);
+                new QwenAiProvider(true, "", "qwen-plus", OMNI_MODEL, restClient, objectMapper, costLedger);
 
         String out = provider.generate(
-                "{\"text\":\"楼下超市卖苹果 5 元\",\"leaf_category_id\":10101}", "p");
+                1L, "{\"text\":\"楼下超市卖苹果 5 元\",\"leaf_category_id\":10101}", "p");
 
         assertThat(out).contains("\"title\":\"楼下超市卖苹果 5 元\"")
                 .contains("\"price\":5.0")
                 .contains("\"leaf_category_id\":10101");
         server.verify();
+        // dry-run 不调上游 ⇒ 不产生费用、不记账
+        verify(costLedger, never()).record(anyLong(), anyLong());
     }
 
     /**
@@ -203,7 +211,7 @@ class QwenAiProviderTest {
                 .andRespond(withSuccess(chatCompletion("{\"title\":\"转让手机\"}"),
                         MediaType.APPLICATION_JSON));
 
-        String out = liveProvider().generate(scope, "p");
+        String out = liveProvider().generate(1L, scope, "p");
 
         assertThat(out).isEqualTo("{\"title\":\"转让手机\"}");
         server.verify();
@@ -221,7 +229,7 @@ class QwenAiProviderTest {
                 .andRespond(withSuccess(chatCompletion("{\"title\":\"x\"}"),
                         MediaType.APPLICATION_JSON));
 
-        liveProvider().generate("{\"text\":\"x\",\"media\":[]}", "p");
+        liveProvider().generate(1L, "{\"text\":\"x\",\"media\":[]}", "p");
 
         server.verify();
     }
@@ -242,7 +250,7 @@ class QwenAiProviderTest {
                 .andRespond(withSuccess(chatCompletion("楼下超市苹果五元"),
                         MediaType.APPLICATION_JSON));
 
-        String out = liveProvider().transcribe("https://oss.test/audio", "audio/wav");
+        String out = liveProvider().transcribe(1L, "https://oss.test/audio", "audio/wav");
 
         assertThat(out).isEqualTo("楼下超市苹果五元");
         server.verify();
@@ -259,7 +267,7 @@ class QwenAiProviderTest {
                 .andExpect(content().string(containsString("\"format\":\"mp3\"")))
                 .andRespond(withSuccess(chatCompletion("ok"), MediaType.APPLICATION_JSON));
 
-        liveProvider().transcribe("https://oss.test/audio", "audio/mpeg");
+        liveProvider().transcribe(1L, "https://oss.test/audio", "audio/mpeg");
 
         server.verify();
     }
@@ -269,7 +277,7 @@ class QwenAiProviderTest {
      */
     @Test
     void 未知音频MIME抛异常且不发请求() {
-        assertThatThrownBy(() -> liveProvider().transcribe("https://oss.test/a", "audio/ogg"))
+        assertThatThrownBy(() -> liveProvider().transcribe(1L, "https://oss.test/a", "audio/ogg"))
                 .isInstanceOf(IllegalStateException.class);
         server.verify();
     }
@@ -280,10 +288,80 @@ class QwenAiProviderTest {
     @Test
     void dryRun转写返回空串() {
         QwenAiProvider provider =
-                new QwenAiProvider(true, "", "qwen-plus", OMNI_MODEL, restClient, objectMapper);
+                new QwenAiProvider(true, "", "qwen-plus", OMNI_MODEL, restClient, objectMapper, costLedger);
 
-        assertThat(provider.transcribe("https://oss.test/a", "audio/wav")).isEmpty();
+        assertThat(provider.transcribe(1L, "https://oss.test/a", "audio/wav")).isEmpty();
+        verify(costLedger, never()).record(anyLong(), anyLong());
         server.verify();
+    }
+
+    /**
+     * 文本档按 usage 记账：输入 1000 + 输出 200 ⇒ 0.0008 + 0.0004 = 0.0012 元 = 1,200 微元。
+     *
+     * @throws Exception 构造打桩响应体失败
+     */
+    @Test
+    void 文本档按usage记账() throws Exception {
+        server.expect(requestTo(ENDPOINT))
+                .andRespond(withSuccess(
+                        chatCompletion("{\"title\":\"x\"}", 1000, 200),
+                        MediaType.APPLICATION_JSON));
+
+        liveProvider().generate(1L, "{\"text\":\"x\"}", "p");
+
+        verify(costLedger).record(1L, 1_200L);
+    }
+
+    /**
+     * 多模态档按 usage 记账（图输入）：输入 1000 + 输出 200 ⇒ 0.0015 + 0.0009 = 2,400 微元。
+     *
+     * @throws Exception 构造打桩响应体失败
+     */
+    @Test
+    void 多模态档按usage记账() throws Exception {
+        String scope = "{\"text\":\"转让手机\","
+                + "\"media\":[{\"type\":\"image\",\"url\":\"https://oss.test/signed\"}]}";
+        server.expect(requestTo(ENDPOINT))
+                .andRespond(withSuccess(
+                        chatCompletion("{\"title\":\"转让手机\"}", 1000, 200),
+                        MediaType.APPLICATION_JSON));
+
+        liveProvider().generate(1L, scope, "p");
+
+        verify(costLedger).record(1L, 2_400L);
+    }
+
+    /**
+     * 转写按音频输入价记账：输入 1000 + 输出 100 ⇒ 0.006 + 0.00045 = 6,450 微元。
+     *
+     * @throws Exception 构造打桩响应体失败
+     */
+    @Test
+    void 转写按音频单价记账() throws Exception {
+        server.expect(requestTo(ENDPOINT))
+                .andRespond(withSuccess(
+                        chatCompletion("楼下超市苹果五元", 1000, 100),
+                        MediaType.APPLICATION_JSON));
+
+        liveProvider().transcribe(1L, "https://oss.test/audio", "audio/wav");
+
+        verify(costLedger).record(1L, 6_450L);
+    }
+
+    /**
+     * 响应缺 usage ⇒ 按兜底值 0.1 元记账（防「无 usage 即免费」）。
+     *
+     * @throws Exception 构造打桩响应体失败
+     */
+    @Test
+    void 缺usage按兜底值记账() throws Exception {
+        server.expect(requestTo(ENDPOINT))
+                .andRespond(withSuccess(chatCompletion("{\"title\":\"x\"}"),
+                        MediaType.APPLICATION_JSON));
+
+        liveProvider().generate(1L, "{\"text\":\"x\"}", "p");
+
+        verify(costLedger).record(1L, 100_000L);
     }
 
     /**
@@ -292,7 +370,7 @@ class QwenAiProviderTest {
      * @return {@link QwenAiProvider} 真通道实例
      */
     private QwenAiProvider liveProvider() {
-        return new QwenAiProvider(false, API_KEY, "qwen-plus", OMNI_MODEL, restClient, objectMapper);
+        return new QwenAiProvider(false, API_KEY, "qwen-plus", OMNI_MODEL, restClient, objectMapper, costLedger);
     }
 
     /**
@@ -307,6 +385,25 @@ class QwenAiProviderTest {
         ObjectNode message = root.putArray("choices").addObject().putObject("message");
         message.put("role", "assistant");
         message.put("content", content);
+        return objectMapper.writeValueAsString(root);
+    }
+
+    /**
+     * 构造带 usage 的对话补全响应体（费用记账用例）。
+     *
+     * @param content          模型输出文本
+     * @param promptTokens     输入 token 数（usage.prompt_tokens）
+     * @param completionTokens 输出 token 数（usage.completion_tokens）
+     * @return {@link String} 响应体 JSON
+     * @throws Exception 序列化失败
+     */
+    private String chatCompletion(String content, long promptTokens, long completionTokens)
+            throws Exception {
+        ObjectNode root = objectMapper.readValue(chatCompletion(content), ObjectNode.class);
+        ObjectNode usage = root.putObject("usage");
+        usage.put("prompt_tokens", promptTokens);
+        usage.put("completion_tokens", completionTokens);
+        usage.put("total_tokens", promptTokens + completionTokens);
         return objectMapper.writeValueAsString(root);
     }
 }

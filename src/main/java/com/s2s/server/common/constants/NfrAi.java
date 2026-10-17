@@ -59,6 +59,65 @@ public final class NfrAi {
     public static final int UPSTREAM_MAX_TOKENS = 512;
 
     /**
+     * 费用上限：单用户每自然日（微元；1 元 = 1,000,000 微元）。
+     *
+     * <p><b>来源</b>：《决策登记表》2026-10-17 用户裁定「AI 调用费用：单用户每日低于
+     * 1 元，每月低于 10 元」。单位取微元（long）以避免浮点误差；上限判定为「已达即拒」，
+     * 故实际单日费用 &lt; 1 元（最后一次调用可能带来极小溢出，量级为分）。</p>
+     */
+    public static final long COST_DAILY_LIMIT_MICROYUAN = 1_000_000L;
+
+    /**
+     * 费用上限：单用户每自然月（微元）。
+     *
+     * <p>来源同 {@link #COST_DAILY_LIMIT_MICROYUAN}；按自然月（Asia/Shanghai）滚动，
+     * 次月 1 日 00:00 重置。</p>
+     */
+    public static final long COST_MONTHLY_LIMIT_MICROYUAN = 10_000_000L;
+
+    /**
+     * 文本档（{@code qwen-plus}，华北2·北京、输入 ≤128K）输入单价（微元/千 token）。
+     *
+     * <p>官方价：0.8 元/百万 token（2026-10-13 价格页）。思考模式输出价更高，但本链路
+     * 不开启思考模式，故按非思考价计。</p>
+     */
+    public static final long PRICE_TEXT_INPUT_MICROYUAN_PER_1K = 800L;
+
+    /**
+     * 文本档输出单价（微元/千 token）：2 元/百万 token（官方价）。
+     */
+    public static final long PRICE_TEXT_OUTPUT_MICROYUAN_PER_1K = 2_000L;
+
+    /**
+     * 多模态档（{@code qwen3.8-omni-flash}）文本/图片输入单价（微元/千 token）。
+     *
+     * <p>取官方 omni 档公开价 1.5 元/百万 token（华北2·北京，文本/图片/视频同价）。
+     * 非实时档未单列更低价格，故按官方可查价<b>保守计</b>：高估只会让费用闸更早触发。</p>
+     */
+    public static final long PRICE_OMNI_INPUT_MICROYUAN_PER_1K = 1_500L;
+
+    /**
+     * 多模态档输出单价（微元/千 token）：4.5 元/百万 token（官方 omni 档公开价）。
+     */
+    public static final long PRICE_OMNI_OUTPUT_MICROYUAN_PER_1K = 4_500L;
+
+    /**
+     * 音频输入单价（微元/千 token）：6 元/百万 token。
+     *
+     * <p>转写复用 omni 档；官方对音频输入单独计价（realtime 档 6 元/百万），非实时档
+     * 未单列，故<b>按较高的音频价保守计</b>——高估只会让费用闸更早触发，不会漏闸。</p>
+     */
+    public static final long PRICE_AUDIO_INPUT_MICROYUAN_PER_1K = 6_000L;
+
+    /**
+     * 上游未返回 {@code usage} 时的单次兜底计费（微元）：0.1 元。
+     *
+     * <p>宁可高估也不放行未计量调用：响应缺 usage 属上游异常，按固定值记账可防
+     * 「因字段缺失而绕过费用上限」。</p>
+     */
+    public static final long COST_FALLBACK_PER_CALL_MICROYUAN = 100_000L;
+
+    /**
      * AI 入参图片的目标宽度上限（像素，等比缩放）。
      *
      * <p><b>为什么缩</b>：上游多模态要先从 OSS 下载图片再编码，耗时随像素量上升；而带图

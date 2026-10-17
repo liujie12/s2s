@@ -100,6 +100,7 @@ public class AiParseService {
     private final AiProvider aiProvider;
     private final AiQuotaService aiQuotaService;
     private final AiQuotaGate aiQuotaGate;
+    private final AiCostLedger aiCostLedger;
     private final TemplateService templateService;
     private final CategoryService categoryService;
     private final MediaService mediaService;
@@ -111,6 +112,7 @@ public class AiParseService {
      * @param aiProvider      大模型供应商（dry-run 或真实现）
      * @param aiQuotaService  配额档位解析
      * @param aiQuotaGate     配额闸（只读判定）
+     * @param aiCostLedger    费用台账（日/月费用上限判定）
      * @param templateService 模板服务（scope 的 P 集合）
      * @param categoryService 分类服务（scope 的 category_options 来源）
      * @param mediaService    媒体服务（AI 只读签名，模式①/④ 图、模式② 音频入参）
@@ -119,6 +121,7 @@ public class AiParseService {
     public AiParseService(AiProvider aiProvider,
             AiQuotaService aiQuotaService,
             AiQuotaGate aiQuotaGate,
+            AiCostLedger aiCostLedger,
             TemplateService templateService,
             CategoryService categoryService,
             MediaService mediaService,
@@ -126,6 +129,7 @@ public class AiParseService {
         this.aiProvider = aiProvider;
         this.aiQuotaService = aiQuotaService;
         this.aiQuotaGate = aiQuotaGate;
+        this.aiCostLedger = aiCostLedger;
         this.templateService = templateService;
         this.categoryService = categoryService;
         this.mediaService = mediaService;
@@ -153,6 +157,9 @@ public class AiParseService {
         int limit = aiQuotaService.resolveLimit(userId, req.completenessLevel(), req.leafCategoryId());
         aiQuotaGate.ensureAvailable(userId, limit, RateLimitKeys.today());
 
+        // 费用上限判定（2026-10-17 裁定：单用户每日 <1 元、每月 <10 元）
+        aiCostLedger.ensureWithinBudget(userId);
+
         // 模式② 服务端 ASR（独立转写，2026-10-15 用户裁定）：客户端未给 voiceText 时，
         // 真实通路把 voiceMediaId 转成文本并入 U 集合，转写产物同样过 Step 4 逆向比对；
         // dry-run 桩返回空串（模式② 依赖客户端 voiceText，行为与 Step 2 前一致）。
@@ -173,7 +180,7 @@ public class AiParseService {
                 leafOptions, resolveImageMedia(userId, req.mediaId()));
 
         // Step 3：大模型生成（上游异常 → 50301）
-        String raw = generate(scopeJson);
+        String raw = generate(userId, scopeJson);
 
         // Step 4：逆向 Scope 比对（核心红线）
         Verified verified = verifyAgainstScope(raw, userText, scopeLeafId, template, leafOptions);
@@ -194,7 +201,7 @@ public class AiParseService {
     private String transcribeVoice(Long userId, String voiceMediaId) {
         MediaService.AiMediaAccess access = mediaService.signAiReadAccess(userId, voiceMediaId);
         try {
-            String transcript = aiProvider.transcribe(access.accessUrl(), access.contentType());
+            String transcript = aiProvider.transcribe(userId, access.accessUrl(), access.contentType());
             return transcript == null ? "" : transcript.strip();
         } catch (RuntimeException e) {
             // 不打印 URL（含签名）与内容；仅映射错误码
@@ -224,13 +231,14 @@ public class AiParseService {
     /**
      * 调用上游大模型，失败映射为 {@code 50301}。
      *
+     * @param userId    用户 ID（真实通道记账归属）
      * @param scopeJson scope JSON
      * @return {@link String} 模型原始输出
      * @throws BizException 上游不可用 → {@code 50301}
      */
-    private String generate(String scopeJson) {
+    private String generate(Long userId, String scopeJson) {
         try {
-            return aiProvider.generate(scopeJson, SYSTEM_PROMPT);
+            return aiProvider.generate(userId, scopeJson, SYSTEM_PROMPT);
         } catch (RuntimeException e) {
             // 不打印 scope（含用户明文）；仅记异常类型语义，交全局处理器回 50301
             throw BizException.of(ErrorCode.AI_UNAVAILABLE);

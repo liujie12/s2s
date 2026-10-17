@@ -20,12 +20,14 @@ public interface AiProvider {
     /**
      * 调用大模型对 scope 做四件套生成。
      *
+     * @param userId        发起调用的用户 ID（真实通道按响应 usage 记入费用台账；
+     *                      dry-run 不记账）
      * @param scopeJson     允许使用的字段集合（Step 2 产物，JSON 字符串），作为 prompt 上下文
      * @param systemPrompt  系统提示词（限死「仅用 scope 字段、禁止编造」）
      * @return {@link String} 模型返回的原始输出文本（JSON），<b>未校验</b>；由调用方做 Step 4 逆向比对
      * @throws IllegalStateException 上游模型服务不可用（由调用方映射为 {@code 50301}）
      */
-    String generate(String scopeJson, String systemPrompt);
+    String generate(Long userId, String scopeJson, String systemPrompt);
 
     /**
      * 音频转写（ASR，模式②；B2-4 阶段① Step 2）。
@@ -34,10 +36,11 @@ public interface AiProvider {
      * （U 集合）并入 scope 后再走 {@link #generate}——Step 4 逆向比对以转写文本为溯源基准，
      * 四步管线口径不变。</p>
      *
+     * @param userId           发起调用的用户 ID（真实通道记入费用台账）
      * @param audioUrl         音频只读短时效 URL（调用方已完成归属校验）
      * @param audioContentType 音频 MIME 类型（实现方据此映射上游 {@code format} 参数）
      * @return {@link String} 转写纯文本，<b>未校验</b>；由调用方并入 U 集合
      * @throws IllegalStateException 上游不可用（调用方映射 {@code 50301}）
      */
-    String transcribe(String audioUrl, String audioContentType);
+    String transcribe(Long userId, String audioUrl, String audioContentType);
 }

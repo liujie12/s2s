@@ -153,6 +153,7 @@
 - 2026-10-17（发布定位精度优化：会话最优点 + 发布前单次高精度定位，真机 20m）
 - 2026-10-17（发布页地图选点接真 + 高德 Web 逆地理地址展示 + AI FAB 可拖动/避让）
 - 2026-10-17（B2-4 dry-run 去留裁定：长期保留真通道，登记转行政上线闸门）
+- 2026-10-18（B2-4 AI 调用费用上限：单用户每日 <1 元、每月 <10 元）
 
 ---
 
@@ -7318,6 +7319,21 @@ printf '\nMYSQL_SSL_MODE=VERIFY_CA\nMYSQL_TLS_TRUSTSTORE_PASSWORD=%s\n' \
 - dev/staging 仍默认 `true`（无 Key 可本地联调），不受本裁定约束。
 
 **落地**：`deploy/config/app/application-prod.yml` 注释由「临时置 false / 验收后回退」改写为长期口径；《说明文档》该剩余项销账；《决策登记表》2026-10-17 批次新增一行。**线上无需改动**（prod 配置本就是 `false`，无重启）。
+
+### 2026-10-18（B2-4 AI 调用费用上限：单用户每日 <1 元、每月 <10 元）
+
+**裁定**（2026-10-17 用户答「AI 调用费用：单用户每日低于 1 元，每月低于 10 元」）
+- 按**实际 token 用量**折算费用（微元），不用「调用次数 × 估算单价」的粗折算。
+- 解析前同时校验日/月累计，超限复用 `42901`（不新增错误码）；`Retry-After` 日超限指向次日零点、月超限指向次月 1 日零点。
+
+**实现**
+- `NfrAi` 新增常量：日/月上限（1,000,000 / 10,000,000 微元）、`qwen-plus` 0.8/2、omni 1.5/4.5、音频 6（元/百万 token）、缺 `usage` 兜底 0.1 元/次。
+- `RateLimitKeys` 新增 `aiCostUidDay` / `aiCostUidMonth` 两键与 `secondsUntilStartOfNextMonth`。
+- 新增 `AiCostLedger`：Redis `INCRBY` 日/月累计 + 首写设 TTL；Redis 异常与配额闸同口径放行（WARN）。
+- `QwenAiProvider`：`generate`/`transcribe` 增加 `userId` 入参；解析响应 `usage`（兼容 `prompt_tokens`/`input_tokens`）折算费用记账；dry-run 不记账。
+- `AiParseService`：配额闸之后调用 `ensureWithinBudget`；两处上游调用透传 `userId`。
+
+**门禁**：`mvn -o clean test` **515/515 BUILD SUCCESS**（新增 `AiCostLedgerTest` 6 例；`QwenAiProviderTest` +4 例记账用例；`AiParseServiceTest` 适配新签名）。**待发版**：本次为后端代码变更，需重新出镜像才在线上生效。
 
 
 

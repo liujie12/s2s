@@ -124,6 +124,9 @@ public class QwenAiProvider implements AiProvider {
     /** JSON 解析器（scopeJson 读取、请求体构造与响应解析）。 */
     private final ObjectMapper objectMapper;
 
+    /** AI 费用台账（真实调用按响应 usage 折算微元后记账；dry-run 不写）。 */
+    private final AiCostLedger costLedger;
+
     /**
      * 构造通义千问实现。
      *
@@ -133,6 +136,7 @@ public class QwenAiProvider implements AiProvider {
      * @param omniModel    多模态模型名（配置 {@code s2s.ai.omni-model}）
      * @param aiRestClient 上游 HTTP 客户端（{@code AiClientConfig#aiRestClient}）
      * @param objectMapper JSON 解析器
+     * @param costLedger   AI 费用台账（真实调用记账）
      */
     public QwenAiProvider(
             @Value("${s2s.ai.dry-run:true}") boolean dryRun,
@@ -140,37 +144,42 @@ public class QwenAiProvider implements AiProvider {
             @Value("${s2s.ai.model}") String model,
             @Value("${s2s.ai.omni-model}") String omniModel,
             RestClient aiRestClient,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            AiCostLedger costLedger) {
         this.dryRun = dryRun;
         this.apiKey = apiKey;
         this.model = model;
         this.omniModel = omniModel;
         this.aiRestClient = aiRestClient;
         this.objectMapper = objectMapper;
+        this.costLedger = costLedger;
     }
 
     /**
      * 生成四件套。
      *
-     * @param scopeJson     Step 2 产出的 scope JSON（含 text / leaf_category_id / template_fields）
-     * @param systemPrompt  系统提示词（严格 Scope 约束，见 {@link AiParseService}）
+     * @param userId       发起调用的用户 ID（真实通道记账用；dry-run 忽略）
+     * @param scopeJson    Step 2 产出的 scope JSON（含 text / leaf_category_id / template_fields）
+     * @param systemPrompt 系统提示词（严格 Scope 约束，见 {@link AiParseService}）
      * @return {@link String} 与 {@code AiGuess} 同构的 JSON 文本
      * @throws IllegalStateException 上游不可用 / 未配置 Key / 响应结构非法（调用方映射 50301）
      */
     @Override
-    public String generate(String scopeJson, String systemPrompt) {
-        return dryRun ? generateByRules(scopeJson) : generateByModel(scopeJson, systemPrompt);
+    public String generate(Long userId, String scopeJson, String systemPrompt) {
+        return dryRun ? generateByRules(scopeJson) : generateByModel(userId, scopeJson, systemPrompt);
     }
 
     /**
-     * 真实通道：调用百炼 OpenAI 兼容对话补全，取回模型输出的 JSON 文本。
+     * 真实通道：调用百炼 OpenAI 兼容对话补全，取回模型输出的 JSON 文本，并按响应
+     * {@code usage} 折算费用记入台账。
      *
+     * @param userId       发起调用的用户 ID（记账归属）
      * @param scopeJson    scope JSON（作为 user 消息内容）
      * @param systemPrompt 严格 Scope 提示词（作为 system 消息内容）
      * @return {@link String} 模型输出中提取出的 JSON 对象文本（已去代码块包裹）
      * @throws IllegalStateException 未配置 Key / 上游异常 / 响应结构非法
      */
-    private String generateByModel(String scopeJson, String systemPrompt) {
+    private String generateByModel(Long userId, String scopeJson, String systemPrompt) {
         requireApiKey();
         List<String> imageUrls = extractImageUrls(scopeJson);
         String payload;
@@ -194,7 +203,15 @@ public class QwenAiProvider implements AiProvider {
             // 含网络超时（ResourceAccessException）与非 2xx（RestClientResponseException）
             throw new IllegalStateException("通义千问调用失败", e);
         }
-        return extractContent(body);
+        JsonNode root = parseResponse(body);
+        String content = extractContentNode(root);
+        boolean multimodal = !imageUrls.isEmpty();
+        recordCost(userId, root,
+                multimodal ? NfrAi.PRICE_OMNI_INPUT_MICROYUAN_PER_1K
+                        : NfrAi.PRICE_TEXT_INPUT_MICROYUAN_PER_1K,
+                multimodal ? NfrAi.PRICE_OMNI_OUTPUT_MICROYUAN_PER_1K
+                        : NfrAi.PRICE_TEXT_OUTPUT_MICROYUAN_PER_1K);
+        return extractJsonObject(content);
     }
 
     /**
@@ -229,13 +246,14 @@ public class QwenAiProvider implements AiProvider {
      * <p>dry-run 返回空串（桩不做 ASR，模式② 依赖客户端 {@code voiceText}，与 Step 2 前
      * 行为一致）；真实通道把音频 URL 交多模态模型逐字转写，取回纯文本（不做 JSON 抽取）。</p>
      *
+     * @param userId           发起调用的用户 ID（真实通道记账）
      * @param audioUrl         音频只读短时效 URL
      * @param audioContentType 音频 MIME 类型
      * @return {@link String} 转写文本；dry-run 恒为空串
      * @throws IllegalStateException 未配置 Key / MIME 无 format 映射 / 上游异常 / 响应结构非法
      */
     @Override
-    public String transcribe(String audioUrl, String audioContentType) {
+    public String transcribe(Long userId, String audioUrl, String audioContentType) {
         if (dryRun) {
             return "";
         }
@@ -260,7 +278,13 @@ public class QwenAiProvider implements AiProvider {
             // 含网络超时与非 2xx；口径与 generateByModel 一致
             throw new IllegalStateException("通义千问转写调用失败", e);
         }
-        return extractPlainText(body);
+        JsonNode root = parseResponse(body);
+        String text = extractPlainTextNode(root);
+        // 转写链路输入是音频：按音频单价保守计；输出仍按 omni 文本输出价
+        recordCost(userId, root,
+                NfrAi.PRICE_AUDIO_INPUT_MICROYUAN_PER_1K,
+                NfrAi.PRICE_OMNI_OUTPUT_MICROYUAN_PER_1K);
+        return text;
     }
 
     /**
@@ -382,45 +406,111 @@ public class QwenAiProvider implements AiProvider {
     }
 
     /**
-     * 从对话补全响应取纯文本（转写用；不做 JSON 对象抽取）。
+     * 解析响应体为 JSON 树。
      *
      * @param body 响应体文本（可空）
-     * @return {@link String} choices[0].message.content 原文（去首尾空白）
-     * @throws IllegalStateException 响应非 JSON / 缺 content
+     * @return {@link JsonNode} 根节点
+     * @throws IllegalStateException 响应不是 JSON
      */
-    private String extractPlainText(String body) {
-        JsonNode root;
+    private JsonNode parseResponse(String body) {
         try {
-            root = objectMapper.readTree(body == null ? "" : body);
+            return objectMapper.readTree(body == null ? "" : body);
         } catch (Exception e) {
             throw new IllegalStateException("通义千问响应不是 JSON", e);
         }
-        JsonNode content = root.path("choices").path(0).path("message").path("content");
-        if (content.isMissingNode() || content.asText("").isBlank()) {
+    }
+
+    /**
+     * 从对话补全响应取纯文本（转写用；不做 JSON 对象抽取）。
+     *
+     * @param root 已解析的响应根节点
+     * @return {@link String} choices[0].message.content 原文（去首尾空白）
+     * @throws IllegalStateException 缺 content
+     */
+    private String extractPlainTextNode(JsonNode root) {
+        String content = contentOf(root);
+        if (content.isBlank()) {
             throw new IllegalStateException("通义千问响应缺少 choices[0].message.content");
         }
-        return content.asText("").strip();
+        return content.strip();
+    }
+
+    /**
+     * 从对话补全响应中取出 {@code choices[0].message.content}（未剥离代码块）。
+     *
+     * @param root 已解析的响应根节点
+     * @return {@link String} content 原文；缺失时返回空串
+     */
+    private String contentOf(JsonNode root) {
+        JsonNode content = root.path("choices").path(0).path("message").path("content");
+        return content.isMissingNode() ? "" : content.asText("");
     }
 
     /**
      * 从对话补全响应中取出 {@code choices[0].message.content} 并剥离代码块包裹。
      *
-     * @param body 响应体文本（可空）
+     * @param root 已解析的响应根节点
      * @return {@link String} 提取出的 JSON 对象文本
-     * @throws IllegalStateException 响应非 JSON / 缺 content / content 内无 JSON 对象
+     * @throws IllegalStateException 缺 content / content 内无 JSON 对象
      */
-    private String extractContent(String body) {
-        JsonNode root;
-        try {
-            root = objectMapper.readTree(body == null ? "" : body);
-        } catch (Exception e) {
-            throw new IllegalStateException("通义千问响应不是 JSON", e);
-        }
-        JsonNode content = root.path("choices").path(0).path("message").path("content");
-        if (content.isMissingNode() || content.asText("").isBlank()) {
+    private String extractContentNode(JsonNode root) {
+        String content = contentOf(root);
+        if (content.isBlank()) {
             throw new IllegalStateException("通义千问响应缺少 choices[0].message.content");
         }
-        return extractJsonObject(content.asText(""));
+        return content;
+    }
+
+    /**
+     * 按上游 {@code usage} 折算本次调用费用并记入台账。
+     *
+     * <p>兼容 OpenAI 字段名（{@code prompt_tokens}/{@code completion_tokens}）与
+     * DashScope 字段名（{@code input_tokens}/{@code output_tokens}）。两者都缺失时按
+     * {@link NfrAi#COST_FALLBACK_PER_CALL_MICROYUAN} 兜底，避免「无 usage 即免费」。</p>
+     *
+     * @param userId              用户 ID
+     * @param root                响应根节点
+     * @param inputPricePer1K     输入单价（微元/千 token）
+     * @param outputPricePer1K    输出单价（微元/千 token）
+     */
+    private void recordCost(Long userId, JsonNode root, long inputPricePer1K, long outputPricePer1K) {
+        JsonNode usage = root.path("usage");
+        long inputTokens = tokenOf(usage, "prompt_tokens", "input_tokens");
+        long outputTokens = tokenOf(usage, "completion_tokens", "output_tokens");
+        long cost = (inputTokens <= 0L && outputTokens <= 0L)
+                ? NfrAi.COST_FALLBACK_PER_CALL_MICROYUAN
+                : tokenCost(inputTokens, inputPricePer1K) + tokenCost(outputTokens, outputPricePer1K);
+        costLedger.record(userId, cost);
+    }
+
+    /**
+     * 从 usage 节点读取 token 数（先试主字段、再试别名，缺失返回 0）。
+     *
+     * @param usage     usage 节点
+     * @param primary   主字段名（OpenAI 口径）
+     * @param alternate 别名字段名（DashScope 口径）
+     * @return long token 数；缺失或非数字返回 0
+     */
+    private long tokenOf(JsonNode usage, String primary, String alternate) {
+        JsonNode node = usage.path(primary);
+        if (!node.isNumber()) {
+            node = usage.path(alternate);
+        }
+        return node.isNumber() ? node.asLong() : 0L;
+    }
+
+    /**
+     * token 数折算费用（微元），向上取整（保守，宁多不少）。
+     *
+     * @param tokens        token 数
+     * @param pricePer1K    每千 token 单价（微元）
+     * @return long 费用（微元）；tokens ≤ 0 返回 0
+     */
+    private long tokenCost(long tokens, long pricePer1K) {
+        if (tokens <= 0L) {
+            return 0L;
+        }
+        return (tokens * pricePer1K + 999L) / 1000L;
     }
 
     /**

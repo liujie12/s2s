@@ -4,7 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -40,6 +42,7 @@ class AiParseServiceTest {
     private AiProvider provider;
     private AiQuotaService aiQuotaService;
     private AiQuotaGate aiQuotaGate;
+    private AiCostLedger aiCostLedger;
     private TemplateService templateService;
     private CategoryService categoryService;
     private MediaService mediaService;
@@ -50,11 +53,12 @@ class AiParseServiceTest {
         provider = mock(AiProvider.class);
         aiQuotaService = mock(AiQuotaService.class);
         aiQuotaGate = mock(AiQuotaGate.class);
+        aiCostLedger = mock(AiCostLedger.class);
         templateService = mock(TemplateService.class);
         categoryService = mock(CategoryService.class);
         mediaService = mock(MediaService.class);
-        service = new AiParseService(provider, aiQuotaService, aiQuotaGate, templateService,
-                categoryService, mediaService, new ObjectMapper());
+        service = new AiParseService(provider, aiQuotaService, aiQuotaGate, aiCostLedger,
+                templateService, categoryService, mediaService, new ObjectMapper());
 
         when(aiQuotaService.resolveLimit(any(), any(), any())).thenReturn(20);
         when(aiQuotaService.snapshot(any(), anyInt()))
@@ -66,7 +70,7 @@ class AiParseServiceTest {
      */
     @Test
     void 编造字段被拒绝注入() {
-        when(provider.generate(anyString(), anyString()))
+        when(provider.generate(anyLong(), anyString(), anyString()))
                 .thenReturn("{\"title\":\"纯属编造\",\"price\":999}");
 
         AiParseResult result = service.parse(1L, req(null, "楼下超市卖苹果", null));
@@ -82,7 +86,7 @@ class AiParseServiceTest {
      */
     @Test
     void 可溯源猜测保留() {
-        when(provider.generate(anyString(), anyString()))
+        when(provider.generate(anyLong(), anyString(), anyString()))
                 .thenReturn("{\"title\":\"楼下超市卖苹果\",\"price\":5}");
 
         AiParseResult result = service.parse(1L, req(null, "楼下超市卖苹果 5 元", null));
@@ -99,7 +103,7 @@ class AiParseServiceTest {
      */
     @Test
     void 中文数字价格可溯源保留() {
-        when(provider.generate(anyString(), anyString()))
+        when(provider.generate(anyLong(), anyString(), anyString()))
                 .thenReturn("{\"title\":\"楼下超市卖水果\",\"price\":5}");
 
         AiParseResult result = service.parse(1L, req(null, "楼下超市卖水果五元就在小区门口", null));
@@ -114,7 +118,7 @@ class AiParseServiceTest {
      */
     @Test
     void 中文数字价格带十位可溯源() {
-        when(provider.generate(anyString(), anyString()))
+        when(provider.generate(anyLong(), anyString(), anyString()))
                 .thenReturn("{\"title\":\"卖水果\",\"price\":15}");
 
         AiParseResult result = service.parse(1L, req(null, "卖水果十五块", null));
@@ -128,7 +132,7 @@ class AiParseServiceTest {
      */
     @Test
     void 中文数字价格不匹配仍拒绝() {
-        when(provider.generate(anyString(), anyString()))
+        when(provider.generate(anyLong(), anyString(), anyString()))
                 .thenReturn("{\"title\":\"楼下超市卖水果\",\"price\":6}");
 
         AiParseResult result = service.parse(1L, req(null, "楼下超市卖水果五元", null));
@@ -142,7 +146,7 @@ class AiParseServiceTest {
      */
     @Test
     void 口语省略式价格不归一化() {
-        when(provider.generate(anyString(), anyString()))
+        when(provider.generate(anyLong(), anyString(), anyString()))
                 .thenReturn("{\"title\":\"卖水果\",\"price\":120}");
 
         AiParseResult result = service.parse(1L, req(null, "卖水果一百二元", null));
@@ -157,7 +161,7 @@ class AiParseServiceTest {
     @Test
     void 分类仅回显已选叶子() {
         when(templateService.getByLeaf(10101)).thenReturn(templateWithFloor());
-        when(provider.generate(anyString(), anyString()))
+        when(provider.generate(anyLong(), anyString(), anyString()))
                 .thenReturn("{\"leaf_category_id\":10101}");
 
         AiParseResult result = service.parse(1L, req(10101, "家电维修", null));
@@ -174,7 +178,7 @@ class AiParseServiceTest {
         when(categoryService.listLeafOptions()).thenReturn(List.of(
                 new CategoryService.LeafOption(40102, "生活 / 二手闲置转让 / 母婴儿童"),
                 new CategoryService.LeafOption(40105, "生活 / 二手闲置转让 / 其他二手")));
-        when(provider.generate(anyString(), anyString()))
+        when(provider.generate(anyLong(), anyString(), anyString()))
                 .thenReturn("{\"leaf_category_id\":40105,\"price\":5}");
 
         AiParseResult result = service.parse(1L, req(null, "楼下超市卖苹果五元", null));
@@ -191,7 +195,7 @@ class AiParseServiceTest {
     void 清单外类目被拒绝() {
         when(categoryService.listLeafOptions()).thenReturn(List.of(
                 new CategoryService.LeafOption(40105, "生活 / 二手闲置转让 / 其他二手")));
-        when(provider.generate(anyString(), anyString()))
+        when(provider.generate(anyLong(), anyString(), anyString()))
                 .thenReturn("{\"leaf_category_id\":99999}");
 
         AiParseResult result = service.parse(1L, req(null, "卖苹果", null));
@@ -206,7 +210,7 @@ class AiParseServiceTest {
     @Test
     void 分类不符被拒绝() {
         when(templateService.getByLeaf(10101)).thenReturn(templateWithFloor());
-        when(provider.generate(anyString(), anyString()))
+        when(provider.generate(anyLong(), anyString(), anyString()))
                 .thenReturn("{\"leaf_category_id\":99999}");
 
         AiParseResult result = service.parse(1L, req(10101, "家电维修", null));
@@ -221,7 +225,7 @@ class AiParseServiceTest {
     @Test
     void 模板字段编造被拒绝() {
         when(templateService.getByLeaf(10101)).thenReturn(templateWithFloor());
-        when(provider.generate(anyString(), anyString()))
+        when(provider.generate(anyLong(), anyString(), anyString()))
                 .thenReturn("{\"template_values\":{\"floor\":\"99层\",\"ghost\":\"x\"}}");
 
         AiParseResult result = service.parse(1L, req(10101, "家电维修", null));
@@ -236,7 +240,7 @@ class AiParseServiceTest {
     @Test
     void 模板字段合法值保留() {
         when(templateService.getByLeaf(10101)).thenReturn(templateWithFloor());
-        when(provider.generate(anyString(), anyString()))
+        when(provider.generate(anyLong(), anyString(), anyString()))
                 .thenReturn("{\"template_values\":{\"floor\":\"1层\"}}");
 
         AiParseResult result = service.parse(1L, req(10101, "家电维修 1层", null));
@@ -249,7 +253,7 @@ class AiParseServiceTest {
      */
     @Test
     void 上游异常回50301() {
-        when(provider.generate(anyString(), anyString()))
+        when(provider.generate(anyLong(), anyString(), anyString()))
                 .thenThrow(new IllegalStateException("upstream down"));
 
         assertThatThrownBy(() -> service.parse(1L, req(null, "家电维修", null)))
@@ -291,15 +295,16 @@ class AiParseServiceTest {
     void 语音转写并入用户文本() {
         when(mediaService.signAiReadAccess(1L, "9"))
                 .thenReturn(new MediaService.AiMediaAccess("https://oss.test/a", "audio/wav"));
-        when(provider.transcribe("https://oss.test/a", "audio/wav")).thenReturn("转让电动车");
-        when(provider.generate(anyString(), anyString()))
+        when(provider.transcribe(anyLong(), eq("https://oss.test/a"), eq("audio/wav")))
+                .thenReturn("转让电动车");
+        when(provider.generate(anyLong(), anyString(), anyString()))
                 .thenReturn("{\"title\":\"转让电动车\"}");
 
         AiParseResult result = service.parse(1L, req(null, null, "9"));
 
         assertThat(result.guess().title()).isEqualTo("转让电动车");
         ArgumentCaptor<String> scopeCaptor = ArgumentCaptor.forClass(String.class);
-        verify(provider).generate(scopeCaptor.capture(), anyString());
+        verify(provider).generate(anyLong(), scopeCaptor.capture(), anyString());
         assertThat(scopeCaptor.getValue()).contains("转让电动车");
     }
 
@@ -308,14 +313,14 @@ class AiParseServiceTest {
      */
     @Test
     void 已有voiceText不触发ASR() {
-        when(provider.generate(anyString(), anyString()))
+        when(provider.generate(anyLong(), anyString(), anyString()))
                 .thenReturn("{\"title\":\"转让电动车\"}");
 
         AiParseResult result = service.parse(1L,
                 new AiParseRequest(null, "9", "转让电动车", null, "resource", null, 0));
 
         assertThat(result.guess().title()).isEqualTo("转让电动车");
-        verify(provider, never()).transcribe(anyString(), anyString());
+        verify(provider, never()).transcribe(anyLong(), anyString(), anyString());
     }
 
     /**
@@ -325,7 +330,7 @@ class AiParseServiceTest {
     void 转写失败回50301() {
         when(mediaService.signAiReadAccess(1L, "9"))
                 .thenReturn(new MediaService.AiMediaAccess("https://oss.test/a", "audio/wav"));
-        when(provider.transcribe(anyString(), anyString()))
+        when(provider.transcribe(anyLong(), anyString(), anyString()))
                 .thenThrow(new IllegalStateException("upstream down"));
 
         assertThatThrownBy(() -> service.parse(1L, req(null, null, "9")))
@@ -341,8 +346,8 @@ class AiParseServiceTest {
     void 空转写按原样继续() {
         when(mediaService.signAiReadAccess(1L, "9"))
                 .thenReturn(new MediaService.AiMediaAccess("https://oss.test/a", "audio/wav"));
-        when(provider.transcribe(anyString(), anyString())).thenReturn("");
-        when(provider.generate(anyString(), anyString()))
+        when(provider.transcribe(anyLong(), anyString(), anyString())).thenReturn("");
+        when(provider.generate(anyLong(), anyString(), anyString()))
                 .thenReturn("{\"title\":\"家电维修\"}");
 
         AiParseResult result = service.parse(1L, req(null, "家电维修", "9"));
@@ -357,7 +362,7 @@ class AiParseServiceTest {
     void 图片签名URL进scope() {
         when(mediaService.signAiReadAccess(1L, "7"))
                 .thenReturn(new MediaService.AiMediaAccess("https://oss.test/img", "image/jpeg"));
-        when(provider.generate(anyString(), anyString()))
+        when(provider.generate(anyLong(), anyString(), anyString()))
                 .thenReturn("{\"title\":\"转让手机\"}");
 
         AiParseResult result = service.parse(1L,
@@ -365,7 +370,7 @@ class AiParseServiceTest {
 
         assertThat(result.guess().title()).isEqualTo("转让手机");
         ArgumentCaptor<String> scopeCaptor = ArgumentCaptor.forClass(String.class);
-        verify(provider).generate(scopeCaptor.capture(), anyString());
+        verify(provider).generate(anyLong(), scopeCaptor.capture(), anyString());
         assertThat(scopeCaptor.getValue())
                 .contains("https://oss.test/img")
                 .contains("\"type\":\"image\"");

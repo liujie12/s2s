@@ -3,6 +3,7 @@ package com.s2s.server.common.ratelimit;
 import com.s2s.server.common.constants.RateLimitThresholds;
 import com.s2s.server.common.web.UuidV4;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 
 /**
@@ -43,6 +44,9 @@ public final class RateLimitKeys {
 
     /** 自然日窗口日期格式（yyyyMMdd）。 */
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd");
+
+    /** 自然月窗口格式（yyyyMM；AI 费用月累计键用）。 */
+    private static final DateTimeFormatter MONTH_FORMAT = DateTimeFormatter.ofPattern("yyyyMM");
 
     /**
      * 工具类：禁止实例化。
@@ -320,6 +324,35 @@ public final class RateLimitKeys {
         return KEY_PREFIX + "aiquota:uid:" + userId + ":1d:" + date.format(DATE_FORMAT);
     }
 
+    /**
+     * AI 调用费用·账号·自然日累计键（微元；B2-4 费用上限，2026-10-17 裁定）。
+     *
+     * <p>与配额键 {@link #aiQuotaUidDay} 语义不同：配额键计「确认发布次数」，本键计
+     * 「实际 token 折算费用」。窗口同为自然日（Asia/Shanghai）+ 日期片，TTL 用
+     * 26h（KTD6 同口径）。</p>
+     *
+     * @param userId 用户 ID（账号维度）
+     * @param date   自然日
+     * @return {@link String} 键形 {@code rl:aicost:uid:{userId}:1d:{yyyyMMdd}}
+     */
+    public static String aiCostUidDay(Long userId, LocalDate date) {
+        return KEY_PREFIX + "aicost:uid:" + userId + ":1d:" + date.format(DATE_FORMAT);
+    }
+
+    /**
+     * AI 调用费用·账号·自然月累计键（微元；2026-10-17 裁定「每月低于 10 元」）。
+     *
+     * <p>自然月语义：键尾内嵌 {@code yyyyMM}，次月 1 日 00:00 起用新键；TTL 覆盖到
+     * 次月 1 日 + 2h 缓冲（与自然日键同思路，防跨月边界残留）。</p>
+     *
+     * @param userId 用户 ID（账号维度）
+     * @param month  自然月（Asia/Shanghai）
+     * @return {@link String} 键形 {@code rl:aicost:uid:{userId}:1mo:{yyyyMM}}
+     */
+    public static String aiCostUidMonth(Long userId, YearMonth month) {
+        return KEY_PREFIX + "aicost:uid:" + userId + ":1mo:" + month.format(MONTH_FORMAT);
+    }
+
     // ------------------------------------------------------------------
     // 设备 ID 格式校验（KTD14）
     // ------------------------------------------------------------------
@@ -370,6 +403,24 @@ public final class RateLimitKeys {
                 java.time.LocalDateTime.now(RateLimitThresholds.ZONE),
                 date.plusDays(1).atStartOfDay(RateLimitThresholds.ZONE)
         ).getSeconds();
+    }
+
+    /**
+     * 计算自当前时刻到下月 1 日零点（Asia/Shanghai）的剩余秒数（AI 费用月上限的
+     * {@code Retry-After}）。
+     *
+     * <p>与 {@link #secondsUntilEndOfDay} 同属「窗口剩余秒」计算，供
+     * {@code AiCostLedger} 在月累计超限时回 {@code 42901}。恒 ≥0（时钟漂移时夹到 0）。</p>
+     *
+     * @param month 当前自然月（Asia/Shanghai）
+     * @return long 到下月零点的剩余秒数，恒 ≥0
+     */
+    public static long secondsUntilStartOfNextMonth(YearMonth month) {
+        long seconds = java.time.Duration.between(
+                java.time.LocalDateTime.now(RateLimitThresholds.ZONE),
+                month.plusMonths(1).atDay(1).atStartOfDay(RateLimitThresholds.ZONE)
+        ).getSeconds();
+        return Math.max(0L, seconds);
     }
 
     /**
