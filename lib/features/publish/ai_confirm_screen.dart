@@ -23,6 +23,7 @@ library;
 
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -510,10 +511,11 @@ class _AiConfirmScreenState extends ConsumerState<AiConfirmScreen> {
       if (mounted) await _showFailure(error.uiMessage);
     } catch (error, stack) {
       // 非信封异常此前会被静默吞掉：按钮从「发布中…」复原，用户却什么都看不到。
-      // 这里必须让失败可见，同时把阶段与异常打到 logcat 便于定位。
+      // 拦截器链会把 ApiException 包进 DioException(type: unknown)，故解一层取原文。
+      final cause = error is DioException ? error.error : null;
       // ignore: avoid_print
-      print('[PUBLISH][$stage] unexpected error: $error\n$stack');
-      if (mounted) await _showFailure('发布失败，请稍后重试');
+      print('[PUBLISH][$stage] unexpected error: $error | cause=$cause\n$stack');
+      if (mounted) await _showFailure(_failureMessage(error));
     } finally {
       if (mounted) setState(() => _publishing = false);
     }
@@ -537,6 +539,22 @@ class _AiConfirmScreenState extends ConsumerState<AiConfirmScreen> {
         ],
       ),
     );
+  }
+
+  /// 从任意异常提取用户可读文案。
+  ///
+  /// 拦截器链把 [ApiException] 包进 `DioException(type: unknown, error: ...)`
+  /// （envelope_interceptor 的既定设计），因此必须拆一层取内层原文，
+  /// 否则用户只能看到「发布失败，请稍后重试」这种没有信息量的兜底文案。
+  ///
+  /// 参数：[error] 捕获到的任意异常。
+  /// 返回：[String] 可直接展示的中文提示。
+  String _failureMessage(Object error) {
+    if (error is ApiException) return error.uiMessage;
+    if (error is DioException && error.error is ApiException) {
+      return (error.error as ApiException).uiMessage;
+    }
+    return '发布失败，请稍后重试';
   }
 
   /// 轻量提示（SnackBar，用于闸门阻断与业务错误）。

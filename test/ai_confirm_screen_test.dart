@@ -9,6 +9,7 @@
 /// 断言改为对「服务端返回结果 → UI」这条线守门（不再依赖本地 `buildLocalGuess`）。
 library;
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -499,6 +500,59 @@ void main() {
       expect(find.text('知道了'), findsOneWidget);
       // 阻断时不能落库
       expect(postRepo.createCount, 0);
+    });
+
+    testWidgets('DioException 包裹的 ApiException → 弹窗显示服务端原文', (tester) async {
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 2;
+      addTearDown(tester.view.reset);
+      final ai = FakeAiRepository()..resultToReturn = fullResult();
+      // 拦截器链的真实形态：ApiException 被包进 DioException(type: unknown)
+      final postRepo = FakePostRepository()
+        ..errorToThrow = DioException(
+          requestOptions: RequestOptions(path: '/posts/precheck'),
+          type: DioExceptionType.unknown,
+          error: const ApiException(
+            code: ApiErrorCode.paramInvalid,
+            message: '未实名用户发布数量已达上限',
+            requestId: 'req_x',
+          ),
+        );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            aiRepositoryProvider.overrideWithValue(ai),
+            postRepositoryProvider.overrideWithValue(postRepo),
+          ],
+          child: MaterialApp(
+            home: AiConfirmScreen(
+              args: const AiConfirmArgs(
+                form: PublishFormState(
+                  leafCategoryId: 40101,
+                  lng: 120.1551,
+                  lat: 30.2741,
+                  title: '九成新实木餐桌',
+                  priceText: '350',
+                  priceUnit: '元',
+                  description: '搬家出售，无磕碰，可上门自取。',
+                  templateValues: {'condition': '几乎全新', 'pickup': '仅自取'},
+                  contact: '13800138000',
+                  agreed: true,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('确认发布'));
+      await tester.pumpAndSettle();
+
+      // 必须解出内层 ApiException 的原文，不能退化成通用兜底文案
+      expect(find.text('发布未完成'), findsOneWidget);
+      expect(find.textContaining('未实名用户发布数量已达上限'), findsOneWidget);
     });
   });
 }
