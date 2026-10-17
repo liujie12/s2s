@@ -148,6 +148,7 @@
 - 2026-10-15（B2-4 阶段① Step 2 · 多模态通道落地 —— 图片 OSS 只读签名 + 独立 ASR 语音转写）
 - 2026-10-15（B2-4 阶段① 发版 + Step 1 真接口验收 —— 真通道确认）
 - 2026-10-17（B2-10 容量复核 · 索引/机型决策 + 两处失实 EXPLAIN 注释订正）
+- 2026-10-17（B2-4 阶段① Step 2 真机复验通过 · rt_ms=2159 · AI-DIAG 补丁移除）
 
 ---
 
@@ -7212,6 +7213,26 @@ printf '\nMYSQL_SSL_MODE=VERIFY_CA\nMYSQL_TLS_TRUSTSTORE_PASSWORD=%s\n' \
 - 《数据库设计文档》v1.2：版本行 + §3.5 索引注 + §4.1 场景表订正 + 新增 §6.4.1 + §6.6 未验证项；
 - 《Batch2-启动清单》B2-10 → ✅ 复核完成；`说明文档.md` §三新增 B2-10 条；本记录（索引 + 本条）。
 - **未改**：DDL/Flyway（零 DDL 决策）、`决策登记表`（无新口径裁定）。
+
+### 2026-10-17（B2-4 阶段① Step 2 真机复验通过 · AI-DIAG 补丁移除）
+
+**发版**：`deploy-manual.sh prod`，镜像 `s2s-app:20261017-164327`；健康 `{"status":"UP"}`；Flyway 仅「MySQL 8.4 高于支持版本」告警，无迁移错误。公网 `GET /ai/publish/quota` = **401**（非 404 ⇒ AI 端点确已上线）。
+
+**真机（模式① 带图，重新选图）**
+- 新 APK：`flutter build apk --debug` + `S2S_API_BASE_URL=https://s2s.build110.com`；原包签名不兼容，卸载重装（登录态清零，用内测号重新登录）。
+- 流程：AI 帮我发 → 拍张图说一句 → 选图 → 确认页自动填「生活 > 二手闲置转让 > 母婴儿童 / 爬爬垫 / 20 元」→ 确认发布 → **发布成功页** → 「我的发布」首条「爬爬垫 · 刚刚发布 · 在架」。
+- 客户端 logcat 无业务报错（仅图形噪声）。
+
+**服务端判据**
+- `/ai/publish/parse`：`code=200`、**`rt_ms=2159`**（< 5s 达标）；单条访问日志、单一 `interaction_id` ⇒ **无前端重试**；无 `AI-DIAG`。
+- 结论：双重根因修复（`a3def90` 展示图落盘 + `efcbbce` 签名参数）与 `reasoning_effort=none` / 客户端 5s 超时全部生效。
+
+**收口**
+- 移除 `QwenAiProvider` 的 AI-DIAG 临时诊断（`55e8c96`）：删 `logUpstreamFailure` 方法、4 处调用、`Logger` 字段与 3 个 import；类头「安全」段恢复为「本类不写业务日志」。
+- 移除后门禁：`mvn -o clean test` **499/499 BUILD SUCCESS**（`JAVA_HOME=D:\developer\soft\jdk\jdk-21.0.7`）。
+  - ⚠ 环境坑：用 Android Studio JBR 跑测试会因**中文用户名路径**把 `byte-buddy-agent` 路径解码成乱码（`C:\Users\����\.m2\...`）→ Mockito `MockMaker` 初始化失败（337 errors），**与代码无关**；本机须用上述 JDK 21。
+
+**文档回写**：`说明文档.md` §三 Step 2 条改为 ✅；本记录（索引 + 本条）；《部署与发版记录》补发版索引行。
 
 
 

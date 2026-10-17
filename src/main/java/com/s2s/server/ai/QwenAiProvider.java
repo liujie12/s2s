@@ -11,15 +11,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
-import org.springframework.web.client.RestClientResponseException;
 
 /**
  * 通义千问（阿里云百炼 OpenAI 兼容接口）实现（B2-4 阶段①）。
@@ -43,15 +40,10 @@ import org.springframework.web.client.RestClientResponseException;
  * {@link #transcribe} 独立转写（input_audio 部件），产物由 {@code AiParseService} 并入
  * U 集合后再走本类 {@link #generate}。图/音均以 OSS 只读签名 URL 入参（官方兼容口径）。</p>
  *
- * <p><b>安全</b>：本类不写业务日志（scope 与模型输出均含用户输入明文，编码规范 §4.11）。
- * 例外：{@link #logUpstreamFailure} 是 <b>B2-4 Step 2 验收期临时诊断</b>，只记录异常类名 /
- * 上游 HTTP 状态码 / 上游错误响应体（上游错误体不含用户输入），定位根因后随即移除。</p>
+ * <p><b>安全</b>：本类不写业务日志（scope 与模型输出均含用户输入明文，编码规范 §4.11）。</p>
  */
 @Component
 public class QwenAiProvider implements AiProvider {
-
-    /** 【临时诊断】日志器：仅用于 B2-4 Step 2 验收期定位 50301 根因，定位后随本补丁移除。 */
-    private static final Logger log = LoggerFactory.getLogger(QwenAiProvider.class);
 
     /** 百炼 OpenAI 兼容的对话补全路径（相对 {@code s2s.ai.endpoint}）。 */
     private static final String CHAT_COMPLETIONS_PATH = "/chat/completions";
@@ -187,7 +179,6 @@ public class QwenAiProvider implements AiProvider {
                     ? buildChatPayload(scopeJson, systemPrompt, model)
                     : buildMultimodalPayload(scopeJson, systemPrompt, imageUrls);
         } catch (Exception e) {
-            logUpstreamFailure("payload-build", e);
             throw new IllegalStateException("构造通义千问请求体失败", e);
         }
         String body;
@@ -201,7 +192,6 @@ public class QwenAiProvider implements AiProvider {
                     .body(String.class);
         } catch (RestClientException e) {
             // 含网络超时（ResourceAccessException）与非 2xx（RestClientResponseException）
-            logUpstreamFailure("generate", e);
             throw new IllegalStateException("通义千问调用失败", e);
         }
         return extractContent(body);
@@ -255,7 +245,6 @@ public class QwenAiProvider implements AiProvider {
         try {
             payload = buildTranscribePayload(audioUrl, format);
         } catch (Exception e) {
-            logUpstreamFailure("transcribe-payload-build", e);
             throw new IllegalStateException("构造通义千问转写请求体失败", e);
         }
         String body;
@@ -269,32 +258,9 @@ public class QwenAiProvider implements AiProvider {
                     .body(String.class);
         } catch (RestClientException e) {
             // 含网络超时与非 2xx；口径与 generateByModel 一致
-            logUpstreamFailure("transcribe", e);
             throw new IllegalStateException("通义千问转写调用失败", e);
         }
         return extractPlainText(body);
-    }
-
-    /**
-     * 【临时诊断 · 定位后移除】记录上游调用失败的异常类名与上游错误响应体。
-     *
-     * <p>为什么需要：上游非 2xx 被统一映射为 50301（{@code BizException}），而本类按安全
-     * 红线不写业务日志，导致「为什么失败」不可观测。本方法只输出异常类名 / HTTP 状态码 /
-     * 上游错误响应体（截断 400 字符）——<b>不含 scope 与模型输出</b>，故不违反「日志禁
-     * 出现用户输入明文」红线。</p>
-     *
-     * @param stage 失败阶段标识（payload-build / generate / transcribe）
-     * @param e     捕获到的异常
-     */
-    private void logUpstreamFailure(String stage, Exception e) {
-        if (e instanceof RestClientResponseException rre) {
-            String respBody = rre.getResponseBodyAsString();
-            String truncated = respBody != null && respBody.length() > 400
-                    ? respBody.substring(0, 400) : respBody;
-            log.warn("[AI-DIAG] stage={} status={} body={}", stage, rre.getStatusCode().value(), truncated);
-        } else {
-            log.warn("[AI-DIAG] stage={} class={} msg={}", stage, e.getClass().getName(), e.getMessage());
-        }
     }
 
     /**
