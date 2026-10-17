@@ -41,6 +41,7 @@ import '../location/location_center.dart';
 import '../location/location_permission.dart';
 import '../post/post_repository.dart';
 import 'ai_confirm_args.dart';
+import 'precheck_sheet.dart';
 import 'publish_form_state.dart';
 
 /// AI 结果确认页。
@@ -476,9 +477,14 @@ class _AiConfirmScreenState extends ConsumerState<AiConfirmScreen> {
       final precheck = await repo.precheck(payload);
       if (!mounted) return;
       if (!precheck.passed) {
-        _toast(
-          precheck.blocks.isEmpty ? '暂不满足发布条件' : precheck.blocks.first.message,
-        );
+        if (precheck.blocks.isEmpty) {
+          _toast('暂不满足发布条件');
+          return;
+        }
+        // 阻断必须让用户看得见：与手动发布页共用同一弹层（一次性列全、
+        // 必须点「知道了」才关闭）。4 秒即消失的 SnackBar 会被用户当成
+        // 「点了没反应」（2026-10-17 真机实证）。
+        await showPrecheckBlocks(context, precheck.blocks);
         return;
       }
       await repo.createPost(payload);

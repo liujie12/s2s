@@ -17,12 +17,14 @@ import 'package:zhaoyazhao/core/network/api_error_code.dart';
 import 'package:zhaoyazhao/core/network/api_exception.dart';
 import 'package:zhaoyazhao/features/ai/ai_dto.dart';
 import 'package:zhaoyazhao/features/ai/ai_repository.dart';
+import 'package:zhaoyazhao/features/post/post_dto.dart';
 import 'package:zhaoyazhao/features/post/post_repository.dart';
 import 'package:zhaoyazhao/features/publish/ai_confirm_args.dart';
 import 'package:zhaoyazhao/features/publish/ai_confirm_screen.dart';
 import 'package:zhaoyazhao/features/publish/publish_form_state.dart';
 
 import 'support/fake_repositories.dart';
+import 'support/post_fixtures.dart';
 
 void main() {
   /// 一份填齐必填项的表单（二手闲置，缺门牌号 → 🟡 档）。
@@ -450,6 +452,53 @@ void main() {
       // 成功页必须在栈顶：用户要知道「发布成功了」，而不是停在一个可再点的页面
       expect(find.text('成功页占位'), findsOneWidget);
       expect(find.text('发布成功'), findsOneWidget);
+    });
+
+    testWidgets('precheck 阻断 → 弹出可读问题列表（不能一闪而过）', (tester) async {
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 2;
+      addTearDown(tester.view.reset);
+      final ai = FakeAiRepository()..resultToReturn = fullResult();
+      final postRepo = FakePostRepository()
+        ..resultToReturn = PrecheckResultDto.fromJson(precheckBlockedPayload());
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            aiRepositoryProvider.overrideWithValue(ai),
+            postRepositoryProvider.overrideWithValue(postRepo),
+          ],
+          child: MaterialApp(
+            home: AiConfirmScreen(
+              args: const AiConfirmArgs(
+                form: PublishFormState(
+                  leafCategoryId: 40101,
+                  lng: 120.1551,
+                  lat: 30.2741,
+                  title: '九成新实木餐桌',
+                  priceText: '350',
+                  priceUnit: '元',
+                  description: '搬家出售，无磕碰，可上门自取。',
+                  templateValues: {'condition': '几乎全新', 'pickup': '仅自取'},
+                  contact: '13800138000',
+                  agreed: true,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('确认发布'));
+      await tester.pumpAndSettle();
+
+      // 模态弹层：标题 + 服务端原文，必须点「知道了」才关
+      expect(find.text('发布前需处理以下问题'), findsOneWidget);
+      expect(find.text('包含敏感词：xxx，请修改'), findsOneWidget);
+      expect(find.text('知道了'), findsOneWidget);
+      // 阻断时不能落库
+      expect(postRepo.createCount, 0);
     });
   });
 }
