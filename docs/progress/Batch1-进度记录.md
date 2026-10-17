@@ -150,6 +150,7 @@
 - 2026-10-17（B2-10 容量复核 · 索引/机型决策 + 两处失实 EXPLAIN 注释订正）
 - 2026-10-17（B2-4 阶段① Step 2 真机复验通过 · rt_ms=2159 · AI-DIAG 补丁移除）
 - 2026-10-17（B2-4 模式② 语音验收通过 + 价格中文数字/分类 category_options 两项增强）
+- 2026-10-17（发布定位精度优化：发布取会话最优定位点，不再用首点/默认城市中心）
 
 ---
 
@@ -7256,6 +7257,24 @@ printf '\nMYSQL_SSL_MODE=VERIFY_CA\nMYSQL_TLS_TRUSTSTORE_PASSWORD=%s\n' \
 **门禁**：`mvn -o clean test` **505/505 BUILD SUCCESS**。
 **UI 清理**：确认页「说一句 + 识别」输入（二次解析）移除 —— PRD §5.9 只定义「逐字段改 + 全部重填」，四种模式进入确认页前均已采集文本；移除后 `flutter analyze` 0 issue、`flutter test` **764/764**。
 **文档回写**：`说明文档.md` §三新增条；《决策登记表》2026-10-17 同批裁定；本记录（索引 + 本条）。
+
+### 2026-10-17（发布定位精度优化：同一地点 Pin 漂移）
+
+**现象**：同一地点多次点「使用当前位置」发布，地图上 Pin 散布在几十米范围内。
+
+**根因**
+- 发布取点读 `locationCenterProvider`，而该中心按 2026-10-08 裁定**冻结在会话首个有效点**；首点常是网络/AGPS 粗定位（`accuracy` 30–100m），不同会话首点不同 ⇒ Pin 位置漂移。
+- 潜在风险：已授权但尚未取到点时会把**默认城市中心（杭州）**写入表单，帖子可能落到错误城市。
+
+**修复**
+- 新增 `LocationFix` / `LocationFixNotifier` / `locationFixProvider`：记录会话内**最小 `accuracy`** 的有效定位（同精度保首个、无效定位忽略）。
+- `map_screen._onLocationChanged` 每次有效回调写入 fix；**不写共享中心**，相机仍只跟首点（2026-10-08 裁定不变）。
+- 三个发布入口（`publish_screen` / `ai_confirm_screen` / `ai_dialog_screen`）统一走 `readPublishCoordinate(ref)`；无有效 fix 时提示「正在定位，请稍候…」，不再退化默认中心。
+- 坐标系未变（全程 GCJ-02），未新增依赖。
+
+**门禁**：`flutter analyze` 0 issue；`flutter test` **769/769**（+5 例 `location_center_test`）。
+
+**未做（可选下一步）**：若仍不够准（目标 5–15m），引入 `amap_flutter_location` 在发布时做单次高精度定位（GPS first + 超时），属新增原生依赖，需单独立项确认。
 
 
 

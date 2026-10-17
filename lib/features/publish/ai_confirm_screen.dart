@@ -299,8 +299,14 @@ class _AiConfirmScreenState extends ConsumerState<AiConfirmScreen> {
       _toast('请先开启定位权限，再使用当前位置');
       return;
     }
-    final center = ref.read(locationCenterProvider);
-    setState(() => _form = _form.copyWith(lng: center.lng, lat: center.lat));
+    final coordinate = readPublishCoordinate(ref);
+    if (coordinate == null) {
+      _toast('正在定位，请稍候…');
+      return;
+    }
+    setState(
+      () => _form = _form.copyWith(lng: coordinate.lng, lat: coordinate.lat),
+    );
   }
 
   /// 契约必填是否齐（分类 / 标题 / 位置 / 联系方式）。

@@ -31,6 +31,74 @@ void main() {
     expect(center.lng, 121.0);
   });
 
+  group('LocationFixNotifier（发布取点：保留最优精度）', () {
+    test('首个有效点被记录', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      container.read(locationFixProvider.notifier).update(
+            lat: 31.9,
+            lng: 117.3,
+            accuracy: 50,
+          );
+
+      final fix = container.read(locationFixProvider);
+      expect(fix, isNotNull);
+      expect(fix!.lat, 31.9);
+      expect(fix.lng, 117.3);
+      expect(fix.accuracy, 50);
+    });
+
+    test('精度更好的点替换旧点', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final notifier = container.read(locationFixProvider.notifier);
+
+      notifier.update(lat: 31.9, lng: 117.3, accuracy: 80);
+      notifier.update(lat: 31.9001, lng: 117.3001, accuracy: 15);
+
+      final fix = container.read(locationFixProvider)!;
+      expect(fix.lat, 31.9001);
+      expect(fix.accuracy, 15);
+    });
+
+    test('精度更差的点不覆盖', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final notifier = container.read(locationFixProvider.notifier);
+
+      notifier.update(lat: 31.9, lng: 117.3, accuracy: 15);
+      notifier.update(lat: 32.0, lng: 118.0, accuracy: 90);
+
+      final fix = container.read(locationFixProvider)!;
+      expect(fix.lat, 31.9);
+      expect(fix.accuracy, 15);
+    });
+
+    test('无效定位被忽略（零坐标/零精度）', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final notifier = container.read(locationFixProvider.notifier);
+
+      notifier.update(lat: 0, lng: 0, accuracy: 10);
+      notifier.update(lat: 31.9, lng: 117.3, accuracy: 0);
+
+      expect(container.read(locationFixProvider), isNull);
+    });
+
+    test('相同精度保留首个点（避免同档抖动）', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final notifier = container.read(locationFixProvider.notifier);
+
+      notifier.update(lat: 31.9, lng: 117.3, accuracy: 20);
+      notifier.update(lat: 32.0, lng: 118.0, accuracy: 20);
+
+      final fix = container.read(locationFixProvider)!;
+      expect(fix.lat, 31.9);
+    });
+  });
+
   group('isUsableLocationFix（PRD §6.8 无效定位判定）', () {
     test('真实定位回传判为有效', () {
       expect(

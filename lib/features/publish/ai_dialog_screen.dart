@@ -171,8 +171,16 @@ class _AiDialogScreenState extends ConsumerState<AiDialogScreen> {
       );
       return;
     }
-    final center = ref.read(locationCenterProvider);
-    setState(() => _form = _form.copyWith(lng: center.lng, lat: center.lat));
+    final coordinate = readPublishCoordinate(ref);
+    if (coordinate == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('正在定位，请稍候…')),
+      );
+      return;
+    }
+    setState(
+      () => _form = _form.copyWith(lng: coordinate.lng, lat: coordinate.lat),
+    );
   }
 
   @override

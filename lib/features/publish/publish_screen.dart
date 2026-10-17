@@ -10,7 +10,8 @@
 /// 链，由本页在 [PublishFormState.templatePending] 时合成（[124] B3）。
 ///
 /// **§5.4.1 八段中的降级项，及原因**：
-/// ① **第 2 段位置**：「使用当前位置」已接真 —— 从 [locationCenterProvider]
+/// ① **第 2 段位置**：「使用当前位置」已接真 —— 从 [locationFixProvider]（本次
+/// 会话最优定位点）
 ///    取 GCJ-02 坐标写入表单（`POST /posts` 契约要求 `lng`/`lat` 必填，
 ///    坐标随载荷上送）；「地图选点」（拖图选点）按钮保留但禁用并注明原因
 ///    —— 隐藏它会让验收时无法判断是漏做还是待前置。
@@ -440,13 +441,12 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
 
   /// 采集当前位置写入表单（§5.4.1 第 2 段「使用当前位置」）。
   ///
-  /// 坐标取自 [locationCenterProvider]（地图侧已取到的定位中心，GCJ-02），
+  /// 坐标取自 [readPublishCoordinate]（本次会话最优定位点，GCJ-02），
   /// 一次写入 [PublishFormState.lng]/[PublishFormState.lat] —— 位置是否就绪
   /// 以坐标为准（见 `PublishFormState.hasLocation`）。
   ///
-  /// **为什么先判权限**：该 Provider 在从未取到真实定位时停在默认城市中心，
-  /// 直接拿它当用户位置发布等于伪造一条坐标。故仅在定位已授权时采集；
-  /// 未授权时提示先开启，而不是塞一个假点把 [PublishBlocker.noLocation] 蒙过去。
+  /// **为什么先判权限**：未授权时不会有任何有效定位点，不能塞假点把
+  /// [PublishBlocker.noLocation] 蒙过去；已授权但尚未取到点则提示稍候。
   void _useCurrentLocation() {
     if (ref.read(locationPermissionProvider) != LocationPermissionPhase.granted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -454,8 +454,14 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
       );
       return;
     }
-    final center = ref.read(locationCenterProvider);
-    _updateForm(_form.copyWith(lng: center.lng, lat: center.lat));
+    final coordinate = readPublishCoordinate(ref);
+    if (coordinate == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('正在定位，请稍候…')),
+      );
+      return;
+    }
+    _updateForm(_form.copyWith(lng: coordinate.lng, lat: coordinate.lat));
   }
 
   @override

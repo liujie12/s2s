@@ -54,6 +54,70 @@ final locationCenterProvider =
       LocationCenterNotifier.new,
     );
 
+/// 本次会话「最优定位点」（发布坐标来源）。
+///
+/// 为什么与 [locationCenterProvider] 分开：共享中心被 2026-10-08 裁定冻结在
+/// **首个有效点**（只居中一次，避免相机被反复拽回），首点常是网络/AGPS 粗定位
+/// （30–100m）。若发布直接取它，同一地点在不同会话会落到不同位置，看起来「定位
+/// 不准」。本 Provider 持续跟踪**精度最好**的一次有效定位，供发布取点使用，
+/// 不参与相机跟随。
+class LocationFix {
+  const LocationFix({
+    required this.lat,
+    required this.lng,
+    required this.accuracy,
+  });
+
+  /// 纬度（GCJ-02）。
+  final double lat;
+
+  /// 经度（GCJ-02）。
+  final double lng;
+
+  /// 水平精度（米，越小越好）。
+  final double accuracy;
+}
+
+/// 最优定位点读写入口。
+class LocationFixNotifier extends Notifier<LocationFix?> {
+  @override
+  LocationFix? build() => null;
+
+  /// 记录一次有效定位；仅当精度优于当前最优时才替换。
+  ///
+  /// 参数：
+  /// [lat] 纬度（GCJ-02）；
+  /// [lng] 经度（GCJ-02）；
+  /// [accuracy] 水平精度（米）。无效定位（见 [isUsableLocationFix]）直接忽略。
+  void update({
+    required double lat,
+    required double lng,
+    required double accuracy,
+  }) {
+    if (!isUsableLocationFix(lat: lat, lng: lng, accuracy: accuracy)) return;
+    final current = state;
+    if (current == null || accuracy < current.accuracy) {
+      state = LocationFix(lat: lat, lng: lng, accuracy: accuracy);
+    }
+  }
+}
+
+/// 本次会话最优定位点 Provider（无有效定位时为 null）。
+final locationFixProvider = NotifierProvider<LocationFixNotifier, LocationFix?>(
+  LocationFixNotifier.new,
+);
+
+/// 取发布用坐标（GCJ-02）：本次会话最优定位点。
+///
+/// 参数：[ref] 组件引用（发布页 / AI 确认页 / AI 问答页共用）。
+/// 返回：含 [lat]/[lng] 的记录；**尚未取到有效定位时返回 null** —— 调用方不得
+/// 退化到共享中心，因为那可能是默认城市中心（杭州），不是用户真实位置。
+({double lat, double lng})? readPublishCoordinate(WidgetRef ref) {
+  final fix = ref.read(locationFixProvider);
+  if (fix == null) return null;
+  return (lat: fix.lat, lng: fix.lng);
+}
+
 /// 判定高德回传的一次定位是否可用（PRD §6.8）。
 ///
 /// **不能用插件 `amap_map` 的 `isLocationValid`**：它的判据只有「经纬度在范围内 +

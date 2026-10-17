@@ -560,6 +560,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       }
       return;
     }
+    // 记录本次会话「最优定位点」：发布取点用它（首点常是粗定位）。
+    // 不写共享中心 —— 那会触发相机跟随，违背「仅首点居中一次」。
+    ref.read(locationFixProvider.notifier).update(
+          lat: location.latLng.latitude,
+          lng: location.latLng.longitude,
+          accuracy: location.accuracy,
+        );
     // 只有首个有效点写入参考中心（口径：2026-10-08 裁定「仅首点居中一次」）。
     // 若每个点都写，参考中心会以 5–8s 的节奏变化，经 build() 中的 ref.listen 把
     // 用户拖动后的视角反复拽回定位点。代价是数据层中心冻结在首点上 —— 可接受，
