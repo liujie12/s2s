@@ -67,9 +67,6 @@ class _AiConfirmScreenState extends ConsumerState<AiConfirmScreen> {
 
   final TextEditingController _doorCtrl = TextEditingController();
 
-  /// 「说一句」输入框（模式① 的文本输入；B2-4）。
-  final TextEditingController _sentenceCtrl = TextEditingController();
-
   /// 联系方式输入框（契约 `contact_value` 必填，AI 入口不采集故必须在此补）。
   final TextEditingController _contactCtrl = TextEditingController();
 
@@ -100,7 +97,6 @@ class _AiConfirmScreenState extends ConsumerState<AiConfirmScreen> {
   @override
   void dispose() {
     _doorCtrl.dispose();
-    _sentenceCtrl.dispose();
     _contactCtrl.dispose();
     super.dispose();
   }
@@ -129,13 +125,12 @@ class _AiConfirmScreenState extends ConsumerState<AiConfirmScreen> {
 
   /// 调用服务端解析（`POST /ai/publish/parse`），并落到 [FieldGuess] 列表。
   ///
-  /// 解析文本优先取「说一句」输入，为空则回退 [_initialSentence]。
+  /// 解析文本取入口带入的一句话（[_initialSentence]）。
   /// 失败（含 42901 配额耗尽 / 50301 不可用 / 传输错误）一律进 `failed` 态，
   /// 保留用户已输入内容（§5.9「已输入内容全部保留」）。
   Future<void> _runParse() async {
     setState(() => _status = AiParseStatus.parsing);
-    final typed = _sentenceCtrl.text.trim();
-    final text = typed.isEmpty ? _initialSentence() : typed;
+    final text = _initialSentence();
     try {
       final result = await ref.read(aiRepositoryProvider).parse(
             AiParseRequestDto(
@@ -646,9 +641,6 @@ class _AiConfirmScreenState extends ConsumerState<AiConfirmScreen> {
           ),
         ),
         const SizedBox(height: AppSpacing.md),
-        // 「说一句」输入 + 重新识别（模式① 的文本输入；B2-4）。
-        _SentenceInput(controller: _sentenceCtrl, onRecognize: _runParse),
-        const SizedBox(height: AppSpacing.md),
         // B2-4 内容标识落点一：AI 辅助生成显式标注（PRD §5.9 合规裁定）。
         const _AiAssistNote(),
         const SizedBox(height: AppSpacing.sm),
@@ -1132,40 +1124,6 @@ class _GreenSprint extends StatelessWidget {
           ],
         ],
       ),
-    );
-  }
-}
-
-/// 「说一句」输入行（模式① 的文本输入；B2-4）。
-///
-/// 输入文本后点「识别」重新调用服务端解析。克制样式，不与猜测列表争视觉。
-class _SentenceInput extends StatelessWidget {
-  const _SentenceInput({required this.controller, required this.onRecognize});
-
-  /// 文本控制器（由父级持有并负责 dispose）。
-  final TextEditingController controller;
-
-  /// 点「识别」回调（触发一次服务端解析）。
-  final Future<void> Function() onRecognize;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Expanded(
-          child: TextField(
-            controller: controller,
-            decoration: const InputDecoration(
-              isDense: true,
-              hintText: '说一句，例如「楼下超市卖苹果 5 元」',
-              border: OutlineInputBorder(),
-            ),
-          ),
-        ),
-        const SizedBox(width: AppSpacing.sm),
-        TextButton(onPressed: () => onRecognize(), child: const Text('识别')),
-      ],
     );
   }
 }

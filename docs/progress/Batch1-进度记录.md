@@ -7254,6 +7254,7 @@ printf '\nMYSQL_SSL_MODE=VERIFY_CA\nMYSQL_TLS_TRUSTSTORE_PASSWORD=%s\n' \
 - 测试：+2 例（清单内保留 / 清单外拒绝）。
 
 **门禁**：`mvn -o clean test` **505/505 BUILD SUCCESS**。
+**UI 清理**：确认页「说一句 + 识别」输入（二次解析）移除 —— PRD §5.9 只定义「逐字段改 + 全部重填」，四种模式进入确认页前均已采集文本；移除后 `flutter analyze` 0 issue、`flutter test` **764/764**。
 **文档回写**：`说明文档.md` §三新增条；《决策登记表》2026-10-17 同批裁定；本记录（索引 + 本条）。
 
 

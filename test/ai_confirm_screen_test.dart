@@ -210,8 +210,8 @@ void main() {
 
     testWidgets('填入门牌号 → 档位实时从半完整跳完整，冲刺区消失', (tester) async {
       await pump(tester, complete());
-      // TextField 顺序：0 = 「说一句」输入，1 = 冲刺区门牌号（B2-4 新增了前者）
-      await tester.enterText(find.byType(TextField).at(1), '3 号楼 2 单元 501');
+      // TextField 顺序：0 = 冲刺区门牌号，1 = 发布必填的联系方式
+      await tester.enterText(find.byType(TextField).at(0), '3 号楼 2 单元 501');
       await tester.pump();
 
       expect(find.text('当前完整度：完整'), findsOneWidget);
