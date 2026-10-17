@@ -12,6 +12,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:zhaoyazhao/core/network/api_error_code.dart';
 import 'package:zhaoyazhao/core/network/api_exception.dart';
 import 'package:zhaoyazhao/features/ai/ai_dto.dart';
@@ -395,6 +396,60 @@ void main() {
       expect(draft['ai_assisted'], isTrue);
       // 模板字段同样来自猜测，不能丢
       expect((draft['attributes'] as Map)['condition'], '几乎全新');
+    });
+
+    testWidgets('发布成功 → 弹「发布成功」并进入成功页（不能停在确认页）',
+        (tester) async {
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 2;
+      addTearDown(tester.view.reset);
+      final ai = FakeAiRepository()..resultToReturn = fullResult();
+      final postRepo = FakePostRepository();
+      final router = GoRouter(
+        routes: [
+          GoRoute(
+            path: '/',
+            builder: (_, _) => const AiConfirmScreen(
+              args: AiConfirmArgs(
+                form: PublishFormState(
+                  leafCategoryId: 40101,
+                  lng: 120.1551,
+                  lat: 30.2741,
+                  title: '九成新实木餐桌',
+                  priceText: '350',
+                  priceUnit: '元',
+                  description: '搬家出售，无磕碰，可上门自取。',
+                  templateValues: {'condition': '几乎全新', 'pickup': '仅自取'},
+                  contact: '13800138000',
+                  agreed: true,
+                ),
+              ),
+            ),
+          ),
+          GoRoute(
+            path: '/publish/success',
+            builder: (_, _) => const Scaffold(body: Text('成功页占位')),
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            aiRepositoryProvider.overrideWithValue(ai),
+            postRepositoryProvider.overrideWithValue(postRepo),
+          ],
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('确认发布'));
+      await tester.pumpAndSettle();
+
+      // 成功页必须在栈顶：用户要知道「发布成功了」，而不是停在一个可再点的页面
+      expect(find.text('成功页占位'), findsOneWidget);
+      expect(find.text('发布成功'), findsOneWidget);
     });
   });
 }

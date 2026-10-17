@@ -483,7 +483,18 @@ class _AiConfirmScreenState extends ConsumerState<AiConfirmScreen> {
       }
       await repo.createPost(payload);
       if (!mounted) return;
-      GoRouter.of(context).push(AppRoutes.publishSuccess, extra: _form);
+      // 成功必须有明确信号：
+      // ① 先给一条 SnackBar 兜底 —— 即便页面转场被误触/打断，用户也能看到结果；
+      // ② 用 pushReplacement 把确认页换成成功页：发布流程到此结束，
+      //    返回键直接回地图，不会退回「还能再点一次确认发布」的旧页面。
+      //    （2026-10-17 真机：push 后用户未看到成功页，也无任何提示。）
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('发布成功')),
+      );
+      GoRouter.of(context).pushReplacement(
+        AppRoutes.publishSuccess,
+        extra: _form,
+      );
     } on ApiException catch (error) {
       if (mounted) _toast(error.uiMessage);
     } finally {
