@@ -267,10 +267,20 @@ class _AiConfirmScreenState extends ConsumerState<AiConfirmScreen> {
         extra: _form.leafCategoryId,
       );
       if (leafId == null || !mounted) return;
+      // 换分类 = 换模板：只丢弃「旧模板字段」的手改值。
+      // ⚠ 不能 _edited.clear()：那会把与模板无关的手改值（价格 / 标题）一并清掉。
+      // 2026-10-17 真机实证：先补价格、再选分类 ⇒ 价格被打回「需你补充」。
+      final staleTemplateKeys =
+          _form.template.extraFields.map((field) => field.key).toSet();
       setState(() {
         _form = _form.withCategory(leafId);
-        // 换分类等于换模板，旧模板字段的手改值不再适用（同 withCategory 的理由）
-        _edited.clear();
+        _edited.removeWhere((key, _) => staleTemplateKeys.contains(key));
+        // 分类行要立即反映用户这次的新选择：否则仍取服务端旧 leaf_category_id，
+        // 页面会显示「需你补充」（Bug B，同日真机暴露）。
+        final categoryLabel = categoryPathLabel(leafId);
+        if (categoryLabel != null) {
+          _edited['category'] = categoryLabel;
+        }
       });
       return;
     }
