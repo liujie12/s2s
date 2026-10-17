@@ -151,15 +151,21 @@ class _NetworkImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Image.network(
-      url,
-      fit: BoxFit.cover,
-      width: double.infinity,
-      loadingBuilder: (context, child, progress) =>
-          progress == null ? child : const _ImageFallback(icon: Icons.image_outlined),
-      // 加载失败不抛异常、不留白块：OSS 对象可能已被清理，页面仍须可读。
-      errorBuilder: (context, error, stack) =>
-          const _ImageFallback(icon: Icons.broken_image_outlined),
+    // 用 contain 而非 cover：详情页要让用户看到图片全貌（2026-10-17 真机反馈
+    // 「详情图片未展示完整」）。cover 会裁掉长图边缘，信息损失不可接受；
+    // 留白由黑底兜住，与全屏查看页同色，视觉上仍是同一块媒体区。
+    return ColoredBox(
+      color: Colors.black,
+      child: Image.network(
+        url,
+        fit: BoxFit.contain,
+        width: double.infinity,
+        loadingBuilder: (context, child, progress) =>
+            progress == null ? child : const _ImageFallback(icon: Icons.image_outlined),
+        // 加载失败不抛异常、不留白块：OSS 对象可能已被清理，页面仍须可读。
+        errorBuilder: (context, error, stack) =>
+            const _ImageFallback(icon: Icons.broken_image_outlined),
+      ),
     );
   }
 }
