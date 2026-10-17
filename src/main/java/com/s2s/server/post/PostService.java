@@ -103,7 +103,11 @@ public class PostService {
         post.setTitle(req.title());
         post.setPrice(req.price() == null ? null : BigDecimal.valueOf(req.price()));
         post.setPriceUnit(req.priceUnit());
-        post.setDescription(req.description());
+        // `desc` 列是 NOT NULL 且无默认值：契约允许 description 缺省（AI 快速发布
+        // 不采集描述），null 会被 MyBatis-Plus 从 INSERT 中省略 ⇒ 数据库报
+        // "Field 'desc' doesn't have a default value"（2026-10-17 线上实证 50001）。
+        // 故在此归一为空串，而不是放宽表结构。
+        post.setDescription(req.description() == null ? "" : req.description());
         post.setTemplateValues(toJson(req.attributes()));
         post.setGridId(gridId);
         post.setLng(BigDecimal.valueOf(req.lng()));
@@ -251,13 +255,18 @@ public class PostService {
                 .set("title", req.title())
                 .set("price", req.price() == null ? null : BigDecimal.valueOf(req.price()))
                 .set("price_unit", req.priceUnit())
-                .set("`desc`", req.description())
                 .set("template_values", toJson(req.attributes()))
                 .set("grid_id", gridId)
                 .set("lng", BigDecimal.valueOf(req.lng()))
                 .set("lat", BigDecimal.valueOf(req.lat()))
                 .set("address", req.address())
                 .set("completeness_conditions", conditionsJson(derived));
+
+        // PATCH 语义：description 为 null 表示「本次不改」，不能写空串覆盖原描述
+        // （`desc` 列 NOT NULL，新建时已在 createPost 归一为空串）。
+        if (req.description() != null) {
+            update.set("`desc`", req.description());
+        }
 
         if (req.contactType() != null) {
             update.set("contact_channel", req.contactType());

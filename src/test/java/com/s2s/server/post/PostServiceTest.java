@@ -33,6 +33,7 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 /**
  * {@link PostService} 发布落库测试（[125]）。
@@ -100,6 +101,29 @@ class PostServiceTest {
         assertThat(detail.version()).isZero();
         // contact 加密 AAD = post_id（INSERT 后取到的 100）
         verify(cryptoFacade).encrypt(eq("13800138000"), eq("100"));
+    }
+
+    /**
+     * 发布：description 缺省（AI 快速发布不采集描述）时归一为空串。
+     *
+     * <p>`desc` 列 NOT NULL 且无默认值，null 会被 MyBatis-Plus 从 INSERT 省略，
+     * 线上表现为 {@code Field 'desc' doesn't have a default value} → 50001
+     * （2026-10-17 真机实证）。</p>
+     *
+     * @return void；断言失败即空描述发布仍会 500
+     */
+    @Test
+    void createPost描述缺省时归一为空串() {
+        when(postMapper.selectById(100L)).thenReturn(createSavedRow());
+        PostCreateRequest req = new PostCreateRequest(
+                "resource", 10101, "标题", 50.0, "小时", null, Map.of(), 120.15, 30.28, null,
+                false, List.of(), "phone", "13800138000", true);
+
+        postService.createPost(1L, req);
+
+        ArgumentCaptor<PostEntity> captor = ArgumentCaptor.forClass(PostEntity.class);
+        verify(postMapper).insert(captor.capture());
+        assertThat(captor.getValue().getDescription()).isEmpty();
     }
 
     /**
