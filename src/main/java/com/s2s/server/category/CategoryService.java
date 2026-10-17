@@ -179,6 +179,54 @@ public class CategoryService {
     }
 
     /**
+     * 叶子类目选项（B2-4 AI 发布识别用）。
+     *
+     * <p>把平台三级叶子连同 L1/L2/L3 路径一次性下发到 scope，模型只能从清单中选择，
+     * Step 4 按清单校验 —— 属于「平台数据」而非模型编造，不放松严格 Scope 口径。
+     * 禁发类目（{@code forbidden=1}）不下发。</p>
+     *
+     * @return {@link List} 叶子选项（id + 完整路径），按 {@code sort_order} 稳定排序
+     */
+    public List<LeafOption> listLeafOptions() {
+        List<CategoryEntity> all = categoryMapper.selectList(
+                new QueryWrapper<CategoryEntity>().orderByAsc("sort_order"));
+        Map<Integer, CategoryEntity> byId = new HashMap<>();
+        for (CategoryEntity entity : all) {
+            byId.put(entity.getId(), entity);
+        }
+        List<LeafOption> options = new ArrayList<>();
+        for (CategoryEntity leaf : all) {
+            if (leaf.getLevel() == null || leaf.getLevel() != LEVEL_L3) {
+                continue;
+            }
+            if (leaf.getForbidden() != null && leaf.getForbidden() == 1) {
+                continue;
+            }
+            CategoryEntity l2 = byId.get(leaf.getParentId());
+            CategoryEntity l1 = l2 == null ? null : byId.get(l2.getParentId());
+            StringBuilder path = new StringBuilder();
+            if (l1 != null) {
+                path.append(l1.getName()).append(" / ");
+            }
+            if (l2 != null) {
+                path.append(l2.getName()).append(" / ");
+            }
+            path.append(leaf.getName());
+            options.add(new LeafOption(leaf.getId(), path.toString()));
+        }
+        return options;
+    }
+
+    /**
+     * 叶子类目选项（AI 识别 scope 的 {@code category_options} 元素）。
+     *
+     * @param id   叶子类目 ID
+     * @param path L1 / L2 / L3 完整路径
+     */
+    public record LeafOption(int id, String path) {
+    }
+
+    /**
      * 将实体转为 DTO（含 sensitive/banned 派生）。
      *
      * @param entity   分类实体

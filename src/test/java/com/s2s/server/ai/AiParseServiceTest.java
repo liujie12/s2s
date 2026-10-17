@@ -15,6 +15,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.s2s.server.ai.dto.AiParseRequest;
 import com.s2s.server.ai.dto.AiParseResult;
 import com.s2s.server.ai.dto.AiQuota;
+import com.s2s.server.category.CategoryService;
 import com.s2s.server.category.TemplateService;
 import com.s2s.server.category.dto.TemplateDto;
 import com.s2s.server.category.dto.TemplateFieldDto;
@@ -40,6 +41,7 @@ class AiParseServiceTest {
     private AiQuotaService aiQuotaService;
     private AiQuotaGate aiQuotaGate;
     private TemplateService templateService;
+    private CategoryService categoryService;
     private MediaService mediaService;
     private AiParseService service;
 
@@ -49,9 +51,10 @@ class AiParseServiceTest {
         aiQuotaService = mock(AiQuotaService.class);
         aiQuotaGate = mock(AiQuotaGate.class);
         templateService = mock(TemplateService.class);
+        categoryService = mock(CategoryService.class);
         mediaService = mock(MediaService.class);
         service = new AiParseService(provider, aiQuotaService, aiQuotaGate, templateService,
-                mediaService, new ObjectMapper());
+                categoryService, mediaService, new ObjectMapper());
 
         when(aiQuotaService.resolveLimit(any(), any(), any())).thenReturn(20);
         when(aiQuotaService.snapshot(any(), anyInt()))
@@ -161,6 +164,40 @@ class AiParseServiceTest {
 
         assertThat(result.guess().leafCategoryId()).isEqualTo(10101);
         assertThat(result.scopeVerified()).containsEntry("leaf_category_id", "platform");
+    }
+
+    /**
+     * 用户未选类目时，模型可从平台叶子清单（category_options）中选一个 ⇒ 保留，来源 platform。
+     */
+    @Test
+    void 未选类目时从平台清单选叶子() {
+        when(categoryService.listLeafOptions()).thenReturn(List.of(
+                new CategoryService.LeafOption(40102, "生活 / 二手闲置转让 / 母婴儿童"),
+                new CategoryService.LeafOption(40105, "生活 / 二手闲置转让 / 其他二手")));
+        when(provider.generate(anyString(), anyString()))
+                .thenReturn("{\"leaf_category_id\":40105,\"price\":5}");
+
+        AiParseResult result = service.parse(1L, req(null, "楼下超市卖苹果五元", null));
+
+        assertThat(result.guess().leafCategoryId()).isEqualTo(40105);
+        assertThat(result.scopeVerified()).containsEntry("leaf_category_id", "platform");
+        assertThat(result.unresolvedFields()).doesNotContain("leaf_category_id");
+    }
+
+    /**
+     * 模型返回的类目不在平台清单内 ⇒ 拒绝注入（严格 Scope 不放松）。
+     */
+    @Test
+    void 清单外类目被拒绝() {
+        when(categoryService.listLeafOptions()).thenReturn(List.of(
+                new CategoryService.LeafOption(40105, "生活 / 二手闲置转让 / 其他二手")));
+        when(provider.generate(anyString(), anyString()))
+                .thenReturn("{\"leaf_category_id\":99999}");
+
+        AiParseResult result = service.parse(1L, req(null, "卖苹果", null));
+
+        assertThat(result.guess().leafCategoryId()).isNull();
+        assertThat(result.unresolvedFields()).contains("leaf_category_id");
     }
 
     /**

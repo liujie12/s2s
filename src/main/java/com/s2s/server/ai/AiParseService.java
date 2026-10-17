@@ -6,6 +6,7 @@ import com.s2s.server.ai.dto.AiGuess;
 import com.s2s.server.ai.dto.AiParseRequest;
 import com.s2s.server.ai.dto.AiParseResult;
 import com.s2s.server.ai.dto.AiQuota;
+import com.s2s.server.category.CategoryService;
 import com.s2s.server.category.TemplateService;
 import com.s2s.server.category.dto.TemplateDto;
 import com.s2s.server.category.dto.TemplateFieldDto;
@@ -15,6 +16,7 @@ import com.s2s.server.common.ratelimit.RateLimitKeys;
 import com.s2s.server.post.MediaService;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -55,18 +57,21 @@ public class AiParseService {
      * 真实模型不知道 Step 4 的字段口径，不写清结构会返回自造键名（全被 Step 4 拒掉）。</p>
      *
      * <p>提示词口径与 {@link #verifyAgainstScope} 一一对应（title 须能在 text 溯源、
-     * leaf_category_id 须等于 scope 已选叶子、price 数字须在 text 出现（中文数字价格如
+     * leaf_category_id 须等于 scope 已选叶子或落在 {@code category_options} 清单内、
+     * price 数字须在 text 出现（中文数字价格如
      * 「五元」按标准读法归一后比对）、template_values
      * 键值须落在模板字段与选项内）；两处改动必须同批。</p>
      */
     private static final String SYSTEM_PROMPT =
             "你是发布信息抽取器，只输出一个 JSON 对象，不要任何解释或 Markdown 代码块。"
-            + "用户消息是一段 JSON（scope）：text=用户原话，leaf_category_id=用户已选叶子类目，"
+            + "用户消息是一段 JSON（scope）：text=用户原话，leaf_category_id=用户已选叶子类目（可空），"
+            + "category_options=平台叶子类目清单（id + path，用户未选类目时提供），"
             + "template_fields=平台模板字段（key）及其可选项（options）。"
             + "只允许从 scope 中已有的内容搬运，禁止编造任何未出现的实体（价格、地名、型号、单位、类目等）。"
             + "输出结构："
             + "{\"title\":字符串（必须是 text 的子串，≤40 字，无法确定则省略）,"
-            + "\"leaf_category_id\":整数（只能是 scope.leaf_category_id，没有则省略）,"
+            + "\"leaf_category_id\":整数（只能是 scope.leaf_category_id 或 scope.category_options 中的 id；"
+            + "未选类目时从清单中选最匹配的一个，无法确定则省略）,"
             + "\"price\":数字（必须是 text 中出现过的数字；text 中以中文数字表达的价格（如「五元」「十五块」）须归一为阿拉伯数字输出，没有则省略）,"
             + "\"price_unit\":字符串（必须是 text 中出现过的单位，没有则省略）,"
             + "\"template_values\":对象（键必须来自 template_fields 的 key，值必须是该字段 options 之一或 text 中出现过）}。"
@@ -96,6 +101,7 @@ public class AiParseService {
     private final AiQuotaService aiQuotaService;
     private final AiQuotaGate aiQuotaGate;
     private final TemplateService templateService;
+    private final CategoryService categoryService;
     private final MediaService mediaService;
     private final ObjectMapper objectMapper;
 
@@ -106,6 +112,7 @@ public class AiParseService {
      * @param aiQuotaService  配额档位解析
      * @param aiQuotaGate     配额闸（只读判定）
      * @param templateService 模板服务（scope 的 P 集合）
+     * @param categoryService 分类服务（scope 的 category_options 来源）
      * @param mediaService    媒体服务（AI 只读签名，模式①/④ 图、模式② 音频入参）
      * @param objectMapper    JSON 解析器
      */
@@ -113,12 +120,14 @@ public class AiParseService {
             AiQuotaService aiQuotaService,
             AiQuotaGate aiQuotaGate,
             TemplateService templateService,
+            CategoryService categoryService,
             MediaService mediaService,
             ObjectMapper objectMapper) {
         this.aiProvider = aiProvider;
         this.aiQuotaService = aiQuotaService;
         this.aiQuotaGate = aiQuotaGate;
         this.templateService = templateService;
+        this.categoryService = categoryService;
         this.mediaService = mediaService;
         this.objectMapper = objectMapper;
     }
@@ -157,14 +166,17 @@ public class AiParseService {
         // Step 2：Scope 提取（U ∪ N ∪ P；N 本期无数据源；模式①/④ 图片经只读签名 URL 进 media）
         TemplateDto template = resolveTemplate(req.leafCategoryId());
         Integer scopeLeafId = template == null ? null : req.leafCategoryId();
+        // 用户未选类目时下发平台叶子清单（P 集合）：模型只能从中选，Step 4 按清单校验。
+        List<CategoryService.LeafOption> leafOptions = scopeLeafId == null
+                ? categoryService.listLeafOptions() : List.of();
         String scopeJson = buildScopeJson(userText, req.kind(), scopeLeafId, template,
-                resolveImageMedia(userId, req.mediaId()));
+                leafOptions, resolveImageMedia(userId, req.mediaId()));
 
         // Step 3：大模型生成（上游异常 → 50301）
         String raw = generate(scopeJson);
 
         // Step 4：逆向 Scope 比对（核心红线）
-        Verified verified = verifyAgainstScope(raw, userText, scopeLeafId, template);
+        Verified verified = verifyAgainstScope(raw, userText, scopeLeafId, template, leafOptions);
 
         AiQuota quota = aiQuotaService.snapshot(userId, limit);
         return new AiParseResult(
@@ -250,11 +262,13 @@ public class AiParseService {
      * @param kind      类型（可空）
      * @param leafId    有效叶子类目 ID（可空）
      * @param template  模板（可空）
+     * @param leafOptions 平台叶子类目清单（用户未选类目时非空）
      * @param media     图片 media 段（模式①/④；元素含 type/url，空表表示无图）
      * @return {@link String} scope JSON 文本
      */
     private String buildScopeJson(String userText, String kind, Integer leafId,
-            TemplateDto template, List<Map<String, Object>> media) {
+            TemplateDto template, List<CategoryService.LeafOption> leafOptions,
+            List<Map<String, Object>> media) {
         Map<String, Object> scope = new LinkedHashMap<>();
         scope.put("text", userText);
         if (kind != null && !kind.isBlank()) {
@@ -262,6 +276,16 @@ public class AiParseService {
         }
         if (leafId != null) {
             scope.put("leaf_category_id", leafId);
+        }
+        if (!leafOptions.isEmpty()) {
+            List<Map<String, Object>> options = new ArrayList<>();
+            for (CategoryService.LeafOption option : leafOptions) {
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("id", option.id());
+                item.put("path", option.path());
+                options.add(item);
+            }
+            scope.put("category_options", options);
         }
         List<Map<String, Object>> fields = new ArrayList<>();
         if (template != null && template.getFields() != null) {
@@ -290,11 +314,16 @@ public class AiParseService {
      * @param userText  用户文本（U 集合，溯源依据）
      * @param scopeLeafId scope 中的叶子类目 ID（P 集合）
      * @param template  模板（P 集合）
+     * @param leafOptions 平台叶子清单（P 集合；用户未选类目时模型只能从中选）
      * @return {@link Verified} 校验后的猜测 / 来源 / 未解析字段
      * @throws BizException 模型输出非法 JSON 或非对象 → {@code 50301}
      */
     private Verified verifyAgainstScope(String raw, String userText, Integer scopeLeafId,
-            TemplateDto template) {
+            TemplateDto template, List<CategoryService.LeafOption> leafOptions) {
+        Set<Integer> allowedLeafIds = new HashSet<>();
+        for (CategoryService.LeafOption option : leafOptions) {
+            allowedLeafIds.add(option.id());
+        }
         JsonNode node;
         try {
             node = objectMapper.readTree(raw);
@@ -324,9 +353,10 @@ public class AiParseService {
                 unresolved.add(FIELD_TITLE);
             }
         }
-        // 分类：须等于用户在当前草稿已选的叶子类目（P 集合）
+        // 分类：须等于用户已选叶子（P），或落在平台下发的叶子清单内（P 的 category_options）
         if (leafId != null) {
-            if (leafId.equals(scopeLeafId)) {
+            boolean userSelected = scopeLeafId != null && leafId.equals(scopeLeafId);
+            if (userSelected || allowedLeafIds.contains(leafId)) {
                 verified.put(FIELD_LEAF_CATEGORY, sourceOfPlatform());
             } else {
                 leafId = null;
