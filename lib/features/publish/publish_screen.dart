@@ -52,6 +52,7 @@ import '../../domain/publish_template.dart';
 import '../../core/network/api_exception.dart';
 import '../../router/app_router.dart';
 import '../auth/auth_repository.dart';
+import '../detail/post_detail_provider.dart';
 import '../location/high_accuracy_locator.dart';
 import '../location/location_center.dart';
 import '../location/location_permission.dart';
@@ -397,6 +398,9 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
       }
       if (!mounted) return;
       if (_isEditing) {
+        // 编辑可能改动媒体/属性：详情 provider 非 autoDispose，不失效会继续
+        // 展示编辑前的旧数据（2026-10-18 真机：3 张图只显示 1 张）。
+        ref.invalidate(postDetailProvider(_editPostId!));
         // 编辑成功回「我的发布」并刷新（pop(true)），**不进完成页** ——
         // 完成页是「新发布」的闭环，编辑没有「发布成功」这一步。
         router.canPop() ? router.pop(true) : router.go(AppRoutes.myPublish);
@@ -712,6 +716,7 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
             title: '媒体',
             done: _form.imageCount > 0,
             child: MediaSection(
+              initialMedia: widget.args.initialMedia,
               onChanged: (ids) => _updateForm(_form.copyWith(mediaIds: ids)),
             ),
           ),

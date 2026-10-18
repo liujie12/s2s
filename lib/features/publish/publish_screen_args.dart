@@ -19,17 +19,25 @@ class PublishScreenArgs {
   ///
   /// 参数：
   ///   [initialForm] 初始表单快照（新建为默认空表单；重发/编辑为预填表单）；
+  ///   [initialMedia] 既有媒体（编辑态带 URL 回显；重发态 URL 为空串）；
   ///   [editPostId] 非空 = 编辑既有帖（提交走 `PATCH /posts/{id}`）；
   ///     null = 新建/重发（提交走 `POST /posts`）；
   ///   [editVersion] 编辑时的乐观锁版本号（取自 `GET /posts/mine` 的列表项）。
   const PublishScreenArgs({
     this.initialForm = const PublishFormState(),
+    this.initialMedia = const <({String mediaId, String url})>[],
     this.editPostId,
     this.editVersion,
   });
 
   /// 初始表单快照。
   final PublishFormState initialForm;
+
+  /// 既有媒体（编辑态回显；重发态无 URL 时 url 传空串）。
+  ///
+  /// 与 [PublishFormState.mediaIds] 的区别：后者只承载可提交的 ID，媒体段还需要
+  /// URL 才能画出缩略图。两者在编辑态由同一份 `GET /posts/{id}` 详情派生。
+  final List<({String mediaId, String url})> initialMedia;
 
   /// 编辑目标帖子 ID；null 表示新建/重发。
   final int? editPostId;

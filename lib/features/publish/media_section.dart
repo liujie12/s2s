@@ -33,16 +33,31 @@ class _MediaUpload {
     required this.filename,
     required this.bytes,
     required this.contentType,
-  });
+  }) : remoteUrl = null;
+
+  /// 编辑既有帖：直接以服务端已 commit 的媒体构造（无本地字节，缩略图走 URL）。
+  ///
+  /// 参数：
+  /// - [mediaId] 已 commit 的媒体 ID；
+  /// - [remoteUrl] 访问地址（限时签名 URL；重发态无 URL 时传空串，显示占位图标）。
+  _MediaUpload.remote({required this.mediaId, required this.remoteUrl})
+      : filename = '',
+        bytes = null,
+        contentType = 'image/jpeg',
+        uploading = false,
+        done = true;
 
   /// 原始文件名。
   final String filename;
 
-  /// 本地字节（缩略图直接用，不另存磁盘）。
-  final Uint8List bytes;
+  /// 本地字节（缩略图直接用，不另存磁盘）；远程既有媒体为 null。
+  final Uint8List? bytes;
 
   /// MIME 类型。
   final String contentType;
+
+  /// 远程访问地址（既有媒体回显用；本地新选媒体为 null）。
+  final String? remoteUrl;
 
   /// 是否上传中。
   bool uploading = true;
@@ -61,16 +76,26 @@ class _MediaUpload {
 class MediaSection extends ConsumerStatefulWidget {
   /// 构造媒体段。
   ///
-  /// 参数：[onChanged] 已成功上传的 mediaId 列表变化回调；
-  ///   [maxCount] 上限，默认 [kMaxImageCount]。
+  /// 参数：
+  /// - [onChanged] 已成功上传的 mediaId 列表变化回调；
+  /// - [initialMedia] 既有媒体（编辑/重发态回显），默认空；
+  /// - [maxCount] 上限，默认 [kMaxImageCount]。
   const MediaSection({
     super.key,
     required this.onChanged,
+    this.initialMedia = const <({String mediaId, String url})>[],
     this.maxCount = kMaxImageCount,
   });
 
   /// 已成功上传的 mediaId 列表变化回调。
   final ValueChanged<List<String>> onChanged;
+
+  /// 既有媒体（编辑/重发态回显）。
+  ///
+  /// 编辑态由 `GET /posts/{id}` 的 `media[]` 映射而来：`mediaId` 用于上报，
+  /// `url` 用于缩略图。重发态的克隆草稿只回 `media_ids`、没有 URL，传空串即可
+  /// （缩略图退化为占位图标，计数与提交载荷仍正确）。
+  final List<({String mediaId, String url})> initialMedia;
 
   /// 张数上限。
   final int maxCount;
@@ -84,6 +109,17 @@ class _MediaSectionState extends ConsumerState<MediaSection> {
 
   /// 正在选图（防重复触发系统图库）。
   bool _picking = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // 既有媒体先入列：编辑态进入页面即回显，且后续新增图片时 `_sync`
+    // 会把「既有 + 新增」一起上报，不会把原媒体 ID 冲掉。
+    _items.addAll([
+      for (final media in widget.initialMedia)
+        _MediaUpload.remote(mediaId: media.mediaId, remoteUrl: media.url),
+    ]);
+  }
 
   /// 选图并逐张上传（**串行**：弱网下并发上传更易失败，且进度更可读）。
   ///
@@ -122,6 +158,9 @@ class _MediaSectionState extends ConsumerState<MediaSection> {
   /// 参数：[item] 待上传条目。
   /// 返回：[Future<void>]。
   Future<void> _upload(_MediaUpload item) async {
+    final bytes = item.bytes;
+    // 远程既有媒体不会走上传（只有本地新选条目有字节）。
+    if (bytes == null) return;
     if (mounted) {
       setState(() {
         item.uploading = true;
@@ -132,7 +171,7 @@ class _MediaSectionState extends ConsumerState<MediaSection> {
       final uploaded = await ref.read(mediaUploadServiceProvider).upload(
             PickedMedia(
               filename: item.filename,
-              bytes: item.bytes,
+              bytes: bytes,
               contentType: item.contentType,
             ),
           );
@@ -232,6 +271,43 @@ class _Thumb extends StatelessWidget {
   /// 失败重试回调。
   final VoidCallback onRetry;
 
+  /// 构建缩略图内容。
+  ///
+  /// 优先级：本地字节（新选媒体）> 远程签名 URL（编辑态既有媒体）> 占位图标
+  /// （重发态只有 media_id、没有 URL）。网络图加载失败同样退化为占位，避免
+  /// 编辑页出现整块红色报错。
+  ///
+  /// 返回：铺满 80×80 槽的图片或占位控件。
+  Widget _buildImage() {
+    final bytes = item.bytes;
+    if (bytes != null) return Image.memory(bytes, fit: BoxFit.cover);
+    final url = item.remoteUrl;
+    if (url == null || url.isEmpty) {
+      return const ColoredBox(
+        color: Color(AppColors.background),
+        child: Center(
+          child: Icon(
+            Icons.image_outlined,
+            color: Color(AppColors.textPlaceholder),
+          ),
+        ),
+      );
+    }
+    return Image.network(
+      url,
+      fit: BoxFit.cover,
+      errorBuilder: (_, _, _) => const ColoredBox(
+        color: Color(AppColors.background),
+        child: Center(
+          child: Icon(
+            Icons.broken_image_outlined,
+            color: Color(AppColors.textPlaceholder),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return SizedBox(
@@ -242,7 +318,7 @@ class _Thumb extends StatelessWidget {
           Positioned.fill(
             child: ClipRRect(
               borderRadius: BorderRadius.circular(AppRadius.md),
-              child: Image.memory(item.bytes, fit: BoxFit.cover),
+              child: _buildImage(),
             ),
           ),
           if (item.uploading)

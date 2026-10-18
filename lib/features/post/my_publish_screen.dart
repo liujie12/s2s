@@ -167,6 +167,11 @@ class _MyPublishScreenState extends ConsumerState<MyPublishScreen> {
         AppRoutes.publish,
         extra: PublishScreenArgs(
           initialForm: _formFromDetail(detail),
+          // 编辑态回显媒体缩略图：表单只带 media_id，媒体段还需要 URL。
+          initialMedia: [
+            for (final media in detail.media)
+              (mediaId: media.mediaId, url: media.url),
+          ],
           editPostId: item.id,
           // 版本取自**列表项**：详情 DTO 不解析 version（它的消费面是只读展示）。
           editVersion: item.version,
@@ -197,7 +202,15 @@ class _MyPublishScreenState extends ConsumerState<MyPublishScreen> {
       }
       await context.push<bool>(
         AppRoutes.publish,
-        extra: PublishScreenArgs(initialForm: _formFromRepost(draft)),
+        extra: PublishScreenArgs(
+          initialForm: _formFromRepost(draft),
+          // 克隆草稿只回 media_ids、没有 URL：仍入列以保住计数与提交载荷，
+          // 缩略图退化为占位图标（避免「新增一张就把原媒体全冲掉」）。
+          initialMedia: [
+            for (final mediaId in draft.mediaIds)
+              (mediaId: mediaId, url: ''),
+          ],
+        ),
       );
       if (!mounted) return;
       // 重发是新建语义（走 POST /posts），成功后会进完成页；返回列表时刷新。
