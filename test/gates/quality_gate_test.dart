@@ -504,6 +504,9 @@ void main() {
         );
         return;
       }
+      // 全仓文本扫描是 I/O 密集型：全量测试并行跑满时，默认 30s 会超时
+      // （单独运行约 3s）。本用例在结尾放宽到 2 分钟，只影响等待上限、
+      // 不改变判定口径。
 
       // 扫描面自证（评审 #4）：CJK 文件名必须在列——quotePath 与解码任一环节
       // 出错都会让含中文名的文件静默消失，扫描面缩水不得报通过。
@@ -620,7 +623,7 @@ void main() {
           reason: '跟踪文件中发现未豁免的疑似密钥（§7.3：命中即拒绝；'
               '已泄露的唯一处置是作废更换；正当例外须登记 registeredSecretFindings）：\n'
               '${findings.join('\n')}');
-    });
+    }, timeout: const Timeout(Duration(minutes: 2)));
 
     test('豁免登记册中每条都仍在仓库中存在（防过期凑数登记）', () {
       final stale = <String>[];
