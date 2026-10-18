@@ -101,6 +101,28 @@ class MapProjection {
     );
   }
 
+  /// 判断某经纬度点是否已偏离视口中心超过 [thresholdPx]。
+  ///
+  /// 用途：「回到当前位置」按钮的显隐判据 —— 相机被拖离定位点后按钮出现，
+  /// 回位后自动消失。用像素距离而非米：用户感知的是「点还在不在视野中心」，
+  /// 同一米数在不同缩放下对应的视觉偏移差别很大。
+  ///
+  /// 参数：
+  /// - [lat]/[lng]：待判断的点（GCJ-02）；
+  /// - [thresholdPx]：允许的偏移半径（逻辑像素），须为非负。
+  ///
+  /// 返回：true 表示该点到视口中心的像素距离大于阈值。
+  bool isAwayFromCenter(
+    double lat,
+    double lng, {
+    required double thresholdPx,
+  }) {
+    final p = toPixel(lat, lng);
+    final double dx = p.x - viewportSize.width / 2;
+    final double dy = p.y - viewportSize.height / 2;
+    return dx * dx + dy * dy > thresholdPx * thresholdPx;
+  }
+
   /// 纯拖动时，把本投影下算好的像素坐标平移到 [next] 视口所需的位移。
   ///
   /// **数学依据**：见 [toPixel] 的公式 —— 纬度分量 `(lat − centerLat) × 常数`，

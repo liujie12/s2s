@@ -165,4 +165,37 @@ void main() {
     );
     expect(() => p.panDeltaTo(zoomed), throwsAssertionError);
   });
+
+  group('isAwayFromCenter（「回到当前位置」按钮的显隐判据）', () {
+    // mpp=1：米数即像素数，便于把「100 米」直接当成「100 像素」构造样本。
+    const MapProjection p = MapProjection(
+      centerLat: kLat,
+      centerLng: 121.4737,
+      metersPerPixel: 1,
+      viewportSize: kViewport,
+    );
+    final double dLng100px = 100 / (111320 * math.cos(kLat * math.pi / 180));
+    const double dLat100px = 100 / 111320;
+
+    test('位于视口中心的点不算离开', () {
+      expect(p.isAwayFromCenter(kLat, 121.4737, thresholdPx: 0), isFalse);
+    });
+
+    test('东西向偏移 100px：阈值 50 应显示，阈值 150 不应显示', () {
+      final double lng = 121.4737 + dLng100px;
+      expect(p.isAwayFromCenter(kLat, lng, thresholdPx: 50), isTrue);
+      expect(p.isAwayFromCenter(kLat, lng, thresholdPx: 150), isFalse);
+    });
+
+    test('南北向偏移 100px 同样按像素距离判断', () {
+      expect(
+        p.isAwayFromCenter(kLat + dLat100px, 121.4737, thresholdPx: 50),
+        isTrue,
+      );
+      expect(
+        p.isAwayFromCenter(kLat + dLat100px, 121.4737, thresholdPx: 150),
+        isFalse,
+      );
+    });
+  });
 }

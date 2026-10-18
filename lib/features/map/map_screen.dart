@@ -93,6 +93,20 @@ const double _kMetersPerDegreeLat = 111320;
 /// 需要重校；0.05° ≈ 5.5km，日常城区内拖动不会触发。
 const double _kRecalibrateLatDelta = 0.05;
 
+/// 相机中心离开「我的位置」超过视口短边的多少比例后，显示回位按钮。
+///
+/// 取 0.2：拖动几像素不会让按钮闪烁，而用户明显移开视野（城区内约一两百米）
+/// 时能及时出现。用比例而非固定像素，平板/小屏的手感一致。
+const double _kRecenterShowDistanceRatio = 0.2;
+
+/// 「回到当前位置」按钮距地图底边的距离。
+///
+/// 排在 AI FAB（默认 bottom = md + 56）正上方，留出一个按钮高度与间距，
+/// 两个圆形入口不会叠在一起。筛选面板展开或信息卡出现时该按钮不渲染
+/// （见 build 中的显隐条件），故无需再避让。
+const double _kRecenterButtonBottom =
+    AppSpacing.md + 56 + 44 + AppSpacing.md;
+
 class MapScreen extends ConsumerStatefulWidget {
   const MapScreen({super.key});
 
@@ -133,7 +147,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   String? _selectedListingId;
 
   /// 高德地图控制器。仅真地图分支有值（`onMapCreated` 回调里赋值），
-  /// 用于程序化改视角（当前唯一场景：点聚合圈放大）。
+  /// 用于程序化改视角（点聚合圈放大、回到当前位置）。
   AMapController? _amapController;
 
   /// 是否已取得过有效定位（首屏骨架屏判定）。
@@ -237,6 +251,19 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               height: constraints.maxHeight,
             ),
           );
+          // 「回到当前位置」显隐：以本次会话最优定位点为准（不是冻结的共享中心），
+          // 相机中心偏离它超过视口短边的 [_kRecenterShowDistanceRatio] 才显示。
+          final LocationFix? currentFix = ref.watch(locationFixProvider);
+          final bool showRecenter = currentFix != null &&
+              projection.isAwayFromCenter(
+                currentFix.lat,
+                currentFix.lng,
+                thresholdPx: math.min(
+                      constraints.maxWidth,
+                      constraints.maxHeight,
+                    ) *
+                    _kRecenterShowDistanceRatio,
+              );
           // 数据态：加载中/失败时 pinList/clusterList 为空，底图照常渲染（不阻塞），
           // 状态另行以角标提示（见下方 _PinsStatusChip）。
           final merged = pinsAsync.asData?.value;
@@ -348,6 +375,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 top: AppSpacing.md + 44 + AppSpacing.sm,
                 child: _ListViewEntryButton(),
               ),
+              // 「回到当前位置」：相机被拖离定位点后出现，点击把视口移回用户位置。
+              // 底部有筛选面板或信息卡时不渲染，避免三者叠在一起互相遮挡。
+              if (showRecenter && !panelExpanded && _selectedListingId == null)
+                Positioned(
+                  right: AppSpacing.lg,
+                  bottom: _kRecenterButtonBottom,
+                  child: _RecenterButton(onTap: _recenterToCurrentLocation),
+                ),
               if (panelExpanded)
                 Positioned(
                   left: AppSpacing.md,
@@ -874,9 +909,31 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     });
   }
 
+  /// 把相机移回「我的位置」（「回到当前位置」按钮的点击出口）。
+  ///
+  /// 取本次会话最优定位点（[locationFixProvider]），而不是共享参考中心 ——
+  /// 后者按 2026-10-08 裁定冻结在首个有效点上，首点常是粗定位。
+  ///
+  /// 保持当前缩放级别：用户只是把视野拖开了，没有表达换缩放的意图，
+  /// 顺手改 zoom 会让画面突然跳变。中心变化后同步请求视口，立即按新中心拉 pin。
+  ///
+  /// 返回：void。无有效定位时静默返回（按钮本身不会在无定位时渲染）。
+  void _recenterToCurrentLocation() {
+    final fix = ref.read(locationFixProvider);
+    if (fix == null) return;
+    setState(() {
+      _centerLat = fix.lat;
+      _centerLng = fix.lng;
+      _fetchLat = fix.lat;
+      _fetchLng = fix.lng;
+      _fetchMetersPerPixel = _metersPerPixel;
+    });
+    _pushCameraToAmap();
+  }
+
   /// 把 Dart 侧状态推给高德原生相机。
   ///
-  /// 只在**程序化改视角**时调用（当前唯一场景：点聚合圈放大 2 倍）。不能在 build 里
+  /// 只在**程序化改视角**时调用（点聚合圈放大 2 倍、回到当前位置）。不能在 build 里
   /// 无条件推 —— 那会与 [onCameraMove] 形成「推 → 回调 → 重建 → 再推」的回环。
   void _pushCameraToAmap() {
     _amapController?.moveCamera(
@@ -1396,6 +1453,43 @@ class _ListViewEntryButton extends StatelessWidget {
           ],
         ),
         child: Icon(Icons.list, color: Color(AppColors.textPrimary)),
+      ),
+    );
+  }
+}
+
+/// 「回到当前位置」按钮（相机离开定位点后出现）。
+///
+/// 尺寸与样式对齐右上角的筛选/列表入口：44×44 白色圆形 + 阴影，
+/// 保证地图上三个悬浮入口看起来是同一套控件。
+class _RecenterButton extends StatelessWidget {
+  const _RecenterButton({required this.onTap});
+
+  /// 点击回调：把相机移回用户当前位置。
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          color: Color(AppColors.surface),
+          shape: BoxShape.circle,
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x1F000000),
+              blurRadius: 8,
+              offset: Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Icon(
+          Icons.my_location,
+          color: Color(AppColors.primary),
+        ),
       ),
     );
   }
