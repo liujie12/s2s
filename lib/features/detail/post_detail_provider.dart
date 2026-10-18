@@ -16,6 +16,7 @@ import '../../domain/category_tree.dart';
 import '../../domain/listing.dart';
 import '../../domain/listing_category.dart';
 import '../../domain/listing_detail.dart';
+import '../../domain/publish_template.dart';
 import '../post/post_dto.dart';
 import '../post/post_repository.dart';
 
@@ -95,7 +96,10 @@ ListingDetail postDetailToListingDetail(PostDetailDto dto) {
     contactChannel: ContactChannel.phone,
     contactMasked: dto.contactMask,
     leafCategoryId: dto.leafCategoryId,
-    templateFields: _templateFieldsFromAttributes(dto.attributes),
+    templateFields: _templateFieldsFromAttributes(
+      dto.attributes,
+      dto.leafCategoryId,
+    ),
     address: dto.address,
     // 只取 url：他人视角契约已保证 `media[]` 仅含 audit_status=pass 的项，
     // 客户端不再二次过滤（过滤反而会掩盖「服务端下发未过审图」这一违约）。
@@ -107,14 +111,29 @@ ListingDetail postDetailToListingDetail(PostDetailDto dto) {
 
 /// 动态属性 map → 有序模板字段（§10.4 迁移）。
 ///
-/// 降级说明：契约 `attributes` 的键是模板字段 **key**（如 `work_time`），非
-/// 中文 label；label 需模板 schema（`template.fields[].key → label`）映射，
-/// 那是 [124] 模板域的活。本轮详情页以 key 直出为 label，值转字符串 —— 数据
-/// 正确（值来自服务端）、结构正确（有序），label 中文化待模板 schema 接入时
-/// 只改本函数一处。
-List<TemplateField> _templateFieldsFromAttributes(Map<String, Object?> attributes) {
+/// 契约 `attributes` 的键是模板字段 **key**（如 `condition`），非中文 label。
+/// 这里用本地模板（[templateForLeaf]，与服务端 `GET /templates/{leaf}` 同构的
+/// 兜底）把 key 映射成 label；模板里没有的 key 原样直出 —— 不臆造中文名。
+///
+/// 参数：
+/// - [attributes]：契约下发的属性键值对；
+/// - [leafCategoryId]：叶子类目 ID（决定用哪份模板；空则只按 key 直出）。
+///
+/// 返回：[TemplateField] 列表，顺序与 [attributes] 的插入顺序一致。
+List<TemplateField> _templateFieldsFromAttributes(
+  Map<String, Object?> attributes,
+  int? leafCategoryId,
+) {
+  final labels = <String, String>{
+    if (leafCategoryId != null)
+      for (final field in templateForLeaf(leafCategoryId).extraFields)
+        field.key: field.label,
+  };
   return [
     for (final entry in attributes.entries)
-      (label: entry.key, value: entry.value?.toString() ?? ''),
+      (
+        label: labels[entry.key] ?? entry.key,
+        value: entry.value?.toString() ?? '',
+      ),
   ];
 }

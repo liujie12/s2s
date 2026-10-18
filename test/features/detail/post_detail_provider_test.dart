@@ -61,6 +61,22 @@ void main() {
       ]);
     });
 
+    test('英文模板 key 映射为中文 label；模板外 key 原样保留', () {
+      // 2026-10-18 真机：详情页「详细信息」直出 `condition`。契约 attributes 的
+      // 键是模板 key，须按叶子类目模板映射成中文 label（401 → 二手闲置模板）。
+      final payload = postDetailPayload();
+      payload['attributes'] = <String, Object?>{
+        'condition': '全新未拆',
+        'unknown_key': 'x',
+      };
+      final detail = postDetailToListingDetail(PostDetailDto.fromJson(payload));
+
+      expect(detail.templateFields, const [
+        (label: '新旧程度', value: '全新未拆'),
+        (label: 'unknown_key', value: 'x'),
+      ]);
+    });
+
     test('media[] → mediaUrls（只取 url 且保序）', () {
       final detail = postDetailToListingDetail(
         PostDetailDto.fromJson(postDetailPayload()),
