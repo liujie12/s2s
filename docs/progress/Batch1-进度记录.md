@@ -7382,7 +7382,8 @@ printf '\nMYSQL_SSL_MODE=VERIFY_CA\nMYSQL_TLS_TRUSTSTORE_PASSWORD=%s\n' \
 **④ 文档**
 - 《决策登记表》新增 2026-10-18 同批裁定 6 项；PRD §12.5 `40302` 行、后端详设 §2.3/§5.1/§5.3.2、任务书 §零、`Batch2-启动清单` B2-6a、`说明文档.md` §三 同步。
 
-**分支**：`item/b2-6a-wechat-login`（未提交，待用户验收）。
+**分支**：`item/b2-6a-wechat-login`（已合入 `main` 并推送）。
+**发布**：2026-10-18 已完成 prod 发布（镜像包含 `02f7ede` 与前序 `1148518`）。发布前核对 `users_without_phone=1`，经查为 `seed-demo-post.sql` 的演示作者 `user.id=9001`（无 `user_identity`，设计如此、不可登录），排除后为 `0`，无真实用户受影响。发布后 smoke（health / `phone_bound` 字段 / 真实账号发布联系）待复核。
 **仍待**：AppID/AppSecret（真实 SDK 桥 + 端到端验收）。
 
 
