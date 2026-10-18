@@ -15,6 +15,8 @@
 /// PRD §1.4.2 无障碍），单张时不显示。
 library;
 
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 
 import '../../design_tokens.dart';
@@ -72,30 +74,63 @@ class _MediaCarouselState extends State<MediaCarousel> {
   @override
   Widget build(BuildContext context) {
     if (widget.mediaUrls.isEmpty) {
-      return _PlaceholderBlock(category: widget.category);
+      // 与有图态同一张卡片的几何：无图时若仍是整宽贴边，两种状态会像两个页面。
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(AppRadius.xl),
+          child: _PlaceholderBlock(category: widget.category),
+        ),
+      );
     }
 
-    return SizedBox(
-      height: _mediaBlockHeight,
-      child: Stack(
-        children: [
-          PageView.builder(
-            controller: _controller,
-            itemCount: widget.mediaUrls.length,
-            onPageChanged: (index) => setState(() => _index = index),
-            itemBuilder: (context, index) => GestureDetector(
-              onTap: () => _openFullScreen(index),
-              child: _NetworkImage(url: widget.mediaUrls[index]),
-            ),
+    // 卡片化（借鉴美团图集观感）：左右内缩 + 圆角，让媒体区成为页面里的
+    // 一张卡片，而不是贴边的黑色条块；左右留白由页面底色承担，不再是黑框。
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(AppRadius.xl),
+        child: SizedBox(
+          height: _mediaBlockHeight,
+          child: Stack(
+            children: [
+              PageView.builder(
+                controller: _controller,
+                itemCount: widget.mediaUrls.length,
+                onPageChanged: (index) => setState(() => _index = index),
+                itemBuilder: (context, index) => GestureDetector(
+                  onTap: () => _openFullScreen(index),
+                  child: _NetworkImage(url: widget.mediaUrls[index]),
+                ),
+              ),
+              // 底部渐变遮罩：计数器压在任意明暗的图上都能读清，视觉重量远小于
+              // 整块黑底。单张不显示计数器，也就不需要遮罩。
+              if (widget.mediaUrls.length > 1)
+                const Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  height: _scrimHeight,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [Colors.transparent, _scrimBottomColor],
+                      ),
+                    ),
+                  ),
+                ),
+              // 单张不显示计数器：`1 / 1` 是无信息量的噪声。
+              if (widget.mediaUrls.length > 1)
+                Positioned(
+                  right: AppSpacing.md,
+                  bottom: AppSpacing.md,
+                  child: MediaCounterPill(index: _index, total: widget.mediaUrls.length),
+                ),
+            ],
           ),
-          // 单张不显示计数器：`1 / 1` 是无信息量的噪声。
-          if (widget.mediaUrls.length > 1)
-            Positioned(
-              right: AppSpacing.md,
-              bottom: AppSpacing.md,
-              child: MediaCounterPill(index: _index, total: widget.mediaUrls.length),
-            ),
-        ],
+        ),
       ),
     );
   }
@@ -103,6 +138,19 @@ class _MediaCarouselState extends State<MediaCarousel> {
 
 /// 媒体区块高（PRD §7.4.1 顶部媒体区；与改造前占位块同值，保证下方内容不移位）。
 const double _mediaBlockHeight = 200;
+
+/// 底部渐变遮罩高度（计数器所在区域，只压暗这一条，不压整图）。
+const double _scrimHeight = 40;
+
+/// 渐变遮罩底端颜色（黑 35%，白字计数器在其上满足对比度）。
+const Color _scrimBottomColor = Color(0x59000000);
+
+/// 模糊铺底的放大倍数：高斯模糊会在边界采样到透明像素，放大一点把边缘推出
+/// 裁剪区，避免卡片四周出现一圈浅色细线。
+const double _backdropScale = 1.12;
+
+/// 模糊铺底的高斯半径（像素）。只做色彩延伸，不承载可读信息，取大值更柔和。
+const double _backdropBlurSigma = 18;
 
 /// 页码胶囊（`1 / 3`）。
 ///
@@ -151,21 +199,46 @@ class _NetworkImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 用 contain 而非 cover：详情页要让用户看到图片全貌（2026-10-17 真机反馈
-    // 「详情图片未展示完整」）。cover 会裁掉长图边缘，信息损失不可接受；
-    // 留白由黑底兜住，与全屏查看页同色，视觉上仍是同一块媒体区。
-    return ColoredBox(
-      color: Colors.black,
-      child: Image.network(
-        url,
-        fit: BoxFit.contain,
-        width: double.infinity,
-        loadingBuilder: (context, child, progress) =>
-            progress == null ? child : const _ImageFallback(icon: Icons.image_outlined),
-        // 加载失败不抛异常、不留白块：OSS 对象可能已被清理，页面仍须可读。
-        errorBuilder: (context, error, stack) =>
-            const _ImageFallback(icon: Icons.broken_image_outlined),
-      ),
+    // 铺满且不变形（2026-10-19 反馈「左右黑色很难看」）：
+    //   底层 = 同一张图 cover + 高斯模糊，负责填满整块，留白变成图片自身的色调；
+    //   上层 = 原图 contain，保证全貌不被裁切（2026-10-17 反馈「图片未展示完整」，
+    //          因此不能退回单层 cover）。
+    // 两层同 URL 命中 Flutter 的 ImageCache（含并发请求去重），不会重复下载。
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        ClipRect(
+          child: Transform.scale(
+            scale: _backdropScale,
+            child: ImageFiltered(
+              imageFilter: ui.ImageFilter.blur(
+                sigmaX: _backdropBlurSigma,
+                sigmaY: _backdropBlurSigma,
+              ),
+              child: Image.network(
+                url,
+                fit: BoxFit.cover,
+                filterQuality: FilterQuality.low,
+                // 底层只做色彩延伸：加载中/失败交给上层统一占位，
+                // 否则两层占位会叠出双图标。
+                loadingBuilder: (context, child, progress) =>
+                    progress == null ? child : const SizedBox.shrink(),
+                errorBuilder: (context, error, stack) => const SizedBox.shrink(),
+              ),
+            ),
+          ),
+        ),
+        Image.network(
+          url,
+          fit: BoxFit.contain,
+          width: double.infinity,
+          loadingBuilder: (context, child, progress) =>
+              progress == null ? child : const _ImageFallback(icon: Icons.image_outlined),
+          // 加载失败不抛异常、不留白块：OSS 对象可能已被清理，页面仍须可读。
+          errorBuilder: (context, error, stack) =>
+              const _ImageFallback(icon: Icons.broken_image_outlined),
+        ),
+      ],
     );
   }
 }

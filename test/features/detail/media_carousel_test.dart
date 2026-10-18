@@ -80,7 +80,10 @@ void main() {
       await pumpCarousel(tester, threeUrls);
       await tester.pump();
 
-      await tester.tap(find.byType(Image).first);
+      // 点 PageView 而非 Image：现在每页有两层图（模糊底 + 前景），
+      // 底层被前景覆盖、命中测试会落到前景占位上，直接找 Image 会产生
+      // 「would not hit test」告警。
+      await tester.tap(find.byType(PageView));
       await tester.pumpAndSettle();
 
       // 全屏页黑底 + 关闭按钮：进入后原页面已被覆盖。
@@ -92,7 +95,10 @@ void main() {
       await pumpCarousel(tester, threeUrls);
       await tester.pump();
 
-      await tester.tap(find.byType(Image).first);
+      // 点 PageView 而非 Image：现在每页有两层图（模糊底 + 前景），
+      // 底层被前景覆盖、命中测试会落到前景占位上，直接找 Image 会产生
+      // 「would not hit test」告警。
+      await tester.tap(find.byType(PageView));
       await tester.pumpAndSettle();
       await tester.tap(find.byIcon(Icons.close));
       await tester.pumpAndSettle();
