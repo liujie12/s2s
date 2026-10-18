@@ -87,6 +87,12 @@ const double _kMaxMetersPerPixel = 200;
 /// 地图页不 import 其私有符号，故各自声明（地理常数，非阈值/TTL 类红线口径）。
 const double _kMetersPerDegreeLat = 111320;
 
+/// 触发投影比例重校的纬度变化（度）。
+///
+/// 高德实际比例与公式的系数随纬度近似按 1/cos² 变化，跨城市或长距离拖动后
+/// 需要重校；0.05° ≈ 5.5km，日常城区内拖动不会触发。
+const double _kRecalibrateLatDelta = 0.05;
+
 class MapScreen extends ConsumerStatefulWidget {
   const MapScreen({super.key});
 
@@ -631,11 +637,20 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       // 异步 toScreenLocation 问题。
       myLocationStyleOptions: MyLocationStyleOptions(locationGranted),
       onLocationChanged: locationGranted ? _onLocationChanged : null,
-      onMapCreated: (controller) => _amapController = controller,
+      onMapCreated: (controller) {
+        _amapController = controller;
+        // 初始相机由原生侧在创建时应用，其 onCameraMove 早于 Dart 订阅，拿不到
+        // 真实 zoom；不回读会让投影尺度与底图不一致（见 [_syncCameraFromNative]）。
+        _syncCameraFromNative();
+      },
       onCameraMove: _onCameraMove,
       // 手势结束才同步请求视口 → 一次拖动只发一次请求。
       // 用插件原生回调而非自写 debounce 计时器：不引入「多久算停」的魔法时长。
       onCameraMoveEnd: _onCameraMoveEnd,
+      // 自持投影只支持「正北 + 俯视」：Pin 坐标按经纬度线性换算，不含 bearing/tilt。
+      // 放开旋转/倾斜手势后，底图会转/倾斜而 Pin 不跟，表现为拖动后点位整体漂移。
+      rotateGesturesEnabled: false,
+      tiltGesturesEnabled: false,
       // 罗盘默认在左上角，会与筛选摘要胶囊叠在一起，故关掉。
       compassEnabled: false,
       // 比例尺交给高德自己画：降级底图那条自绘比例尺属 FallbackMapCanvas，
@@ -718,11 +733,115 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       _centerLng = camera.target.longitude;
       // 上下限交给 `MinMaxZoomPreference`（原生相机越不出那个范围），这里不再夹取：
       // 两侧各夹一次，边界处会出现「状态已到边界、底图还能再走」的错位。
+      //
+      // 乘 [_amapScaleFactor]：高德实际渲染比例与 Web 墨卡托公式存在恒定偏差
+      // （真机实测 1.36–1.39，随纬度约等于 1/cos²），偏差由启动时
+      // [_calibrateAmapScale] 用原生投影实测得出，不写死常数。
       _metersPerPixel = MapProjection.metersPerPixelForZoom(
         _centerLat,
         camera.zoom,
-      );
+      ) * _amapScaleFactor;
     });
+  }
+
+  /// 高德实际渲染比例 / Web 墨卡托公式比例（启动时实测，见 [_calibrateAmapScale]）。
+  ///
+  /// 默认 1 表示「未校准」；校准成功后为真机实测值（本机约 1.36–1.39）。
+  double _amapScaleFactor = 1;
+
+  /// 上次校准所在的纬度（`null` = 尚未校准）。
+  ///
+  /// 该系数与纬度相关（约 1/cos²），跨城市/长距离拖动后须重校；
+  /// 阈值见 [_kRecalibrateLatDelta] 的注释。
+  double? _calibratedLat;
+
+  /// 地图创建后从原生相机回读一次真实视角，并校准投影比例。
+  ///
+  /// **为什么必须回读**：初始相机由原生侧在创建时应用，那次 `onCameraMove` 早于
+  /// Dart 侧订阅，拿不到真实 zoom；不回读会直接用「字段默认值」投影。
+  ///
+  /// 实现走插件原生的 `map#update`：它应用 options 后返回当前相机，传空 options
+  /// 即「只读相机」。插件未暴露读取相机的公开方法，故直接经 controller 的
+  /// 通道调用（用后即弃，不依赖返回值之外的任何行为）。
+  Future<void> _syncCameraFromNative() async {
+    final controller = _amapController;
+    if (controller == null) return;
+    try {
+      // 插件把 channel 标为 @visibleForTesting，但读取相机没有公开替代。
+      // ignore: invalid_use_of_visible_for_testing_member
+      final raw = await controller.channel.invokeMethod<dynamic>(
+        'map#update',
+        <String, dynamic>{'options': <String, dynamic>{}},
+      );
+      final camera = CameraPosition.fromMap(raw);
+      if (camera == null || !mounted) return;
+      setState(() {
+        _centerLat = camera.target.latitude;
+        _centerLng = camera.target.longitude;
+        _metersPerPixel = MapProjection.metersPerPixelForZoom(
+          _centerLat,
+          camera.zoom,
+        ) * _amapScaleFactor;
+        // 初始请求尚未发出时一并校正，避免用旧尺度算出与实际视野不符的 zoom。
+        _fetchLat = _centerLat;
+        _fetchLng = _centerLng;
+        _fetchMetersPerPixel = _metersPerPixel;
+      });
+      await _calibrateAmapScale(camera);
+    } catch (_) {
+      // 读取失败不阻断首屏：保持现有状态（最坏情况是仍按旧尺度投影）。
+    }
+  }
+
+  /// 用原生投影实测「米/逻辑像素」，校准 [MapProjection] 与高德底图的尺度差。
+  ///
+  /// **背景**：高德相机回传的 zoom 与 Web 墨卡托公式换算出的比例尺不一致（真机
+  /// 实测恒定偏大 1.36–1.39 倍，量级随纬度约等于 1/cos²）。若直接按公式投影，
+  /// 纯拖动时 Pin 的像素位移是底图的 1.36 倍，表现为「越拖越偏」。
+  ///
+  /// **做法**：取当前中心与正北/正东各约 100 逻辑像素的两个点，调原生
+  /// `toScreenCoordinate` 得到真实像素差，反算实际比例与公式比例之比。
+  /// 不写死任何魔法常数，换机型/换 SDK 版本自动适配。
+  ///
+  /// 参数：[camera] 原生相机位置（提供中心与 zoom）。
+  Future<void> _calibrateAmapScale(CameraPosition camera) async {
+    final controller = _amapController;
+    if (controller == null) return;
+    final double dpr = MediaQuery.devicePixelRatioOf(context);
+    final double lat0 = camera.target.latitude;
+    final double lng0 = camera.target.longitude;
+    final double formulaMpp = MapProjection.metersPerPixelForZoom(lat0, camera.zoom);
+    if (formulaMpp <= 0) return;
+    // 偏移量按「约 100 逻辑像素」取，保证在任意缩放下都落在视野附近且像素差足够大。
+    final double dLat = formulaMpp * 100 / _kMetersPerDegreeLat;
+    final double dLng =
+        dLat / math.cos(lat0 * math.pi / 180);
+    try {
+      final p0 = await controller.toScreenCoordinate(LatLng(lat0, lng0));
+      final pLat =
+          await controller.toScreenCoordinate(LatLng(lat0 + dLat, lng0));
+      final pLng =
+          await controller.toScreenCoordinate(LatLng(lat0, lng0 + dLng));
+      if (!mounted) return;
+      final double dy = (pLat.y - p0.y).abs().toDouble();
+      final double dx = (pLng.x - p0.x).abs().toDouble();
+      if (dy <= 0 || dx <= 0) return;
+      // 原生坐标是物理像素，换算成「米/逻辑像素」需乘 dpr。
+      final double mppLat = dLat * _kMetersPerDegreeLat / dy * dpr;
+      final double mppLng =
+          dLng * _kMetersPerDegreeLat * math.cos(lat0 * math.pi / 180) / dx * dpr;
+      final double actualMpp = (mppLat + mppLng) / 2;
+      final double factor = actualMpp / formulaMpp;
+      if (!factor.isFinite || factor <= 0) return;
+      setState(() {
+        _amapScaleFactor = factor;
+        _calibratedLat = lat0;
+        _metersPerPixel = actualMpp;
+        _fetchMetersPerPixel = actualMpp;
+      });
+    } catch (_) {
+      // 校准失败不阻断首屏：保持公式值（最坏情况是拖动仍有偏差）。
+    }
   }
 
   /// 相机静止后同步请求视口，触发一次 `/map/pins`。
@@ -735,8 +854,15 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       _fetchMetersPerPixel = MapProjection.metersPerPixelForZoom(
         _fetchLat,
         camera.zoom,
-      );
+      ) * _amapScaleFactor;
     });
+    // 纬度变化超过阈值（跨城市/长距离拖动）时重校比例系数：
+    // 该系数随纬度约按 1/cos² 变化，旧值会让 Pin 在新纬度上重新出现拖偏。
+    final double? calibratedLat = _calibratedLat;
+    if (calibratedLat == null ||
+        (camera.target.latitude - calibratedLat).abs() > _kRecalibrateLatDelta) {
+      _calibrateAmapScale(camera);
+    }
   }
 
   /// 把当前渲染视口同步为请求视口（降级底图手势结束、定位居中时调用）。
@@ -756,7 +882,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     _amapController?.moveCamera(
       CameraUpdate.newLatLngZoom(
         LatLng(_centerLat, _centerLng),
-        MapProjection.zoomForMetersPerPixel(_centerLat, _metersPerPixel),
+        // 目标 mpp 是「实际米/逻辑像素」，而 zoom 与 mpp 的公式关系是高德的
+        // 相机口径（偏大 [_amapScaleFactor] 倍），故换算前先除掉该系数。
+        MapProjection.zoomForMetersPerPixel(
+          _centerLat,
+          _metersPerPixel / _amapScaleFactor,
+        ),
       ),
     );
   }

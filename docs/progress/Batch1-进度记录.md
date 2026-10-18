@@ -7407,5 +7407,24 @@ printf '\nMYSQL_SSL_MODE=VERIFY_CA\nMYSQL_TLS_TRUSTSTORE_PASSWORD=%s\n' \
 
 **分支**：`fix/map-cluster-render`（自 `main` 新开；待用户验收后合并）。
 
+### 2026-10-18（拖动地图点位漂移：高德实际比例与投影公式不一致）
+
+> 摘要：真机发现纯拖动地图后 Pin 与底图错位。用截图像素相关性做量化：同样 267–272px 的底图位移，Pin 位移为 362px（**1.357 倍**），两次独立拖动一致。根因是**高德底图的实际米/像素与 Web 墨卡托公式（`156543×cos(lat)/2^zoom`）存在约 1.36–1.39 的恒定偏差**（随纬度接近 1/cos²）；相机回传的 zoom 本身正确，但按公式投影会让 Pin 走得比底图快。
+
+**取证**
+- 真机（Redmi 21091116C）冷启动 `onCameraMove` 回传 zoom≈13.43；同时底图比例尺 `1km ≈ 166 物理px`（60.4 逻辑px）⇒ 实际 ≈16.6 m/逻辑px，公式值仅 12.0 m/逻辑px。
+- 三个缩放档（相机 zoom 12.347 / 13.433 / 14.433）实测比例尺均对应「公式值 × 1.36–1.39」，偏差不随缩放变化。
+- 拖动位移相关性：修复前 Pin 362.3px vs 底图 267px（差 95.3px）；修复后同条件 Pin 272.2px vs 底图 272px（**差 0.2px**）。
+
+**修复（`lib/features/map/map_screen.dart`）**
+- 地图创建后经原生 `map#update` 回读真实相机（初始相机的 `onCameraMove` 早于 Dart 订阅，拿不到真实 zoom）。
+- 新增 `_calibrateAmapScale`：用原生 `toScreenCoordinate` 取中心 + 正北/正东各约 100 逻辑像素的两点，实测真实米/逻辑像素，得到 `_amapScaleFactor = 实际 / 公式值`；**不写死魔法常数**，换机型/SDK 自动适配。
+- `_onCameraMove` / `_onCameraMoveEnd` 的 mpp 统一乘该系数；`_pushCameraToAmap` 换算 zoom 时先除掉该系数，保证程序化缩放落到目标比例。
+- 纬度变化超过 `_kRecalibrateLatDelta`（0.05°，约 5.5km）时自动重校；城区内拖动不触发。
+- 同时禁用 `rotateGesturesEnabled` / `tiltGesturesEnabled`：自持投影只支持正北俯视，旋转/倾斜会让 Pin 与底图整体错位。
+
+**门禁**：`flutter analyze` 0 issue；`flutter test` **791/791 All tests passed**；真机拖动位移差 0.2px（修复前 95.3px）。
+
+
 
 
