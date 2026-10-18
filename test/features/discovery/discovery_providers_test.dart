@@ -224,6 +224,57 @@ void main() {
       );
       expect(cache.get(ownKey), isNull, reason: '本次结果不得回写');
     });
+
+    /// 远景聚合响应（`mode=cluster`，只有 clusters[]、无 pins）。
+    Map<String, Object?> clustersPayload() => {
+          'mode': 'cluster',
+          'total': 42,
+          'clusters': [
+            {'lng': 120.1512, 'lat': 30.2755, 'count': 42},
+          ],
+        };
+
+    test('cluster 响应不写缓存：同键再取仍发请求，放大后能拿到单点', () async {
+      harness.stub('GET', '/api/v1/map/pins', (req) async {
+        return MockResponse(
+          body: ApiEnvelope.success(data: clustersPayload()),
+        );
+      });
+      final q = queryWith(const ['resource']);
+
+      final merged = await container.read(pinsProvider(q).future);
+      expect(merged.mode, 'cluster');
+      expect(merged.clusters.single.count, 42);
+      expect(merged.pins, isEmpty);
+
+      // 缓存键五要素不含 zoom/mode：若写了 cluster，本步会整段命中而不再请求，
+      // 放大到 pin 距离后就永远看不到点（本缺陷的原始表现）。
+      container.invalidate(pinsProvider(q));
+      await container.read(pinsProvider(q).future);
+      expect(harness.server.received, hasLength(2));
+    });
+
+    test('历史 cluster 缓存视为未命中：读侧防御旧版本写入的聚合结果', () async {
+      stubPinsByPostType();
+      final q = queryWith(const ['resource']);
+      final key = buildPinCacheKey(
+        leafCategoryIds: q.leafCategoryIds,
+        postType: 'resource',
+        radius: q.radius,
+        gridId: q.gridId,
+        categoryVersion: q.categoryVersion,
+      );
+      // 模拟旧版本把 cluster 结果写进同一键。
+      container
+          .read(pinCacheProvider)
+          .put(key, PinsCompactDto.fromJson(clustersPayload()));
+
+      final merged = await container.read(pinsProvider(q).future);
+
+      expect(harness.server.received, hasLength(1), reason: '不得命中 cluster 旧值');
+      expect(merged.mode, 'pin');
+      expect(merged.pins.single.id, 1);
+    });
   });
 
   group('searchPagerProvider', () {

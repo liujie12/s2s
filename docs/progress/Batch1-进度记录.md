@@ -7386,5 +7386,26 @@ printf '\nMYSQL_SSL_MODE=VERIFY_CA\nMYSQL_TLS_TRUSTSTORE_PASSWORD=%s\n' \
 **发布**：2026-10-18 已完成 prod 发布（镜像包含 `02f7ede` 与前序 `1148518`）。发布前核对 `users_without_phone=1`，经查为 `seed-demo-post.sql` 的演示作者 `user.id=9001`（无 `user_identity`，设计如此、不可登录），排除后为 `0`，无真实用户受影响。发布后 smoke **已通过**：health UP；新端点 `/auth/phone/bind` 返回 400（路由已生效、非 404）；真实账号登录返回 `phone_bound=true` / `wechat_bound=false`。内测短信白名单新增 `18949899201`（`e02aee4`，重启 `s2s-app` 生效）。
 **仍待**：AppID/AppSecret（真实 SDK 桥 + 端到端验收）。
 
+### 2026-10-18（地图远景空图修复：渲染服务端 `clusters[]` + Pin 缓存不写 cluster）
+
+> 摘要：演示前发现「缩放地图看不到全部发布/资源」。数据层是演示帖到期下架（已另行恢复，非代码问题）；代码层有两处真缺陷：① 远景（米/像素 > 30）服务端回 `mode=cluster`，前端只渲染 `pins[]`，`clusters[]` 被整段丢弃 ⇒ 空图；② Pin 缓存键五要素不含 `zoom`/`mode`，cluster 结果被写入同键 ⇒ 放大后仍命中「没有点」，永久空白。
+
+**① 地图页渲染 `clusters[]`（`lib/features/map/map_screen.dart`）**
+- `build()` 解构 `mode`，把 `clusterList`/`clusterMode` 传入派生量与帧装配；`_markerLayerFrame` 的复用条件纳入簇引用与模式，模式切换必重建。
+- 新增 `_buildClusterMarkersFor`：把每簇经纬度按当前投影换算成屏幕坐标，复用现有 `ClusterMarker`（圆圈 + 数量，三档尺寸），`memberIds` 传空（点击语义仍是放大 2 倍）。不新造 Marker 类型。
+- `_derivedFor` 同时按簇的 `category_id`（可空）预查一级大类，后端后续下发类目时无需再改渲染层。
+
+**② Pin 缓存与聚合模式解耦（`lib/features/discovery/discovery_providers.dart`）**
+- 写侧：`_writePinsCache` 对 `isClusterMode` 直接跳过 —— 聚合结果与缩放强相关，不能落进不含 zoom 的键。
+- 读侧：`_readCachedPins` 把历史 cluster 值视为未命中，自动重取，清掉旧版本遗留的污染。
+
+**③ 连带口径**
+- `_zoomOutToShowAll` 的上限由「pin 模式阈值 30 m/px」放宽到 `_kMaxMetersPerPixel`：既然 cluster 已可渲染，10km 档可以把整个半径圆装进视口，不再提前夹断。
+- 「视野外还有 N 条」角标维持仅在 `pins` 非空时判断（cluster 由服务端按视野预聚合，本就在屏内）。
+
+**门禁**：`flutter analyze` 0 issue；`flutter test` **791/791 All tests passed**（新增 2 例：cluster 响应不写缓存、历史 cluster 缓存视为未命中）。后端无改动，无需重新发版 —— 本缺陷修复随下一个前端包生效。
+
+**分支**：`fix/map-cluster-render`（自 `main` 新开；待用户验收后合并）。
+
 
 

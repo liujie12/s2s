@@ -231,13 +231,22 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               height: constraints.maxHeight,
             ),
           );
-          // 数据态：加载中/失败时 pinList 为空，底图照常渲染（不阻塞），
+          // 数据态：加载中/失败时 pinList/clusterList 为空，底图照常渲染（不阻塞），
           // 状态另行以角标提示（见下方 _PinsStatusChip）。
-          final pinList = pinsAsync.asData?.value.pins ?? const <MapPinDto>[];
-          // pins 派生量按**引用**记忆化，避免随每一帧重算（见 [_PinsDerived]）。
-          final derived = _derivedFor(pinList);
+          final merged = pinsAsync.asData?.value;
+          final bool clusterMode = merged?.mode == 'cluster';
+          final pinList = merged?.pins ?? const <MapPinDto>[];
+          final clusterList = merged?.clusters ?? const <MapClusterDto>[];
+          // pins/簇派生量按**引用**记忆化，避免随每一帧重算（见 [_PinsDerived]）。
+          final derived = _derivedFor(pinList, clusterList);
           // Marker 走「拖动中降级渲染」：能复用就只平移，超出余量才精算。
-          final frame = _markerLayerFrame(pinList, projection, derived);
+          final frame = _markerLayerFrame(
+            pinList,
+            clusterList,
+            clusterMode,
+            projection,
+            derived,
+          );
           final markers = frame.markers;
           // 图层切换耗时（[140]）：必须在 markers 算好之后调用 —— 渲染段的起点
           // 是「新分类的 Pin 已排好、这一帧即将绘制」。
@@ -245,8 +254,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           final supplyDemandById = derived.supplyDemandById;
           // G-138-1：有 pin 却全部投影在视口外 → 提示「视野外还有 N 条」。
           // 用「pinList 非空 + 无可见 marker」而非「total > 0」：mode=cluster 时
-          // 服务端回 clusters[]、pinList 为空，此时不是「屏外有点」而是「还没接
-          // cluster 渲染」（[126] 遗留），不该弹这条提示。
+          // 服务端回 clusters[]、pinList 为空，簇由服务端按当前视野预聚合，本就在
+          // 屏内，不存在「屏外有点」的情况，不该弹这条提示。
           final int pinsTotal = pinsAsync.asData?.value.total ?? 0;
           // 判据须带上本帧平移量：Marker 坐标属于「精算视口」（比屏每边大一圈余量），
           // 不补平移会把余量里那些**屏外**的点误判成可见，使该出的角标不出。
@@ -758,10 +767,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   /// 改为把返回 pin 的外接框装进视口（中心移到外接框中心）。两者都只改
   /// [_metersPerPixel]（及全城档的中心），不触筛选态 —— 缩小视野不等于改筛选。
   ///
-  /// 上限夹在 [NfrPerf.clusterModeSwitchMetersPerPixel]（pin 模式上限）而非
-  /// [_kMaxMetersPerPixel]：超过它服务端回 `mode=cluster`，而地图当前不渲染
-  /// `clusters[]`（[126] 遗留），缩过头会直接空图 —— 比「看不到点」更糟。
-  /// 代价是 10km/全城只能缩到 pin 上限、可能仍有屏外点，由角标文案承担告知。
+  /// 上限用 [_kMaxMetersPerPixel]（与手势缩放同一对边界）。跨过
+  /// [NfrPerf.clusterModeSwitchMetersPerPixel] 后服务端改回 `mode=cluster`，
+  /// 地图按 `clusters[]` 渲染，因此不再需要为「缩过头会空图」而提前夹断 ——
+  /// 10km 档也能把整个半径圆装进视口。
   void _zoomOutToShowAll({
     required double viewportWidth,
     required double viewportHeight,
@@ -788,7 +797,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       _centerLng = targetLng;
       _metersPerPixel = targetMetersPerPixel.clamp(
         _kMinMetersPerPixel,
-        NfrPerf.clusterModeSwitchMetersPerPixel,
+        _kMaxMetersPerPixel,
       );
       // 同步请求视口：缩小视野后立即按新视野拉一次 pins。
       _fetchLat = _centerLat;
@@ -842,6 +851,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   MapProjection? _renderedProjection;
   List<MapMarker>? _renderedMarkers;
   List<MapPinDto>? _renderedPins;
+  List<MapClusterDto>? _renderedClusters;
+  bool? _renderedClusterMode;
 
   /// 每边预精算余量（像素）。
   ///
@@ -878,12 +889,16 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   ///
   /// 参数：
   /// - [pins]：当前图钉（引用变化即数据变了，必须重算）；
+  /// - [clusters]：服务端预聚合簇（cluster 模式下与 pins 二选一）；
+  /// - [clusterMode]：当前响应是否为 `mode=cluster`；
   /// - [screen]：屏幕视口投影；
-  /// - [derived]：pins 派生量（见 [_PinsDerived]）。
+  /// - [derived]：pins/簇派生量（见 [_PinsDerived]）。
   ///
   /// 返回：[_MarkerFrame]。
   _MarkerFrame _markerLayerFrame(
     List<MapPinDto> pins,
+    List<MapClusterDto> clusters,
+    bool clusterMode,
     MapProjection screen,
     _PinsDerived derived,
   ) {
@@ -891,10 +906,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final MapProjection? rendered = _renderedProjection;
     final Size expanded = _expandedSize(screen);
 
-    // 复用条件：同一批 pins + 同一缩放 + 同一视口尺寸 + 位移仍在余量内。
+    // 复用条件：同一批 pins/簇 + 同一模式 + 同一缩放 + 同一视口尺寸 + 位移仍在余量内。
     // 缩放必须排除：像素尺度变了，平移表达不了（[MapProjection.panDeltaTo] 有 assert）。
     if (rendered != null &&
         identical(_renderedPins, pins) &&
+        identical(_renderedClusters, clusters) &&
+        _renderedClusterMode == clusterMode &&
         rendered.metersPerPixel == screen.metersPerPixel &&
         rendered.viewportSize.width == expanded.width &&
         rendered.viewportSize.height == expanded.height) {
@@ -921,15 +938,15 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     // 只记第一次，故后续帧的重算不会把聚合段越拉越长。
     final recorder = ref.read(layerSwitchRecorderProvider);
     recorder.beginAgg();
-    final List<MapMarker> markers = _buildMarkersFor(
-      pins,
-      expandedProjection,
-      derived,
-    );
+    final List<MapMarker> markers = clusterMode
+        ? _buildClusterMarkersFor(clusters, expandedProjection, derived)
+        : _buildMarkersFor(pins, expandedProjection, derived);
     recorder.endAgg();
     _renderedProjection = expandedProjection;
     _renderedMarkers = markers;
     _renderedPins = pins;
+    _renderedClusters = clusters;
+    _renderedClusterMode = clusterMode;
     return (
       markers: markers,
       offset: Offset(-margin.dx, -margin.dy),
@@ -975,22 +992,32 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     });
   }
 
-  /// 上一帧派生量对应的 `pinList` 引用（引用相同即复用，见 [_derivedFor]）。
+  /// 上一帧派生量对应的 `pinList` / `clusters` 引用（引用相同即复用，见 [_derivedFor]）。
   List<MapPinDto>? _derivedPins;
+  List<MapClusterDto>? _derivedClusters;
   _PinsDerived? _derivedCache;
 
-  /// 取 pins 的派生量，`pins` 与上次同一引用时直接复用。
+  /// 取 pins/簇的派生量，两个列表都与上次同一引用时直接复用。
   ///
-  /// 参数：[pins] 当前图钉列表。
+  /// 参数：
+  /// - [pins] 当前图钉列表；
+  /// - [clusters] 当前服务端预聚合簇列表。
   /// 返回：[_PinsDerived]。
   ///
   /// **为什么按引用而不是按值判**：拖动地图时请求视口刻意不动（见 `_fetchLat`
   /// 注释），故 `pinsProvider` 不重发请求、`pinsAsync` 的数据在整段拖动里是**同一个
   /// List 实例** —— 引用相同即「数据没变」，缓存全程命中。相机停稳后
   /// `_syncFetchViewport` 换视口，引用随之改变，此时重建一次是应当付的成本。
-  _PinsDerived _derivedFor(List<MapPinDto> pins) {
+  _PinsDerived _derivedFor(
+    List<MapPinDto> pins,
+    List<MapClusterDto> clusters,
+  ) {
     final cached = _derivedCache;
-    if (cached != null && identical(_derivedPins, pins)) return cached;
+    if (cached != null &&
+        identical(_derivedPins, pins) &&
+        identical(_derivedClusters, clusters)) {
+      return cached;
+    }
 
     final topCategoryByLeafId = <int, ListingCategory?>{};
     for (final p in pins) {
@@ -998,6 +1025,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       // （分类树版本落后时查不到，§16.4 属预期内），null 不能区分两者。
       if (!topCategoryByLeafId.containsKey(p.leafCategoryId)) {
         topCategoryByLeafId[p.leafCategoryId] = topCategoryOf(p.leafCategoryId);
+      }
+    }
+    // 服务端簇的 category_id 是叶子类目（可空）。当前后端 toCluster 恒回 null，
+    // 但契约允许下发，故按同一张表预查，避免以后接通时再改一遍渲染层。
+    for (final c in clusters) {
+      final leafId = c.categoryId;
+      if (leafId != null && !topCategoryByLeafId.containsKey(leafId)) {
+        topCategoryByLeafId[leafId] = topCategoryOf(leafId);
       }
     }
 
@@ -1013,6 +1048,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       topCategoryByLeafId: topCategoryByLeafId,
     );
     _derivedPins = pins;
+    _derivedClusters = clusters;
     _derivedCache = derived;
     return derived;
   }
@@ -1053,6 +1089,43 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       thresholdOf: (topCategory) =>
           topCategory?.clusterThreshold ?? ListingCategory.work.clusterThreshold,
     );
+  }
+
+  /// 服务端预聚合簇 → 可渲染的 [ClusterMarker]。
+  ///
+  /// 远景（米/像素 > 阈值）服务端只回 `clusters[]`，本方法把每簇的经纬度投影成
+  /// 屏幕坐标，并复用 [ClusterMarker] 的「圆圈 + 数量」绘制。簇内成员 ID 服务端
+  /// 不下发，点击语义是「放大 2 倍」而非展开列表，故 [ClusterMarker.memberIds] 传空。
+  ///
+  /// 参数：
+  /// - [clusters] 服务端预聚合簇；
+  /// - [projection] 当前精算视口投影；
+  /// - [derived] 叶子类目 → 一级大类查表。
+  /// 返回：[ClusterMarker] 列表。
+  List<MapMarker> _buildClusterMarkersFor(
+    List<MapClusterDto> clusters,
+    MapProjection projection,
+    _PinsDerived derived,
+  ) {
+    final markers = <MapMarker>[];
+    for (final c in clusters) {
+      final pixel = projection.toPixel(c.lat, c.lng);
+      final leafId = c.categoryId;
+      markers.add(
+        ClusterMarker(
+          x: pixel.x,
+          y: pixel.y,
+          // 后端当前恒回 null（toCluster 不取类目），渲染层按中性配色处理；
+          // 契约允许下发时这里已能按叶子 ID 查到一级大类。
+          topCategory: leafId == null
+              ? null
+              : derived.topCategoryByLeafId[leafId],
+          count: c.count,
+          memberIds: const [],
+        ),
+      );
+    }
+    return markers;
   }
 
   void _onScaleUpdate(ScaleUpdateDetails details, MapProjection projection) {

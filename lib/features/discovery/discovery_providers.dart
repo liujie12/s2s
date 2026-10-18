@@ -284,13 +284,22 @@ PinsCompactDto? _readCachedPins(
   final key = _pinCacheKeyOf(query, postType);
   if (key == null) return null;
   final cached = cache.get(key);
-  return cached is PinsCompactDto ? cached : null;
+  if (cached is! PinsCompactDto) return null;
+  // 读侧防御历史 cluster 缓存：早期版本把 `mode=cluster` 的空结果按同一键写入，
+  // 放大到 pin 距离后仍会命中「没有点」，表现为地图永久空白。这类值一律视为
+  // 未命中重取；正常写入路径已不再产生（见 [_writePinsCache]）。
+  if (cached.isClusterMode) return null;
+  return cached;
 }
 
 /// 写本地 Pin 缓存（[146]）。
 ///
 /// 五要素不齐时不写（[_pinCacheKeyOf] 返回 null）—— 写入不完整键会造成
 /// 跨条件错命中，比"少缓存一份"严重得多。
+///
+/// **`mode=cluster` 的响应不写**：缓存键五要素不含 `zoom`/`mode`，而聚合结果
+/// 与缩放级别强相关（远景的簇在放大后应展开成单点）。写入会让同一网格键在
+/// 放大后仍命中聚合结果，表现为「放大地图还是看不到点」。
 ///
 /// 参数：
 /// - [cache] 本地 Pin 缓存实例；
@@ -303,6 +312,7 @@ void _writePinsCache(
   String postType,
   PinsCompactDto value,
 ) {
+  if (value.isClusterMode) return;
   final key = _pinCacheKeyOf(query, postType);
   if (key != null) cache.put(key, value);
 }
