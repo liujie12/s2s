@@ -123,6 +123,15 @@ public final class RateLimitEntries {
                     }
                 }
             }
+            case WECHAT_LOGIN_DEV -> addDeviceEntries(entries, rules, dimensions.deviceId(),
+                    dimensions.deviceIdValid(), dimensions.today(), DeviceKeyKind.WECHAT_LOGIN);
+            case WECHAT_LOGIN_IP -> {
+                for (RateLimitTrack.WindowRule rule : rules) {
+                    entries.add(RateLimiter.entry(
+                            RateLimitKeys.wechatLoginIpHour(dimensions.ip()),
+                            rule, dimensions.today()));
+                }
+            }
         }
         return entries;
     }
@@ -136,7 +145,9 @@ public final class RateLimitEntries {
         /** 行 5：联系方式拉取（{@code rl:contact:dev:...}）。 */
         CONTACT,
         /** 行 10：未登录详情浏览（{@code rl:guestdetail:dev:...}）。 */
-        GUEST_DETAIL
+        GUEST_DETAIL,
+        /** 行 12：微信登录（{@code rl:wechat:dev:...}，B2-6a）。 */
+        WECHAT_LOGIN
     }
 
     /**
@@ -157,9 +168,11 @@ public final class RateLimitEntries {
             return;
         }
         for (RateLimitTrack.WindowRule rule : rules) {
-            String key = kind == DeviceKeyKind.CONTACT
-                    ? RateLimitKeys.contactDevDay(deviceId, today)
-                    : RateLimitKeys.guestDetailDevDay(deviceId, today);
+            String key = switch (kind) {
+                case CONTACT -> RateLimitKeys.contactDevDay(deviceId, today);
+                case GUEST_DETAIL -> RateLimitKeys.guestDetailDevDay(deviceId, today);
+                case WECHAT_LOGIN -> RateLimitKeys.wechatLoginDevHour(deviceId);
+            };
             entries.add(RateLimiter.entry(key, rule, today));
         }
     }

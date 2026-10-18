@@ -3,6 +3,8 @@ package com.s2s.server.auth;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.s2s.server.auth.dto.BindPhoneRequest;
+import com.s2s.server.auth.dto.BindWechatRequest;
 import com.s2s.server.auth.dto.DeviceUpsertResult;
 import com.s2s.server.auth.dto.LoginRequest;
 import com.s2s.server.auth.dto.LoginResult;
@@ -31,6 +33,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.slf4j.Logger;
@@ -67,12 +70,6 @@ public class AuthService {
 
     private static final Logger log = LoggerFactory.getLogger(AuthService.class);
 
-    /** 身份类型：手机号（Batch1 唯一身份来源）。 */
-    private static final String IDENTITY_TYPE_PHONE = "phone";
-
-    /** 身份类型：微信 openid（Batch2 打开；code 换 openid 后以此为身份归一化键）。 */
-    private static final String IDENTITY_TYPE_WECHAT = "wechat";
-
     /** 实名状态默认值：未实名（Batch1 无实名流程，恒 {@code none}）。 */
     private static final String REALNAME_STATUS_NONE = "none";
 
@@ -88,7 +85,7 @@ public class AuthService {
     /** 首次注册的默认昵称前缀（微信登录）。 */
     private static final String DEFAULT_NICKNAME_PREFIX_WECHAT = "微信用户";
 
-    /** 微信登录默认昵称取 openid 末位位数（openid 为 28 位，取后 6 位足够区分）。 */
+    /** 微信登录默认昵称取 unionid 末位位数（unionid 约 28 位，取后 6 位足够区分）。 */
     private static final int DEFAULT_NICKNAME_WECHAT_SUFFIX_LENGTH = 6;
 
     /** Redis 字符串模板（验证码读取、失败计数清除）。 */
@@ -121,8 +118,11 @@ public class AuthService {
     /** JWT 验签器（续期验签允许过期）。 */
     private final JwtVerifier jwtVerifier;
 
-    /** 微信开放平台 code→openid 交换组件（B2-6a）。 */
+    /** 微信开放平台 code→unionid 交换组件（B2-6a）。 */
     private final WechatCodeVerifier wechatCodeVerifier;
+
+    /** 身份绑定状态查询与门禁（B2-6a）。 */
+    private final IdentityBindingService identityBindingService;
 
     /**
      * 构造认证服务，注入 Redis、限频、加解密、持久层与 JWT 签发器。
@@ -137,13 +137,15 @@ public class AuthService {
      * @param deviceMapper       设备 Mapper
      * @param jwtIssuer          JWT 签发器
      * @param jwtVerifier        JWT 验签器（续期验签允许过期）
-     * @param wechatCodeVerifier 微信 code→openid 交换组件（B2-6a）
+     * @param wechatCodeVerifier 微信 code→unionid 交换组件（B2-6a）
+     * @param identityBindingService 身份绑定状态查询与门禁（B2-6a）
      */
     public AuthService(StringRedisTemplate redisTemplate, RateLimiter rateLimiter,
             ObjectMapper objectMapper, List<Pepper> peppers, CryptoFacade cryptoFacade,
             UserMapper userMapper, UserIdentityMapper userIdentityMapper,
             DeviceMapper deviceMapper, JwtIssuer jwtIssuer, JwtVerifier jwtVerifier,
-            WechatCodeVerifier wechatCodeVerifier) {
+            WechatCodeVerifier wechatCodeVerifier,
+            IdentityBindingService identityBindingService) {
         this.redisTemplate = redisTemplate;
         this.rateLimiter = rateLimiter;
         this.objectMapper = objectMapper;
@@ -155,6 +157,7 @@ public class AuthService {
         this.jwtIssuer = jwtIssuer;
         this.jwtVerifier = jwtVerifier;
         this.wechatCodeVerifier = wechatCodeVerifier;
+        this.identityBindingService = identityBindingService;
     }
 
     /**
@@ -185,12 +188,14 @@ public class AuthService {
         clearLoginFailure(phone);
         deleteCode(phone);
 
-        ResolveResult resolve = resolveOrRegisterByIdentity(IDENTITY_TYPE_PHONE, phone);
+        ResolveResult resolve = resolveOrRegisterByIdentity(UserIdentityTypes.PHONE, phone);
         writeDevice(resolve.user().getId(), deviceId, request.platform(), request.pushToken());
 
         String token = jwtIssuer.issue(resolve.user().getId());
         Instant expireAt = Instant.now().plus(Duration.ofDays(NfrAuth.TOKEN_TTL_DAYS));
-        return new LoginResult(token, expireAt, resolve.isNewUser(), MyProfile.from(resolve.user()));
+        return new LoginResult(token, expireAt, resolve.isNewUser(),
+                MyProfile.from(resolve.user(), true,
+                        identityBindingService.isWechatBound(resolve.user().getId())));
     }
 
     /**
@@ -200,20 +205,20 @@ public class AuthService {
      * <ol>
      *   <li>{@code agreed=false} → 40002（协议门禁与短信登录同口径）；</li>
      *   <li>调 {@link WechatCodeVerifier#verify(String)} 用客户端传来的 {@code code}
-     *       向微信服务器交换 {@code openid}（微信 API 内部错误 → 50302）；</li>
-     *   <li>用 {@code openid} 作为身份归一化键，复用 {@link #resolveOrRegisterByIdentity}
+     *       向微信服务器交换 {@code unionid}（身份归一化键；缺失 → 40001）；</li>
+     *   <li>用 {@code unionid} 作为身份归一化键，复用 {@link #resolveOrRegisterByIdentity}
      *       查/建 {@code user_identity}（identity_type=wechat），未命中则自动注册；</li>
      *   <li>写 {@code device}；</li>
      *   <li>签发 JWT，返回 {@link LoginResult}。</li>
      * </ol>
      *
-     * <p>首次注册默认昵称 = 「微信用户」 + openid 后 6 位（如 {@code 微信用户a1b2c3}）；
+     * <p>首次注册默认昵称 = 「微信用户」 + unionid 后 6 位（如 {@code 微信用户a1b2c3}）；
      * 微信昵称/头像待 access_token 可选拉取，当前 B2-6a 只保证登录闭环。</p>
      *
      * @param request  登录请求（code + agreed + 可选 platform/push_token）
      * @param deviceId X-Device-Id 头值（可能为 null 或非法，写 device 用）
      * @return {@link LoginResult}（token + expire_at + is_new_user + user）
-     * @throws BizException agreed=false → 40002；code 无效/过期 → 40001；
+     * @throws BizException agreed=false → 40002；code 无效/过期或 unionid 缺失 → 40001；
      *                     微信服务器不可用 → 50302；凭据未配置 → 50001
      */
     @Transactional
@@ -224,12 +229,156 @@ public class AuthService {
 
         WechatCodeVerifier.WechatTokenResult token = wechatCodeVerifier.verify(request.code());
 
-        ResolveResult resolve = resolveOrRegisterByIdentity(IDENTITY_TYPE_WECHAT, token.openid());
+        ResolveResult resolve = resolveOrRegisterByIdentity(UserIdentityTypes.WECHAT, token.unionid());
         writeDevice(resolve.user().getId(), deviceId, request.platform(), request.pushToken());
 
         String jwt = jwtIssuer.issue(resolve.user().getId());
         Instant expireAt = Instant.now().plus(Duration.ofDays(NfrAuth.TOKEN_TTL_DAYS));
-        return new LoginResult(jwt, expireAt, resolve.isNewUser(), MyProfile.from(resolve.user()));
+        return new LoginResult(jwt, expireAt, resolve.isNewUser(),
+                MyProfile.from(resolve.user(),
+                        identityBindingService.isPhoneBound(resolve.user().getId()), true));
+    }
+
+    /**
+     * 绑定手机号（B2-6a；懒绑定入口）。
+     *
+     * <p>执行顺序：
+     * <ol>
+     *   <li>校验短信验证码（与登录同口径：错误/过期 → 失败计数，第 5 次 40105）；</li>
+     *   <li>当前账号已有手机号身份：同号幂等返回，异号 → 40001；</li>
+     *   <li>手机号盲索引查重：已属于其他账号 → 40302（需完成绑定/冲突，不自动合并）；</li>
+     *   <li>写入手机号身份（AAD = user_id + phone）+ 回填 {@code user.phone_mask}；</li>
+     *   <li>返回更新后的 {@link MyProfile}。</li>
+     * </ol>
+     *
+     * <p>唯一索引 {@code uk_type_hash} 兜底并发竞态：插入冲突统一映射 40302。</p>
+     *
+     * @param userId  当前登录用户 ID
+     * @param request 绑定请求（phone + code）
+     * @return {@link MyProfile} 更新后的本人资料（phoneBound=true）
+     * @throws BizException 验证码错误 → 40001；已绑定其他手机号 → 40001；
+     *                     手机号已属于其他账号 / 并发冲突 → 40302
+     */
+    @Transactional
+    public MyProfile bindPhone(Long userId, BindPhoneRequest request) {
+        UserEntity user = userMapper.selectById(userId);
+        if (user == null) {
+            throw BizException.of(ErrorCode.UNAUTHORIZED);
+        }
+
+        String phone = request.phone();
+        SmsCode smsCode = readCode(phone);
+        if (smsCode == null || isExpired(smsCode) || !request.code().equals(smsCode.code())) {
+            recordLoginFailure(phone);
+            throw BizException.of(ErrorCode.PARAM_INVALID);
+        }
+        clearLoginFailure(phone);
+
+        byte[] phoneHash = BlindIndex.hmac(phone, peppers);
+        UserIdentityEntity currentPhone = userIdentityMapper.selectOne(
+                new QueryWrapper<UserIdentityEntity>()
+                        .eq("user_id", userId)
+                        .eq("identity_type", UserIdentityTypes.PHONE));
+        if (currentPhone != null) {
+            if (java.util.Arrays.equals(currentPhone.getIdentityHash(), phoneHash)) {
+                deleteCode(phone);
+                return MyProfile.from(user, true, identityBindingService.isWechatBound(userId));
+            }
+            throw BizException.of(ErrorCode.PARAM_INVALID);
+        }
+
+        UserIdentityEntity occupied = userIdentityMapper.selectOne(
+                new QueryWrapper<UserIdentityEntity>()
+                        .eq("identity_hash", phoneHash)
+                        .eq("identity_type", UserIdentityTypes.PHONE));
+        if (occupied != null) {
+            // 手机号已属于其他账号：拒绝并引导切换登录（2026-10-18 裁定，不自动合并）
+            throw BizException.of(ErrorCode.QUALIFICATION_NEEDED);
+        }
+
+        CryptoFacade.EncryptResult encrypted = cryptoFacade.encrypt(
+                phone, String.valueOf(userId) + UserIdentityTypes.PHONE);
+        UserIdentityEntity identity = new UserIdentityEntity();
+        identity.setUserId(userId);
+        identity.setIdentityType(UserIdentityTypes.PHONE);
+        identity.setIdentityHash(phoneHash);
+        identity.setIdentityValueEnc(encrypted.ciphertext());
+        identity.setKeyVersion(encrypted.keyVersion());
+        try {
+            userIdentityMapper.insert(identity);
+        } catch (DuplicateKeyException exception) {
+            // 并发绑定竞态：唯一索引兜底，统一按「手机号已被占用」拒绝
+            throw BizException.of(ErrorCode.QUALIFICATION_NEEDED);
+        }
+
+        user.setPhoneMask(maskPhone(phone));
+        userMapper.updateById(user);
+        deleteCode(phone);
+        return MyProfile.from(user, true, identityBindingService.isWechatBound(userId));
+    }
+
+    /**
+     * 绑定微信（B2-6a；设置页「绑定微信」入口，用于手机号老账号）。
+     *
+     * <p>执行顺序：
+     * <ol>
+     *   <li>校验微信 code → unionid（缺失 → 40001）；</li>
+     *   <li>当前账号已有微信身份：同 unionid 幂等返回，异 unionid → 40001；</li>
+     *   <li>unionid 已属于其他账号 → 40302（不迁移数据）；</li>
+     *   <li>写入微信身份（AAD = user_id + wechat）；</li>
+     *   <li>返回更新后的 {@link MyProfile}。</li>
+     * </ol>
+     *
+     * @param userId  当前登录用户 ID
+     * @param request 绑定请求（微信授权 code）
+     * @return {@link MyProfile} 更新后的本人资料（wechatBound=true）
+     * @throws BizException code 无效/unionid 缺失 → 40001；微信已属于其他账号 / 并发冲突 → 40302
+     */
+    @Transactional
+    public MyProfile bindWechat(Long userId, BindWechatRequest request) {
+        UserEntity user = userMapper.selectById(userId);
+        if (user == null) {
+            throw BizException.of(ErrorCode.UNAUTHORIZED);
+        }
+
+        WechatCodeVerifier.WechatTokenResult token = wechatCodeVerifier.verify(request.code());
+        byte[] unionidHash = BlindIndex.hmac(token.unionid(), peppers);
+
+        UserIdentityEntity currentWechat = userIdentityMapper.selectOne(
+                new QueryWrapper<UserIdentityEntity>()
+                        .eq("user_id", userId)
+                        .eq("identity_type", UserIdentityTypes.WECHAT));
+        if (currentWechat != null) {
+            if (java.util.Arrays.equals(currentWechat.getIdentityHash(), unionidHash)) {
+                return MyProfile.from(user, identityBindingService.isPhoneBound(userId), true);
+            }
+            throw BizException.of(ErrorCode.PARAM_INVALID);
+        }
+
+        UserIdentityEntity occupied = userIdentityMapper.selectOne(
+                new QueryWrapper<UserIdentityEntity>()
+                        .eq("identity_hash", unionidHash)
+                        .eq("identity_type", UserIdentityTypes.WECHAT));
+        if (occupied != null) {
+            // 微信已属于其他账号：拒绝，不迁移数据（2026-10-18 裁定）
+            throw BizException.of(ErrorCode.QUALIFICATION_NEEDED);
+        }
+
+        CryptoFacade.EncryptResult encrypted = cryptoFacade.encrypt(
+                token.unionid(), String.valueOf(userId) + UserIdentityTypes.WECHAT);
+        UserIdentityEntity identity = new UserIdentityEntity();
+        identity.setUserId(userId);
+        identity.setIdentityType(UserIdentityTypes.WECHAT);
+        identity.setIdentityHash(unionidHash);
+        identity.setIdentityValueEnc(encrypted.ciphertext());
+        identity.setKeyVersion(encrypted.keyVersion());
+        try {
+            userIdentityMapper.insert(identity);
+        } catch (DuplicateKeyException exception) {
+            throw BizException.of(ErrorCode.QUALIFICATION_NEEDED);
+        }
+
+        return MyProfile.from(user, identityBindingService.isPhoneBound(userId), true);
     }
 
     /**
@@ -417,9 +566,9 @@ public class AuthService {
      * <p>两种身份类型的默认昵称口径：
      * <ul>
      *   <li>phone = 「用户」 + 手机号后 4 位（如 {@code 用户8000}，2026-09-29 用户裁定）</li>
-     *   <li>wechat = 「微信用户」 + openid 后 6 位（如 {@code 微信用户a1b2c3}）</li>
+     *   <li>wechat = 「微信用户」 + unionid 后 6 位（如 {@code 微信用户a1b2c3}）</li>
      * </ul>
-     * phoneMask 对 wechat 身份类型复用「用户 + openid 后 6 位」（展示占位），
+     * phoneMask 对 wechat 身份类型复用「微信用户 + unionid 后 6 位」（展示占位），
      * 后续可按 scope=snsapi_userinfo 拉取真实头像/昵称再更新。</p>
      *
      * @param identityType  身份类型（{@code phone} / {@code wechat}）
@@ -444,10 +593,10 @@ public class AuthService {
      * @return 脱敏展示串
      */
     private String defaultDisplayMask(String identityType, String identityValue) {
-        if (IDENTITY_TYPE_PHONE.equals(identityType)) {
+        if (UserIdentityTypes.PHONE.equals(identityType)) {
             return maskPhone(identityValue);
         }
-        // wechat：复用默认昵称（openid 后 6 位）作为 phoneMask 列的占位展示
+        // wechat：复用默认昵称（unionid 后 6 位）作为 phoneMask 列的占位展示
         String suffix = identityValue.substring(Math.max(0, identityValue.length() - DEFAULT_NICKNAME_WECHAT_SUFFIX_LENGTH));
         return DEFAULT_NICKNAME_PREFIX_WECHAT + suffix;
     }
@@ -460,7 +609,7 @@ public class AuthService {
      * @return 默认昵称
      */
     private String defaultNickname(String identityType, String identityValue) {
-        if (IDENTITY_TYPE_PHONE.equals(identityType)) {
+        if (UserIdentityTypes.PHONE.equals(identityType)) {
             return DEFAULT_NICKNAME_PREFIX_PHONE
                     + identityValue.substring(identityValue.length() - DEFAULT_NICKNAME_PHONE_SUFFIX_LENGTH);
         }

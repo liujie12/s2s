@@ -4,9 +4,12 @@ import com.s2s.server.common.constants.RateLimitThresholds;
 import com.s2s.server.common.error.ErrorCode;
 
 /**
- * 限频键轨标识枚举——详设 §3.4 键表 11 行的逐行映射，充当
+ * 限频键轨标识枚举——详设 §3.4 键表的逐行映射，充当
  * 「{@code @RateLimit} 注解声明 → {@link RateLimitThresholds} 常量取值 → U4 键拼装」
  * 的编译期桥（计划 [122] 架构验证 D7：注解属性类型须编译期可解析）。
+ *
+ * <p>原 11 行为 [122] 口径；B2-6a 按《系统总体架构设计文档》§5.1.1 门禁①
+ * 追加第 12/13 行（微信登录设备维 + IP 维）。
  *
  * <p>每轨持有 1..n 个 {@link WindowRule}（阈值/窗口秒/超限码三元组），三元组逐值
  * 引用 {@code RateLimitThresholds} 常量——本枚举不出现任何数字（对账断言见
@@ -132,7 +135,27 @@ public enum RateLimitTrack {
     GUEST_DETAIL_IP(
             new WindowRule(RateLimitThresholds.GUEST_DETAIL_IP_LIMIT_PER_DAY,
                     RateLimitThresholds.WINDOW_DAY_SECONDS,
-                    RateLimitThresholds.GUEST_DETAIL_OVERFLOW));
+                    RateLimitThresholds.GUEST_DETAIL_OVERFLOW)),
+
+    /**
+     * 行 12 · 微信登录（设备维度，渠道级，B2-6a）：键形
+     * {@code rl:wechat:dev:{deviceId}:1h}，20/h → 42905。依据架构 §5.1.1 门禁①
+     * 「微信登录注册接口有独立的设备维 + IP 维限频」；设备头非法时跳过本轨
+     * （KTD14），IP 轨照常计数。
+     */
+    WECHAT_LOGIN_DEV(
+            new WindowRule(RateLimitThresholds.WECHAT_LOGIN_DEV_LIMIT_PER_HOUR,
+                    RateLimitThresholds.WINDOW_HOUR_SECONDS,
+                    RateLimitThresholds.WECHAT_LOGIN_OVERFLOW)),
+
+    /**
+     * 行 13 · 微信登录（IP 维度，渠道级，B2-6a）：键形
+     * {@code rl:wechat:ip:{ip}:1h}，20/h → 42905（阈值不高于短信 IP 维 20/h）。
+     */
+    WECHAT_LOGIN_IP(
+            new WindowRule(RateLimitThresholds.WECHAT_LOGIN_IP_LIMIT_PER_HOUR,
+                    RateLimitThresholds.WINDOW_HOUR_SECONDS,
+                    RateLimitThresholds.WECHAT_LOGIN_OVERFLOW));
 
     private final WindowRule[] rules;
 

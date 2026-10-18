@@ -55,6 +55,9 @@ enum ContactFailure {
   /// 在 [contactFailureOf] 里接上即可（页面侧文案位已就绪）。
   noContact('对方未留联系方式，尝试举报让其补充'),
 
+  /// 未绑定手机号（B2-6a；服务端 40302，需先完成绑定）。
+  phoneBindingRequired('请先绑定手机号后再查看联系方式'),
+
   /// 网络或服务端异常。
   networkError('网络异常，请稍后重试');
 
@@ -257,6 +260,8 @@ ContactFailure contactFailureOf(ApiException exception) {
     ApiErrorCode.contactLimit => ContactFailure.rateLimited,
     ApiErrorCode.circuitBroken => ContactFailure.circuitBroken,
     ApiErrorCode.postGone => ContactFailure.postGone,
+    // B2-6a：40302 在联系接口的唯一含义是「未绑定手机号」（资质门禁不作用于本接口）
+    ApiErrorCode.qualificationNeeded => ContactFailure.phoneBindingRequired,
     // 显式列出默认档：新增错误码时不会静默落进某个语义不符的分支
     // （§10.3 枚举显式 switch + default 降级）。
     _ => ContactFailure.networkError,

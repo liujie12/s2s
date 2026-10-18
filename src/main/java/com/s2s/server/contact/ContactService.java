@@ -2,6 +2,7 @@ package com.s2s.server.contact;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.s2s.server.auth.IdentityBindingService;
 import com.s2s.server.cert.CertService;
 import com.s2s.server.common.audit.AuditEntry;
 import com.s2s.server.common.audit.AuditLogWriter;
@@ -81,6 +82,7 @@ public class ContactService {
     private final ObjectMapper objectMapper;
     private final CertService certService;
     private final PostModerationService postModerationService;
+    private final IdentityBindingService identityBindingService;
 
     /**
      * 构造联系域服务。
@@ -94,6 +96,7 @@ public class ContactService {
      * @param objectMapper          举报凭证 JSON 序列化
      * @param certService           认证域服务（举报方实名门槛/企业权重判定，[153] B2-5 ④）
      * @param postModerationService 帖子治理服务（风险分累计/审核下架，[153] B2-5 ④）
+     * @param identityBindingService 身份绑定门禁（B2-6a：未绑手机号禁止查看联系方式）
      */
     public ContactService(ContactRateGuard rateGuard,
             ContactPostMapper contactPostMapper,
@@ -103,7 +106,8 @@ public class ContactService {
             AuditLogWriter auditLogWriter,
             ObjectMapper objectMapper,
             CertService certService,
-            PostModerationService postModerationService) {
+            PostModerationService postModerationService,
+            IdentityBindingService identityBindingService) {
         this.rateGuard = rateGuard;
         this.contactPostMapper = contactPostMapper;
         this.contactEventMapper = contactEventMapper;
@@ -113,6 +117,7 @@ public class ContactService {
         this.objectMapper = objectMapper;
         this.certService = certService;
         this.postModerationService = postModerationService;
+        this.identityBindingService = identityBindingService;
     }
 
     /**
@@ -145,6 +150,9 @@ public class ContactService {
     public ContactInfo viewContact(Long viewerId, Long postId,
             RateLimitEntries.RateLimitDimensions dimensions) {
         LocalDate today = dimensions.today();
+
+        // [1.5] 身份门禁（B2-6a / 架构 §5.1.1 门禁②）：未绑定手机号禁止查看联系方式
+        identityBindingService.requirePhoneBound(viewerId);
 
         // [2] 熔断冻结 → 42903
         rateGuard.assertNotFrozen(viewerId, today);

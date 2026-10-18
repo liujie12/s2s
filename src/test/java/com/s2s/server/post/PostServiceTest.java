@@ -13,6 +13,7 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.s2s.server.ai.AiQuotaGate;
+import com.s2s.server.auth.IdentityBindingService;
 import com.s2s.server.common.crypto.CryptoFacade;
 import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
@@ -49,6 +50,7 @@ class PostServiceTest {
     private MediaAssembler mediaAssembler;
     private ObjectMapper objectMapper;
     private AiQuotaGate aiQuotaGate;
+    private IdentityBindingService identityBindingService;
     private PostService postService;
 
     @BeforeEach
@@ -60,8 +62,9 @@ class PostServiceTest {
         mediaAssembler = mock(MediaAssembler.class);
         objectMapper = new ObjectMapper();
         aiQuotaGate = mock(AiQuotaGate.class);
+        identityBindingService = mock(IdentityBindingService.class);
         postService = new PostService(postMapper, mediaMapper, cryptoFacade, validator,
-                mediaAssembler, objectMapper, aiQuotaGate);
+                mediaAssembler, objectMapper, aiQuotaGate, identityBindingService);
 
         when(validator.computeDerived(any(), any(), any()))
                 .thenReturn(new PrecheckResult.Derived(true, false, true));
@@ -99,6 +102,8 @@ class PostServiceTest {
 
         assertThat(detail.id()).isEqualTo(100L);
         assertThat(detail.version()).isZero();
+        // B2-6a：发布前必须过「已绑手机号」门禁（架构 §5.1.1 门禁②）
+        verify(identityBindingService).requirePhoneBound(1L);
         // contact 加密 AAD = post_id（INSERT 后取到的 100）
         verify(cryptoFacade).encrypt(eq("13800138000"), eq("100"));
     }

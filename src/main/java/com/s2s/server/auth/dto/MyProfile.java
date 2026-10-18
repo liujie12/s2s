@@ -22,6 +22,8 @@ import java.util.List;
  * @param qualificationBadges 已通过的资质徽章标识列表
  * @param defaultRadius       默认搜索半径档（{@code 1/3/5/10/city}）
  * @param phoneMask           脱敏手机号（仅本人视角可见）
+ * @param phoneBound          是否已绑定手机号（B2-6a；懒绑定下微信用户可能为 false）
+ * @param wechatBound         是否已绑定微信（B2-6a；设置页「绑定微信」状态）
  */
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public record MyProfile(
@@ -31,7 +33,9 @@ public record MyProfile(
         String realnameStatus,
         List<String> qualificationBadges,
         String defaultRadius,
-        String phoneMask) {
+        String phoneMask,
+        boolean phoneBound,
+        boolean wechatBound) {
 
     /**
      * 从用户实体投影为本人资料 DTO（对外视图白名单唯一落点，KTD4）。
@@ -43,9 +47,11 @@ public record MyProfile(
      * （无资质徽章）。</p>
      *
      * @param user 用户实体
+     * @param phoneBound 是否已绑定手机号（由 {@code IdentityBindingService} 查询）
+     * @param wechatBound 是否已绑定微信（由 {@code IdentityBindingService} 查询）
      * @return {@link MyProfile} 本人资料
      */
-    public static MyProfile from(UserEntity user) {
+    public static MyProfile from(UserEntity user, boolean phoneBound, boolean wechatBound) {
         return new MyProfile(
                 user.getId(),
                 user.getNickname(),
@@ -53,6 +59,8 @@ public record MyProfile(
                 user.getRealnameStatus(),
                 List.of(),
                 user.getDefaultRadius(),
-                user.getPhoneMask());
+                user.getPhoneMask(),
+                phoneBound,
+                wechatBound);
     }
 }

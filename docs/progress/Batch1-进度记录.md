@@ -7335,5 +7335,55 @@ printf '\nMYSQL_SSL_MODE=VERIFY_CA\nMYSQL_TLS_TRUSTSTORE_PASSWORD=%s\n' \
 
 **门禁**：`mvn -o clean test` **515/515 BUILD SUCCESS**（新增 `AiCostLedgerTest` 6 例；`QwenAiProviderTest` +4 例记账用例；`AiParseServiceTest` 适配新签名）。**待发版**：本次为后端代码变更，需重新出镜像才在线上生效。
 
+### 2026-10-18（B2-6a 微信登录 · 代码侧落地：后端限频门禁 + 前端解禁）
+
+> 摘要：在既有后端骨架（`c8768f8`）基础上完成代码侧闭环：① 架构 §5.1.1 门禁① 设备 + IP 双维限频 20/h → `42905`；② 微信凭据配置占位入 `application.yml` + 三份 env 模板；③ 后端微信登录 4 场景测试；④ 前端 `loginWithWechat` + 微信授权桥（可注入，AppID/SDK 到位后只改组装根 override）；⑤ 登录页解除微信灰禁 + 失败态文案。**仍待行政**：AppID/AppSecret 未获批 ⇒ 真实 SDK 桥与端到端验收未做。**仍待裁定**：架构 §5.1.1 门禁②「微信首次注册须绑定手机号才具备发布/联系权限」未实现，属**上线前硬门禁**。
+
+**① 后端限频（架构 §5.1.1 门禁①）**
+- `RateLimitThresholds` 新增 `WECHAT_LOGIN_DEV/IP_LIMIT_PER_HOUR=20` 与 `WECHAT_LOGIN_OVERFLOW=42905`（沿用短信码，不新造码）；`RateLimitKeys` 新增 `wechatLoginDevHour/wechatLoginIpHour`；`RateLimitTrack` 新增两轨（共 13 轨）；`RateLimitEntries` 新增两 case（设备头非法跳过设备轨、IP 轨照常，KTD14）；`AuthController#wechatLogin` 挂 `@RateLimit({WECHAT_LOGIN_DEV, WECHAT_LOGIN_IP})`。
+- 文档同步：详设 §3.4 键表追加行 12/13；openapi `/auth/wechat/login` 描述补 42905 口径。
+
+**② 配置（凭据红线：只占位、不入仓库）**
+- `application.yml` 新增 `s2s.secrets.wechat-app-id / wechat-app-secret` 可选占位；`deploy/env/.env.dev|staging|prod.example` 新增 `WECHAT_APP_ID / WECHAT_APP_SECRET`（空值 = `WechatCodeVerifier` fail-closed 抛 50001）。
+
+**③ 测试（双端）**
+- 后端 `AuthServiceTest` 新增 4 例：协议未勾不触微信 / 老身份幂等不重复建行 / 首次注册落 `identity_type=wechat`（昵称与 phoneMask = 微信用户 + openid 后 6 位）/ verifier 失败原样传播。
+- 前端新增 6 例仓库映射（40001→wechatFailed、42905→tooManyRequests、5xx 经全仓统一口径归 networkError、成功取 `user.phone_mask` 占位）+ 3 例登录页（勾协议后微信可点且 QQ/Apple 仍禁、通道未配置给明确提示、用户取消不报错）。
+
+**④ 前端**
+- 新增 [wechat_auth_bridge.dart](file:///d:/developer/code/aicoding/s2s/lib/features/auth/wechat_auth_bridge.dart)：抽象 + 未配置兜底实现 + `wechatAuthBridgeProvider`；`AuthRepository.loginWithWechat` 走契约 `POST /auth/wechat/login`；登录页微信按钮解禁（未勾协议仍禁用），QQ/Apple 维持灰禁。
+- 真实 SDK（如 fluwx）与 AppID 尚未接入：**接通时只 override `wechatAuthBridgeProvider`**，页面与仓库零改动。
+
+**门禁**：`mvn -o test` **522/522 BUILD SUCCESS**；`flutter analyze` **0 issue**；`flutter test` **781/781 All tests passed**。
+**分支**：`item/b2-6a-wechat-login`（自 `main` 新开；本轮未提交，待用户验收后合并）。
+**文档回写**：任务书 §零、`Batch2-启动清单` B2-6a 行、`说明文档.md` §三、本记录。
+
+### 2026-10-18（B2-6a 微信登录 · 绑定入口与冲突口径落地）
+
+> 摘要：用户逐项裁定绑定/冲突口径后，完成门禁②代码闭环。**懒绑定**（微信首登未绑手机号可浏览；发布/联系 → `40302`）；**冲突拒绝不合并**（手机号/微信已属他人 → `40302`，提示改用手机号登录）；**补设置页「绑定微信」入口**；**身份归一化键 = unionid**；`40302` 由「高敏类目未认证」扩展为「需完成必要认证/绑定」。
+
+**① 后端**
+- `WechatCodeVerifier` 改为提取 **unionid** 并必填（缺失 → `40001`，避免同一用户产生第二条身份）；openid 仅诊断、不落库。新增 `WechatCodeVerifierTest` 3 例（成功/缺 unionid/微信业务错误）。
+- 新增登录态绑定端点：`POST /auth/phone/bind`（scene=bind 验证码；手机号冲突 → `40302`；同号幂等；回填 `phone_mask`）、`POST /auth/wechat/bind`（unionid 冲突 → `40302`；同 unionid 幂等）。新增 `BindPhoneRequest` / `BindWechatRequest`。
+- 新增 `IdentityBindingService`（身份绑定查询 + 门禁）与 `UserIdentityTypes` 常量单源；`PostService#createPost`、`ContactService#viewContact` 增加 `requirePhoneBound`（`40302`，先于配额、不消耗配额）。
+- `MyProfile` 新增 `phone_bound` / `wechat_bound`（登录与 `GET /users/me` 均下发）；`ErrorCode.QUALIFICATION_NEEDED` 文案改为「请先完成必要认证或绑定后重试」。
+- 测试：`AuthServiceTest` +5 例（绑定成功/手机号冲突/验证码错误/绑微信成功/微信冲突）、`IdentityBindingServiceTest` 3 例、`WechatCodeVerifierTest` 3 例、`PostServiceTest`/`ContactServiceTest` 各加门禁断言；全量 **534/534**。
+
+**② 契约**
+- openapi 新增 `/auth/phone/bind`、`/auth/wechat/bind`；`/auth/sms/send` 的 `scene` 枚举增加 `bind`；`MyProfile` 增加 `phone_bound`/`wechat_bound` 并列入 required；`/auth/wechat/login`、`/posts`、`/posts/{id}/contact` 补懒绑定/门禁说明。
+
+**③ 前端**
+- `AuthSession` 新增 `phoneBound`/`wechatBound`（老会话默认 `true`/`false`）与 `updateIdentityFlags`；`AuthRepository` 新增 `bindPhone`/`bindWechat`（40302 → `phoneAlreadyRegistered`/`wechatAlreadyBound`），`sendCode` 支持 `scene`。
+- `LoginScreen` 增加 `bindMode`（复用手机号/验证码/倒计时/错误横幅，绑定模式无协议门、按钮「确认绑定」）；路由新增 `/auth/bind-phone`。
+- 发布页与 AI 确认页的 `PrecheckSheet`：`40302` 按 `phoneBound` 分流「去绑定」/「去认证」；联系页 `40302` → `phoneBindingRequired` + 「去绑定」并在绑定成功后自动重试。
+- 设置页「账号与安全」新增「微信」行（已绑定/未绑定；点击走微信授权 → `/auth/wechat/bind`）。
+- 测试：`auth_repository_test` +8 例、`login_screen_test` +1 例（scene=bind/无协议门/冲突文案）；全量 `flutter analyze` 0 issue、`flutter test` **789/789**。
+
+**④ 文档**
+- 《决策登记表》新增 2026-10-18 同批裁定 6 项；PRD §12.5 `40302` 行、后端详设 §2.3/§5.1/§5.3.2、任务书 §零、`Batch2-启动清单` B2-6a、`说明文档.md` §三 同步。
+
+**分支**：`item/b2-6a-wechat-login`（未提交，待用户验收）。
+**仍待**：AppID/AppSecret（真实 SDK 桥 + 端到端验收）。
+
 
 

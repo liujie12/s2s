@@ -165,4 +165,214 @@ void main() {
       );
     });
   });
+
+  group('loginWithWechat 微信登录（B2-6a）', () {
+    test('协议未勾：本地判，不触网', () async {
+      final result = await repo.loginWithWechat(
+        code: 'wx-code',
+        agreementAccepted: false,
+      );
+      expect(result.failure, AuthFailure.agreementNotAccepted);
+    });
+
+    test('成功：phone 取 user.phone_mask 展示占位', () async {
+      harness.stub('POST', '/api/v1/auth/wechat/login', (req) async {
+        return MockResponse(
+          status: 200,
+          body: ApiEnvelope.success(
+            data: {
+              'token': 'jwt-wx',
+              'expire_at': '2099-01-01T00:00:00Z',
+              'is_new_user': true,
+              'user': {
+                'id': 7,
+                'nickname': '微信用户abcdef',
+                'realname_status': 'none',
+                'phone_mask': '微信用户abcdef',
+                'phone_bound': false,
+                'wechat_bound': true,
+              },
+            },
+          ),
+        );
+      });
+
+      final result = await repo.loginWithWechat(
+        code: 'wx-code',
+        agreementAccepted: true,
+      );
+      expect(result.isSuccess, isTrue);
+      expect(result.session!.userId, '7');
+      expect(
+        result.session!.phone,
+        '微信用户abcdef',
+        reason: '微信用户无手机号，取服务端 phone_mask 作展示占位',
+      );
+      expect(result.session!.isNewUser, isTrue);
+      expect(result.session!.phoneBound, isFalse, reason: '懒绑定：微信首登未绑手机');
+      expect(result.session!.wechatBound, isTrue);
+    });
+
+    test('上游 5xx（50001 凭据未配置）→ 全仓统一归一 networkError', () async {
+      harness.stub('POST', '/api/v1/auth/wechat/login', (req) async {
+        return MockResponse(
+          status: 500,
+          body: ApiEnvelope.failure(50001, '服务繁忙'),
+        );
+      });
+
+      final result = await repo.loginWithWechat(
+        code: 'wx-code',
+        agreementAccepted: true,
+      );
+      expect(result.failure, AuthFailure.networkError);
+    });
+
+    test('上游 5xx（50302 微信服务不可用）→ 全仓统一归一 networkError', () async {
+      harness.stub('POST', '/api/v1/auth/wechat/login', (req) async {
+        return MockResponse(
+          status: 503,
+          body: ApiEnvelope.failure(50302, '认证服务暂时不可用'),
+        );
+      });
+
+      final result = await repo.loginWithWechat(
+        code: 'wx-code',
+        agreementAccepted: true,
+      );
+      expect(result.failure, AuthFailure.networkError);
+    });
+
+    test('code 无效 40001：映射 wechatFailed', () async {
+      harness.stub('POST', '/api/v1/auth/wechat/login', (req) async {
+        return MockResponse(
+          status: 400,
+          body: ApiEnvelope.failure(40001, '参数缺失或非法'),
+        );
+      });
+
+      final result = await repo.loginWithWechat(
+        code: 'bad-code',
+        agreementAccepted: true,
+      );
+      expect(result.failure, AuthFailure.wechatFailed);
+    });
+
+    test('设备/IP 限频 42905：映射 tooManyRequests', () async {
+      harness.stubRateLimited(
+        'POST',
+        '/api/v1/auth/wechat/login',
+        code: 42905,
+      );
+
+      final result = await repo.loginWithWechat(
+        code: 'wx-code',
+        agreementAccepted: true,
+      );
+      expect(result.failure, AuthFailure.tooManyRequests);
+    });
+  });
+
+  group('bindPhone 绑定手机号（B2-6a）', () {
+    test('成功：请求体含 phone/code，scene=bind 发码', () async {
+      late Map body;
+      harness.stub('POST', '/api/v1/auth/phone/bind', (req) async {
+        body = req.body as Map;
+        return MockResponse(
+          status: 200,
+          body: ApiEnvelope.success(data: {'id': 7, 'nickname': '微信用户'}),
+        );
+      });
+
+      final failure = await repo.bindPhone(
+        phone: validPhone,
+        code: '888888',
+      );
+      expect(failure, isNull);
+      expect(body['phone'], validPhone);
+      expect(body['code'], '888888');
+    });
+
+    test('手机号已注册 40302：映射 phoneAlreadyRegistered', () async {
+      harness.stub('POST', '/api/v1/auth/phone/bind', (req) async {
+        return MockResponse(
+          status: 403,
+          body: ApiEnvelope.failure(40302, '请先完成必要认证或绑定后重试'),
+        );
+      });
+
+      final failure = await repo.bindPhone(
+        phone: validPhone,
+        code: '888888',
+      );
+      expect(failure, AuthFailure.phoneAlreadyRegistered);
+    });
+
+    test('验证码错误 40001：映射 wrongCode', () async {
+      harness.stub('POST', '/api/v1/auth/phone/bind', (req) async {
+        return MockResponse(
+          status: 400,
+          body: ApiEnvelope.failure(40001, '参数缺失或非法'),
+        );
+      });
+
+      final failure = await repo.bindPhone(
+        phone: validPhone,
+        code: '000000',
+      );
+      expect(failure, AuthFailure.wrongCode);
+    });
+
+    test('限频 42905：映射 tooManyRequests', () async {
+      harness.stubRateLimited(
+        'POST',
+        '/api/v1/auth/phone/bind',
+        code: 42905,
+      );
+
+      final failure = await repo.bindPhone(
+        phone: validPhone,
+        code: '888888',
+      );
+      expect(failure, AuthFailure.tooManyRequests);
+    });
+  });
+
+  group('bindWechat 绑定微信（B2-6a）', () {
+    test('成功：返回 null', () async {
+      harness.stub('POST', '/api/v1/auth/wechat/bind', (req) async {
+        return MockResponse(
+          status: 200,
+          body: ApiEnvelope.success(data: {'id': 1, 'nickname': '老王'}),
+        );
+      });
+
+      final failure = await repo.bindWechat(code: 'wx-code');
+      expect(failure, isNull);
+    });
+
+    test('微信已绑定其他账号 40302：映射 wechatAlreadyBound', () async {
+      harness.stub('POST', '/api/v1/auth/wechat/bind', (req) async {
+        return MockResponse(
+          status: 403,
+          body: ApiEnvelope.failure(40302, '请先完成必要认证或绑定后重试'),
+        );
+      });
+
+      final failure = await repo.bindWechat(code: 'wx-code');
+      expect(failure, AuthFailure.wechatAlreadyBound);
+    });
+
+    test('code 无效 40001：映射 wechatFailed', () async {
+      harness.stub('POST', '/api/v1/auth/wechat/bind', (req) async {
+        return MockResponse(
+          status: 400,
+          body: ApiEnvelope.failure(40001, '参数缺失或非法'),
+        );
+      });
+
+      final failure = await repo.bindWechat(code: 'bad-code');
+      expect(failure, AuthFailure.wechatFailed);
+    });
+  });
 }

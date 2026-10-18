@@ -55,6 +55,9 @@ class AppRoutes {
   static const String privacyGate = '/privacy-gate';
   static const String login = '/login';
 
+  /// 绑定手机号（B2-6a 懒绑定；复用 [LoginScreen] 的 bindMode）。
+  static const String bindPhone = '/auth/bind-phone';
+
   // ── 底部 Tab ──
   static const String home = '/';
   static const String profile = '/profile';
@@ -173,6 +176,10 @@ final List<RouteBase> _routes = [
   GoRoute(
     path: AppRoutes.login,
     builder: (context, state) => const LoginScreen(),
+  ),
+  GoRoute(
+    path: AppRoutes.bindPhone,
+    builder: (context, state) => const LoginScreen(bindMode: true),
   ),
   GoRoute(
     path: AppRoutes.detail,

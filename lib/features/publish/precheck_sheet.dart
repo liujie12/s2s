@@ -6,8 +6,9 @@
 ///
 /// 每项展示服务端 [PrecheckBlockDto.message]（契约「可直接呈现的中文提示」，
 /// 逐字照贴不重写 —— 文案口径在服务端）。五码中两码带动作入口（PRD §12.5）：
-/// 40302「去认证」、40304「去实名」，其余码只陈述（40901 改文案、40902
-/// 无媒体时不出现、40303 禁发无出口）。
+/// 40302（资质未认证 → 去认证；未绑手机号 → 去绑定）、40304「去实名」，
+/// 其余码只陈述（40901 改文案、40902 无媒体时不出现、40303 禁发无出口）。
+/// **40302 的双语义**由 [phoneBound] 区分（B2-6a，2026-10-18 裁定扩展该码）。
 library;
 
 import 'package:flutter/material.dart';
@@ -24,28 +25,37 @@ import '../post/post_dto.dart';
 ///
 /// 参数：
 ///   [context] 构建上下文；
-///   [blocks] 服务端一次性给全的阻断项。
+///   [blocks] 服务端一次性给全的阻断项；
+///   [phoneBound] 当前账号是否已绑手机号（区分 40302 的资质/绑定双语义）。
 /// 返回：[Future]，弹层关闭时完成。
 Future<void> showPrecheckBlocks(
   BuildContext context,
-  List<PrecheckBlockDto> blocks,
-) {
+  List<PrecheckBlockDto> blocks, {
+  bool phoneBound = true,
+}) {
   return showModalBottomSheet<void>(
     context: context,
     backgroundColor: const Color(AppColors.surface),
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.xl)),
     ),
-    builder: (_) => PrecheckSheet(blocks: blocks),
+    builder: (_) => PrecheckSheet(blocks: blocks, phoneBound: phoneBound),
   );
 }
 
 /// precheck 阻断项弹层内容。
 class PrecheckSheet extends StatelessWidget {
-  const PrecheckSheet({super.key, required this.blocks});
+  const PrecheckSheet({
+    super.key,
+    required this.blocks,
+    this.phoneBound = true,
+  });
 
   /// 服务端一次性给全的阻断项。
   final List<PrecheckBlockDto> blocks;
+
+  /// 当前账号是否已绑手机号（B2-6a）。
+  final bool phoneBound;
 
   @override
   Widget build(BuildContext context) {
@@ -133,7 +143,8 @@ class PrecheckSheet extends StatelessWidget {
   /// 返回：[String?] 路由路径；无动作码（40901/40902/40303）为 null。
   String? _actionRouteOf(PrecheckBlockDto block) {
     return switch (block.code) {
-      40302 => AppRoutes.trust, // 高敏未认证 → 信任与认证中心
+      // 40302 双语义：未绑手机号 → 绑定页；否则 → 信任与认证中心（资质）
+      40302 => phoneBound ? AppRoutes.trust : AppRoutes.bindPhone,
       40304 => AppRoutes.trust, // 未实名上限 → 同上（实名在认证中心）
       _ => null,
     };
@@ -145,7 +156,7 @@ class PrecheckSheet extends StatelessWidget {
   /// 返回：[String] 按钮文案（仅 [_actionRouteOf] 非 null 的码会取到）。
   String _actionLabelOf(PrecheckBlockDto block) {
     return switch (block.code) {
-      40302 => '去认证',
+      40302 => phoneBound ? '去认证' : '去绑定',
       40304 => '去实名',
       _ => '',
     };

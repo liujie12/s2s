@@ -506,7 +506,11 @@ class _AiConfirmScreenState extends ConsumerState<AiConfirmScreen> {
         // 阻断必须让用户看得见：与手动发布页共用同一弹层（一次性列全、
         // 必须点「知道了」才关闭）。4 秒即消失的 SnackBar 会被用户当成
         // 「点了没反应」（2026-10-17 真机实证）。
-        await showPrecheckBlocks(context, precheck.blocks);
+        await showPrecheckBlocks(
+          context,
+          precheck.blocks,
+          phoneBound: ref.read(authSessionProvider)?.phoneBound ?? true,
+        );
         return;
       }
       await repo.createPost(payload);

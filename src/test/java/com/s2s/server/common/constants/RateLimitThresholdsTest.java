@@ -140,6 +140,23 @@ class RateLimitThresholdsTest {
     }
 
     /**
+     * 对账行 12–13：微信登录「设备 20/h、IP 20/h」→ 42905（B2-6a）。
+     * 依据：《系统总体架构设计文档》§5.1.1 门禁①「阈值不高于短信通道 IP 维 20/h，
+     * 超限须返 42905（沿用短信频控码，不新造码）」；详设 §3.4 行 12–13。
+     *
+     * @return void；断言失败即微信登录限频阈值/超限码漂移
+     */
+    @Test
+    void wechatLoginThresholdsMatchDesignRows12To13() {
+        assertThat(RateLimitThresholds.WECHAT_LOGIN_DEV_LIMIT_PER_HOUR)
+                .as("详设 §3.4 行 12「20/h」（设备维）").isEqualTo(20);
+        assertThat(RateLimitThresholds.WECHAT_LOGIN_IP_LIMIT_PER_HOUR)
+                .as("详设 §3.4 行 13「20/h」（IP 维）").isEqualTo(20);
+        assertThat(RateLimitThresholds.WECHAT_LOGIN_OVERFLOW.getCode())
+                .as("详设 §3.4 行 12–13 超限码 42905").isEqualTo(42905);
+    }
+
+    /**
      * 对账通用窗口秒与自然日时区：60/3600/86400 与 Asia/Shanghai。
      * 依据：详设 §3.4 键形 {@code :1m/:1h/:1d} 的秒数换算；KTD6 自然日窗口以
      * Asia/Shanghai 计日（不依赖 JVM 默认时区）。
@@ -177,5 +194,6 @@ class RateLimitThresholdsTest {
         assertThat(RateLimitThresholds.REPORT_OVERFLOW.isNeedRetryAfter()).isTrue();
         assertThat(RateLimitThresholds.TRACK_OVERFLOW.isNeedRetryAfter()).isTrue();
         assertThat(RateLimitThresholds.GUEST_DETAIL_OVERFLOW.isNeedRetryAfter()).isTrue();
+        assertThat(RateLimitThresholds.WECHAT_LOGIN_OVERFLOW.isNeedRetryAfter()).isTrue();
     }
 }

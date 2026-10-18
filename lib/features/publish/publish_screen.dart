@@ -439,7 +439,9 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
   /// 用户」—— 这里也一次性列全，不逐条弹）。
   /// 返回：[Future]，弹层关闭时完成。
   Future<void> _showPrecheckBlocks(List<PrecheckBlockDto> blocks) {
-    return showPrecheckBlocks(context, blocks);
+    // 40302 双语义：未绑手机号时动作入口应为「去绑定」而非「去认证」
+    final phoneBound = ref.read(authSessionProvider)?.phoneBound ?? true;
+    return showPrecheckBlocks(context, blocks, phoneBound: phoneBound);
   }
 
   /// 单次高精度定位进行中的防重入标记。

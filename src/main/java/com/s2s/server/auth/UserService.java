@@ -41,18 +41,24 @@ public class UserService {
     /** 媒体审核（头像，Batch1 桩）。 */
     private final MediaAuditChecker mediaAuditChecker;
 
+    /** 身份绑定状态查询（B2-6a：phone_bound / wechat_bound）。 */
+    private final IdentityBindingService identityBindingService;
+
     /**
      * 构造用户资料服务，注入持久层、敏感词检测与媒体审核。
      *
      * @param userMapper          用户 Mapper
      * @param sensitiveWordChecker 敏感词检测（昵称）
      * @param mediaAuditChecker    媒体审核（头像）
+     * @param identityBindingService 身份绑定状态查询（B2-6a）
      */
     public UserService(UserMapper userMapper, SensitiveWordChecker sensitiveWordChecker,
-            MediaAuditChecker mediaAuditChecker) {
+            MediaAuditChecker mediaAuditChecker,
+            IdentityBindingService identityBindingService) {
         this.userMapper = userMapper;
         this.sensitiveWordChecker = sensitiveWordChecker;
         this.mediaAuditChecker = mediaAuditChecker;
+        this.identityBindingService = identityBindingService;
     }
 
     /**
@@ -67,7 +73,8 @@ public class UserService {
         if (user == null) {
             throw BizException.of(ErrorCode.UNAUTHORIZED);
         }
-        return MyProfile.from(user);
+        return MyProfile.from(user, identityBindingService.isPhoneBound(userId),
+                identityBindingService.isWechatBound(userId));
     }
 
     /**
@@ -107,7 +114,8 @@ public class UserService {
         }
 
         userMapper.updateById(user);
-        return MyProfile.from(user);
+        return MyProfile.from(user, identityBindingService.isPhoneBound(userId),
+                identityBindingService.isWechatBound(userId));
     }
 
     /**

@@ -22,6 +22,8 @@ class MyProfileDto {
     this.qualificationBadges,
     this.defaultRadius,
     this.phoneMask,
+    this.phoneBound = true,
+    this.wechatBound = false,
   });
 
   /// 由信封 data 构造。
@@ -39,6 +41,9 @@ class MyProfileDto {
       qualificationBadges: optStringList(map, 'qualification_badges', 'MyProfile'),
       defaultRadius: optString(map, 'default_radius', 'MyProfile'),
       phoneMask: optString(map, 'phone_mask', 'MyProfile'),
+      // 老服务端/测试夹具缺这两个键时：历史用户只可能来自手机号登录，故默认 true
+      phoneBound: optBool(map, 'phone_bound', 'MyProfile') ?? true,
+      wechatBound: optBool(map, 'wechat_bound', 'MyProfile') ?? false,
     );
   }
 
@@ -62,6 +67,12 @@ class MyProfileDto {
 
   /// 脱敏手机号（可空；本人视角才下发），如 `138****8000`。
   final String? phoneMask;
+
+  /// 是否已绑定手机号（B2-6a；懒绑定下微信用户可能为 false）。
+  final bool phoneBound;
+
+  /// 是否已绑定微信（B2-6a；设置页「绑定微信」状态）。
+  final bool wechatBound;
 
   /// 是否已实名通过（`passed`）。页面据此显示「已实名」标或引导去完善。
   ///

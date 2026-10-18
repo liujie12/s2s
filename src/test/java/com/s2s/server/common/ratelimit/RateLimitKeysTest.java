@@ -163,6 +163,23 @@ class RateLimitKeysTest {
     }
 
     // ------------------------------------------------------------------
+    // 行 12/13：微信登录·设备 / IP（B2-6a）
+    // ------------------------------------------------------------------
+
+    @Test
+    void wechatLoginDevHourKeyShape() {
+        String devId = "550e8400-e29b-41d4-a716-446655440000";
+        assertThat(RateLimitKeys.wechatLoginDevHour(devId))
+                .isEqualTo("rl:wechat:dev:" + devId + ":1h");
+    }
+
+    @Test
+    void wechatLoginIpHourKeyShape() {
+        assertThat(RateLimitKeys.wechatLoginIpHour("172.16.0.1"))
+                .isEqualTo("rl:wechat:ip:172.16.0.1:1h");
+    }
+
+    // ------------------------------------------------------------------
     // 设备 ID 格式校验（KTD14）
     // ------------------------------------------------------------------
 

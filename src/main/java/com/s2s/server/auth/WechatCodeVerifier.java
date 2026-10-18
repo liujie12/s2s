@@ -28,17 +28,22 @@ import org.springframework.stereotype.Component;
  * <pre>
  *   GET https://api.weixin.qq.com/sns/oauth2/access_token
  *       ?appid={APPID}&amp;secret={SECRET}&amp;code={CODE}&amp;grant_type=authorization_code
- *   成功：{ openid, access_token, expires_in, refresh_token, scope, unionid? }
+ * 成功：{ openid, access_token, expires_in, refresh_token, scope, unionid }
  *   失败：{ errcode, errmsg }
  * </pre></p>
  *
+ * <p><b>身份键 = unionid</b>（PRD §3.4.1 / 架构 §5.1.1，2026-10-18 裁定）：
+ * unionid 是同一微信开放平台账号下跨应用的唯一标识，作为
+ * {@code user_identity.identity_value} 的明文源；openid 仅保留用于诊断日志。
+ * 微信未返回 unionid 时拒绝登录（40001），避免同一用户因字段缺失产生第二条身份。</p>
+ *
  * <p><b>凭据未到位时的行为</b>（资质审批中，AppID/AppSecret 未注入）：
  * {@link SecretsProperties#wechatAppId()} 或 {@link SecretsProperties#wechatAppSecret()}
- * 为 null 时直接抛 {@link BizException}（40001 + 明确错误信息「微信开放平台凭据未配置」），
+ * 为 null 时直接抛 {@link BizException}（50001 + 明确错误信息「微信开放平台凭据未配置」），
  * 不发 HTTP 请求——消费方据此判定「未配置」并决定是否回 dry-run/mock 模式。</p>
  *
  * <p><b>HTTP 客户端选型</b>：用 JDK 11 {@link java.net.http.HttpClient}（Spring Boot 3 + JDK 21，
- * 原生支持，无需额外依赖 RestTemplate/WebClient）。超时 10 秒，失败/非 200 → 50301。</p>
+ * 原生支持，无需额外依赖 RestTemplate/WebClient）。超时 10 秒，失败/非 200 → 50302。</p>
  */
 @Component
 public class WechatCodeVerifier {
@@ -57,8 +62,11 @@ public class WechatCodeVerifier {
     /** 微信 API 业务错误消息 key（JSON 字段名）。 */
     private static final String FIELD_ERRMSG = "errmsg";
 
-    /** 微信 API 成功返回的 openid 字段名。 */
+    /** 微信 API 成功返回的 openid 字段名（诊断用，非身份键）。 */
     private static final String FIELD_OPENID = "openid";
+
+    /** 微信 API 成功返回的 unionid 字段名（身份键）。 */
+    private static final String FIELD_UNIONID = "unionid";
 
     /** 微信 API 成功返回的 access_token 字段名。 */
     private static final String FIELD_ACCESS_TOKEN = "access_token";
@@ -96,9 +104,10 @@ public class WechatCodeVerifier {
      * 用客户端传来的 code 向微信服务器交换 openid + access_token。
      *
      * @param code 微信授权 code（一次性，最长 64 字符，来自客户端微信 SDK）
-     * @return {@link WechatTokenResult} 含 openid（必填，身份归一化键）+ accessToken + expiresIn
-     * @throws BizException 凭据未配置 → 40001；code 无效/过期 → 40001（微信 errcode 原样透出）；
-     *                     HTTP/网络失败 → 50301
+     * @return {@link WechatTokenResult} 含 unionid（身份归一化键）+ openid + accessToken + expiresIn
+     * @throws BizException 凭据未配置 → 50001；code 无效/过期 → 40001（微信 errcode 原样透出）；
+     *                     返回体缺 unionid → 40001（身份键缺失，拒绝登录）；
+     *                     HTTP/网络失败 → 50302
      */
     public WechatTokenResult verify(String code) {
         String appId = secrets.wechatAppId();
@@ -132,30 +141,49 @@ public class WechatCodeVerifier {
             throw BizException.of(ErrorCode.CERT_UNAVAILABLE);
         }
 
-        JsonNode root;
         try {
-            root = objectMapper.readTree(response.body());
+            return parseResponse(response.body());
         } catch (IOException exception) {
             log.warn("微信返回体反序列化失败：body={}", response.body());
             throw BizException.of(ErrorCode.CERT_UNAVAILABLE);
         }
+    }
+
+    /**
+     * 解析微信 access_token 接口返回体（包级可见，供单测直接覆盖解析口径）。
+     *
+     * <p>口径：业务错误（含 errcode）→ 40001；缺 unionid → 40001（身份键必须唯一）；
+     * 缺 openid 仅记诊断日志，不作为拒绝条件（身份键已改为 unionid）。</p>
+     *
+     * @param body 微信接口原始响应体（JSON）
+     * @return {@link WechatTokenResult} unionid + openid + accessToken + expiresIn
+     * @throws IOException  JSON 反序列化失败（调用方转 50302）
+     * @throws BizException 业务错误或缺 unionid → 40001
+     */
+    WechatTokenResult parseResponse(String body) throws IOException {
+        JsonNode root = objectMapper.readTree(body);
 
         // 微信 API 业务错误（code 无效/过期/重复使用等）
         if (root.has(FIELD_ERRCODE)) {
             int errcode = root.get(FIELD_ERRCODE).asInt();
             String errmsg = root.path(FIELD_ERRMSG).asText("unknown");
-            log.info("微信 code 换 openid 业务错误：errcode={}, errmsg={}", errcode, errmsg);
+            log.info("微信 code 业务错误：errcode={}, errmsg={}", errcode, errmsg);
             throw BizException.of(ErrorCode.PARAM_INVALID);
         }
 
+        String unionid = root.path(FIELD_UNIONID).asText();
         String openid = root.path(FIELD_OPENID).asText();
         String accessToken = root.path(FIELD_ACCESS_TOKEN).asText();
         int expiresIn = root.path(FIELD_EXPIRES_IN).asInt();
-        if (openid.isBlank()) {
-            log.warn("微信返回体缺 openid：body={}", response.body());
-            throw BizException.of(ErrorCode.CERT_UNAVAILABLE);
+        if (unionid.isBlank()) {
+            // unionid 缺失 ⇒ 不落身份行，避免同一用户产生第二条身份（2026-10-18 裁定）
+            log.warn("微信返回体缺 unionid（openid={}），拒绝登录", openid);
+            throw BizException.of(ErrorCode.PARAM_INVALID);
         }
-        return new WechatTokenResult(openid, accessToken, expiresIn);
+        if (openid.isBlank()) {
+            log.warn("微信返回体缺 openid（unionid 已返回，仅影响诊断）");
+        }
+        return new WechatTokenResult(unionid, openid, accessToken, expiresIn);
     }
 
     /**
@@ -170,20 +198,25 @@ public class WechatCodeVerifier {
     }
 
     /**
-     * 微信 code→openid 交换成功结果（值对象）。
+     * 微信 code 交换成功结果（值对象）。
      *
-     * <p>{@code openid}：微信给每个应用下每个用户的唯一标识（长度约 28 字符），
-     * 本项目以此为 {@code user_identity.identity_value_enc} 的明文源，盲索引与手机号同范式。</p>
+     * <p>{@code unionid}：同一微信开放平台账号下跨应用的唯一标识，是
+     * {@code user_identity.identity_value_enc} 的明文源（身份归一化键）。</p>
+     *
+     * <p>{@code openid}：微信给每个应用下每个用户的唯一标识，仅保留用于诊断日志，
+     * 不落库、不作身份键。</p>
      *
      * <p>{@code accessToken}：2 小时有效期，后续可选用于拉微信昵称/头像（scope=snsapi_userinfo）；
-     * 当前 B2-6a 仅做登录，拉资料作为 Batch2 后置项，accessToken 暂时落库留痕即可。</p>
+     * 当前 B2-6a 仅做登录，拉资料作为 Batch2 后置项。</p>
      *
-     * <p>{@code expiresIn}：accessToken 有效期（秒），供客户端展示/续期提示。</p>
+     * <p>{@code expiresIn}：accessToken 有效期（秒）。</p>
      *
-     * @param openid      微信用户在本应用下的唯一标识（必填，身份归一化键）
+     * @param unionid     微信开放平台跨应用唯一标识（必填，身份归一化键）
+     * @param openid      本应用内唯一标识（诊断用，可空）
      * @param accessToken 微信接口调用凭证（可选，用于后续拉资料）
      * @param expiresIn   accessToken 有效期（秒）
      */
-    public record WechatTokenResult(String openid, String accessToken, int expiresIn) {
+    public record WechatTokenResult(String unionid, String openid, String accessToken,
+            int expiresIn) {
     }
 }

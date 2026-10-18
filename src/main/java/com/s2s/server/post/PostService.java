@@ -6,6 +6,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.s2s.server.ai.AiQuotaGate;
 import com.s2s.server.common.constants.NfrPost;
+import com.s2s.server.auth.IdentityBindingService;
 import com.s2s.server.common.crypto.CryptoFacade;
 import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
@@ -54,11 +55,13 @@ public class PostService {
     private final MediaAssembler mediaAssembler;
     private final ObjectMapper objectMapper;
     private final AiQuotaGate aiQuotaGate;
+    private final IdentityBindingService identityBindingService;
 
     /**
      * 构造发布服务。
      *
      * @param aiQuotaGate AI 配额闸（B2-4；ai_assisted 发布成功后扣 1 次）
+     * @param identityBindingService 身份绑定门禁（B2-6a：未绑手机号禁止发布）
      */
     public PostService(PostMapper postMapper,
             PostMediaMapper mediaMapper,
@@ -66,7 +69,8 @@ public class PostService {
             PostValidator validator,
             MediaAssembler mediaAssembler,
             ObjectMapper objectMapper,
-            AiQuotaGate aiQuotaGate) {
+            AiQuotaGate aiQuotaGate,
+            IdentityBindingService identityBindingService) {
         this.postMapper = postMapper;
         this.mediaMapper = mediaMapper;
         this.cryptoFacade = cryptoFacade;
@@ -74,6 +78,7 @@ public class PostService {
         this.mediaAssembler = mediaAssembler;
         this.objectMapper = objectMapper;
         this.aiQuotaGate = aiQuotaGate;
+        this.identityBindingService = identityBindingService;
     }
 
     /**
@@ -85,6 +90,9 @@ public class PostService {
      */
     @Transactional
     public PostDetail createPost(Long userId, PostCreateRequest req) {
+        // [1.5] 身份门禁（B2-6a / 架构 §5.1.1 门禁②）：未绑定手机号的微信账号禁止发布
+        identityBindingService.requirePhoneBound(userId);
+
         // [2] 类目 / [4] 敏感词 / [5] 媒体校验（命中即抛）
         validator.validate(userId, req.leafCategoryId(), req.title(), req.description(), req.mediaIds());
 

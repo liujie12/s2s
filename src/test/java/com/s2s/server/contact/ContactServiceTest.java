@@ -22,6 +22,7 @@ import com.s2s.server.common.crypto.MasterKey;
 import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
 import com.s2s.server.common.ratelimit.RateLimitEntries;
+import com.s2s.server.auth.IdentityBindingService;
 import com.s2s.server.cert.CertService;
 import com.s2s.server.contact.dto.ContactInfo;
 import com.s2s.server.post.PostModerationService;
@@ -80,6 +81,7 @@ class ContactServiceTest {
     private CryptoFacade cryptoFacade;
     private CertService certService;
     private PostModerationService postModerationService;
+    private IdentityBindingService identityBindingService;
     private ContactService service;
 
     /**
@@ -101,9 +103,10 @@ class ContactServiceTest {
         cryptoFacade = new CryptoFacade(List.of(KEY_V1));
         certService = mock(CertService.class);
         postModerationService = mock(PostModerationService.class);
+        identityBindingService = mock(IdentityBindingService.class);
         service = new ContactService(rateGuard, contactPostMapper, contactEventMapper,
                 reportMapper, cryptoFacade, auditLogWriter, new ObjectMapper(),
-                certService, postModerationService);
+                certService, postModerationService, identityBindingService);
         when(rateGuard.remainingToday(anyLong(), any())).thenReturn(27);
         when(certService.isRealnamePassed(anyLong())).thenReturn(true);
         when(certService.isEnterpriseVerified(anyLong())).thenReturn(false);
@@ -127,6 +130,8 @@ class ContactServiceTest {
         assertThat(info.contactType()).isEqualTo("phone");
         assertThat(info.contactValue()).isEqualTo(CONTACT_VALUE);
         assertThat(info.remainingToday()).isEqualTo(27);
+        // B2-6a：查看联系方式前必须过「已绑手机号」门禁（架构 §5.1.1 门禁②）
+        verify(identityBindingService).requirePhoneBound(VIEWER_ID);
 
         ArgumentCaptor<ContactEventEntity> eventCaptor =
                 ArgumentCaptor.forClass(ContactEventEntity.class);
@@ -137,6 +142,24 @@ class ContactServiceTest {
         assertThat(eventCaptor.getValue().getChannelType()).isEqualTo("phone");
 
         verify(auditLogWriter).write(any(AuditEntry.class));
+    }
+
+    /**
+     * B2-6a：未绑定手机号 → 40302，且不查帖子、不消耗配额、不写事件/审计。
+     *
+     * @return void
+     */
+    @Test
+    void viewContactRejectsUnboundPhone() {
+        doThrow(BizException.of(ErrorCode.QUALIFICATION_NEEDED))
+                .when(identityBindingService).requirePhoneBound(VIEWER_ID);
+
+        assertThatThrownBy(() -> service.viewContact(VIEWER_ID, 1001L, dimensions()))
+                .isInstanceOf(BizException.class)
+                .satisfies(ex -> assertThat(((BizException) ex).getErrorCode())
+                        .isEqualTo(ErrorCode.QUALIFICATION_NEEDED));
+        verify(contactPostMapper, never()).selectContactRow(anyLong());
+        verify(contactEventMapper, never()).insert(any(ContactEventEntity.class));
     }
 
     /**

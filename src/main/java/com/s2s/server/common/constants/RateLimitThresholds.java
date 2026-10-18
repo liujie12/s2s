@@ -128,6 +128,17 @@ public final class RateLimitThresholds {
      * 阈值沿用联系方式 IP 档（详设明文「不新造数字」）。 */
     public static final int GUEST_DETAIL_IP_LIMIT_PER_DAY = 100;
 
+    // --- 行 12/13：微信登录（设备维 + IP 维）20/h → 42905 ---------------------------
+
+    /** 微信登录·设备维 1 小时窗阈值（B2-6a）。依据《系统总体架构设计文档》§5.1.1
+     * 门禁①：「微信登录注册接口有独立的设备维 + IP 维限频，阈值不高于短信通道的
+     * IP 维 20/h」——此处取上限 20/h（与 {@link #SMS_IP_LIMIT_PER_HOUR} 同值，
+     * 但刻意分常量：两者语义不同，短信阈值调整不应连带改变微信注册成本墙）。 */
+    public static final int WECHAT_LOGIN_DEV_LIMIT_PER_HOUR = 20;
+
+    /** 微信登录·IP 维 1 小时窗阈值（B2-6a）。依据同上（§5.1.1 门禁①）。 */
+    public static final int WECHAT_LOGIN_IP_LIMIT_PER_HOUR = 20;
+
     // --- 超限码（引用 ErrorCode 唯一口径源，PRD §12.5）-----------------------------
 
     /** 短信发送超限码（详设 §3.4 第 1–2 行）。{@code 42905}，needRetryAfter。 */
@@ -153,4 +164,8 @@ public final class RateLimitThresholds {
     /** 未登录详情浏览超限码（详设 §3.4 第 10–11 行，设备/IP 两维同码）。{@code 42907}，
      * needRetryAfter；仅未登录请求生效。 */
     public static final ErrorCode GUEST_DETAIL_OVERFLOW = ErrorCode.GUEST_DETAIL_LIMIT;
+
+    /** 微信登录超限码（详设 §3.4 第 12–13 行，设备/IP 两维同码）。{@code 42905}，
+     * needRetryAfter；沿用短信频控码（架构 §5.1.1 门禁①明定「不新造码」）。 */
+    public static final ErrorCode WECHAT_LOGIN_OVERFLOW = ErrorCode.SMS_LIMIT;
 }

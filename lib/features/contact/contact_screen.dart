@@ -127,6 +127,7 @@ class _ContactScreenState extends ConsumerState<ContactScreen> {
             // 登录成功后自动重试拉取：让用户回到中转页还要再点一次按钮，
             // 等于把「他刚才已经表达过的意图」丢掉了。
             onLogin: _goLoginThenReveal,
+            onBindPhone: _goBindPhoneThenReveal,
           ),
           const _SafetyTip(),
           _ReportEntry(onTap: _openReportSheet),
@@ -211,6 +212,16 @@ class _ContactScreenState extends ConsumerState<ContactScreen> {
   /// 用户直接关掉登录页时返回 null，此时不重试 —— 他刚刚放弃了这个动作。
   Future<void> _goLoginThenReveal() async {
     final ok = await GoRouter.of(context).push<bool>(AppRoutes.login);
+    if (!mounted || ok != true) return;
+    await _reveal();
+  }
+
+  /// 跳绑定手机号页（B2-6a），绑定成功后自动重试拉取。
+  ///
+  /// 与登录后重试同因：用户刚刚表达了「要联系对方」的意图，绑定完成回来
+  /// 还要再点一次按钮等于把意图丢掉。
+  Future<void> _goBindPhoneThenReveal() async {
+    final ok = await GoRouter.of(context).push<bool>(AppRoutes.bindPhone);
     if (!mounted || ok != true) return;
     await _reveal();
   }
@@ -402,6 +413,7 @@ class _ContactCard extends StatelessWidget {
     required this.onReveal,
     required this.onUse,
     required this.onLogin,
+    required this.onBindPhone,
   });
 
   final FullContact? full;
@@ -418,6 +430,9 @@ class _ContactCard extends StatelessWidget {
   final VoidCallback onReveal;
   final VoidCallback onUse;
   final VoidCallback onLogin;
+
+  /// 跳绑定手机号页（B2-6a）。
+  final VoidCallback onBindPhone;
 
   @override
   Widget build(BuildContext context) {
@@ -490,7 +505,11 @@ class _ContactCard extends StatelessWidget {
           ],
           if (failure != null) ...[
             const SizedBox(height: AppSpacing.md),
-            _FailureBanner(failure: failure!, onLogin: onLogin),
+            _FailureBanner(
+              failure: failure!,
+              onLogin: onLogin,
+              onBindPhone: onBindPhone,
+            ),
           ],
           const SizedBox(height: AppSpacing.lg),
           _ActionButton(
@@ -592,12 +611,19 @@ class _ActionButton extends StatelessWidget {
 
 /// 失败提示条（§7.8 / §12.3 错误码文案）。
 class _FailureBanner extends StatelessWidget {
-  const _FailureBanner({required this.failure, required this.onLogin});
+  const _FailureBanner({
+    required this.failure,
+    required this.onLogin,
+    required this.onBindPhone,
+  });
 
   final ContactFailure failure;
 
   /// 跳登录页。仅未登录态用得到。
   final VoidCallback onLogin;
+
+  /// 跳绑定手机号页。仅未绑定态（B2-6a）用得到。
+  final VoidCallback onBindPhone;
 
   @override
   Widget build(BuildContext context) {
@@ -631,7 +657,7 @@ class _FailureBanner extends StatelessWidget {
               ),
             ],
           ),
-          // 未登录是唯一「用户当场就能解决」的失败态，必须给出去处。
+          // 未登录 / 未绑手机号是「用户当场就能解决」的失败态，必须给出去处。
           // 超限与熔断给按钮反而有害 —— 点了也没用，只会让人反复点。
           if (failure == ContactFailure.notLoggedIn)
             Align(
@@ -647,6 +673,24 @@ class _FailureBanner extends StatelessWidget {
                 ),
                 child: Text(
                   '去登录',
+                  style: TextStyle(fontSize: AppTypeScale.small.size),
+                ),
+              ),
+            ),
+          if (failure == ContactFailure.phoneBindingRequired)
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: onBindPhone,
+                style: TextButton.styleFrom(
+                  foregroundColor: Color(AppColors.primary),
+                  minimumSize: const Size(0, 36),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.sm,
+                  ),
+                ),
+                child: Text(
+                  '去绑定',
                   style: TextStyle(fontSize: AppTypeScale.small.size),
                 ),
               ),

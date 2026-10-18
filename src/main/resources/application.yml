@@ -127,6 +127,11 @@ s2s:
     sms-key: ${SMS_KEY}
     # ⑥b 高德地图 Key（逆地理/POI 服务凭证，编码规范 §3.3 六类凭证之六）
     amap-key: ${AMAP_KEY}
+    # ⑥c 微信开放平台移动应用凭据（B2-6a 微信登录 code→openid 交换）。
+    # 可选绑定：资质审批中，未注入时 SecretsProperties 归一为 null，WechatCodeVerifier
+    # fail-closed 抛 50001（不发起微信请求）。AppSecret 仅存服务端，禁入库/入日志/回传客户端。
+    wechat-app-id: ${WECHAT_APP_ID}
+    wechat-app-secret: ${WECHAT_APP_SECRET}
     # ⑦ JWT HS256 签名密钥（[122] KTD10；登录态 Token 签发/验签，第七个硬必填凭证）。
     # 裸占位（非 :? 形态）的理由见文件头注释 6：快速失败闸门在 SecretsProperties 守卫
     # （已解析 + ≥32 字节双校验），与其余硬依赖同构；例值生成 openssl rand -hex 32

@@ -354,6 +354,38 @@ public final class RateLimitKeys {
     }
 
     // ------------------------------------------------------------------
+    // 行 15：微信登录（设备维 + IP 维，渠道级，B2-6a）
+    // ------------------------------------------------------------------
+
+    /**
+     * 微信登录·设备维·1 小时窗键（B2-6a）。
+     *
+     * <p>依据《系统总体架构设计文档》§5.1.1 门禁①：微信自动注册必须有独立的
+     * 设备维限频（阈值 ≤ 短信 IP 维 20/h），防止一台设备无限量注册。
+     * 设备头入键前由 {@link #isValidDeviceId(String)} 校验（KTD14，调用方在
+     * {@code RateLimitEntries} 里跳过非法值）。</p>
+     *
+     * @param deviceId 设备指纹（{@code X-Device-Id}，已通过 UUID v4 校验）
+     * @return {@link String} 键形 {@code rl:wechat:dev:{deviceId}:1h}
+     */
+    public static String wechatLoginDevHour(String deviceId) {
+        return KEY_PREFIX + "wechat:dev:" + deviceId + ":1h";
+    }
+
+    /**
+     * 微信登录·IP 维·1 小时窗键（B2-6a）。
+     *
+     * <p>与设备维同阈值同窗口（架构 §5.1.1 门禁①）；IP 缺失时调用方应传直连地址，
+     * 由 {@code ClientIp#of} 保证非空。</p>
+     *
+     * @param ip 客户端 IP（渠道级维度）
+     * @return {@link String} 键形 {@code rl:wechat:ip:{ip}:1h}
+     */
+    public static String wechatLoginIpHour(String ip) {
+        return KEY_PREFIX + "wechat:ip:" + ip + ":1h";
+    }
+
+    // ------------------------------------------------------------------
     // 设备 ID 格式校验（KTD14）
     // ------------------------------------------------------------------
     /**

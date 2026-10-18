@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
@@ -13,10 +14,14 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.s2s.server.auth.dto.BindPhoneRequest;
+import com.s2s.server.auth.dto.BindWechatRequest;
 import com.s2s.server.auth.dto.DeviceUpsertResult;
 import com.s2s.server.auth.dto.LoginRequest;
 import com.s2s.server.auth.dto.LoginResult;
+import com.s2s.server.auth.dto.MyProfile;
 import com.s2s.server.auth.dto.RefreshResult;
+import com.s2s.server.auth.dto.WechatLoginRequest;
 import com.s2s.server.auth.entity.DeviceEntity;
 import com.s2s.server.auth.entity.UserEntity;
 import com.s2s.server.auth.entity.UserIdentityEntity;
@@ -46,7 +51,9 @@ import org.springframework.data.redis.core.ValueOperations;
  *   <li>正确验证码 + 老用户 → 返回 JWT + is_new_user=false；</li>
  *   <li>正确验证码 + 新手机号 → 自动注册 + is_new_user=true；</li>
  *   <li>错误验证码 → 40001（单次失败计数）；</li>
- *   <li>错误验证码达阈值 → 40105 + Retry-After 传播。</li>
+ *   <li>错误验证码达阈值 → 40105 + Retry-After 传播；</li>
+ *   <li>B2-6a 微信登录四例：协议未勾不触微信 / 老身份幂等 / 首次注册落 wechat 身份 /
+ *       verifier 失败传播。</li>
  * </ol>
  *
  * <p>测试策略：持久层/Redis/限频/加解密/签发全部 Mockito mock，聚焦 {@code loginBySms}
@@ -91,6 +98,9 @@ class AuthServiceTest {
     /** mock 的微信 code 交换器（短信登录测试不触发，仅作构造注入占位）。 */
     private WechatCodeVerifier wechatCodeVerifier;
 
+    /** mock 的身份绑定状态服务（B2-6a）。 */
+    private IdentityBindingService identityBindingService;
+
     /** 真实 ObjectMapper（反序列化 SmsCode）。 */
     private ObjectMapper objectMapper;
 
@@ -115,12 +125,15 @@ class AuthServiceTest {
         jwtIssuer = mock(JwtIssuer.class);
         jwtVerifier = mock(JwtVerifier.class);
         wechatCodeVerifier = mock(WechatCodeVerifier.class);
+        identityBindingService = mock(IdentityBindingService.class);
+        when(identityBindingService.isPhoneBound(anyLong())).thenReturn(true);
+        when(identityBindingService.isWechatBound(anyLong())).thenReturn(false);
         objectMapper = new ObjectMapper().findAndRegisterModules();
         List<Pepper> peppers = List.of(
                 Pepper.of(1, "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"));
         authService = new AuthService(redisTemplate, rateLimiter, objectMapper, peppers,
                 cryptoFacade, userMapper, userIdentityMapper, deviceMapper, jwtIssuer, jwtVerifier,
-                wechatCodeVerifier);
+                wechatCodeVerifier, identityBindingService);
     }
 
     /**
@@ -405,6 +418,220 @@ class AuthServiceTest {
                 .isInstanceOf(BizException.class)
                 .satisfies(ex -> assertThat(((BizException) ex).getErrorCode())
                         .isEqualTo(ErrorCode.PARAM_INVALID));
+    }
+
+    /**
+     * 场景十五（B2-6a）：微信登录 agreed=false → 40002，且不向微信服务器发起 code 交换。
+     *
+     * @return void
+     */
+    @Test
+    void wechatLoginRejectsWhenNotAgreed() {
+        WechatLoginRequest request = new WechatLoginRequest("wx-code", false, null, null);
+
+        assertThatThrownBy(() -> authService.loginByWechat(request, DEVICE_ID))
+                .isInstanceOf(BizException.class)
+                .satisfies(ex -> assertThat(((BizException) ex).getErrorCode())
+                        .isEqualTo(ErrorCode.AGREEMENT_REQUIRED));
+        verify(wechatCodeVerifier, never()).verify(anyString());
+    }
+
+    /**
+     * 场景十六（B2-6a）：同一 openid 已存在 → 复用既有 user，不重复建身份行（幂等）。
+     *
+     * @return void
+     */
+    @Test
+    void wechatLoginReturnsTokenForExistingIdentity() {
+        when(wechatCodeVerifier.verify("wx-code"))
+                .thenReturn(new WechatCodeVerifier.WechatTokenResult(
+                        "unionid-abcdef", "openid-abcdef", "at", 7200));
+        UserIdentityEntity identity = new UserIdentityEntity();
+        identity.setUserId(2L);
+        when(userIdentityMapper.selectOne(any())).thenReturn(identity);
+        UserEntity user = existingUser();
+        user.setId(2L);
+        user.setNickname("微信用户abcdef");
+        when(userMapper.selectById(2L)).thenReturn(user);
+        when(jwtIssuer.issue(2L)).thenReturn("jwt-wechat");
+
+        LoginResult result = authService.loginByWechat(
+                new WechatLoginRequest("wx-code", true, "android", null), DEVICE_ID);
+
+        assertThat(result.token()).isEqualTo("jwt-wechat");
+        assertThat(result.isNewUser()).isFalse();
+        assertThat(result.user().id()).isEqualTo(2L);
+        verify(userMapper, never()).insert(any(UserEntity.class));
+        verify(userIdentityMapper, never()).insert(any(UserIdentityEntity.class));
+    }
+
+    /**
+     * 场景十七（B2-6a）：首次微信登录 → 自动注册 user + user_identity（identity_type=wechat），
+     * 默认昵称/phoneMask = 「微信用户」+ openid 后 6 位（生成口径见 AuthService）。
+     *
+     * @return void
+     */
+    @Test
+    void wechatLoginRegistersNewUserWithWechatIdentity() {
+        when(wechatCodeVerifier.verify("wx-code"))
+                .thenReturn(new WechatCodeVerifier.WechatTokenResult(
+                        "unionid-abcdef", "openid-abcdef", "at", 7200));
+        when(userIdentityMapper.selectOne(any())).thenReturn(null);
+        when(userMapper.insert(any(UserEntity.class))).thenAnswer(invocation -> {
+            UserEntity user = invocation.getArgument(0);
+            user.setId(3L);
+            return 1;
+        });
+        when(cryptoFacade.encrypt(anyString(), anyString()))
+                .thenReturn(new CryptoFacade.EncryptResult(1, new byte[] {1, 2, 3}));
+        when(jwtIssuer.issue(3L)).thenReturn("jwt-new");
+
+        LoginResult result = authService.loginByWechat(
+                new WechatLoginRequest("wx-code", true, "android", null), DEVICE_ID);
+
+        assertThat(result.isNewUser()).isTrue();
+        assertThat(result.user().nickname()).isEqualTo("微信用户abcdef");
+        assertThat(result.user().phoneMask()).isEqualTo("微信用户abcdef");
+
+        ArgumentCaptor<UserIdentityEntity> captor =
+                ArgumentCaptor.forClass(UserIdentityEntity.class);
+        verify(userIdentityMapper).insert(captor.capture());
+        assertThat(captor.getValue().getIdentityType()).isEqualTo("wechat");
+        assertThat(captor.getValue().getUserId()).isEqualTo(3L);
+    }
+
+    /**
+     * 场景十八（B2-6a）：微信 code 无效/过期（verifier 抛 40001）→ 原样传播，不建任何行。
+     *
+     * @return void
+     */
+    @Test
+    void wechatLoginPropagatesVerifierFailure() {
+        doThrow(BizException.of(ErrorCode.PARAM_INVALID))
+                .when(wechatCodeVerifier).verify("bad-code");
+
+        assertThatThrownBy(() -> authService.loginByWechat(
+                new WechatLoginRequest("bad-code", true, null, null), DEVICE_ID))
+                .isInstanceOf(BizException.class)
+                .satisfies(ex -> assertThat(((BizException) ex).getErrorCode())
+                        .isEqualTo(ErrorCode.PARAM_INVALID));
+        verify(userMapper, never()).insert(any(UserEntity.class));
+        verify(userIdentityMapper, never()).insert(any(UserIdentityEntity.class));
+    }
+
+    /**
+     * 场景十九（B2-6a）：绑定手机号成功 → 落 phone 身份 + 回填 phoneMask。
+     *
+     * @return void
+     */
+    @Test
+    void bindPhoneAttachesIdentityAndUpdatesMask() {
+        UserEntity user = existingUser();
+        user.setId(1L);
+        when(userMapper.selectById(1L)).thenReturn(user);
+        when(valueOps.get("sms:" + PHONE)).thenReturn(validCodeJson());
+        when(userIdentityMapper.selectOne(any())).thenReturn(null);
+        when(cryptoFacade.encrypt(anyString(), anyString()))
+                .thenReturn(new CryptoFacade.EncryptResult(1, new byte[] {1, 2, 3}));
+
+        MyProfile profile = authService.bindPhone(1L, new BindPhoneRequest(PHONE, "888888"));
+
+        assertThat(profile.phoneBound()).isTrue();
+        assertThat(user.getPhoneMask()).isEqualTo("138****8000");
+        ArgumentCaptor<UserIdentityEntity> captor =
+                ArgumentCaptor.forClass(UserIdentityEntity.class);
+        verify(userIdentityMapper).insert(captor.capture());
+        assertThat(captor.getValue().getIdentityType()).isEqualTo("phone");
+        assertThat(captor.getValue().getUserId()).isEqualTo(1L);
+        verify(userMapper).updateById(user);
+    }
+
+    /**
+     * 场景二十（B2-6a）：手机号已属于其他账号 → 40302，不落任何身份行（不自动合并）。
+     *
+     * @return void
+     */
+    @Test
+    void bindPhoneRejectsPhoneOwnedByAnotherUser() {
+        when(userMapper.selectById(1L)).thenReturn(existingUser());
+        when(valueOps.get("sms:" + PHONE)).thenReturn(validCodeJson());
+        UserIdentityEntity occupied = new UserIdentityEntity();
+        occupied.setUserId(2L);
+        // 第一次查当前账号手机号 → null；第二次查号码占用 → 他人账号
+        when(userIdentityMapper.selectOne(any())).thenReturn(null, occupied);
+
+        assertThatThrownBy(() -> authService.bindPhone(
+                1L, new BindPhoneRequest(PHONE, "888888")))
+                .isInstanceOf(BizException.class)
+                .satisfies(ex -> assertThat(((BizException) ex).getErrorCode())
+                        .isEqualTo(ErrorCode.QUALIFICATION_NEEDED));
+        verify(userIdentityMapper, never()).insert(any(UserIdentityEntity.class));
+    }
+
+    /**
+     * 场景二十一（B2-6a）：绑定验证码错误 → 40001 + 失败计数，不落身份行。
+     *
+     * @return void
+     */
+    @Test
+    void bindPhoneRejectsWrongCode() {
+        when(userMapper.selectById(1L)).thenReturn(existingUser());
+        when(valueOps.get("sms:" + PHONE)).thenReturn(validCodeJson());
+
+        assertThatThrownBy(() -> authService.bindPhone(
+                1L, new BindPhoneRequest(PHONE, "000000")))
+                .isInstanceOf(BizException.class)
+                .satisfies(ex -> assertThat(((BizException) ex).getErrorCode())
+                        .isEqualTo(ErrorCode.PARAM_INVALID));
+        verify(rateLimiter).incrementAndCheck(anyList());
+        verify(userIdentityMapper, never()).insert(any(UserIdentityEntity.class));
+    }
+
+    /**
+     * 场景二十二（B2-6a）：设置页绑定微信成功 → 落 wechat 身份（unionid 盲索引）。
+     *
+     * @return void
+     */
+    @Test
+    void bindWechatAttachesWechatIdentity() {
+        when(userMapper.selectById(1L)).thenReturn(existingUser());
+        when(wechatCodeVerifier.verify("wx-code"))
+                .thenReturn(new WechatCodeVerifier.WechatTokenResult(
+                        "unionid-1", "openid-1", "at", 7200));
+        when(userIdentityMapper.selectOne(any())).thenReturn(null);
+        when(cryptoFacade.encrypt(anyString(), anyString()))
+                .thenReturn(new CryptoFacade.EncryptResult(1, new byte[] {1, 2, 3}));
+
+        MyProfile profile = authService.bindWechat(1L, new BindWechatRequest("wx-code"));
+
+        assertThat(profile.wechatBound()).isTrue();
+        ArgumentCaptor<UserIdentityEntity> captor =
+                ArgumentCaptor.forClass(UserIdentityEntity.class);
+        verify(userIdentityMapper).insert(captor.capture());
+        assertThat(captor.getValue().getIdentityType()).isEqualTo("wechat");
+        assertThat(captor.getValue().getUserId()).isEqualTo(1L);
+    }
+
+    /**
+     * 场景二十三（B2-6a）：微信已属于其他账号 → 40302，不迁移数据。
+     *
+     * @return void
+     */
+    @Test
+    void bindWechatRejectsWechatOwnedByAnotherUser() {
+        when(userMapper.selectById(1L)).thenReturn(existingUser());
+        when(wechatCodeVerifier.verify("wx-code"))
+                .thenReturn(new WechatCodeVerifier.WechatTokenResult(
+                        "unionid-1", "openid-1", "at", 7200));
+        UserIdentityEntity occupied = new UserIdentityEntity();
+        occupied.setUserId(2L);
+        when(userIdentityMapper.selectOne(any())).thenReturn(null, occupied);
+
+        assertThatThrownBy(() -> authService.bindWechat(1L, new BindWechatRequest("wx-code")))
+                .isInstanceOf(BizException.class)
+                .satisfies(ex -> assertThat(((BizException) ex).getErrorCode())
+                        .isEqualTo(ErrorCode.QUALIFICATION_NEEDED));
+        verify(userIdentityMapper, never()).insert(any(UserIdentityEntity.class));
     }
 
     /**

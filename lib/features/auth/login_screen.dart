@@ -29,10 +29,17 @@ import 'package:go_router/go_router.dart';
 import '../../design_tokens.dart';
 import '../../router/app_router.dart';
 import 'auth_repository.dart';
+import 'wechat_auth_bridge.dart';
 
-/// 登录 / 注册合并页。
+/// 登录 / 注册合并页；`bindMode=true` 时复用为「绑定手机号」页（B2-6a）。
 class LoginScreen extends ConsumerStatefulWidget {
-  const LoginScreen({super.key});
+  const LoginScreen({super.key, this.bindMode = false});
+
+  /// 是否处于绑定手机号模式（懒绑定：发布/联系被 40302 拦截后进入）。
+  ///
+  /// 复用本页而非新建页：手机号输入、验证码发送、60s 倒计时、错误横幅
+  /// 与协议态完全同构，复制一份会立即违反编码规范 §1.1（第二处即抽取）。
+  final bool bindMode;
 
   @override
   ConsumerState<LoginScreen> createState() => _LoginScreenState();
@@ -42,14 +49,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final TextEditingController _phoneCtrl = TextEditingController();
   final TextEditingController _codeCtrl = TextEditingController();
 
-  /// 协议勾选态。初值 false 且没有任何代码路径会把它改成 true（§3.4.1）。
-  bool _agreed = false;
+  /// 协议勾选态。登录模式初值 false 且没有任何代码路径会把它改成 true（§3.4.1）；
+  /// 绑定模式复用登录时已同意的协议，初值 true（不再重复弹协议门）。
+  late bool _agreed;
 
   /// 是否已请求过验证码 —— 决定验证码输入框与主按钮是否可用。
   bool _codeSent = false;
 
   bool _sending = false;
   bool _submitting = false;
+
+  /// 微信授权登录是否进行中（防重复拉起微信客户端）。
+  bool _wechatBusy = false;
 
   /// 当前错误提示。null 表示无错误。
   ///
@@ -60,6 +71,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   /// 60s 重发倒计时剩余秒数，0 表示可发送。
   int _cooldown = 0;
   Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _agreed = widget.bindMode;
+  }
 
   @override
   void dispose() {
@@ -83,7 +100,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     });
 
     final repo = ref.read(authRepositoryProvider);
-    final failure = await repo.sendCode(phone);
+    final failure = await repo.sendCode(
+      phone,
+      scene: widget.bindMode ? 'bind' : 'login',
+    );
     if (!mounted) return;
 
     setState(() {
@@ -114,31 +134,50 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     });
   }
 
-  /// 提交验证码登录（§12.2 `/auth/sms/login`，注册合并）。
+  /// 提交验证码：登录模式走 `/auth/sms/login`；绑定模式走 `/auth/phone/bind`。
   Future<void> _submit() async {
     setState(() {
       _submitting = true;
       _error = null;
     });
 
+    final phone = _phoneCtrl.text.trim();
+    final code = _codeCtrl.text.trim();
+
+    if (widget.bindMode) {
+      final failure = await ref
+          .read(authRepositoryProvider)
+          .bindPhone(phone: phone, code: code);
+      if (!mounted) return;
+      if (failure == null) {
+        ref.read(authSessionProvider.notifier).updateIdentityFlags(
+          phoneBound: true,
+        );
+        setState(() => _submitting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('手机号绑定成功')),
+        );
+        final router = GoRouter.of(context);
+        router.canPop() ? router.pop(true) : router.go(AppRoutes.home);
+        return;
+      }
+      setState(() {
+        _submitting = false;
+        _error = failure.message;
+      });
+      return;
+    }
+
     final result = await ref.read(authRepositoryProvider).loginWithSms(
-      phone: _phoneCtrl.text.trim(),
-      code: _codeCtrl.text.trim(),
+      phone: phone,
+      code: code,
       agreementAccepted: _agreed,
     );
     if (!mounted) return;
 
     if (result.isSuccess) {
-      ref.read(authSessionProvider.notifier).signIn(result.session!);
       setState(() => _submitting = false);
-      // 用 pop 而非 go(home)：登录多半是从收藏/联系按钮弹上来的，
-      // 跳首页会让用户丢失原本正在看的那条信息，还得自己找回去。
-      final router = GoRouter.of(context);
-      if (router.canPop()) {
-        router.pop(true);
-      } else {
-        router.go(AppRoutes.home);
-      }
+      _completeLogin(result.session!);
       return;
     }
 
@@ -146,6 +185,68 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _submitting = false;
       _error = _errorTextOf(result);
     });
+  }
+
+  /// 微信授权登录（B2-6a：拉起微信 SDK → 取一次性 code → 契约登录）。
+  ///
+  /// 失败处置：用户取消授权视为正常流程（不展示错误）；通道未配置/微信未安装
+  /// 给出「暂未开放」明确提示；服务端错误由 `AuthRepository` 映射为具名原因。
+  Future<void> _wechatLogin() async {
+    if (_wechatBusy) return;
+    setState(() {
+      _wechatBusy = true;
+      _error = null;
+    });
+
+    try {
+      final code = await ref.read(wechatAuthBridgeProvider).requestCode();
+      final result = await ref.read(authRepositoryProvider).loginWithWechat(
+        code: code,
+        agreementAccepted: _agreed,
+      );
+      if (!mounted) return;
+      if (result.isSuccess) {
+        setState(() => _wechatBusy = false);
+        _completeLogin(result.session!);
+        return;
+      }
+      setState(() {
+        _wechatBusy = false;
+        _error = result.failure!.message;
+      });
+    } on WechatAuthCanceledException {
+      // 取消不是失败：静默回到登录页，不弹错误横幅。
+      if (!mounted) return;
+      setState(() => _wechatBusy = false);
+    } on WechatAuthUnavailableException {
+      if (!mounted) return;
+      setState(() {
+        _wechatBusy = false;
+        _error = AuthFailure.wechatUnavailable.message;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _wechatBusy = false;
+        _error = AuthFailure.networkError.message;
+      });
+    }
+  }
+
+  /// 登录成功收尾：写入会话并返回来源页（无上一页时回首页）。
+  ///
+  /// 参数：[session] 登录成功返回的会话。
+  /// 返回：void；页面随 pop/go 离开。
+  void _completeLogin(AuthSession session) {
+    ref.read(authSessionProvider.notifier).signIn(session);
+    // 用 pop 而非 go(home)：登录多半是从收藏/联系按钮弹上来的，
+    // 跳首页会让用户丢失原本正在看的那条信息，还得自己找回去。
+    final router = GoRouter.of(context);
+    if (router.canPop()) {
+      router.pop(true);
+    } else {
+      router.go(AppRoutes.home);
+    }
   }
 
   /// 把失败结果转成给用户看的一句话。
@@ -200,7 +301,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const SizedBox(height: AppSpacing.lg),
-              const _BrandHeader(),
+              widget.bindMode ? const _BindHeader() : const _BrandHeader(),
               const SizedBox(height: AppSpacing.xxl),
               _PhoneField(
                 controller: _phoneCtrl,
@@ -238,35 +339,90 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 const SizedBox(height: AppSpacing.md),
                 _ErrorBanner(message: _error!),
               ],
-              const SizedBox(height: AppSpacing.lg),
-              _AgreementRow(
-                agreed: _agreed,
-                onChanged: (v) => setState(() => _agreed = v),
-              ),
+              if (!widget.bindMode) ...[
+                const SizedBox(height: AppSpacing.lg),
+                _AgreementRow(
+                  agreed: _agreed,
+                  onChanged: (v) => setState(() => _agreed = v),
+                ),
+              ],
               const SizedBox(height: AppSpacing.lg),
               _SubmitButton(
                 enabled: _canSubmit,
                 busy: _submitting,
                 onPressed: _submit,
+                label: widget.bindMode ? '确认绑定' : null,
               ),
-              const SizedBox(height: AppSpacing.md),
-              Text(
-                // §3.4.1 底部文案，逐字照抄。
-                '未注册手机号验证后自动注册',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: AppTypeScale.small.size,
-                  height: AppTypeScale.small.lineHeight,
-                  color: const Color(AppColors.textSecondary),
+              if (!widget.bindMode) ...[
+                const SizedBox(height: AppSpacing.md),
+                Text(
+                  // §3.4.1 底部文案，逐字照抄。
+                  '未注册手机号验证后自动注册',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: AppTypeScale.small.size,
+                    height: AppTypeScale.small.lineHeight,
+                    color: const Color(AppColors.textSecondary),
+                  ),
                 ),
-              ),
-              const SizedBox(height: AppSpacing.xxl),
-              const _ThirdPartyRow(),
+                const SizedBox(height: AppSpacing.xxl),
+                _ThirdPartyRow(
+                  wechatEnabled: _agreed,
+                  wechatBusy: _wechatBusy,
+                  onWechatPressed: _wechatLogin,
+                ),
+              ],
               const SizedBox(height: AppSpacing.xl),
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+/// 绑定手机号模式头部（B2-6a）：说明「为什么现在必须绑定」。
+class _BindHeader extends StatelessWidget {
+  const _BindHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Container(
+          width: 72,
+          height: 72,
+          decoration: const BoxDecoration(
+            color: Color(AppColors.primaryLight),
+            shape: BoxShape.circle,
+          ),
+          alignment: Alignment.center,
+          child: const Icon(
+            Icons.verified_user_outlined,
+            size: 36,
+            color: Color(AppColors.primary),
+          ),
+        ),
+        const SizedBox(height: AppSpacing.md),
+        Text(
+          '绑定手机号',
+          style: TextStyle(
+            fontSize: AppTypeScale.h1.size,
+            height: AppTypeScale.h1.lineHeight,
+            fontWeight: FontWeight.w700,
+            color: const Color(AppColors.textPrimary),
+          ),
+        ),
+        const SizedBox(height: AppSpacing.xs),
+        Text(
+          '发布与联系需要先完成手机号绑定',
+          style: TextStyle(
+            fontSize: AppTypeScale.body.size,
+            height: AppTypeScale.body.lineHeight,
+            color: const Color(AppColors.textSecondary),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -512,11 +668,15 @@ class _SubmitButton extends StatelessWidget {
     required this.enabled,
     required this.busy,
     required this.onPressed,
+    this.label,
   });
 
   final bool enabled;
   final bool busy;
   final VoidCallback onPressed;
+
+  /// 按钮文案；null 时用登录页默认「登录 / 注册」。
+  final String? label;
 
   @override
   Widget build(BuildContext context) {
@@ -545,26 +705,40 @@ class _SubmitButton extends StatelessWidget {
                   ),
                 )
               // §3.4.1 按钮文案「登录 / 注册」—— 两者合并正是这一页的产品意图。
-              : const Text('登录 / 注册'),
+              : Text(label ?? '登录 / 注册'),
         ),
       ),
     );
   }
 }
 
-/// 第三方入口（§3.4.1「本期不实现，灰禁用」）。
+/// 第三方入口（B2-6a：微信已解除灰禁；QQ / Apple 仍暂未开放）。
 ///
-/// 灰禁用而非隐藏：§3.4.1 明确要求呈现出来。隐藏掉会让「本期不实现」
-/// 这个决定在验收时无从确认 —— 看不见的东西无法判断是漏做还是刻意不做。
+/// 微信按钮在协议勾选前禁用（与主按钮同口径：§3.8 协议未勾 → Disabled）；
+/// QQ / Apple 保持灰禁用而非隐藏 —— 隐藏会让「本期不实现」这个决定在验收时
+/// 无从确认，看不见的东西无法判断是漏做还是刻意不做。
 class _ThirdPartyRow extends StatelessWidget {
-  const _ThirdPartyRow();
+  const _ThirdPartyRow({
+    required this.wechatEnabled,
+    required this.wechatBusy,
+    required this.onWechatPressed,
+  });
+
+  /// 微信按钮是否可点（协议已勾且无进行中的授权）。
+  final bool wechatEnabled;
+
+  /// 微信授权是否进行中。
+  final bool wechatBusy;
+
+  /// 微信按钮点击回调。
+  final VoidCallback onWechatPressed;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
         Text(
-          '其他登录方式（本期未开放）',
+          '其他登录方式',
           style: TextStyle(
             fontSize: AppTypeScale.caption.size,
             color: const Color(AppColors.textPlaceholder),
@@ -574,27 +748,51 @@ class _ThirdPartyRow extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            for (final label in ['微信', 'QQ', 'Apple'])
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.sm,
-                ),
-                child: OutlinedButton(
-                  // onPressed: null 即禁用态，由框架给出灰化与不可点。
-                  onPressed: null,
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: Color(AppColors.border)),
-                    shape: const StadiumBorder(),
-                  ),
-                  child: Text(
-                    label,
-                    style: TextStyle(fontSize: AppTypeScale.small.size),
-                  ),
-                ),
-              ),
+            _thirdPartyButton(
+              '微信',
+              onPressed: wechatEnabled ? onWechatPressed : null,
+              busy: wechatBusy,
+            ),
+            for (final label in ['QQ', 'Apple'])
+              _thirdPartyButton(label, onPressed: null),
           ],
         ),
+        const SizedBox(height: AppSpacing.sm),
+        Text(
+          'QQ / Apple 暂未开放',
+          style: TextStyle(
+            fontSize: AppTypeScale.caption.size,
+            color: const Color(AppColors.textPlaceholder),
+          ),
+        ),
       ],
+    );
+  }
+
+  /// 构造单个第三方登录按钮（统一间距与禁用态样式）。
+  ///
+  /// 参数：[label] 按钮文案；[onPressed] 点击回调（null = 禁用）；
+  ///   [busy] 是否展示「授权中」占位文案。
+  /// 返回：[Widget] 胶囊按钮。
+  Widget _thirdPartyButton(
+    String label, {
+    required VoidCallback? onPressed,
+    bool busy = false,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+      child: OutlinedButton(
+        // onPressed: null 即禁用态，由框架给出灰化与不可点。
+        onPressed: busy ? null : onPressed,
+        style: OutlinedButton.styleFrom(
+          side: const BorderSide(color: Color(AppColors.border)),
+          shape: const StadiumBorder(),
+        ),
+        child: Text(
+          busy ? '授权中' : label,
+          style: TextStyle(fontSize: AppTypeScale.small.size),
+        ),
+      ),
     );
   }
 }

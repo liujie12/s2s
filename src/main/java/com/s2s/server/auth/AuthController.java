@@ -1,15 +1,20 @@
 package com.s2s.server.auth;
 
+import com.s2s.server.auth.dto.BindPhoneRequest;
+import com.s2s.server.auth.dto.BindWechatRequest;
 import com.s2s.server.auth.dto.DeviceUpsertRequest;
 import com.s2s.server.auth.dto.DeviceUpsertResult;
 import com.s2s.server.auth.dto.LoginRequest;
 import com.s2s.server.auth.dto.LoginResult;
+import com.s2s.server.auth.dto.MyProfile;
 import com.s2s.server.auth.dto.RefreshResult;
 import com.s2s.server.auth.dto.SendCodeRequest;
 import com.s2s.server.auth.dto.SendCodeResult;
 import com.s2s.server.auth.dto.WechatLoginRequest;
 import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
+import com.s2s.server.common.ratelimit.RateLimit;
+import com.s2s.server.common.ratelimit.RateLimitTrack;
 import com.s2s.server.common.web.AuthContext;
 import com.s2s.server.common.web.ClientIp;
 import jakarta.servlet.http.HttpServletRequest;
@@ -101,12 +106,64 @@ public class AuthController {
      * @param httpRequest 当前 HTTP 请求（取 X-Device-Id 头作设备指纹）
      * @return {@link LoginResult}（token + expire_at + is_new_user + user）
      * @throws BizException agreed=false → 40002；code 无效/过期 → 40001；
-     *                     微信服务器不可用 → 50302；凭据未配置 → 50001
+     *                     微信服务器不可用 → 50302；凭据未配置 → 50001；
+     *                     设备/IP 维限频超限 → 42905（架构 §5.1.1 门禁①）
      */
+    @RateLimit({RateLimitTrack.WECHAT_LOGIN_DEV, RateLimitTrack.WECHAT_LOGIN_IP})
     @PostMapping("/auth/wechat/login")
     public LoginResult wechatLogin(@Valid @RequestBody WechatLoginRequest request,
             HttpServletRequest httpRequest) {
         return authService.loginByWechat(request, httpRequest.getHeader(X_DEVICE_ID_HEADER));
+    }
+
+    /**
+     * 绑定手机号（{@code POST /auth/phone/bind}，B2-6a，登录态）。
+     *
+     * <p>懒绑定入口：微信用户点击发布/联系被 40302 拦截后进入绑定页。
+     * 手机号已属于其他账号时拒绝（40302，不自动合并）。</p>
+     *
+     * @param request     绑定请求（phone + code，经 @Valid 校验）
+     * @param httpRequest 当前 HTTP 请求（取登录态）
+     * @return {@link MyProfile} 更新后的本人资料
+     * @throws BizException 未登录 → 40101；验证码错误 → 40001；手机号冲突 → 40302
+     */
+    @PostMapping("/auth/phone/bind")
+    public MyProfile bindPhone(@Valid @RequestBody BindPhoneRequest request,
+            HttpServletRequest httpRequest) {
+        return authService.bindPhone(requireUserId(httpRequest), request);
+    }
+
+    /**
+     * 绑定微信（{@code POST /auth/wechat/bind}，B2-6a，登录态）。
+     *
+     * <p>设置页「绑定微信」入口：手机号老账号把微信身份挂到当前账号。
+     * 微信已属于其他账号时拒绝（40302，不迁移数据）。</p>
+     *
+     * @param request     绑定请求（微信授权 code，经 @Valid 校验）
+     * @param httpRequest 当前 HTTP 请求（取登录态）
+     * @return {@link MyProfile} 更新后的本人资料
+     * @throws BizException 未登录 → 40101；code 无效/unionid 缺失 → 40001；微信冲突 → 40302
+     */
+    @RateLimit({RateLimitTrack.WECHAT_LOGIN_DEV, RateLimitTrack.WECHAT_LOGIN_IP})
+    @PostMapping("/auth/wechat/bind")
+    public MyProfile bindWechat(@Valid @RequestBody BindWechatRequest request,
+            HttpServletRequest httpRequest) {
+        return authService.bindWechat(requireUserId(httpRequest), request);
+    }
+
+    /**
+     * 取登录态 userId，未登录抛 40101。
+     *
+     * @param request 当前 HTTP 请求
+     * @return {@link Long} 登录用户 ID
+     * @throws BizException 未登录 → 40101
+     */
+    private Long requireUserId(HttpServletRequest request) {
+        Long userId = AuthContext.currentUserId(request);
+        if (userId == null) {
+            throw BizException.of(ErrorCode.UNAUTHORIZED);
+        }
+        return userId;
     }
 
     /**

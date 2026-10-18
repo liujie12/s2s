@@ -44,6 +44,9 @@ class UserServiceTest {
     /** mock 的媒体审核。 */
     private MediaAuditChecker mediaAuditChecker;
 
+    /** mock 的身份绑定状态服务（B2-6a）。 */
+    private IdentityBindingService identityBindingService;
+
     /** 被测用户资料服务。 */
     private UserService userService;
 
@@ -57,7 +60,11 @@ class UserServiceTest {
         userMapper = mock(UserMapper.class);
         sensitiveWordChecker = mock(SensitiveWordChecker.class);
         mediaAuditChecker = mock(MediaAuditChecker.class);
-        userService = new UserService(userMapper, sensitiveWordChecker, mediaAuditChecker);
+        identityBindingService = mock(IdentityBindingService.class);
+        when(identityBindingService.isPhoneBound(1L)).thenReturn(true);
+        when(identityBindingService.isWechatBound(1L)).thenReturn(true);
+        userService = new UserService(userMapper, sensitiveWordChecker, mediaAuditChecker,
+                identityBindingService);
     }
 
     /**
@@ -76,6 +83,8 @@ class UserServiceTest {
         assertThat(profile.nickname()).isEqualTo("昵称");
         assertThat(profile.phoneMask()).isEqualTo("138****8000");
         assertThat(profile.defaultRadius()).isEqualTo("3");
+        assertThat(profile.phoneBound()).isTrue();
+        assertThat(profile.wechatBound()).isTrue();
         // MyProfile 类型无 realNameEnc / idCardHash 字段，白名单投影由类型保证
     }
 

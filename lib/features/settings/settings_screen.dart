@@ -17,6 +17,8 @@ import 'package:go_router/go_router.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/ui/list_states.dart';
 import '../../design_tokens.dart';
+import '../auth/auth_repository.dart';
+import '../auth/wechat_auth_bridge.dart';
 import '../profile/profile_provider.dart';
 import 'settings_dto.dart';
 import 'settings_provider.dart';
@@ -37,7 +39,9 @@ class SettingsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final settingsAsync = ref.watch(settingsProvider);
-    final phoneMask = ref.watch(myProfileProvider).asData?.value.phoneMask;
+    final profile = ref.watch(myProfileProvider).asData?.value;
+    final phoneMask = profile?.phoneMask;
+    final wechatBound = profile?.wechatBound;
 
     return Scaffold(
       backgroundColor: Color(AppColors.background),
@@ -66,7 +70,7 @@ class SettingsScreen extends ConsumerWidget {
           error: asApiException(error),
           onRetry: () => ref.read(settingsProvider.notifier).refresh(),
         ),
-        data: (settings) => _buildBody(context, ref, settings, phoneMask),
+        data: (settings) => _buildBody(context, ref, settings, phoneMask, wechatBound),
       ),
     );
   }
@@ -74,13 +78,14 @@ class SettingsScreen extends ConsumerWidget {
   /// 设置正文（四组）。
   ///
   /// 参数：[context] 构建上下文；[ref] Riverpod 句柄；[settings] 设置数据；
-  ///   [phoneMask] 脱敏手机号（可空）。
+  ///   [phoneMask] 脱敏手机号（可空）；[wechatBound] 微信绑定态（可空）。
   /// 返回：Widget。
   Widget _buildBody(
     BuildContext context,
     WidgetRef ref,
     SettingsDto settings,
     String? phoneMask,
+    bool? wechatBound,
   ) {
     return ListView(
       padding: EdgeInsets.zero,
@@ -90,6 +95,12 @@ class SettingsScreen extends ConsumerWidget {
           label: '手机号',
           value: phoneMask,
           onTap: () => _notOpen(context),
+        ),
+        // B2-6a：手机号老账号反向绑定微信（冲突引导的闭环入口）
+        _SettingRow(
+          label: '微信',
+          value: wechatBound == null ? null : (wechatBound ? '已绑定' : '未绑定'),
+          onTap: () => _bindWechat(context, ref, wechatBound),
         ),
         _SettingRow(label: '修改密码', value: null, onTap: () => _notOpen(context)),
         _SettingRow(label: '注销账号', value: null, onTap: () => _notOpen(context)),
@@ -151,6 +162,45 @@ class SettingsScreen extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  /// 绑定微信（B2-6a 设置页入口）。
+  ///
+  /// 参数：[context] 构建上下文；[ref] Riverpod 句柄；[bound] 当前绑定态。
+  /// 返回：[Future<void>]。
+  Future<void> _bindWechat(
+    BuildContext context,
+    WidgetRef ref,
+    bool? bound,
+  ) async {
+    if (bound == true) {
+      _toast(context, '微信已绑定');
+      return;
+    }
+    try {
+      final code = await ref.read(wechatAuthBridgeProvider).requestCode();
+      final failure = await ref
+          .read(authRepositoryProvider)
+          .bindWechat(code: code);
+      if (!context.mounted) return;
+      if (failure != null) {
+        _toast(context, failure.message);
+        return;
+      }
+      ref.read(authSessionProvider.notifier).updateIdentityFlags(
+        wechatBound: true,
+      );
+      ref.invalidate(myProfileProvider);
+      _toast(context, '微信绑定成功');
+    } on WechatAuthCanceledException {
+      // 用户取消授权：正常流程，不提示。
+    } on WechatAuthUnavailableException {
+      if (context.mounted) {
+        _toast(context, AuthFailure.wechatUnavailable.message);
+      }
+    } catch (_) {
+      if (context.mounted) _toast(context, AuthFailure.networkError.message);
+    }
   }
 
   /// 切换消息通知总开关（PATCH）。

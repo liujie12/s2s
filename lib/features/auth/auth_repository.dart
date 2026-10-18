@@ -58,7 +58,24 @@ enum AuthFailure {
   resendTooSoon('请稍后再获取验证码'),
 
   /// 网络或服务端异常。
-  networkError('网络异常，请稍后重试');
+  networkError('网络异常，请稍后重试'),
+
+  /// 微信授权失败（服务端 40001：code 无效/过期/已使用）。
+  wechatFailed('微信授权失败，请重试'),
+
+  /// 微信登录通道不可用（AppID 未配置 / SDK 未接入 / 微信未安装）。
+  wechatUnavailable('微信登录暂未开放，请改用手机号登录'),
+
+  /// 绑定手机号冲突：该号已属于其他账号（B2-6a，不自动合并）。
+  ///
+  /// 引导用户直接用手机号登录；当前微信账号保持未绑定，可改绑其他号码。
+  phoneAlreadyRegistered('该手机号已注册，请直接用手机号登录'),
+
+  /// 绑定微信冲突：该微信已属于其他账号（B2-6a，不迁移数据）。
+  wechatAlreadyBound('该微信已绑定其他账号，请更换微信或使用手机号登录'),
+
+  /// 通用限频（微信登录设备维/IP 维各 20/h，服务端 42905）。
+  tooManyRequests('操作过于频繁，请稍后再试');
 
   const AuthFailure(this.message);
 
@@ -109,6 +126,8 @@ class AuthSession {
     required this.expireAt,
     required this.isNewUser,
     this.realNameVerified = false,
+    this.phoneBound = true,
+    this.wechatBound = false,
   });
 
   final String userId;
@@ -117,6 +136,8 @@ class AuthSession {
   ///
   /// 存完整值：这是**本人**的号码，个人中心要显示、改绑要用。§3.7 的脱敏
   /// 规则针对的是「别人的联系方式」，两件事不要混。
+  /// 微信登录用户无手机号，本字段取服务端 `user.phone_mask` 的展示占位
+  /// （「微信用户 + openid 后 6 位」），不代表已绑定手机号。
   final String phone;
 
   /// 会话 Token。
@@ -137,6 +158,32 @@ class AuthSession {
   /// 未实名不是「未登录」：§3.8 明确未实名仍可登录、可发受限态帖子。
   /// 两者合成一个 bool 会让「登录了但没实名」这一大类用户无处可归。
   final bool realNameVerified;
+
+  /// 是否已绑定手机号（B2-6a；懒绑定下微信用户可能为 false）。
+  ///
+  /// 发布/联系门禁依据：服务端对未绑定账号回 40302，前端据此引导绑定页。
+  /// 老会话（字段缺失）默认 true —— 历史会话只可能来自手机号登录。
+  final bool phoneBound;
+
+  /// 是否已绑定微信（B2-6a；设置页「绑定微信」状态）。
+  final bool wechatBound;
+
+  /// 复制并覆盖身份绑定标记（绑定手机号/微信成功后更新本地会话）。
+  ///
+  /// 参数：[phoneBound] 新手机号绑定态；[wechatBound] 新微信绑定态。
+  /// 返回：[AuthSession] 更新后的会话（其余字段原样保留）。
+  AuthSession withIdentityFlags({bool? phoneBound, bool? wechatBound}) {
+    return AuthSession(
+      userId: userId,
+      phone: phone,
+      token: token,
+      expireAt: expireAt,
+      isNewUser: isNewUser,
+      realNameVerified: realNameVerified,
+      phoneBound: phoneBound ?? this.phoneBound,
+      wechatBound: wechatBound ?? this.wechatBound,
+    );
+  }
 
   /// Token 是否已过期。
   ///
@@ -160,6 +207,8 @@ class AuthSession {
         'expire_at': expireAt.toIso8601String(),
         'is_new_user': isNewUser,
         'real_name_verified': realNameVerified,
+        'phone_bound': phoneBound,
+        'wechat_bound': wechatBound,
       };
 
   /// 从持久化 JSON 反序列化会话。
@@ -188,6 +237,9 @@ class AuthSession {
       expireAt: expireAt,
       isNewUser: json['is_new_user'] as bool? ?? false,
       realNameVerified: json['real_name_verified'] as bool? ?? false,
+      // 老会话没有这两个键：历史会话来自手机号登录，故 phone_bound 默认 true
+      phoneBound: json['phone_bound'] as bool? ?? true,
+      wechatBound: json['wechat_bound'] as bool? ?? false,
     );
   }
 }
@@ -230,13 +282,18 @@ class AuthRepository {
 
   /// 发送短信验证码（§12.2 `POST /auth/sms/send`）。
   ///
-  /// 参数 [phone] 手机号；[now] 当前时刻（注入以便测试）。
+  /// 参数 [phone] 手机号；[now] 当前时刻（注入以便测试）；
+  ///   [scene] 验证码场景：`login`（默认，登录/注册）或 `bind`（B2-6a 绑定手机号）。
   /// 返回失败原因，**null 表示已发送成功**。
   ///
   /// 不复用 [AuthResult]：发码不产生会话，硬塞进那个类型会出现
   /// 「成功了但 session 是 null」的结果，而 [AuthResult.isSuccess] 正是靠
   /// session 判定的 —— 那样每个调用点都得记住「发码这里别看 isSuccess」。
-  Future<AuthFailure?> sendCode(String phone, {DateTime? now}) async {
+  Future<AuthFailure?> sendCode(
+    String phone, {
+    DateTime? now,
+    String scene = 'login',
+  }) async {
     final at = now ?? DateTime.now();
 
     if (!isValidPhone(phone)) return AuthFailure.invalidPhone;
@@ -244,7 +301,7 @@ class AuthRepository {
     try {
       await _dio.post<Object?>(
         '/auth/sms/send',
-        data: {'phone': phone, 'scene': 'login'},
+        data: {'phone': phone, 'scene': scene},
       );
       _lastSentAt[phone] = at;
       return null;
@@ -288,6 +345,101 @@ class AuthRepository {
       return AuthResult.success(session);
     } catch (e) {
       return _mapLoginFailure(e, at);
+    }
+  }
+
+  /// 微信授权登录（B2-6a，契约 `POST /auth/wechat/login`，含首次自动注册）。
+  ///
+  /// 参数 [code] 由 [WechatAuthBridge] 拉起微信 SDK 取得的一次性授权码；
+  /// [agreementAccepted] 协议是否已勾（§12.2 必 true）。
+  /// 返回 [AuthResult]：成功携 [AuthSession]（微信用户无手机号，`phone` 取服务端
+  ///   返回的 `user.phone_mask` 展示占位），失败携具名原因。
+  Future<AuthResult> loginWithWechat({
+    required String code,
+    required bool agreementAccepted,
+  }) async {
+    if (code.trim().isEmpty) {
+      return const AuthResult.failure(AuthFailure.wechatFailed);
+    }
+    if (!agreementAccepted) {
+      return const AuthResult.failure(AuthFailure.agreementNotAccepted);
+    }
+
+    try {
+      final response = await _dio.post<Object?>(
+        '/auth/wechat/login',
+        data: {
+          'code': code,
+          'agreed': agreementAccepted,
+          'platform': _platformName,
+        },
+      );
+      return AuthResult.success(_parseLoginResult(response.data, null));
+    } catch (e) {
+      return _mapWechatFailure(e);
+    }
+  }
+
+  /// 绑定手机号（B2-6a，契约 `POST /auth/phone/bind`，登录态）。
+  ///
+  /// 参数 [phone] 待绑定手机号；[code] `scene=bind` 下发的 6 位验证码。
+  /// 返回失败原因，**null 表示绑定成功**。
+  ///
+  /// 冲突（40302）→ [AuthFailure.phoneAlreadyRegistered]：服务端不自动合并，
+  /// 客户端引导用户改用手机号登录。验证码错误（40001）→ [AuthFailure.wrongCode]。
+  Future<AuthFailure?> bindPhone({
+    required String phone,
+    required String code,
+  }) async {
+    if (!isValidPhone(phone)) return AuthFailure.invalidPhone;
+    if (!RegExp(r'^\d{6}$').hasMatch(code)) return AuthFailure.wrongCode;
+
+    try {
+      await _dio.post<Object?>(
+        '/auth/phone/bind',
+        data: {'phone': phone, 'code': code},
+      );
+      _lastSentAt.remove(phone);
+      return null;
+    } catch (e) {
+      final api = _asApiException(e);
+      switch (api.code) {
+        case ApiErrorCode.qualificationNeeded:
+          return AuthFailure.phoneAlreadyRegistered;
+        case ApiErrorCode.smsLimit:
+          return AuthFailure.tooManyRequests;
+        case ApiErrorCode.paramInvalid:
+          return AuthFailure.wrongCode;
+        default:
+          return AuthFailure.networkError;
+      }
+    }
+  }
+
+  /// 绑定微信（B2-6a，契约 `POST /auth/wechat/bind`，登录态）。
+  ///
+  /// 参数 [code] 微信 SDK 返回的一次性授权码。
+  /// 返回失败原因，**null 表示绑定成功**。
+  ///
+  /// 冲突（40302）→ [AuthFailure.wechatAlreadyBound]：服务端不迁移数据。
+  Future<AuthFailure?> bindWechat({required String code}) async {
+    if (code.trim().isEmpty) return AuthFailure.wechatFailed;
+
+    try {
+      await _dio.post<Object?>('/auth/wechat/bind', data: {'code': code});
+      return null;
+    } catch (e) {
+      final api = _asApiException(e);
+      switch (api.code) {
+        case ApiErrorCode.qualificationNeeded:
+          return AuthFailure.wechatAlreadyBound;
+        case ApiErrorCode.smsLimit:
+          return AuthFailure.tooManyRequests;
+        case ApiErrorCode.paramInvalid:
+          return AuthFailure.wechatFailed;
+        default:
+          return AuthFailure.networkError;
+      }
     }
   }
 
@@ -348,13 +500,37 @@ class AuthRepository {
     }
   }
 
+  /// 把微信登录异常映射为失败结果（B2-6a；错误码复用既有 25 码，不新增）。
+  ///
+  /// 参数：[error] catch 到的异常（DioException 包 ApiException 或裸 ApiException）。
+  /// 返回：[AuthResult] 协议 → agreementNotAccepted；42905（设备/IP 维限频）→
+  ///   tooManyRequests；40001（code 无效）→ wechatFailed；其余 → networkError。
+  ///
+  /// 注：服务端 50001/50302 属 5xx，按全仓统一口径由信封拦截器归一为
+  /// `networkFailure`（可重试），本层拿不到原码 —— 与其余接口处置一致，
+  /// 不为微信单开 5xx 特例。凭据未配置时前端先由「通道未配置」桥兜底。
+  AuthResult _mapWechatFailure(Object error) {
+    final api = _asApiException(error);
+    switch (api.code) {
+      case ApiErrorCode.agreementRequired:
+        return const AuthResult.failure(AuthFailure.agreementNotAccepted);
+      case ApiErrorCode.smsLimit:
+        return const AuthResult.failure(AuthFailure.tooManyRequests);
+      case ApiErrorCode.paramInvalid:
+        return const AuthResult.failure(AuthFailure.wechatFailed);
+      default:
+        return const AuthResult.failure(AuthFailure.networkError);
+    }
+  }
+
   /// 解析登录响应为会话（§12.2 LoginResult：token/expire_at/is_new_user/user）。
   ///
   /// 参数：[data] EnvelopeInterceptor 拆出的信封 data（LoginResult）；[phone] 用户
   ///   输入的完整手机号（服务端只回脱敏 phone_mask，完整号只能取输入值）。
+  ///   微信登录无手机号输入，传 null，改取 `user.phone_mask` 作展示占位。
   /// 返回：[AuthSession] 会话。
   /// 抛出：[ApiException.parse] 字段缺失/类型不符时（不静默吞，§10.3）。
-  AuthSession _parseLoginResult(Object? data, String phone) {
+  AuthSession _parseLoginResult(Object? data, String? phone) {
     if (data is! Map) {
       throw ApiException.parse(
         '登录响应 data 应为 Map，实际: ${data.runtimeType}',
@@ -373,13 +549,39 @@ class AuthRepository {
     if (isNewUser is! bool) {
       throw ApiException.parse('登录响应 data.is_new_user 缺失: $isNewUser');
     }
+    final user = data['user'];
     return AuthSession(
-      userId: _parseUserId(data['user']),
-      phone: phone,
+      userId: _parseUserId(user),
+      phone: phone ?? _parsePhoneMask(user),
       token: token,
       expireAt: expireAt,
       isNewUser: isNewUser,
+      phoneBound: _parseUserBool(user, 'phone_bound', fallback: true),
+      wechatBound: _parseUserBool(user, 'wechat_bound', fallback: false),
     );
+  }
+
+  /// 从 LoginResult.user 取布尔型身份标记（缺失/类型不符时回退默认值）。
+  ///
+  /// 参数：[user] 登录响应 data.user；[key] 字段名；
+  ///   [fallback] 字段缺失或非 bool 时的兜底值。
+  /// 返回：[bool] 字段值或兜底值。
+  bool _parseUserBool(Object? user, String key, {required bool fallback}) {
+    if (user is Map && user[key] is bool) return user[key] as bool;
+    return fallback;
+  }
+
+  /// 从 LoginResult.user（MyProfile）取 `phone_mask`（微信用户无真实手机号，
+  /// 服务端以「微信用户 + unionid 后 6 位」作展示占位）。
+  ///
+  /// 参数：[user] 登录响应 data.user（MyProfile）。
+  /// 返回：[String] 脱敏展示串；字段缺失/非 String 时返回空串（展示层自行省略）。
+  String _parsePhoneMask(Object? user) {
+    if (user is Map) {
+      final mask = user['phone_mask'];
+      if (mask is String) return mask;
+    }
+    return '';
   }
 
   /// 从 LoginResult.user（MyProfile）取 userId（int64 → String）。
@@ -500,6 +702,23 @@ class AuthSessionNotifier extends Notifier<AuthSession?> {
       expireAt: expireAt,
       isNewUser: current.isNewUser,
       realNameVerified: current.realNameVerified,
+      phoneBound: current.phoneBound,
+      wechatBound: current.wechatBound,
+    );
+    state = next;
+    _persist(next);
+  }
+
+  /// 绑定手机号/微信成功后更新会话身份标记（不推进代次、不更换 Token）。
+  ///
+  /// 参数：[phoneBound] 新手机号绑定态；[wechatBound] 新微信绑定态。
+  /// 返回：void；当前无会话时忽略。
+  void updateIdentityFlags({bool? phoneBound, bool? wechatBound}) {
+    final current = state;
+    if (current == null) return;
+    final next = current.withIdentityFlags(
+      phoneBound: phoneBound,
+      wechatBound: wechatBound,
     );
     state = next;
     _persist(next);

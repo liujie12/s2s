@@ -9,7 +9,8 @@ import org.junit.jupiter.api.Test;
 /**
  * {@link RateLimitTrack} 枚举绑定守门测试（[122] U1；架构验证 D7）。
  *
- * <p>职责：断言 11 轨逐轨与 {@link RateLimitThresholds} 常量的<b>绑定关系</b>——
+ * <p>职责：断言 13 轨（原 11 行 + B2-6a 追加的微信登录设备/IP 两轨）逐轨与
+ * {@link RateLimitThresholds} 常量的<b>绑定关系</b>——
  * 本测试不写死数字（「常量 vs 详设 §3.4」的值对账归 {@code RateLimitThresholdsTest}），
  * 只锁「轨定义 → 常量引用」一层：多窗口轨 SMS_PHONE 的三个规则必须逐一绑定
  * 对应窗口的常量（防第 2 窗误绑第 3 窗阈值这类「绑错常量」缺陷），超限码断言
@@ -21,13 +22,13 @@ import org.junit.jupiter.api.Test;
 class RateLimitTrackTest {
 
     /**
-     * 断言轨总数恰为 11（详设 §3.4 键表 11 行的逐行映射，一行一轨）。
+     * 断言轨总数恰为 13（详设 §3.4 键表 11 行 + B2-6a 追加的微信登录两轨，一行一轨）。
      *
      * @return void；断言失败即轨被增删，键表映射不再一一对应
      */
     @Test
-    void trackCountIsExactly11() {
-        assertThat(RateLimitTrack.values()).hasSize(11);
+    void trackCountIsExactly13() {
+        assertThat(RateLimitTrack.values()).hasSize(13);
     }
 
     /**
@@ -56,7 +57,7 @@ class RateLimitTrackTest {
     }
 
     /**
-     * 断言其余 10 个单窗口轨各绑定恰 1 个规则，且三元组逐轨与
+     * 断言其余 12 个单窗口轨各绑定恰 1 个规则，且三元组逐轨与
      * {@link RateLimitThresholds} 对应常量相等（绑定对账，含登录失败轨窗口秒
      * 绑定锁定时长常量而非通用窗口档）。
      * 依据：详设 §3.4 行 2–11 每行单窗口；窗口秒来源逐轨见常量注释。
@@ -105,6 +106,14 @@ class RateLimitTrackTest {
                 RateLimitThresholds.GUEST_DETAIL_IP_LIMIT_PER_DAY,
                 RateLimitThresholds.WINDOW_DAY_SECONDS,
                 RateLimitThresholds.GUEST_DETAIL_OVERFLOW);
+        assertSingleRule(RateLimitTrack.WECHAT_LOGIN_DEV,
+                RateLimitThresholds.WECHAT_LOGIN_DEV_LIMIT_PER_HOUR,
+                RateLimitThresholds.WINDOW_HOUR_SECONDS,
+                RateLimitThresholds.WECHAT_LOGIN_OVERFLOW);
+        assertSingleRule(RateLimitTrack.WECHAT_LOGIN_IP,
+                RateLimitThresholds.WECHAT_LOGIN_IP_LIMIT_PER_HOUR,
+                RateLimitThresholds.WINDOW_HOUR_SECONDS,
+                RateLimitThresholds.WECHAT_LOGIN_OVERFLOW);
     }
 
     /**

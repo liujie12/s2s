@@ -17,6 +17,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zhaoyazhao/features/auth/auth_repository.dart';
 import 'package:zhaoyazhao/features/auth/login_screen.dart';
+import 'package:zhaoyazhao/features/auth/wechat_auth_bridge.dart';
 
 /// 测试用假仓库：不触网，直接返回可控结果（页面交互逻辑的观察对象）。
 ///
@@ -33,12 +34,29 @@ class _FakeAuthRepository extends AuthRepository {
   /// 是否已发码（驱动 resendCooldownLeft 返回 60s 冷却）。
   bool _sent = false;
 
+  /// 最近一次发码使用的 scene（测试绑定模式时校验 `bind`）。
+  String? lastScene;
+
   @override
-  Future<AuthFailure?> sendCode(String phone, {DateTime? now}) async {
+  Future<AuthFailure?> sendCode(
+    String phone, {
+    DateTime? now,
+    String scene = 'login',
+  }) async {
     if (!AuthRepository.isValidPhone(phone)) return AuthFailure.invalidPhone;
+    lastScene = scene;
     _sent = true;
     return null;
   }
+
+  @override
+  Future<AuthFailure?> bindPhone({
+    required String phone,
+    required String code,
+  }) async => bindPhoneFailure;
+
+  /// 绑定手机号的预设失败（null = 成功）。
+  AuthFailure? bindPhoneFailure;
 
   @override
   Duration resendCooldownLeft(String phone, {DateTime? now}) =>
@@ -70,21 +88,60 @@ class _FakeAuthRepository extends AuthRepository {
     }
     return const AuthResult.failure(AuthFailure.wrongCode);
   }
+
+  @override
+  Future<AuthResult> loginWithWechat({
+    required String code,
+    required bool agreementAccepted,
+  }) async {
+    if (!agreementAccepted) {
+      return const AuthResult.failure(AuthFailure.agreementNotAccepted);
+    }
+    // 页面测试不进入成功分支（成功会 pop 路由），固定回「暂未开放」。
+    return const AuthResult.failure(AuthFailure.wechatUnavailable);
+  }
+}
+
+/// 测试用微信授权桥：可控抛取消 / 抛未配置（成功时返回固定 code）。
+class _FakeWechatBridge implements WechatAuthBridge {
+  _FakeWechatBridge({this.error});
+
+  /// 非 null 时 `requestCode` 抛出该异常。
+  final Object? error;
+
+  @override
+  bool get isAvailable => error is! WechatAuthUnavailableException;
+
+  @override
+  Future<String> requestCode() async {
+    final failure = error;
+    if (failure != null) throw failure;
+    return 'wx-code';
+  }
 }
 
 void main() {
   /// 挂载登录页。
   ///
-  /// 参数 [tester] 测试驱动器。
+  /// 参数 [tester] 测试驱动器；[bridge] 可选微信授权桥（默认走真实 Provider 的
+  /// 「未配置」实现）；[repo] 可选假仓库（默认新建）；[bindMode] 是否以绑定
+  /// 手机号模式挂载。
   /// 不套 GoRouter：本页构建期不触碰路由，只有关闭按钮与成功分支才会用到。
   /// 经 [authRepositoryProvider] 注入不触网的假仓库。
-  Future<void> pumpLogin(WidgetTester tester) async {
+  Future<void> pumpLogin(
+    WidgetTester tester, {
+    WechatAuthBridge? bridge,
+    _FakeAuthRepository? repo,
+    bool bindMode = false,
+  }) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          authRepositoryProvider.overrideWithValue(_FakeAuthRepository()),
+          authRepositoryProvider.overrideWithValue(repo ?? _FakeAuthRepository()),
+          if (bridge != null)
+            wechatAuthBridgeProvider.overrideWithValue(bridge),
         ],
-        child: const MaterialApp(home: LoginScreen()),
+        child: MaterialApp(home: LoginScreen(bindMode: bindMode)),
       ),
     );
   }
@@ -171,14 +228,14 @@ void main() {
       await unmount(tester);
     });
 
-    testWidgets('第三方入口呈现但禁用（§3.4.1 本期不实现）', (tester) async {
+    testWidgets('第三方入口呈现但未勾协议时禁用（§3.4.1 / §3.8）', (tester) async {
       await pumpLogin(tester);
       for (final label in ['微信', 'QQ', 'Apple']) {
         final button = tester.widget<OutlinedButton>(
           find.widgetWithText(OutlinedButton, label),
         );
         // 隐藏掉会让「本期不实现」这个决定在验收时无从确认。
-        expect(button.onPressed, isNull, reason: '$label 应为灰禁用而非可点');
+        expect(button.onPressed, isNull, reason: '未勾协议时 $label 应为禁用');
       }
       await unmount(tester);
     });
@@ -297,6 +354,85 @@ void main() {
       // 再推进几秒，横条必须还在 —— 用户要对照它改输入。
       await tester.pump(const Duration(seconds: 3));
       expect(find.text(AuthFailure.wrongCode.message), findsOneWidget);
+      await unmount(tester);
+    });
+  });
+
+  group('微信登录（B2-6a）', () {
+    /// 取微信按钮当前是否可点。
+    ///
+    /// 参数 [tester] 测试驱动器。返回 true 表示可点。
+    bool wechatEnabled(WidgetTester tester) {
+      final button = tester.widget<OutlinedButton>(
+        find.widgetWithText(OutlinedButton, '微信'),
+      );
+      return button.onPressed != null;
+    }
+
+    testWidgets('勾协议后微信可点，QQ / Apple 仍禁用', (tester) async {
+      await pumpLogin(tester);
+      await tester.tap(find.byType(Checkbox));
+      await tester.pump();
+
+      expect(wechatEnabled(tester), isTrue, reason: 'B2-6a 已解除微信灰禁');
+      for (final label in ['QQ', 'Apple']) {
+        final button = tester.widget<OutlinedButton>(
+          find.widgetWithText(OutlinedButton, label),
+        );
+        expect(button.onPressed, isNull, reason: '$label 仍暂未开放');
+      }
+      await unmount(tester);
+    });
+
+    testWidgets('通道未配置（AppID 未到位）→ 明确提示暂未开放', (tester) async {
+      await pumpLogin(tester);
+      await tester.tap(find.byType(Checkbox));
+      await tester.pump();
+      await tester.tap(find.text('微信'));
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text(AuthFailure.wechatUnavailable.message), findsOneWidget);
+      await unmount(tester);
+    });
+
+    testWidgets('用户取消授权 → 不展示错误横幅', (tester) async {
+      await pumpLogin(
+        tester,
+        bridge: _FakeWechatBridge(error: const WechatAuthCanceledException()),
+      );
+      await tester.tap(find.byType(Checkbox));
+      await tester.pump();
+      await tester.tap(find.text('微信'));
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text(AuthFailure.wechatUnavailable.message), findsNothing);
+      expect(find.text(AuthFailure.networkError.message), findsNothing);
+      await unmount(tester);
+    });
+  });
+
+  group('绑定手机号模式（B2-6a）', () {
+    testWidgets('复用登录表单：scene=bind、无协议门、冲突引导切换登录', (tester) async {
+      final repo = _FakeAuthRepository()
+        ..bindPhoneFailure = AuthFailure.phoneAlreadyRegistered;
+      await pumpLogin(tester, repo: repo, bindMode: true);
+
+      expect(find.text('绑定手机号'), findsOneWidget);
+      expect(find.text('确认绑定'), findsOneWidget);
+      // 绑定前已登录并同意过协议，不再重复弹协议门
+      expect(find.byType(Checkbox), findsNothing);
+
+      await fillPhoneAndCode(tester, code: '888888');
+      expect(repo.lastScene, 'bind', reason: '绑定模式必须用 scene=bind 下发验证码');
+
+      await tester.tap(find.text('确认绑定'));
+      await settleAsync(tester);
+      expect(
+        find.text(AuthFailure.phoneAlreadyRegistered.message),
+        findsOneWidget,
+      );
       await unmount(tester);
     });
   });
