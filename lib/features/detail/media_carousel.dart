@@ -24,6 +24,7 @@ import '../../domain/listing_category.dart';
 // 配色与图标是 ListingCategory 的 style 扩展（枚举本体保持纯 Dart，见
 // detail_screen.dart 同处说明），占位块取色须引它。
 import '../../domain/listing_category_style.dart';
+import '../media/media_display_layout.dart';
 
 /// 顶部媒体轮播（图片）。
 class MediaCarousel extends StatefulWidget {
@@ -91,7 +92,7 @@ class _MediaCarouselState extends State<MediaCarousel> {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(AppRadius.xl),
         child: SizedBox(
-          height: _mediaBlockHeight,
+          height: kDetailMediaBlockHeight,
           child: Stack(
             children: [
               PageView.builder(
@@ -136,8 +137,7 @@ class _MediaCarouselState extends State<MediaCarousel> {
   }
 }
 
-/// 媒体区块高（PRD §7.4.1 顶部媒体区；与改造前占位块同值，保证下方内容不移位）。
-const double _mediaBlockHeight = 200;
+// 区块高与裁剪比例共用 `media_display_layout.dart`，此处不再另存一份常量。
 
 /// 底部渐变遮罩高度（计数器所在区域，只压暗这一条，不压整图）。
 const double _scrimHeight = 40;
@@ -280,7 +280,7 @@ class _PlaceholderBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: _mediaBlockHeight,
+      height: kDetailMediaBlockHeight,
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,

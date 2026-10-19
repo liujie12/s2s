@@ -13,7 +13,8 @@
 ///
 /// **已知遗留**：契约无「删除媒体」端点，移除已 commit 的条目只从 `media_ids`
 /// 摘除，服务端对象成孤儿（24h 定时清理只覆盖 `pending` 未 commit 记录）。
-/// 该缺口属服务端 GC 议题，未在客户端伪造删除。
+/// 该缺口属服务端 GC 议题，未在客户端伪造删除；已上传条目再次裁剪同样会以
+/// 新对象替换旧对象，旧对象落入同一缺口。
 library;
 
 import 'dart:typed_data';
@@ -23,6 +24,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_exception.dart';
 import '../../design_tokens.dart';
+import '../media/media_cropper.dart';
+import '../media/media_display_layout.dart';
 import '../media/media_picker.dart';
 import '../media/media_upload_service.dart';
 import 'publish_form_state.dart';
@@ -152,6 +155,42 @@ class _MediaSectionState extends ConsumerState<MediaSection> {
     }
   }
 
+  /// 裁剪单张本地图片（可选入口；取消返回 null 时什么都不做）。
+  ///
+  /// 裁剪结果会替换原条目并重新上传：`crop_your_image` 输出 PNG，媒体段拿到
+  /// 的是已归一化的 JPEG 字节。已上传条目会丢失旧 mediaId（见文件头遗留说明）。
+  ///
+  /// 参数：[item] 待裁剪条目（必须仍有本地字节且不在上传中）。
+  /// 返回：[Future<void>]。
+  Future<void> _crop(_MediaUpload item) async {
+    final bytes = item.bytes;
+    if (bytes == null || item.uploading) return;
+
+    final cropped = await ref.read(mediaCropLauncherProvider)(
+      context,
+      source: PickedMedia(
+        filename: item.filename,
+        bytes: bytes,
+        contentType: item.contentType,
+      ),
+      aspectRatio: detailMediaAspectRatio(context),
+    );
+    if (cropped == null || !mounted) return;
+
+    final index = _items.indexOf(item);
+    if (index < 0) return;
+    final replacement = _MediaUpload(
+      filename: cropped.filename,
+      bytes: cropped.bytes,
+      contentType: cropped.contentType,
+    );
+    setState(() => _items[index] = replacement);
+    // 立刻把旧 mediaId 从表单摘掉：否则用户在重传完成前点发布，会把「未裁剪
+    // 的旧图」静默提交，与用户刚做的裁剪动作相反。
+    _sync();
+    await _upload(replacement);
+  }
+
   /// 上传单条（失败不自动重试，交由用户点按重试——红线：前端唯一自动重试点是
   /// RetryInterceptor，features 内禁循环重试）。
   ///
@@ -237,6 +276,14 @@ class _MediaSectionState extends ConsumerState<MediaSection> {
                 item: item,
                 onRemove: () => _remove(item),
                 onRetry: () => _upload(item),
+                // 只有仍有本地字节、不在上传中、且没有待重试错误的条目才能裁剪：
+                // 上传中替换会让在途请求的结果落到已丢弃的对象上；失败态整块是
+                // 「重试」按钮，再叠裁剪入口会互相抢点击。
+                onCrop: item.bytes != null &&
+                        !item.uploading &&
+                        item.error == null
+                    ? () => _crop(item)
+                    : null,
               ),
             if (_items.length < widget.maxCount)
               _AddTile(enabled: canAdd, onTap: _pickAndUpload),
@@ -250,6 +297,31 @@ class _MediaSectionState extends ConsumerState<MediaSection> {
             color: const Color(AppColors.textPlaceholder),
           ),
         ),
+        // 只在存在可裁剪的本地图片时提示：编辑态的远程既有媒体没有本地字节，
+        // 提示了也点不了，反而制造「功能坏了」的错觉。
+        if (_items.any((item) => item.bytes != null))
+          Padding(
+            padding: const EdgeInsets.only(top: AppSpacing.xs),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.content_cut,
+                  size: 12,
+                  color: Color(AppColors.textPlaceholder),
+                ),
+                const SizedBox(width: AppSpacing.xs),
+                Expanded(
+                  child: Text(
+                    '点按缩略图可裁剪，详情页展示更美观（可选）',
+                    style: TextStyle(
+                      fontSize: AppTypeScale.small.size,
+                      color: const Color(AppColors.textPlaceholder),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
       ],
     );
   }
@@ -259,8 +331,14 @@ class _MediaSectionState extends ConsumerState<MediaSection> {
 class _Thumb extends StatelessWidget {
   /// 构造缩略图槽。
   ///
-  /// 参数：[item] 条目；[onRemove] 移除回调；[onRetry] 失败重试回调。
-  const _Thumb({required this.item, required this.onRemove, required this.onRetry});
+  /// 参数：[item] 条目；[onRemove] 移除回调；[onRetry] 失败重试回调；
+  ///   [onCrop] 裁剪回调（null 表示该条不可裁剪/正在上传）。
+  const _Thumb({
+    required this.item,
+    required this.onRemove,
+    required this.onRetry,
+    required this.onCrop,
+  });
 
   /// 条目。
   final _MediaUpload item;
@@ -270,6 +348,9 @@ class _Thumb extends StatelessWidget {
 
   /// 失败重试回调。
   final VoidCallback onRetry;
+
+  /// 裁剪回调（null 表示不可裁剪）。
+  final VoidCallback? onCrop;
 
   /// 构建缩略图内容。
   ///
@@ -310,77 +391,114 @@ class _Thumb extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: _tileSize,
-      height: _tileSize,
-      child: Stack(
-        children: [
-          Positioned.fill(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(AppRadius.md),
-              child: _buildImage(),
-            ),
-          ),
-          if (item.uploading)
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.35),
+    return Semantics(
+      button: onCrop != null,
+      label: onCrop != null ? '裁剪这张图片' : null,
+      child: GestureDetector(
+        onTap: onCrop,
+        // 图片只铺满槽内，不用 opaque 的话点边缘空白不会触发裁剪。
+        behavior: HitTestBehavior.opaque,
+        child: SizedBox(
+          width: _tileSize,
+          height: _tileSize,
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: ClipRRect(
                   borderRadius: BorderRadius.circular(AppRadius.md),
-                ),
-                child: const Center(
-                  child: SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                  ),
+                  child: _buildImage(),
                 ),
               ),
-            ),
-          if (item.error != null)
-            Positioned.fill(
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: onRetry,
-                  borderRadius: BorderRadius.circular(AppRadius.md),
+              if (item.uploading)
+                Positioned.fill(
                   child: DecoratedBox(
                     decoration: BoxDecoration(
-                      color: const Color(AppColors.error).withValues(alpha: 0.72),
+                      color: Colors.black.withValues(alpha: 0.35),
                       borderRadius: BorderRadius.circular(AppRadius.md),
                     ),
-                    child: const Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.refresh, size: 20, color: Colors.white),
-                        SizedBox(height: AppSpacing.xs),
-                        Text(
-                          '重试',
-                          style: TextStyle(fontSize: 11, color: Colors.white),
+                    child: const Center(
+                      child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
                         ),
-                      ],
+                      ),
+                    ),
+                  ),
+                ),
+              if (item.error != null)
+                Positioned.fill(
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: onRetry,
+                      borderRadius: BorderRadius.circular(AppRadius.md),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: const Color(AppColors.error)
+                              .withValues(alpha: 0.72),
+                          borderRadius: BorderRadius.circular(AppRadius.md),
+                        ),
+                        child: const Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.refresh, size: 20, color: Colors.white),
+                            SizedBox(height: AppSpacing.xs),
+                            Text(
+                              '重试',
+                              style: TextStyle(fontSize: 11, color: Colors.white),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              // 裁剪角标：让「点缩略图可裁剪」有可见的入口线索，而不是只靠
+              // 下方一行文字提示。
+              if (onCrop != null)
+                Positioned(
+                  left: 0,
+                  bottom: 0,
+                  child: DecoratedBox(
+                    decoration: const BoxDecoration(
+                      color: Color(0x8C000000),
+                      borderRadius: BorderRadius.only(
+                        topRight: Radius.circular(AppRadius.md),
+                        bottomLeft: Radius.circular(AppRadius.md),
+                      ),
+                    ),
+                    child: const Padding(
+                      padding: EdgeInsets.all(2),
+                      child: Icon(
+                        Icons.content_cut,
+                        size: 12,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+              Positioned(
+                top: 0,
+                right: 0,
+                child: Material(
+                  color: Colors.black.withValues(alpha: 0.55),
+                  shape: const CircleBorder(),
+                  child: InkWell(
+                    onTap: onRemove,
+                    customBorder: const CircleBorder(),
+                    child: const Padding(
+                      padding: EdgeInsets.all(2),
+                      child: Icon(Icons.close, size: 14, color: Colors.white),
                     ),
                   ),
                 ),
               ),
-            ),
-          Positioned(
-            top: 0,
-            right: 0,
-            child: Material(
-              color: Colors.black.withValues(alpha: 0.55),
-              shape: const CircleBorder(),
-              child: InkWell(
-                onTap: onRemove,
-                customBorder: const CircleBorder(),
-                child: const Padding(
-                  padding: EdgeInsets.all(2),
-                  child: Icon(Icons.close, size: 14, color: Colors.white),
-                ),
-              ),
-            ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

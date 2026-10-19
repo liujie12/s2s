@@ -7449,6 +7449,20 @@ printf '\nMYSQL_SSL_MODE=VERIFY_CA\nMYSQL_TLS_TRUSTSTORE_PASSWORD=%s\n' \
 **门禁**：`flutter analyze` 0 issue；`flutter test` **796/796 All tests passed**。
 **真机**：release 包安装后，3 张图 `1 / 3`→`3 / 3` 均可滑动；左右为图片自身模糊色、无黑块，图片未变形未裁切。
 
+### 2026-10-19（发布页图片可选裁剪）
+
+> 摘要：详情页图集在竖图比例不符时仍会露出模糊铺底。发布页第 6 段新增「点缩略图裁剪」入口：裁剪框按详情卡比例初始化，裁剪非必选，仅提示裁剪后展示更美观。
+
+**实现**
+- 新增依赖 `crop_your_image`（纯 Dart 裁剪 UI，不引入原生插件）与 `image`（裁剪结果归一化）。
+- `media_display_layout.dart` 抽出 `kDetailMediaBlockHeight` 与 `detailMediaAspectRatio`，详情轮播与发布裁剪共用同一比例，避免两处各写一份。
+- 裁剪页 `image_crop_screen.dart`：锁定裁剪框、拖动/缩放图片；结果经 `media_image_encoder.dart` 转 JPEG、长边 ≤1600、透明通道白底合成，再回媒体段重新上传。
+- 媒体段：缩略图左下角裁剪角标 + 下方「点按缩略图可裁剪…（可选）」提示；上传中/失败态不可裁剪；裁剪后立即摘掉旧 mediaId，避免重传完成前发布旧图。
+- 裁剪框初始矩形改按视口取最大（四周留 8 边距），修复竖图下第三方库默认初始框只占约 70% 屏宽的问题；真机实测框宽 1036/1080（95.9%）、宽高比 1.805，与详情卡一致。
+
+**门禁**：`flutter analyze` 0 issue；`flutter test` **804/804**；release APK 构建成功（118.4MB）。
+**真机**：release 包安装后验证「选图 → 首次上传失败可重试成功 → 点缩略图进入裁剪页（提示、遮罩、拖动/缩放正常）→ 完成返回并重新上传成功（媒体段恢复绿勾）」；裁剪比例与详情卡共用同一常量，未发布测试帖以免污染 prod。
+
 
 
 

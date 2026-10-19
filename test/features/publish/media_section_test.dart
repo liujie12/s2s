@@ -1,15 +1,23 @@
-/// 发布页媒体段：编辑态既有媒体回显测试。
+/// 发布页媒体段：编辑态既有媒体回显 + 可选裁剪入口测试。
 ///
-/// 锁两件事（2026-10-18 真机缺陷）：
+/// 锁三件事：
 /// 1. 编辑既有帖时，`initialMedia` 必须进入计数与缩略图（此前媒体段自持空列表，
 ///    页面显示 `0 / 9`，但表单里其实带着 media_ids）；
 /// 2. 移除/新增后 `onChanged` 上报的是「既有 + 新增」的全量已 commit ID，
-///    不能把原媒体 ID 冲掉（否则保存会静默丢图）。
+///    不能把原媒体 ID 冲掉（否则保存会静默丢图）；
+/// 3. 裁剪是可选入口：点缩略图才触发，裁剪框用详情卡比例，裁剪结果重新上传。
 library;
+
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
+import 'package:zhaoyazhao/features/media/media_cropper.dart';
+import 'package:zhaoyazhao/features/media/media_display_layout.dart';
+import 'package:zhaoyazhao/features/media/media_picker.dart';
+import 'package:zhaoyazhao/features/media/media_upload_service.dart';
 import 'package:zhaoyazhao/features/publish/media_section.dart';
 
 void main() {
@@ -43,4 +51,98 @@ void main() {
     expect(changed, isNotEmpty);
     expect(changed.last, ['m2']);
   });
+
+  testWidgets('点按缩略图裁剪：按详情卡比例启动裁剪并重新上传 JPEG', (tester) async {
+    final uploader = _FakeUploadService();
+    double? launchedRatio;
+    var cropCalls = 0;
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          mediaPickerProvider.overrideWithValue(
+            _FakePicker(
+              PickedMedia(
+                filename: 'a.png',
+                bytes: _solidPng(width: 240, height: 480),
+                contentType: 'image/png',
+              ),
+            ),
+          ),
+          mediaUploadServiceProvider.overrideWithValue(uploader),
+          mediaCropLauncherProvider.overrideWithValue(
+            (context, {required source, required aspectRatio}) async {
+              cropCalls++;
+              launchedRatio = aspectRatio;
+              return PickedMedia(
+                filename: 'a.jpg',
+                bytes: _solidJpeg(width: 360, height: 200),
+                contentType: 'image/jpeg',
+              );
+            },
+          ),
+        ],
+        child: MaterialApp(
+          home: Scaffold(body: MediaSection(onChanged: (_) {})),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('添加图片'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('1 / 9 · 支持图片'), findsOneWidget);
+    expect(find.text('点按缩略图可裁剪，详情页展示更美观（可选）'), findsOneWidget);
+    expect(uploader.uploaded.single.contentType, 'image/png');
+
+    await tester.tap(find.byType(Image).first);
+    await tester.pumpAndSettle();
+
+    expect(cropCalls, 1);
+    final expectedRatio = detailMediaAspectRatio(
+      tester.element(find.byType(MediaSection)),
+    );
+    expect(launchedRatio, closeTo(expectedRatio, 0.0001));
+    expect(uploader.uploaded.length, 2);
+    expect(uploader.uploaded.last.contentType, 'image/jpeg');
+  });
+}
+
+/// 假选图器：固定返回一张图。
+class _FakePicker implements MediaPicker {
+  _FakePicker(this.media);
+
+  final PickedMedia media;
+
+  @override
+  Future<List<PickedMedia>> pickImages({required int limit}) async => [media];
+}
+
+/// 假上传服务：记录上传内容，返回递增 mediaId（不触网）。
+class _FakeUploadService implements MediaUploadService {
+  final List<PickedMedia> uploaded = <PickedMedia>[];
+
+  @override
+  Future<UploadedMedia> upload(PickedMedia media) async {
+    uploaded.add(media);
+    return UploadedMedia(
+      mediaId: 'm${uploaded.length}',
+      url: '',
+      auditStatus: 'pass',
+    );
+  }
+}
+
+/// 生成纯色 PNG（用于测试选图/裁剪链路）。
+Uint8List _solidPng({required int width, required int height}) {
+  final image = img.Image(width: width, height: height);
+  img.fill(image, color: img.ColorRgb8(30, 60, 90));
+  return img.encodePng(image);
+}
+
+/// 生成纯色 JPEG（模拟裁剪器归一化后的产物）。
+Uint8List _solidJpeg({required int width, required int height}) {
+  final image = img.Image(width: width, height: height);
+  img.fill(image, color: img.ColorRgb8(30, 60, 90));
+  return img.encodeJpg(image);
 }
