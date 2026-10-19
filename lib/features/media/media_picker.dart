@@ -54,12 +54,19 @@ class PickedMedia {
 
 /// 选图器抽象。
 abstract interface class MediaPicker {
-  /// 从系统图库选图。
+  /// 从系统图库选图（多选）。
   ///
   /// 参数：[limit] 本次最多可选张数（剩余可上传额度）。
   /// 返回：已选媒体列表（用户取消时为空列表）。
   /// 抛出：[MediaPickException] 格式不在白名单 / 单文件超限时。
   Future<List<PickedMedia>> pickImages({required int limit});
+
+  /// 从系统相机拍摄一张照片（相机优先的默认入口）。
+  ///
+  /// 返回：拍摄结果；用户取消返回 null。
+  /// 抛出：[MediaPickException] 拍摄产物格式不在白名单 / 超限时。
+  ///   （相机权限被拒、无摄像头等平台异常不在此收敛，由调用方降级到相册。）
+  Future<PickedMedia?> pickFromCamera();
 }
 
 /// 基于 `image_picker` 的生产实现。
@@ -76,19 +83,35 @@ class ImagePickerMediaPicker implements MediaPicker {
     final files = await _picker.pickMultiImage(limit: limit);
     final result = <PickedMedia>[];
     for (final file in files) {
-      final contentType = _contentTypeOf(file);
-      if (contentType == null) {
-        throw const MediaPickException('仅支持 JPG / PNG / WebP 图片');
-      }
-      final bytes = await file.readAsBytes();
-      if (bytes.length > NfrMedia.maxSizeBytes) {
-        // 文案里的上限由常量算出，不写死数字（编码红线「不复制字面量」）。
-        final limitMb = NfrMedia.maxSizeBytes ~/ (1024 * 1024);
-        throw MediaPickException('单张图片不能超过 ${limitMb}MB');
-      }
-      result.add(PickedMedia(filename: file.name, bytes: bytes, contentType: contentType));
+      result.add(await _toPickedMedia(file));
     }
     return result;
+  }
+
+  @override
+  Future<PickedMedia?> pickFromCamera() async {
+    final file = await _picker.pickImage(source: ImageSource.camera);
+    if (file == null) return null;
+    return _toPickedMedia(file);
+  }
+
+  /// 校验单文件并转为 [PickedMedia]（格式白名单 + 单文件上限）。
+  ///
+  /// 参数：[file] 选中的文件。
+  /// 返回：[PickedMedia]。
+  /// 抛出：[MediaPickException] 格式不在白名单 / 单文件超限时。
+  Future<PickedMedia> _toPickedMedia(XFile file) async {
+    final contentType = _contentTypeOf(file);
+    if (contentType == null) {
+      throw const MediaPickException('仅支持 JPG / PNG / WebP 图片');
+    }
+    final bytes = await file.readAsBytes();
+    if (bytes.length > NfrMedia.maxSizeBytes) {
+      // 文案里的上限由常量算出，不写死数字（编码红线「不复制字面量」）。
+      final limitMb = NfrMedia.maxSizeBytes ~/ (1024 * 1024);
+      throw MediaPickException('单张图片不能超过 ${limitMb}MB');
+    }
+    return PickedMedia(filename: file.name, bytes: bytes, contentType: contentType);
   }
 
   /// 推断 MIME 类型（优先平台声明值，回退文件后缀），不在白名单则返回 null。

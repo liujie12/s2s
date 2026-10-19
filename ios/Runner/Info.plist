@@ -30,6 +30,10 @@
 	<string>用于在地图上展示你附近的信息（就近发现），仅在使用应用期间获取你的位置。</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>用于「语音发布」：录下你说的一句话，由 AI 识别并自动填好发布信息。</string>
+	<key>NSCameraUsageDescription</key>
+	<string>用于「拍照发布」：拍摄一张照片作为发布信息的主图。</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>用于「从相册选择」：选择你已有的照片作为发布信息的配图。</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

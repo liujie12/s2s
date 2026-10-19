@@ -16,6 +16,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 import 'package:zhaoyazhao/features/media/media_cropper.dart';
 import 'package:zhaoyazhao/features/media/media_display_layout.dart';
+import 'package:zhaoyazhao/features/media/media_image_encoder.dart';
 import 'package:zhaoyazhao/features/media/media_picker.dart';
 import 'package:zhaoyazhao/features/media/media_upload_service.dart';
 import 'package:zhaoyazhao/features/publish/media_section.dart';
@@ -40,14 +41,14 @@ void main() {
       ),
     );
 
-    expect(find.text('2 / 9 · 支持图片'), findsOneWidget);
+    expect(find.text('2 / 9 · 第 1 张为详情封面'), findsOneWidget);
     expect(find.byIcon(Icons.image_outlined), findsNWidgets(2));
 
     // 移除第一条：应上报剩余的 m2，而不是空列表。
     await tester.tap(find.byIcon(Icons.close).first);
     await tester.pump();
 
-    expect(find.text('1 / 9 · 支持图片'), findsOneWidget);
+    expect(find.text('1 / 9 · 第 1 张为详情封面'), findsOneWidget);
     expect(changed, isNotEmpty);
     expect(changed.last, ['m2']);
   });
@@ -56,6 +57,7 @@ void main() {
     final uploader = _FakeUploadService();
     double? launchedRatio;
     var cropCalls = 0;
+    var normalizeCalls = 0;
 
     await tester.pumpWidget(
       ProviderScope(
@@ -69,6 +71,16 @@ void main() {
               ),
             ),
           ),
+          // 归一化走 isolate，widget 测试注入假实现：模拟「PNG 统一转 JPEG」，
+          // 并记录调用次数，验证选图后必经归一化。
+          mediaNormalizerProvider.overrideWithValue((input) async {
+            normalizeCalls++;
+            return PickedMedia(
+              filename: 'a.jpg',
+              bytes: input.bytes,
+              contentType: 'image/jpeg',
+            );
+          }),
           mediaUploadServiceProvider.overrideWithValue(uploader),
           mediaCropLauncherProvider.overrideWithValue(
             (context, {required source, required aspectRatio}) async {
@@ -88,12 +100,13 @@ void main() {
       ),
     );
 
-    await tester.tap(find.text('添加图片'));
+    await tester.tap(find.text('相册'));
     await tester.pumpAndSettle();
 
-    expect(find.text('1 / 9 · 支持图片'), findsOneWidget);
+    expect(find.text('1 / 9 · 第 1 张为详情封面'), findsOneWidget);
     expect(find.text('点按缩略图可裁剪，详情页展示更美观（可选）'), findsOneWidget);
-    expect(uploader.uploaded.single.contentType, 'image/png');
+    expect(uploader.uploaded.single.contentType, 'image/jpeg');
+    expect(normalizeCalls, 1);
 
     await tester.tap(find.byType(Image).first);
     await tester.pumpAndSettle();
@@ -106,6 +119,54 @@ void main() {
     expect(uploader.uploaded.length, 2);
     expect(uploader.uploaded.last.contentType, 'image/jpeg');
   });
+
+  testWidgets('相机拍超比例图：弹三选一，选「仍然使用」后入列上传', (tester) async {
+    final uploader = _FakeUploadService();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          mediaPickerProvider.overrideWithValue(
+            _FakePicker(
+              PickedMedia(
+                filename: 'cam.jpg',
+                bytes: Uint8List.fromList(<int>[1, 2, 3]),
+                contentType: 'image/jpeg',
+              ),
+            ),
+          ),
+          // 读宽高走 isolate，注入假实现：4:3（1.33）明显偏离详情比例，触发体检。
+          imageSizeReaderProvider.overrideWithValue(
+            (bytes) async => (width: 1200, height: 900),
+          ),
+          // 归一化同样走 isolate，透传即可（本测试聚焦体检交互）。
+          mediaNormalizerProvider.overrideWithValue(
+            (input) async => PickedMedia(
+              filename: input.filename,
+              bytes: input.bytes,
+              contentType: input.contentType,
+            ),
+          ),
+          mediaUploadServiceProvider.overrideWithValue(uploader),
+        ],
+        child: MaterialApp(
+          home: Scaffold(body: MediaSection(onChanged: (_) {})),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('拍照'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('这张照片的比例和详情页不一致'), findsOneWidget);
+    expect(find.text('仍然使用（保留原图）'), findsOneWidget);
+
+    await tester.tap(find.text('仍然使用（保留原图）'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('1 / 9 · 第 1 张为详情封面'), findsOneWidget);
+    expect(uploader.uploaded.length, 1);
+  });
 }
 
 /// 假选图器：固定返回一张图。
@@ -116,6 +177,9 @@ class _FakePicker implements MediaPicker {
 
   @override
   Future<List<PickedMedia>> pickImages({required int limit}) async => [media];
+
+  @override
+  Future<PickedMedia?> pickFromCamera() async => media;
 }
 
 /// 假上传服务：记录上传内容，返回递增 mediaId（不触网）。

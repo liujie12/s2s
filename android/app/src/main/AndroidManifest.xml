@@ -9,6 +9,10 @@
     <!-- T2 AI 智能发布 模式② 语音零键盘（B2-4）：录制一句话用于语音识别。
          运行时权限，仅在用户点「语音发布」并同意后才申请（见 audio_recorder.dart）。 -->
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    <!-- 相机（拍照发布）：走 ACTION_IMAGE_CAPTURE 委托系统相机，**不声明** android.permission.CAMERA。
+         若在此声明 CAMERA 而不做运行时申请，调用系统相机会抛 SecurityException；image_picker
+         的 camera source 由系统相机 app 代持权限，应用不持有该敏感权限，也无需在 Google Play
+         审核里为相机用例过审。 -->
 
     <application
         android:label="zhaoyazhao"

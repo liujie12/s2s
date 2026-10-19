@@ -16,6 +16,13 @@ import '../../design_tokens.dart';
 /// 与改造前的分类色占位块同值：改这个数会让详情页下方内容整体位移。
 const double kDetailMediaBlockHeight = 200;
 
+/// 拍后比例偏差容忍阈值（相对偏差，绝对值）。
+///
+/// 详情比例约 1.79（390dp 画板）：相机 16:9≈1.78 视为一致（偏差 0.7%），
+/// 4:3≈1.33（偏差 26%）与竖拍 3:4≈0.75（偏差 58%）会触发「三选一」提示。
+/// ⚠️ PRD/详设未覆盖此口径，属待产品裁定的临时值（不复制字面量：唯一真源在此）。
+const double kAspectMismatchTolerance = 0.15;
+
 /// 详情页媒体卡的目标宽高比。
 ///
 /// 媒体卡宽度 = 屏宽 - 左右内缩 [AppSpacing.lg]；发布页裁剪框按此比例初始化，
@@ -26,6 +33,28 @@ const double kDetailMediaBlockHeight = 200;
 double detailMediaAspectRatio(BuildContext context) {
   final cardWidth = MediaQuery.sizeOf(context).width - 2 * AppSpacing.lg;
   return cardWidth / kDetailMediaBlockHeight;
+}
+
+/// 判断图片宽高比与目标比例的偏差是否超过容忍阈值（拍后比例体检的判定）。
+///
+/// 纯函数便于单测，不依赖 [BuildContext]。详情比例约 1.79：相机 16:9≈1.78 视为
+/// 一致，4:3≈1.33、竖拍 3:4≈0.75、方图 1:1 视为不匹配。
+///
+/// 参数：
+/// - [width] 图片宽；
+/// - [height] 图片高；
+/// - [targetAspect] 目标宽高比；
+/// - [tolerance] 相对偏差容忍阈值（取 [kAspectMismatchTolerance]）。
+/// 返回：true 表示偏差超阈值（需提示用户）。
+bool aspectMismatchExceeds({
+  required int width,
+  required int height,
+  required double targetAspect,
+  required double tolerance,
+}) {
+  if (height <= 0 || targetAspect <= 0) return false;
+  final deviation = (width / height - targetAspect).abs() / targetAspect;
+  return deviation > tolerance;
 }
 
 /// 裁剪框的初始矩形：在视口内按目标比例取最大，四周留出圆点安全边距。

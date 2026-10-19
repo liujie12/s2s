@@ -26,9 +26,13 @@ import '../../core/network/api_exception.dart';
 import '../../design_tokens.dart';
 import '../media/media_cropper.dart';
 import '../media/media_display_layout.dart';
+import '../media/media_image_encoder.dart';
 import '../media/media_picker.dart';
 import '../media/media_upload_service.dart';
 import 'publish_form_state.dart';
+
+/// 拍后比例不匹配时的用户决定。
+enum _AspectDecision { use, crop, reshoot }
 
 /// 单条上传条目（UI 瞬态）。
 class _MediaUpload {
@@ -113,6 +117,9 @@ class _MediaSectionState extends ConsumerState<MediaSection> {
   /// 正在选图（防重复触发系统图库）。
   bool _picking = false;
 
+  /// 本次发布会话内跳过拍后比例提示（连拍多张时避免逐张确认，见「本次不再提示」）。
+  bool _skipAspectWarn = false;
+
   @override
   void initState() {
     super.initState();
@@ -138,10 +145,22 @@ class _MediaSectionState extends ConsumerState<MediaSection> {
       final picked = await ref.read(mediaPickerProvider).pickImages(limit: remaining);
       for (final media in picked) {
         if (!mounted) return;
+        // 入列前归一化（方向烘焙 + 长边限幅 + 统一 JPEG）：相册原图可能带 EXIF
+        // 方向，直接上传详情页会横躺。单张归一化失败不阻断后续图片。
+        final PickedMedia normalized;
+        try {
+          normalized = await ref.read(mediaNormalizerProvider)(
+            CropEncodeInput(bytes: media.bytes, filename: media.filename),
+          );
+        } on MediaPickException catch (error) {
+          _toast(error.userMessage);
+          continue;
+        }
+        if (!mounted) return;
         final item = _MediaUpload(
-          filename: media.filename,
-          bytes: media.bytes,
-          contentType: media.contentType,
+          filename: normalized.filename,
+          bytes: normalized.bytes,
+          contentType: normalized.contentType,
         );
         setState(() => _items.add(item));
         await _upload(item);
@@ -153,6 +172,195 @@ class _MediaSectionState extends ConsumerState<MediaSection> {
     } finally {
       if (mounted) setState(() => _picking = false);
     }
+  }
+
+  /// 从系统相机拍一张并上传（相机优先的默认入口；单张）。
+  ///
+  /// 参数：无。
+  /// 返回：[Future<void>]。
+  Future<void> _captureFromCamera() async {
+    if (_picking) return;
+    final remaining = widget.maxCount - _items.length;
+    if (remaining <= 0) return;
+
+    setState(() => _picking = true);
+    try {
+      final picked = await _captureSingle();
+      if (picked == null || !mounted) return; // 用户取消
+      final item = _MediaUpload(
+        filename: picked.filename,
+        bytes: picked.bytes,
+        contentType: picked.contentType,
+      );
+      setState(() => _items.add(item));
+      await _upload(item);
+    } on MediaPickException catch (error) {
+      _toast(error.userMessage);
+    } catch (_) {
+      // 相机打不开（权限被拒 / 无摄像头 / 系统相机异常）：不套 API 异常（那会
+      // 显示「未归一的异常形态」），给固定文案并保留「从相册选」出口，发布不被卡死。
+      _toastCameraUnavailable();
+    } finally {
+      if (mounted) setState(() => _picking = false);
+    }
+  }
+
+  /// 拍一张并做拍后比例体检，返回确定要入列的图。
+  ///
+  /// 偏差在容忍阈值内静默通过；超阈值弹「重拍 / 按详情比例裁剪 / 仍然使用」三选一，
+  /// 用户选重拍则循环重新拍摄，直到确定使用、裁剪完成或取消。
+  ///
+  /// 参数：无。
+  /// 返回：[PickedMedia] 确定入列的图；用户取消返回 null。
+  Future<PickedMedia?> _captureSingle() async {
+    while (true) {
+      final picked = await ref.read(mediaPickerProvider).pickFromCamera();
+      if (picked == null) return null; // 用户取消拍摄
+
+      switch (await _aspectDecisionFor(picked)) {
+        case _AspectDecision.use:
+          // 「仍然使用」的是相机原图：入列前归一化（方向烘焙 + 长边限幅 + JPEG）。
+          // 「裁剪」分支由 ImageCropScreen 内部已归一化，不在此二次处理。
+          return ref.read(mediaNormalizerProvider)(
+            CropEncodeInput(bytes: picked.bytes, filename: picked.filename),
+          );
+        case _AspectDecision.crop:
+          final cropped = await _cropPicked(picked);
+          if (cropped != null) return cropped;
+          return null; // 裁剪页取消 → 整次拍摄取消
+        case _AspectDecision.reshoot:
+          continue; // 重新拍
+      }
+    }
+  }
+
+  /// 判定拍后比例是否需提示，返回用户最终决定。
+  ///
+  /// 参数：[picked] 拍摄结果。
+  /// 返回：[_AspectDecision] 使用 / 裁剪 / 重拍。
+  Future<_AspectDecision> _aspectDecisionFor(PickedMedia picked) async {
+    // 用户已选「本次不再提示」：后续拍摄直接放行，不再逐张确认。
+    if (_skipAspectWarn) return _AspectDecision.use;
+
+    final ImageSize? size;
+    try {
+      size = await ref.read(imageSizeReaderProvider)(picked.bytes);
+    } catch (_) {
+      return _AspectDecision.use; // 读宽高失败不阻塞，图仍可上传
+    }
+    if (size == null || size.height == 0) return _AspectDecision.use;
+
+    final mismatched = aspectMismatchExceeds(
+      width: size.width,
+      height: size.height,
+      targetAspect: detailMediaAspectRatio(context),
+      tolerance: kAspectMismatchTolerance,
+    );
+    if (!mismatched) return _AspectDecision.use;
+
+    return _showAspectMismatchSheet();
+  }
+
+  /// 复用裁剪入口裁剪一张尚未入列的拍摄结果。
+  ///
+  /// 参数：[source] 待裁剪图。
+  /// 返回：裁剪后的图；用户取消返回 null。
+  Future<PickedMedia?> _cropPicked(PickedMedia source) {
+    return ref.read(mediaCropLauncherProvider)(
+      context,
+      source: source,
+      aspectRatio: detailMediaAspectRatio(context),
+    );
+  }
+
+  /// 拍后比例不匹配的三选一提示。
+  ///
+  /// 参数：无。
+  /// 返回：[_AspectDecision] 用户选择；下滑关闭视为「仍然使用」。
+  Future<_AspectDecision> _showAspectMismatchSheet() async {
+    final decision = await showModalBottomSheet<_AspectDecision>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.lg,
+            AppSpacing.lg,
+            AppSpacing.lg,
+            AppSpacing.lg,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                '这张照片的比例和详情页不一致',
+                style: TextStyle(
+                  fontSize: AppTypeScale.h3.size,
+                  fontWeight: FontWeight.w600,
+                  color: Color(AppColors.textPrimary),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.xs),
+              const Text(
+                '不裁剪也能发布，但详情页边缘会显示模糊留白。',
+                style: TextStyle(
+                  fontSize: AppTypeScale.small.size,
+                  color: Color(AppColors.textSecondary),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.md),
+              _SheetAction(
+                icon: Icons.photo_camera_outlined,
+                label: '重拍',
+                onTap: () =>
+                    Navigator.pop(sheetContext, _AspectDecision.reshoot),
+              ),
+              const SizedBox(height: AppSpacing.xs),
+              _SheetAction(
+                icon: Icons.crop,
+                label: '按详情比例裁剪',
+                onTap: () => Navigator.pop(sheetContext, _AspectDecision.crop),
+              ),
+              const SizedBox(height: AppSpacing.xs),
+              _SheetAction(
+                icon: Icons.check,
+                label: '仍然使用（保留原图）',
+                onTap: () => Navigator.pop(sheetContext, _AspectDecision.use),
+              ),
+              // 连拍场景的退出阀：记住本次不再提示，且等同于「仍然使用」。
+              Align(
+                alignment: Alignment.center,
+                child: TextButton(
+                  onPressed: () {
+                    _skipAspectWarn = true;
+                    Navigator.pop(sheetContext, _AspectDecision.use);
+                  },
+                  child: const Text('本次发布不再提示'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    return decision ?? _AspectDecision.use;
+  }
+
+  /// 相机不可用时的降级提示：固定文案 + 「从相册选」动作。
+  ///
+  /// 参数：无。
+  /// 返回：void。
+  void _toastCameraUnavailable() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('无法打开相机，请从相册选择照片'),
+        action: SnackBarAction(
+          label: '从相册选',
+          onPressed: _pickAndUpload,
+        ),
+      ),
+    );
   }
 
   /// 裁剪单张本地图片（可选入口；取消返回 null 时什么都不做）。
@@ -264,34 +472,76 @@ class _MediaSectionState extends ConsumerState<MediaSection> {
   @override
   Widget build(BuildContext context) {
     final canAdd = _items.length < widget.maxCount && !_picking;
+    final isEmpty = _items.isEmpty;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Wrap(
-          spacing: AppSpacing.sm,
-          runSpacing: AppSpacing.sm,
-          children: [
-            for (final item in _items)
-              _Thumb(
-                item: item,
-                onRemove: () => _remove(item),
-                onRetry: () => _upload(item),
-                // 只有仍有本地字节、不在上传中、且没有待重试错误的条目才能裁剪：
-                // 上传中替换会让在途请求的结果落到已丢弃的对象上；失败态整块是
-                // 「重试」按钮，再叠裁剪入口会互相抢点击。
-                onCrop: item.bytes != null &&
-                        !item.uploading &&
-                        item.error == null
-                    ? () => _crop(item)
-                    : null,
+        if (isEmpty)
+          _EmptyEntry(
+            enabled: canAdd,
+            onCamera: _captureFromCamera,
+            onAlbum: _pickAndUpload,
+          )
+        else
+          Wrap(
+            spacing: AppSpacing.sm,
+            runSpacing: AppSpacing.sm,
+            children: [
+              for (var i = 0; i < _items.length; i++)
+                _Thumb(
+                  item: _items[i],
+                  isCover: i == 0,
+                  onRemove: () => _remove(_items[i]),
+                  onRetry: () => _upload(_items[i]),
+                  // 只有仍有本地字节、不在上传中、且没有待重试错误的条目才能裁剪：
+                  // 上传中替换会让在途请求的结果落到已丢弃的对象上；失败态整块是
+                  // 「重试」按钮，再叠裁剪入口会互相抢点击。
+                  onCrop: _items[i].bytes != null &&
+                          !_items[i].uploading &&
+                          _items[i].error == null
+                      ? () => _crop(_items[i])
+                      : null,
+                ),
+              if (_items.length < widget.maxCount)
+                _AddTile(enabled: canAdd, onTap: _captureFromCamera),
+            ],
+          ),
+        // 非空态补一个「从相册选更多」的文字入口，与「继续拍」并列为两种来源。
+        // 用 Align 收起点击区域：Column 是 stretch，直接放 InkWell 会整行可点。
+        if (!isEmpty && canAdd)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: InkWell(
+              onTap: _pickAndUpload,
+              borderRadius: BorderRadius.circular(AppRadius.sm),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.photo_library_outlined,
+                      size: 16,
+                      color: Color(AppColors.primary),
+                    ),
+                    const SizedBox(width: AppSpacing.xs),
+                    Text(
+                      '从相册选更多',
+                      style: const TextStyle(
+                        fontSize: AppTypeScale.small.size,
+                        color: Color(AppColors.primary),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            if (_items.length < widget.maxCount)
-              _AddTile(enabled: canAdd, onTap: _pickAndUpload),
-          ],
-        ),
+            ),
+          ),
         const SizedBox(height: AppSpacing.xs),
         Text(
-          '${_items.length} / ${widget.maxCount} · 支持图片',
+          isEmpty
+              ? '${_items.length} / ${widget.maxCount} · 支持图片'
+              : '${_items.length} / ${widget.maxCount} · 第 1 张为详情封面',
           style: TextStyle(
             fontSize: AppTypeScale.small.size,
             color: const Color(AppColors.textPlaceholder),
@@ -335,6 +585,7 @@ class _Thumb extends StatelessWidget {
   ///   [onCrop] 裁剪回调（null 表示该条不可裁剪/正在上传）。
   const _Thumb({
     required this.item,
+    required this.isCover,
     required this.onRemove,
     required this.onRetry,
     required this.onCrop,
@@ -342,6 +593,9 @@ class _Thumb extends StatelessWidget {
 
   /// 条目。
   final _MediaUpload item;
+
+  /// 是否为封面（列表第 1 张，即详情轮播首图）。
+  final bool isCover;
 
   /// 移除回调。
   final VoidCallback onRemove;
@@ -409,6 +663,35 @@ class _Thumb extends StatelessWidget {
                   child: _buildImage(),
                 ),
               ),
+              // 封面标识（第 1 张）：把服务端「封面 = id 升序首条」的隐式规则
+              // 显式化，避免用户删掉第 1 张时毫无预警地换封面。
+              if (isCover)
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  child: DecoratedBox(
+                    decoration: const BoxDecoration(
+                      color: Color(0x8C000000),
+                      borderRadius: BorderRadius.only(
+                        topLeft: Radius.circular(AppRadius.md),
+                        bottomRight: Radius.circular(AppRadius.md),
+                      ),
+                    ),
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: AppSpacing.xs,
+                        vertical: 2,
+                      ),
+                      child: Text(
+                        '封面',
+                        style: TextStyle(
+                          fontSize: AppTypeScale.caption.size,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               if (item.uploading)
                 Positioned.fill(
                   child: DecoratedBox(
@@ -504,11 +787,185 @@ class _Thumb extends StatelessWidget {
   }
 }
 
-/// 添加槽（2px 虚线框 + 相机图标）。
+/// 空态来源入口：拍照主按钮 + 相册次按钮。
+class _EmptyEntry extends StatelessWidget {
+  const _EmptyEntry({
+    required this.enabled,
+    required this.onCamera,
+    required this.onAlbum,
+  });
+
+  /// 是否可点（选中中或已达上限则禁用）。
+  final bool enabled;
+
+  /// 拍照回调。
+  final VoidCallback onCamera;
+
+  /// 相册回调。
+  final VoidCallback onAlbum;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: _EntryButton(
+            enabled: enabled,
+            filled: true,
+            onTap: onCamera,
+            icon: Icons.photo_camera_outlined,
+            label: '拍照',
+          ),
+        ),
+        const SizedBox(width: AppSpacing.sm),
+        Expanded(
+          child: _EntryButton(
+            enabled: enabled,
+            filled: false,
+            onTap: onAlbum,
+            icon: Icons.photo_library_outlined,
+            label: '相册',
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 空态来源入口按钮：[filled] 为真时实心主按钮，否则描边次按钮。
+class _EntryButton extends StatelessWidget {
+  const _EntryButton({
+    required this.enabled,
+    required this.filled,
+    required this.onTap,
+    required this.icon,
+    required this.label,
+  });
+
+  /// 是否可点。
+  final bool enabled;
+
+  /// 是否实心（主按钮）。
+  final bool filled;
+
+  /// 点按回调。
+  final VoidCallback onTap;
+
+  /// 图标。
+  final IconData icon;
+
+  /// 文案。
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color foreground;
+    final Color background;
+    if (filled) {
+      foreground = Colors.white;
+      background = const Color(AppColors.primary);
+    } else {
+      foreground = const Color(AppColors.primary);
+      background = const Color(AppColors.surface);
+    }
+    return Material(
+      color: enabled ? background : const Color(AppColors.border),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        side: filled
+            ? BorderSide.none
+            : BorderSide(
+                color: Color(enabled ? AppColors.primary : AppColors.border),
+              ),
+      ),
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        child: SizedBox(
+          height: 48,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                size: 20,
+                color: enabled
+                    ? foreground
+                    : const Color(AppColors.textPlaceholder),
+              ),
+              const SizedBox(width: AppSpacing.xs),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: AppTypeScale.body.size,
+                  fontWeight: FontWeight.w600,
+                  color: enabled
+                      ? foreground
+                      : const Color(AppColors.textPlaceholder),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 拍后比例三选一里的动作项。
+class _SheetAction extends StatelessWidget {
+  const _SheetAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  /// 图标。
+  final IconData icon;
+
+  /// 文案。
+  final String label;
+
+  /// 点按回调。
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(AppColors.background),
+      borderRadius: BorderRadius.circular(AppRadius.lg),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.lg,
+            vertical: AppSpacing.md,
+          ),
+          child: Row(
+            children: [
+              Icon(icon, size: 20, color: const Color(AppColors.primary)),
+              const SizedBox(width: AppSpacing.sm),
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: AppTypeScale.body.size,
+                  color: Color(AppColors.textPrimary),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 继续拍槽（2px 虚线框 + 相机图标）：非空态追加拍摄入口。
 class _AddTile extends StatelessWidget {
-  /// 构造添加槽。
+  /// 构造继续拍槽。
   ///
-  /// 参数：[enabled] 是否可点（选中中或已达上限则禁用）；[onTap] 点按回调。
+  /// 参数：[enabled] 是否可点（选中中或已达上限则禁用）；[onTap] 点按回调（拍摄）。
   const _AddTile({required this.enabled, required this.onTap});
 
   /// 是否可点。
@@ -542,7 +999,7 @@ class _AddTile extends StatelessWidget {
                 ),
                 const SizedBox(height: AppSpacing.xs),
                 Text(
-                  '添加图片',
+                  '继续拍',
                   style: TextStyle(
                     fontSize: 11,
                     color: Color(enabled ? AppColors.textPlaceholder : AppColors.border),

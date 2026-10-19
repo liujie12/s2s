@@ -35,4 +35,57 @@ void main() {
       expect(rect.width, lessThanOrEqualTo(1080 - 2 * AppSpacing.sm));
     });
   });
+
+  group('aspectMismatchExceeds（拍后比例体检判定）', () {
+    test('16:9 与详情比例 1.79 偏差约 0.7%，不超阈值', () {
+      final exceeds = aspectMismatchExceeds(
+        width: 1600,
+        height: 900, // 16:9 = 1.778
+        targetAspect: 1.79,
+        tolerance: kAspectMismatchTolerance,
+      );
+      expect(exceeds, isFalse);
+    });
+
+    test('4:3 偏差约 26%，超阈值', () {
+      final exceeds = aspectMismatchExceeds(
+        width: 1200,
+        height: 900, // 4:3 = 1.333
+        targetAspect: 1.79,
+        tolerance: kAspectMismatchTolerance,
+      );
+      expect(exceeds, isTrue);
+    });
+
+    test('竖拍 3:4 偏差约 58%，超阈值', () {
+      final exceeds = aspectMismatchExceeds(
+        width: 900,
+        height: 1200, // 3:4 = 0.75
+        targetAspect: 1.79,
+        tolerance: kAspectMismatchTolerance,
+      );
+      expect(exceeds, isTrue);
+    });
+
+    test('零高度或零目标比例不误判为超阈值', () {
+      expect(
+        aspectMismatchExceeds(
+          width: 100,
+          height: 0,
+          targetAspect: 1.79,
+          tolerance: kAspectMismatchTolerance,
+        ),
+        isFalse,
+      );
+      expect(
+        aspectMismatchExceeds(
+          width: 100,
+          height: 100,
+          targetAspect: 0,
+          tolerance: kAspectMismatchTolerance,
+        ),
+        isFalse,
+      );
+    });
+  });
 }

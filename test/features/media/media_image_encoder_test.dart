@@ -78,4 +78,54 @@ void main() {
       );
     });
   });
+
+  group('normalizeUploadImage（相机/相册原图归一化）', () {
+    test('PNG 原图转 JPEG（统一上传格式）', () {
+      final source = img.Image(width: 640, height: 320);
+      img.fill(source, color: img.ColorRgb8(20, 120, 200));
+      final png = img.encodePng(source);
+
+      final result = normalizeUploadImage(
+        CropEncodeInput(bytes: png, filename: 'camera.png'),
+      );
+
+      expect(result.contentType, 'image/jpeg');
+      expect(result.filename, 'camera.jpg');
+      // 小图不放大，尺寸保持。
+      final decoded = img.decodeImage(result.bytes)!;
+      expect(decoded.width, 640);
+      expect(decoded.height, 320);
+    });
+
+    test('无法解码抛出 MediaPickException', () {
+      expect(
+        () => normalizeUploadImage(
+          CropEncodeInput(
+            bytes: Uint8List.fromList(<int>[1, 2, 3]),
+            filename: 'broken.jpg',
+          ),
+        ),
+        throwsA(isA<MediaPickException>()),
+      );
+    });
+  });
+
+  group('readImageSizeAsync（拍后比例体检读宽高）', () {
+    test('解码读取宽高', () async {
+      final source = img.Image(width: 240, height: 480);
+      img.fill(source, color: img.ColorRgb8(20, 120, 200));
+      final png = img.encodePng(source);
+
+      final size = await readImageSizeAsync(png);
+
+      expect(size, isNotNull);
+      expect(size!.width, 240);
+      expect(size.height, 480);
+    });
+
+    test('无法解码返回 null（不抛异常）', () async {
+      final size = await readImageSizeAsync(Uint8List.fromList(<int>[1, 2, 3]));
+      expect(size, isNull);
+    });
+  });
 }
