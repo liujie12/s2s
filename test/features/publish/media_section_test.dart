@@ -130,7 +130,7 @@ void main() {
             _FakePicker(
               PickedMedia(
                 filename: 'cam.jpg',
-                bytes: Uint8List.fromList(<int>[1, 2, 3]),
+                bytes: _solidJpeg(width: 1200, height: 900),
                 contentType: 'image/jpeg',
               ),
             ),
@@ -144,7 +144,7 @@ void main() {
             (input) async => PickedMedia(
               filename: input.filename,
               bytes: input.bytes,
-              contentType: input.contentType,
+              contentType: 'image/jpeg',
             ),
           ),
           mediaUploadServiceProvider.overrideWithValue(uploader),

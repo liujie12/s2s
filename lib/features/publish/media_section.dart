@@ -249,6 +249,8 @@ class _MediaSectionState extends ConsumerState<MediaSection> {
       return _AspectDecision.use; // 读宽高失败不阻塞，图仍可上传
     }
     if (size == null || size.height == 0) return _AspectDecision.use;
+    // async gap 后使用 context 前的守卫：读宽高走 isolate，await 返回时组件可能已销毁。
+    if (!mounted) return _AspectDecision.use;
 
     final mismatched = aspectMismatchExceeds(
       width: size.width,
@@ -292,7 +294,7 @@ class _MediaSectionState extends ConsumerState<MediaSection> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text(
+              Text(
                 '这张照片的比例和详情页不一致',
                 style: TextStyle(
                   fontSize: AppTypeScale.h3.size,
@@ -301,7 +303,7 @@ class _MediaSectionState extends ConsumerState<MediaSection> {
                 ),
               ),
               const SizedBox(height: AppSpacing.xs),
-              const Text(
+              Text(
                 '不裁剪也能发布，但详情页边缘会显示模糊留白。',
                 style: TextStyle(
                   fontSize: AppTypeScale.small.size,
@@ -527,7 +529,7 @@ class _MediaSectionState extends ConsumerState<MediaSection> {
                     const SizedBox(width: AppSpacing.xs),
                     Text(
                       '从相册选更多',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: AppTypeScale.small.size,
                         color: Color(AppColors.primary),
                       ),
@@ -677,7 +679,7 @@ class _Thumb extends StatelessWidget {
                         bottomRight: Radius.circular(AppRadius.md),
                       ),
                     ),
-                    child: const Padding(
+                    child: Padding(
                       padding: EdgeInsets.symmetric(
                         horizontal: AppSpacing.xs,
                         vertical: 2,
@@ -948,7 +950,7 @@ class _SheetAction extends StatelessWidget {
               const SizedBox(width: AppSpacing.sm),
               Text(
                 label,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: AppTypeScale.body.size,
                   color: Color(AppColors.textPrimary),
                 ),
