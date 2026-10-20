@@ -7505,6 +7505,21 @@ printf '\nMYSQL_SSL_MODE=VERIFY_CA\nMYSQL_TLS_TRUSTSTORE_PASSWORD=%s\n' \
 
 **修复（commit `df6e76d`）**：`_MediaSectionState` 混入 `AutomaticKeepAliveClientMixin` + `wantKeepAlive => true`，`build()` 开头补 `super.build(context)`，保住已上传列表不被 ListView 回收。新增 `test/features/publish/media_section_keepalive_test.dart`：以 **State 实例同一性**判定保活（首版用张数文本判定是假阳性——重建时 `_items` 会从 `initialMedia` 回填），并实测「`wantKeepAlive=false` 时该用例失败」以确认用例有效。自检：`flutter analyze lib/features/publish` 无问题；`flutter test test/features/publish test/features/media` **60/60** 通过。
 
+### 2026-10-20（全量门禁出包 + 三项遗留补验 + keepalive 真机确认）
+
+> 摘要：补跑 keepalive 修复后的全量门禁并出包；同时把 10-20 上午登记的三项「未完成/未完成真机验证」补齐，并把「删除按钮无响应」定性。
+
+**全量门禁 + 出包**
+- `release-gate.sh` 全量：**PASS 10 / FAIL 0 / SKIP 0**；`flutter analyze` 0 error、`flutter test` **814/814**（含新增 keepalive 用例）、`flutter build apk --release` 成功；`apksigner` 指纹与登记一致；APK SHA-256 `473BCB63C3A8560934BE4404A55A380E7FF643524AE51987AED77C623F06ACC4`；锚点 `rel/prod/20261020-161751`；留证 `build/release-gate.log`。
+- **工具链环境坑（登记，非代码问题）**：从 WSL 以登录 shell 调 `release-gate.sh` 时，`/etc/profile` 重建了 Linux PATH ⇒ `cmd.exe` 继承的环境里没有 Windows 目录，表现为 `where flutter` 为空、`flutter.bat` 报 `DOSKEY/WHERE 不是内部或外部命令` 与 `PowerShell executable not found`。**修法**：经 `WSLENV` 传入 `FLUTTER_WIN` / `APKSIGNER_WIN`，值前缀写成 `set PATH=C:\Windows\System32;C:\Windows;...;C:\Windows\System32\WindowsPowerShell\v1.0;D:\developer\soft\flutter\bin;D:\developer\soft\git\Git\cmd & <真实 exe>`，让门禁的 `run_win` 在 cmd 内先重置 PATH。另：`AMAP_ANDROID_KEY` / `AMAP_WEBSERVICE_KEY` 仍走 `WSLENV` 透传，未落命令明文。
+
+**真机补验（设备 `s8t4wgsww479inif`，1080×2400 @440dpi，目标详情比≈1.80）**
+- **① 拍后比例三选一面板**：发布页「继续拍」→ 系统相机（`OneShotCamera`，本轮预览与快门均正常）→ 4:3 拍照 → 返回 App **立即弹出**「这张照片的比例和详情页不一致 / 不裁剪也能发布，但详情页边缘会显示模糊留白」+「重拍 / 按详情比例裁剪 / 仍然使用（保留原图）/ 本次发布不再提示」；选「仍然使用」后归一化并上传成功（`3 / 9 → 4 / 9`）。上午「MIUI 相机不可用」未复现——本轮只走 `adb input`，未跑会崩溃的 uiautomator 全量 dump。
+- **② 详情页图集滑动**：新建含 4 张图的帖子（3 张既有 + 1 张相机）→ 地图点 Pin →「查看详情」→ 计数器 **`1 / 4` → `2 / 4` → `4 / 4`** 逐页正常、模糊铺底无黑块（10-19 修复同时复验）。验证后已「下架」清理。
+- **③「已下架」卡片「删除」按钮**：点击后底部实际弹出 SnackBar「删除功能本期内测版暂未开放」（截图留证）⇒ **本轮无响应属上轮测试工具误判**（点击坐标/时序问题），**不是产品缺陷、无需改码**；`MyPostCardAction.remove` 仍按 [B2-8] 裁定维持降级。
+- **keepalive 修复真机确认**：发布页相册选 2 图（`2 / 9`）→ 滚到表单顶部 → 再滚回媒体段，计数与缩略图**保持 `2 / 9`**（修复前会退回 `0 / 9`）；测试草稿（「未命名草稿」）与推入相册的两张测试图均已清理。
+- **顺带观察**：相机前台期间该 MIUI 机会回收 Activity，返回后 App 回到首页（导航栈丢失），但**本地草稿自动保存并在再次进入发布页时恢复**（SnackBar「已恢复上次未发布的草稿」）——草稿恢复链路顺带得到真机验证。
+
 
 
 
