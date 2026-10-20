@@ -7463,6 +7463,29 @@ printf '\nMYSQL_SSL_MODE=VERIFY_CA\nMYSQL_TLS_TRUSTSTORE_PASSWORD=%s\n' \
 **门禁**：`flutter analyze` 0 issue；`flutter test` **804/804**；release APK 构建成功（118.4MB）。
 **真机**：release 包安装后验证「选图 → 首次上传失败可重试成功 → 点缩略图进入裁剪页（提示、遮罩、拖动/缩放正常）→ 完成返回并重新上传成功（媒体段恢复绿勾）」；裁剪比例与详情卡共用同一常量，未发布测试帖以免污染 prod。
 
+### 2026-10-20（媒体上传前归一化 + 相机拍照入口 · 出包与真机验证）
+
+> 摘要：相册原图可能带 EXIF 方向（竖拍 = 横像素 + orientation=6），直接上传详情页会横躺；且此前媒体段只有「相册」入口、无「拍照」。本次在「入列前归一化」统一烘焙方向 + 限长边 + 统一 JPEG，并新增相机拍照入口与拍后比例体检。
+
+**实现**
+- `media_image_encoder.dart`：`normalizeCroppedImage`（裁剪结果）与新增 `normalizeUploadImage`（相机/相册原图）共用 `_encodeForUpload` 核心（`img.bakeOrientation` 烘焙方向 + 长边限幅 + 白底合成 + JPEG + 体积校验）；新增 `readImageSizeAsync`（读像素宽高，供拍后比例体检）与 `mediaNormalizerProvider` / `imageSizeReaderProvider` 两个可注入缝（测试注入假实现，避免真实 `compute` 卡 fake async）。
+- `media_picker.dart`：新增 `pickFromCamera`（相机优先入口），抽出 `_toPickedMedia` 复用格式白名单 + 单文件上限校验。
+- `media_section.dart`：入列前归一化（EXIF 烘焙）+ 串行上传；相机入口 + 拍后比例体检（超阈值弹「三选一」）；`media_display_layout.dart` 新增 `kAspectMismatchTolerance` 与 `aspectMismatchExceeds` 纯函数。
+- `AndroidManifest.xml` 补相机权限注释（走 ACTION_IMAGE_CAPTURE 不声明 CAMERA）；`Info.plist` 补 `NSCameraUsageDescription` / `NSPhotoLibraryUsageDescription`。
+
+**出包门禁期间修复（7 处）**：① 5 处 `const` 表达式访问 `AppTypeScale.xxx.size`（`AppTextStyleToken.size` 是 `final` 实例字段，非编译期常量）→ 去 const；② 1 处 `use_build_context_synchronously`（`_aspectDecisionFor` async gap 后用 context）→ 补 `if (!mounted) return`；③ 1 处测试假图数据 `Uint8List([1,2,3])` 非法 → `_solidJpeg`。提交 `98699c4` → `a6129c2`。
+
+**门禁**：release 门禁 **PASS 10 / FAIL 0 / SKIP 0**，锚点 `rel/prod/20261020-074920`；`flutter analyze` 0 issue、`flutter test` 813/813、APK SHA-256 `5E0B2AB3…618F2`（签名证书指纹与登记一致）。
+**真机**：release 包装真机（`s8t4wgsww479inif`）自动化走查 —— 首页地图真渲染（高德 Key 生效）；发布页「相册」→ 系统文件选择器 → 选图 → 归一化 → 上传 → 缩略图 `1/9 · 第 1 张为详情封面`；点缩略图 → 裁剪页（标题/提示/取消/完成）→ 完成回传重传；「继续拍」→ 系统相机 `OneShotCamera`。核心链路全通。
+
+### 2026-10-20（真机「网络异常」定位：wifi 断开致旧进程走失效连接）
+
+> 摘要：真机资质认证页「提交审核」报「网络异常，请稍后重试」（`qualification_form_screen.dart` `_messageOf` 的 `api == null` 分支 = 非 ApiException 传输层异常）；「我的」页同现 `/users/me` connectionTimeout。
+
+**定位**：`dumpsys wifi` 显示 wifi `"HONG QI"` 于 10:35:45 断开（`NETWORK_DISCONNECTION_EVENT` → `DISCONNECTED`），设备切到移动数据；而**运行中的应用进程 TCP 连接仍持有旧 wifi 局域网地址 192.168.0.100**（`/proc/<pid>/net/tcp` 实证），请求走失效连接 ⇒ 失败。对照：设备自带 `curl` 走默认网络（移动数据）访问 prod **0.67s 正常**（TCP 443 通、HTTPS 握手成功、根路径 404 属正常响应）。
+
+**结论**：非代码 bug，是设备 wifi/移动数据切换时旧进程未及时切网的临时问题。**重启应用即恢复**（重启后「我的发布 · 3 在架」正常加载，无错误）。与本次媒体归一化改动无关（`submitQualification`/`_messageOf` 逻辑未被本次改动触及）。
+
 
 
 
