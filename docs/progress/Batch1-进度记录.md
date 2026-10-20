@@ -7486,6 +7486,25 @@ printf '\nMYSQL_SSL_MODE=VERIFY_CA\nMYSQL_TLS_TRUSTSTORE_PASSWORD=%s\n' \
 
 **结论**：非代码 bug，是设备 wifi/移动数据切换时旧进程未及时切网的临时问题。**重启应用即恢复**（重启后「我的发布 · 3 在架」正常加载，无错误）。与本次媒体归一化改动无关（`submitQualification`/`_messageOf` 逻辑未被本次改动触及）。
 
+### 2026-10-20（真机补充验证：EXIF 方向烘焙 / 多图上传 / 地图选点）
+
+- **多图上传**：发布页相册连续选 3 张 → 媒体段 `1/9 → 2/9 → 3/9`，第 1 张标「封面」，三张均上传成功、无失败重试。
+- **地图选点**：选点页正常（拖动提示 + 逆地理名称 + 可见范围 5km）；发布页位置栏显示「安徽省合肥市长丰县双墩镇北城世纪城鑫徽苑」⇒ `AMAP_WEBSERVICE_KEY` 生效。
+- **发布拦截**：工作 > 全职招聘 > 餐饮服务 点发布 → 弹「此分类需要企业认证」（去认证 / 暂不发布）；退出发布页弹「有未发布草稿，是否保存？」。
+- **EXIF 方向烘焙（构造样本，客观判定）**：本地 PIL 生成 `1600×900`「左红右蓝 + EXIF Orientation=6」测试图推入 `DCIM/Camera`（MediaStore 记为 `orientation=90`）。发布页选入后对 220×220 缩略图四象限取样：左上/右上 ≈ `(239,0,0)`/`(254,0,0)` 红、左下/右下 ≈ `(0,0,254)` 蓝 ⇒ 像素已被旋转为竖版（红在上、蓝在下），方向烘焙生效。
+- **未完成项**：① 拍后比例体检三选一面板 —— 真机 MIUI 相机 `uiautomator` 崩溃（`/data/system/theme_config/theme_compatibility.xml` 缺失）、预览全黑、点快门时 USB 掉线 2/2 次，未能拍照；纯函数 `aspectMismatchExceeds` 已有单测覆盖。② 详情页多图图集 `1/3→3/3` —— 发布被企业认证阻断，「我的发布」卡片不可点进详情，feed 卡片为自绘无文本节点，未能定位目标帖子。
+- **清理**：测试图、设备端截图与临时脚本均已删除，草稿选择「不保存」。
+
+### 2026-10-20（测试帖发布验证：发布成功 + 发现「媒体段滚动后丢失」缺陷）
+
+- **选类目**：`生活 > 二手闲置转让 > 家具家电`（40101，`requiredCert = none`），无需任何认证即可发布。
+- **发布成功**：填标题/描述/价格/新旧程度/取件方式/联系方式 + 3 张图 → 提交成功，成功页显示「发布成功 · 当前完整度：半完整」；「我的发布」显示 `test-media-32 · 刚刚发布 · 1 元/元 · 半完整 · 在架`。随后点「下架」，状态变为「已下架」（对外不可见）。
+- **缺陷（可复现 3 次）**：发布页用 `ListView` 懒构建（`publish_screen.dart` `body: ListView`），`MediaSection` 的已上传列表 `_items` 只存在自身 State（`media_section.dart` 无 `AutomaticKeepAliveClientMixin`）。**媒体段滚出可视区超出 cacheExtent 后 State 被回收，已上传的 3 张图在 UI 上变回 `0 / 9`**；但父级 `_form.mediaIds` 仍是旧值，界面与提交态不一致。实测路径：加 3 图 → 上滚改标题/描述 → 滚回媒体段 = `0 / 9`。
+- **未完成**：详情页图集 `1/3 → 3/3` 滑动验证 —— 自己的帖子不出现在鸭圈 feed（feed 是地图 + 底部抽屉，卡片无文本语义、按坐标点击无效），「我的发布」卡片本身不可点进详情，故无法在单账号下打开该帖详情页。
+- **其它观察**：编辑态页面的 uiautomator 语义树只暴露 1 分类 / 2 位置 / 4 价格 / 分类专属信息 / 协议，标题、描述、媒体、有效期四段缺失（与键盘遮挡时同类现象，疑为 Flutter 语义树未完整刷新，未定性为缺陷）；「已下架」卡片上的「删除」按钮连续点击/长按均无响应，帖子目前停留在「已下架」状态。
+
+**修复（commit `df6e76d`）**：`_MediaSectionState` 混入 `AutomaticKeepAliveClientMixin` + `wantKeepAlive => true`，`build()` 开头补 `super.build(context)`，保住已上传列表不被 ListView 回收。新增 `test/features/publish/media_section_keepalive_test.dart`：以 **State 实例同一性**判定保活（首版用张数文本判定是假阳性——重建时 `_items` 会从 `initialMedia` 回填），并实测「`wantKeepAlive=false` 时该用例失败」以确认用例有效。自检：`flutter analyze lib/features/publish` 无问题；`flutter test test/features/publish test/features/media` **60/60** 通过。
+
 
 
 
