@@ -508,6 +508,7 @@ class _MediaSectionState extends ConsumerState<MediaSection>
               for (var i = 0; i < _items.length; i++)
                 _Thumb(
                   item: _items[i],
+                  position: i + 1,
                   isCover: i == 0,
                   onRemove: () => _remove(_items[i]),
                   onRetry: () => _upload(_items[i]),
@@ -599,10 +600,12 @@ class _MediaSectionState extends ConsumerState<MediaSection>
 class _Thumb extends StatelessWidget {
   /// 构造缩略图槽。
   ///
-  /// 参数：[item] 条目；[onRemove] 移除回调；[onRetry] 失败重试回调；
+  /// 参数：[item] 条目；[position] 在本次发布中的序号（1 起，供语义标签用）；
+  ///   [onRemove] 移除回调；[onRetry] 失败重试回调；
   ///   [onCrop] 裁剪回调（null 表示该条不可裁剪/正在上传）。
   const _Thumb({
     required this.item,
+    required this.position,
     required this.isCover,
     required this.onRemove,
     required this.onRetry,
@@ -611,6 +614,12 @@ class _Thumb extends StatelessWidget {
 
   /// 条目。
   final _MediaUpload item;
+
+  /// 在本次发布中的序号（1 起）。
+  ///
+  /// 语义标签只靠「封面」角标文字不够：编辑/重发态的既有远程媒体没有本地字节，
+  /// 此前既不是按钮也没有标签，读屏用户完全得不到「第几张」的信息。
+  final int position;
 
   /// 是否为封面（列表第 1 张，即详情轮播首图）。
   final bool isCover;
@@ -623,6 +632,12 @@ class _Thumb extends StatelessWidget {
 
   /// 裁剪回调（null 表示不可裁剪）。
   final VoidCallback? onCrop;
+
+  /// 缩略图的无障碍标签（位置 + 是否为详情封面）。
+  ///
+  /// 返回：形如「第 1 张图片，详情封面」/「第 2 张图片」。
+  String get _semanticLabel =>
+      isCover ? '第 $position 张图片，详情封面' : '第 $position 张图片';
 
   /// 构建缩略图内容。
   ///
@@ -664,8 +679,14 @@ class _Thumb extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Semantics(
+      // container: true —— 每张缩略图各自成一个语义节点，标签才不会被并进外层
+      // 容器（并进去后读屏会把整段读成一句，等于「第几张」信息失效）。
+      container: true,
       button: onCrop != null,
-      label: onCrop != null ? '裁剪这张图片' : null,
+      label: _semanticLabel,
+      // 裁剪是「可选动作」，用 hint 表达动作而不是替换标签：远程既有媒体不可
+      // 裁剪时仍有「第几张」可读。
+      hint: onCrop != null ? '点按可裁剪' : null,
       child: GestureDetector(
         onTap: onCrop,
         // 图片只铺满槽内，不用 opaque 的话点边缘空白不会触发裁剪。
@@ -700,11 +721,15 @@ class _Thumb extends StatelessWidget {
                         horizontal: AppSpacing.xs,
                         vertical: 2,
                       ),
-                      child: Text(
-                        '封面',
-                        style: TextStyle(
-                          fontSize: AppTypeScale.caption.size,
-                          color: Colors.white,
+                      // 角标是视觉补充：语义已由缩略图 label 的「详情封面」承载，
+                      // 不排除会与 label 合并成「…详情封面 封面」的重复播报。
+                      child: ExcludeSemantics(
+                        child: Text(
+                          '封面',
+                          style: TextStyle(
+                            fontSize: AppTypeScale.caption.size,
+                            color: Colors.white,
+                          ),
                         ),
                       ),
                     ),

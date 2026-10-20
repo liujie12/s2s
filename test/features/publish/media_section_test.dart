@@ -11,6 +11,7 @@ library;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
@@ -118,6 +119,98 @@ void main() {
     expect(launchedRatio, closeTo(expectedRatio, 0.0001));
     expect(uploader.uploaded.length, 2);
     expect(uploader.uploaded.last.contentType, 'image/jpeg');
+  });
+
+  testWidgets('缩略图语义标签：编辑态既有远程媒体也能读出「第几张 / 封面」', (tester) async {
+    // 回归背景（2026-10-20 登记）：编辑/重发态的既有媒体没有本地字节，此前
+    // 既不是按钮也没有 label，读屏用户完全拿不到「第几张/封面」信息。
+    final handle = tester.ensureSemantics();
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: Scaffold(
+            body: MediaSection(
+              initialMedia: const [
+                (mediaId: 'm1', url: ''),
+                (mediaId: 'm2', url: ''),
+                (mediaId: 'm3', url: ''),
+              ],
+              onChanged: (_) {},
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.bySemanticsLabel(RegExp('第 1 张图片')), findsOneWidget);
+    expect(find.bySemanticsLabel(RegExp('第 2 张图片')), findsOneWidget);
+    expect(find.bySemanticsLabel(RegExp('第 3 张图片')), findsOneWidget);
+
+    // 标签逐字断言：封面信息由 label 承载，视觉角标已 ExcludeSemantics，
+    // 合并不该产生「详情封面 封面」这类重复播报。
+    final cover = tester.getSemantics(
+      find.bySemanticsLabel(RegExp('第 1 张图片')),
+    );
+    expect(cover.label, '第 1 张图片，详情封面');
+
+    // 远程既有媒体不可裁剪 ⇒ 不应带「点按可裁剪」提示，也不应被标成按钮。
+    final second = tester.getSemantics(
+      find.bySemanticsLabel(RegExp('第 2 张图片')),
+    );
+    expect(second.label, '第 2 张图片');
+    expect(second.hint, isEmpty);
+    expect(
+      second.hasFlag(SemanticsFlag.isButton),
+      isFalse,
+      reason: '不可裁剪的缩略图不该被读成按钮',
+    );
+    handle.dispose();
+  });
+
+  testWidgets('缩略图语义标签：本地新选图可读「第几张」且提示可裁剪', (tester) async {
+    final handle = tester.ensureSemantics();
+    final uploader = _FakeUploadService();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          mediaPickerProvider.overrideWithValue(
+            _FakePicker(
+              PickedMedia(
+                filename: 'a.png',
+                bytes: _solidPng(width: 240, height: 480),
+                contentType: 'image/png',
+              ),
+            ),
+          ),
+          mediaNormalizerProvider.overrideWithValue(
+            (input) async => PickedMedia(
+              filename: input.filename,
+              bytes: input.bytes,
+              contentType: 'image/jpeg',
+            ),
+          ),
+          mediaUploadServiceProvider.overrideWithValue(uploader),
+        ],
+        child: MaterialApp(
+          home: Scaffold(body: MediaSection(onChanged: (_) {})),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('相册'));
+    await tester.pumpAndSettle();
+
+    final thumb = tester.getSemantics(
+      find.bySemanticsLabel(RegExp('第 1 张图片')),
+    );
+    expect(thumb.hint, '点按可裁剪');
+    expect(
+      thumb.hasFlag(SemanticsFlag.isButton),
+      isTrue,
+      reason: '可裁剪的缩略图是可点动作，应暴露为按钮',
+    );
+    handle.dispose();
   });
 
   testWidgets('相机拍超比例图：弹三选一，选「仍然使用」后入列上传', (tester) async {
