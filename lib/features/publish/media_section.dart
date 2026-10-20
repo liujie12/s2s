@@ -111,8 +111,22 @@ class MediaSection extends ConsumerStatefulWidget {
   ConsumerState<MediaSection> createState() => _MediaSectionState();
 }
 
-class _MediaSectionState extends ConsumerState<MediaSection> {
+class _MediaSectionState extends ConsumerState<MediaSection>
+    with AutomaticKeepAliveClientMixin {
   final List<_MediaUpload> _items = [];
+
+  /// 保持本段存活（真机缺陷修复）。
+  ///
+  /// 发布页是 `ListView` 懒构建，本段滚出可视区超出 cacheExtent 会被销毁，
+  /// 而已上传列表 `_items` 只存在本 State 里 —— 用户上滚补标题/描述再滚回来，
+  /// 缩略图会凭空变回 `0 / 9`，但父级 `_form.mediaIds` 仍是旧值，界面与提交态
+  /// 不一致。上传成功的 mediaId 不能依赖父级回传重建（详情页 URL 只在
+  /// `initialMedia` 里），故用 keep-alive 保住本段 State。
+  ///
+  /// 参数：无。
+  /// 返回：恒为 true。
+  @override
+  bool get wantKeepAlive => true;
 
   /// 正在选图（防重复触发系统图库）。
   bool _picking = false;
@@ -473,6 +487,8 @@ class _MediaSectionState extends ConsumerState<MediaSection> {
 
   @override
   Widget build(BuildContext context) {
+    // AutomaticKeepAliveClientMixin 要求先调用 super.build 才会登记保活。
+    super.build(context);
     final canAdd = _items.length < widget.maxCount && !_picking;
     final isEmpty = _items.isEmpty;
     return Column(
