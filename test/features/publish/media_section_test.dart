@@ -11,7 +11,6 @@ library;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
@@ -160,7 +159,7 @@ void main() {
     expect(second.label, '第 2 张图片');
     expect(second.hint, isEmpty);
     expect(
-      second.hasFlag(SemanticsFlag.isButton),
+      second.flagsCollection.isButton,
       isFalse,
       reason: '不可裁剪的缩略图不该被读成按钮',
     );
@@ -206,7 +205,7 @@ void main() {
     );
     expect(thumb.hint, '点按可裁剪');
     expect(
-      thumb.hasFlag(SemanticsFlag.isButton),
+      thumb.flagsCollection.isButton,
       isTrue,
       reason: '可裁剪的缩略图是可点动作，应暴露为按钮',
     );
