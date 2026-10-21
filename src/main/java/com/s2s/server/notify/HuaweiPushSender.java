@@ -7,6 +7,7 @@ import com.s2s.server.auth.PushPlatform;
 import java.time.Instant;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpHeaders;
@@ -91,7 +92,8 @@ public class HuaweiPushSender implements PushSender {
      * @param appSecret 华为 AppSecret（{@code s2s.push.huawei.app-secret}）
      * @throws IllegalStateException 启用但凭据为空
      */
-    public HuaweiPushSender(RestClient restClient, ObjectMapper objectMapper,
+    public HuaweiPushSender(@Qualifier("pushRestClient") RestClient restClient,
+            ObjectMapper objectMapper,
             @Value("${s2s.push.huawei.app-id:}") String appId,
             @Value("${s2s.push.huawei.app-secret:}") String appSecret) {
         if (isBlank(appId) || isBlank(appSecret)) {

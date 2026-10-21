@@ -7,6 +7,7 @@ import com.s2s.server.auth.PushPlatform;
 import com.s2s.server.common.constants.NfrPush;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpHeaders;
@@ -96,7 +97,8 @@ public class XiaomiPushSender implements PushSender {
      * @param templateParam 模板变量 JSON（{@code s2s.push.xiaomi.template-param}，可空）
      * @throws IllegalStateException 启用但 AppSecret / 包名为空
      */
-    public XiaomiPushSender(RestClient restClient, ObjectMapper objectMapper,
+    public XiaomiPushSender(@Qualifier("pushRestClient") RestClient restClient,
+            ObjectMapper objectMapper,
             @Value("${s2s.push.xiaomi.app-secret:}") String appSecret,
             @Value("${s2s.push.xiaomi.package-name:}") String packageName,
             @Value("${s2s.push.xiaomi.channel-id:}") String channelId,
