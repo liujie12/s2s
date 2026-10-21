@@ -19,6 +19,22 @@ if (keystorePropertiesFile.exists()) {
     FileInputStream(keystorePropertiesFile).use { keystoreProperties.load(it) }
 }
 
+// 小米推送客户端凭据（B2-2 阶段 2）。
+// 与 key.properties 同口径：本地凭据文件不入库，缺失时为空串 ——
+// 原生侧据此判定「未配置」并跳过注册，不崩溃也不伪造 token。
+// 键名：mipush.appId / mipush.appKey（写在 android/local.properties，随 Flutter 默认 gitignore）。
+val localProperties = Properties()
+val localPropertiesFile = rootProject.file("local.properties")
+if (localPropertiesFile.exists()) {
+    FileInputStream(localPropertiesFile).use { localProperties.load(it) }
+}
+val miPushAppId = localProperties.getProperty("mipush.appId") ?: ""
+val miPushAppKey = localProperties.getProperty("mipush.appKey") ?: ""
+
+// 小米推送 SDK 为纯 AAR（官方下载包，无 Maven 坐标），直接用文件依赖引入本地 libs。
+// 不用 flatDir：空 group 的 flatDir 坐标会让 AGP 的 lint（lintVitalAnalyzeRelease）崩溃
+// （Illegal char <"> at index 8: group = ""），导致 release 出包失败。
+
 android {
     namespace = "com.s2s.zhaoyazhao"
     compileSdk = flutter.compileSdkVersion
@@ -33,6 +49,11 @@ android {
         jvmTarget = JavaVersion.VERSION_17.toString()
     }
 
+    // BuildConfig 默认关闭（AGP 8），推送凭据需以编译期常量注入原生侧，故显式开启。
+    buildFeatures {
+        buildConfig = true
+    }
+
     defaultConfig {
         // 开发期包名：正式包名依赖 P2 企业域名主体（未办理），故先用 .dev 后缀申请高德开发 Key。
         // P2/P3 落地后改为正式包名并同步重申 Key —— 替换点仅此一处（说明文档条目 [62]）。
@@ -44,6 +65,10 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // 小米推送客户端凭据（空串 = 未配置，原生侧跳过注册）。
+        buildConfigField("String", "MIPUSH_APP_ID", "\"$miPushAppId\"")
+        buildConfigField("String", "MIPUSH_APP_KEY", "\"$miPushAppKey\"")
     }
 
     signingConfigs {
@@ -71,4 +96,9 @@ android {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // 小米推送 7.12.4（官方 AAR，文件依赖无 group，规避 lint 崩溃）。
+    implementation(files("libs/MiPush_SDK_Client_7_12_4-C_3rd.aar"))
 }

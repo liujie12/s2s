@@ -438,6 +438,12 @@ $(tail -n 25 "${REPO}/build/release-gate.test.log" | sed 's/^/        /')"
     if [[ -z "${AMAP_WEBSERVICE_KEY:-}" ]]; then
       skip "S6-WebKey" "未提供 AMAP_WEBSERVICE_KEY，发布页/地图选点页将无法显示位置名称"
     fi
+    # 小米推送客户端凭据（2026-10-21）：写在 android/local.properties（不入库），缺值时包内
+    # 静默不注册（PushMethodHandler 返回 not_configured），产物侧无法反查 ⇒ 此处显式提示。
+    # 仅提示、不计入 PASS/FAIL/SKIP，避免改变既有门禁基线（手册 §11.1-5）。
+    if ! grep -qE '^mipush\.(appId|appKey)=.+' "${REPO}/android/local.properties" 2>/dev/null; then
+      echo "  [提示] android/local.properties 缺 mipush.appId/mipush.appKey ⇒ 本包不注册小米推送（见手册 §11.1-5）"
+    fi
     DEFINES="--dart-define=${DEFINE_BASE_URL} --dart-define=${DEFINE_IS_RELEASE}"
     [[ -n "${AMAP_ANDROID_KEY:-}" ]] && DEFINES="${DEFINES} --dart-define=${DEFINE_AMAP_KEY_NAME}=${AMAP_ANDROID_KEY}"
     [[ -n "${AMAP_WEBSERVICE_KEY:-}" ]] && DEFINES="${DEFINES} --dart-define=${DEFINE_AMAP_WEB_KEY_NAME}=${AMAP_WEBSERVICE_KEY}"

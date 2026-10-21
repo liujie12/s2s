@@ -15,26 +15,50 @@
 ///   倒计时的起点是服务端的 `created_at`，客户端自己记时清缓存即失效。
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../design_tokens.dart';
 import '../../domain/listing_detail.dart';
 import '../../domain/publish_completeness.dart';
 import '../../router/app_router.dart';
+import '../notify/push_service.dart';
 import 'publish_form_state.dart';
 
 /// 发布完成页。
 ///
 /// 参数 [form] 提交时的表单快照，用于算 §9.8 档位。为空时按 🔴 档展示 ——
 /// **不默认成 🟢**：拿不到数据就说「完整」，等于把最坏情况显示成最好情况。
-class PublishSuccessScreen extends StatelessWidget {
+///
+/// 本页同时是**通知权限申请点**（详设 §10.2.2「首次产生被通知预期的交互点」，
+/// 2026-10-20 产品确认取「发布成功后」）：不在冷启动首屏弹窗。
+class PublishSuccessScreen extends ConsumerStatefulWidget {
   const PublishSuccessScreen({super.key, this.form});
 
   final PublishFormState? form;
 
   @override
+  ConsumerState<PublishSuccessScreen> createState() =>
+      _PublishSuccessScreenState();
+}
+
+class _PublishSuccessScreenState extends ConsumerState<PublishSuccessScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // 首帧后再弹系统权限框：避免与页面转场动画抢焦点（也便于测试稳定）。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(ref.read(pushServiceProvider).requestPermission());
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final form = widget.form;
     final assessment = form?.completeness ??
         const CompletenessAssessment(
           requiredFieldsComplete: false,

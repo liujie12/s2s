@@ -29,4 +29,24 @@ public final class NfrPush {
      * 显式受限场景（如运营后台定向邀请被频控）。</p>
      */
     public static final int DAILY_LIMIT = 10;
+
+    /**
+     * 厂商推送服务端 HTTP 调用的连接/读取超时（秒）。
+     *
+     * <p><b>为什么是 5 秒</b>：推送是「尽力而为」的下发链路，站内通知已在同事务内落库；
+     * 厂商接口若 5 秒未响应，继续等待只会拖住调用方线程，收益为零。与
+     * {@code NfrAi#UPSTREAM_TIMEOUT_SECONDS}（10 秒）刻意不同 —— 后者是用户主动等待的
+     * 交互链路，本项是后台旁路。</p>
+     */
+    public static final int UPSTREAM_TIMEOUT_SECONDS = 5;
+
+    /**
+     * 小米通知标题最大字符数（官方口径：长度小于 50，中英文均按 1 计）。
+     */
+    public static final int XIAOMI_TITLE_MAX_CHARS = 50;
+
+    /**
+     * 小米通知描述最大字符数（官方口径：长度小于 128，中英文均按 1 计）。
+     */
+    public static final int XIAOMI_DESCRIPTION_MAX_CHARS = 128;
 }

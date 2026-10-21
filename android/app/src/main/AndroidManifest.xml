@@ -15,7 +15,7 @@
          审核里为相机用例过审。 -->
 
     <application
-        android:label="zhaoyazhao"
+        android:label="找鸭找"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:allowNativeHeapPointerTagging="false">
@@ -54,6 +54,24 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- 小米推送消息接收器（B2-2 阶段 2）。
+             必须与 MiPushClient.registerPush 同进程 —— 此处不设 android:process（即主进程）；
+             若改到 :pushservice 将收不到注册结果与点击回调（官方硬约束）。
+             token / 点击事件经 PushMethodHandler 平台通道回传 Dart。 -->
+        <receiver
+            android:name=".push.MiPushReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.xiaomi.mipush.RECEIVE_MESSAGE" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="com.xiaomi.mipush.MESSAGE_ARRIVED" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="com.xiaomi.mipush.ERROR" />
+            </intent-filter>
+        </receiver>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

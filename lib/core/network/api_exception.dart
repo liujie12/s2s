@@ -40,6 +40,8 @@
 /// 归零 —— 抛出点随助手回到 contract_json 既有 15 处，属反冗余收敛非删除）、
 /// `features/cert/cert_repository.dart` ×1（[149]：`_parseStatus` 对 status
 /// 缺失抛 parseError）；
+/// `features/notify/push_device_repository.dart` ×1（[B2-2]：`DeviceUpsertResult`
+/// 的 platform 为未知推送通道时抛 parseError，不静默降级）；
 /// 新增解析失败点同走本工厂。
 ///
 /// **维护纪律**：本清单与反冗余判据 C1 的 `parseFactoryTotalBaseline` 必须同改
@@ -56,6 +58,8 @@
 /// 直抛改走 contract_json 助手，抛出点归入其既有 15 处，全局总数净减 3）。
 /// 2026-10-13 增 3 处：连工厂定义共 58 处（[B2-8] `RepostDraftDto` 的
 /// attributes 对象校验 1 + lng/lat 缺失校验 2；基线同步 56 → 59）。
+/// 2026-10-20 增 1 处：连工厂定义共 60 处（[B2-2] push_device_repository.dart
+/// `DeviceUpsertResult.platform` 未知通道校验；基线同步 59 → 60）。
 ///
 /// **循环 import 说明**：见 `api_error_code.dart` 文件头，同一份说明。
 library;

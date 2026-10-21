@@ -6,6 +6,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zhaoyazhao/features/publish/publish_form_state.dart';
 import 'package:zhaoyazhao/features/publish/publish_success_screen.dart';
@@ -28,8 +29,14 @@ void main() {
   /// 挂载完成页。
   ///
   /// 参数 [tester] 测试驱动器，[form] 表单快照（可空，模拟直达路由）。
+  /// 需要 ProviderScope：完成页在首帧后读取 `pushServiceProvider` 申请通知权限
+  /// （B2-2 阶段 2）；未接入原生通道时该调用静默降级，不影响页面断言。
   Future<void> pump(WidgetTester tester, PublishFormState? form) async {
-    await tester.pumpWidget(MaterialApp(home: PublishSuccessScreen(form: form)));
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(home: PublishSuccessScreen(form: form)),
+      ),
+    );
   }
 
   group('§8 T6-④：完整度卡取代单纯的成功 toast', () {

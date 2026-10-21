@@ -154,6 +154,7 @@
 - 2026-10-17（发布页地图选点接真 + 高德 Web 逆地理地址展示 + AI FAB 可拖动/避让）
 - 2026-10-17（B2-4 dry-run 去留裁定：长期保留真通道，登记转行政上线闸门）
 - 2026-10-18（B2-4 AI 调用费用上限：单用户每日 <1 元、每月 <10 元）
+- 2026-10-21（[154] 应用官网上线立项 · 微信开放平台申请前置两项裁定）
 
 ---
 
@@ -7535,6 +7536,54 @@ printf '\nMYSQL_SSL_MODE=VERIFY_CA\nMYSQL_TLS_TRUSTSTORE_PASSWORD=%s\n' \
 **取证方法（可复用）**：`adb shell uiautomator dump` 后按 `bounds` 与屏幕高度比对 —— 命中段落若 `bounds.top` 越出当前视口即视为未构建；结论必须用「多滚动位置取并集」验证，单次 dump 不足以判定语义缺失。
 
 **附带发现（未改码，登记待判）**：媒体段缩略图仅在「可裁剪」（本地新选图）时带 `Semantics(label: '裁剪这张图片')`；编辑/重发态的**既有远程媒体缩略图没有任何语义标签**，TalkBack 读不出「第几张/封面」。属无障碍可用性改进项，与本次观察项无关，是否本期处理待裁定。
+
+### 2026-10-20（B2-2 阶段 2 · 华为/小米真实 Sender 后端落地）
+
+> 摘要：用户确认华为、小米推送凭据已取得，开始接入真实通道。本轮只落**服务端发送器**（客户端 SDK 与 token 上报另起一轮），凭据未注入时保持「不注册、走站内兜底」的既有降级形态。
+
+**实现**
+- 新增 `HuaweiPushSender`（官方 v1 REST）：`oauth2/v3/token` 取 OAuth2 Token（client_credentials，带 5 分钟提前刷新余量 + 同步双检缓存）→ `POST /v1/{AppID}/messages:send`，成功码 `80000000`；请求体带 `notification.title/body`、`data`（与站内通知同源的 `type/targetId`）与 `android.notification.click_action.type=1`（打开 App 首页）。
+- 新增 `XiaomiPushSender`（官方 v3 REST）：`POST /v3/message/regid`，头 `Authorization: key=<AppSecret>`，表单含 `registration_id/restricted_package_name/title/description/payload/notify_type/pass_through/extra.notify_effect`，成功码 `code=0`；标题/描述按官方上限截断（`NfrPush` 常量）。私信 `channel_id/template_id/template_param` 做成可选配置（未配置按普通通道下发，配置后自动附带）。
+- 新增 `PushClientConfig`：统一 `RestClient`，连接/读取超时取 `NfrPush.UPSTREAM_TIMEOUT_SECONDS`（5s，后台旁路口径）。
+- 启停口径：`s2s.push.<vendor>.enabled=false`（默认）→ 对应 Sender 不注册，`PushSenderRegistry` 仍为空、下发走站内兜底；`enabled=true` 但凭据为空 → **构造期快速失败**（不给静默降级留口子）。两家均不提供「记日志的假发送器」。
+- 配置：`application.yml` 新增 `s2s.push.huawei.*` / `s2s.push.xiaomi.*`；`deploy/env/.env.{dev,staging,prod}.example` 新增 9 个变量（服务端密钥只走 env 注入，禁入仓库）。
+- 前端新增 `PushDeviceRepository`（`lib/features/notify/push_device_repository.dart`）：契约 `POST /users/me/devices` 的通道枚举 + DTO 解析 + 请求；与插件选型解耦（华为/小米桥接层拿到 token 后直接调用）。`ApiException.parse` 调用点 +1，反冗余判据 C1 基线 59 → 60，`api_exception.dart` 文件头清单同步。
+- 前端小米通道已接入（2026-10-20）：官方 SDK **7.12.4**（`MiPush_SDK_Client_7_12_4-C_3rd.aar`，仅 `libs/*.jar` 有实体类，`classes.jar` 是空壳）落在 `android/app/libs/`，Gradle 走 `flatDir`；新增 `PushMethodHandler`（MethodChannel `com.s2s.zhaoyazhao/push`：register / getToken / requestPermission / getInitialClick + onToken / onClick 回调）与 `MiPushReceiver`（主进程，REQUIRED：不与 registerPush 跨进程）；`PushService` 负责「注册 → 取 token → 上报」与权限申请，登录成功补报、发布成功页申请权限（2026-10-20 产品确认时机）。凭据经 `local.properties` 的 `mipush.appId/appKey` → `BuildConfig` 注入，空值即跳过注册（fail-open 到站内通知，不崩溃）。
+
+**门禁**：新增 `HuaweiPushSenderTest`（6 例）/ `XiaomiPushSenderTest`（6 例），全部 HTTP 打桩不出网；后端 `mvn -o -q test` **546/546**（原 534 + 12），exit 0。前端新增 `push_device_repository_test`（3 例）+ `push_service_test`（4 例）；`flutter analyze` **0 issue**、`flutter test` **823/823**、`flutter build apk --debug` **成功**（合并清单含 `MiPushReceiver`/`XMPushService`/`POST_NOTIFICATIONS`，dex 内确认 `com/xiaomi/push/service/XMPushService`）。
+
+**未完成（2026-10-20 裁定为「挂账」，不阻塞产品开发与上架）**
+- 小米客户端：代码链路已通，但 `android/local.properties` 的 `mipush.appId/appKey` 仍为空 —— 填入后才真正注册并产生 regid（空值时静默跳过，构建/启动不受影响）。**不再阻塞后续开发**。
+- 华为客户端：待 `android/app/agconnect-services.json` 到位后再加官方 `huawei_push`（pub.dev 6.15.0+300）+ AGC Maven 仓库；本轮不写未验证依赖。
+- 真机端到端：待凭据到位后单独收尾（登录 → regid → `device.push_token` 落库 → 控制台测试推送）。小米真机（`s8t4wgsww479inif`）与华为真机均具备（2026-10-20 用户确认）。
+- 挂账解除触发：① 小米 AppId/AppKey 到手；② 华为 `agconnect-services.json` 到手；③ 任一渠道需要正式触达前。三者任一到达即恢复本项收尾。
+- 小米 SDK 下载 zip 仍留在 `third_party/mipush/`（约 2.3MB），AAR 已复制到 `android/app/libs/`；zip 可删，AAR 须入库（否则 CI 构建缺依赖）。
+- 小米私信模板/channel（2026-12-31 前须完成接入）与华为自分类权益（未批则默认资讯营销类 2/5 条/日）属外部闸门，未在本轮处理。
+
+### 2026-10-21（[154] 应用官网上线立项 · 微信开放平台申请前置两项裁定）
+
+> 摘要：用户在填微信开放平台「创建移动应用」表单时发现**「应用官网」必填且当前无站可填**。经核实 `s2s.build110.com` 仅反代 API、根路径无页面，故单独立项 **[154] / B2-14**，并同时裁定长期挂着的两个前置决策。本轮**只做文档立项与裁定登记，无代码改动、无门禁动作**。
+
+**① 事实核实（只读）**
+- `deploy` 编排层无静态站点配置：Caddy 对 `s2s.build110.com` 为纯反代（上游 `app:8080`），根路径无可读页面 ⇒ 不能作为开放平台「应用官网」。
+- 开放平台侧硬要求（任务书 §1.3 已录）：官网须**可正常访问**、含**服务功能详情 / 用户协议 / 版权所有者 / 网站备案信息 / 联系方式**、**备案主体与认证主体一致**，且**不支持**公众号 / 小程序 / H5 页面顶替。
+- 现有可复用素材：`docs/legal/` 两份协议草稿（用户协议 + 隐私政策）已备；域名备案 = 皖ICP备18025259号-3 / 合肥嘉联智能科技有限公司；App 图标源文件在 `android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png`。
+
+**② 用户裁定（2026-10-21，详见《决策登记表》同批块）**
+- **认证主体 = 合肥嘉联智能科技有限公司** —— 最终官网域名的 ICP 备案主体须与之一致；现 `build110.com` 备案主体即为此，故无需盖章授权书。
+- **包名 = 沿用 `com.s2s.zhaoyazhao.dev`** —— 走任务书 §1.6 选项 B：先用开发包名拿 AppID，接受后续定正式包名时同步重申开放平台。
+- **官网域名 = 待定** —— 用户明确 `s2s.build110.com` 会更换、重新注册 ⇒ [154] 验收**不绑定任何现有域名**，以最终官网域名为准；新域名须完成 ICP 备案（7–20 工作日）后才能作为「应用官网」提交，页脚备案号取新域名实际值、不得套用 `皖ICP备18025259号-3`。
+- **应用官网缺失的处置 = 单独立项先做** —— 不以不可访问地址、第三方托管（Notion/语雀/GitHub Pages）、公众号/小程序/H5 顶替。
+
+**③ 立项内容（[154] / B2-14）**
+- 交付 = **最小合规静态官网**：首页（产品名 + 一句话简介**与开放平台「移动应用简介」逐字一致** + 服务功能详情 + 真机截图）、`/terms`、`/privacy`；页脚含版权所有者、**该域名对应的 ICP 备案号**（链 `beian.miit.gov.cn`）、联系方式。
+- 站点与域名解耦：页面资产可先落地（静态目录 + 文案），**待用户确认最终域名后再绑定 DNS/证书并提交验收**；部署落点（根路径静态服务或独立子域名）在域名确定后按风险定。
+- 该页同时满足三处需求：微信开放平台「应用官网」、应用商店「隐私政策独立 URL」（上架手册 P6）、APP 备案要求的备案号展示。
+- 验收点 6 条已写入 `Batch2-启动清单` B2-14 行（第①条 = **最终官网域名**可访问）；**会话属性 🟢 独立**（建议新开会话开工）。
+
+**④ 文档回写**
+- `Batch2-启动清单` 新增 B2-14 行（编号 [154]）；`说明文档.md` §三 新增立项条 + 更新 B2-6a 行政待办；《决策登记表》新增 2026-10-21 裁定块；任务书 `2026-10-15-b2-6a-wechat-login-plan.md` §零状态表与 §1.6 决策点同步。
+
 
 
 

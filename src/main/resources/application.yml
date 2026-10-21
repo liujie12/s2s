@@ -170,6 +170,28 @@ s2s:
     # 按环境挂载（./config/app → /opt/s2s/config），改完重启容器生效，无需重新出镜像。
     # 2026-10-14 裁定：不走环境变量，少一处配置。
     whitelist: ""
+  # --- S1 双向推送（B2-2 阶段 2：厂商真实通道）---
+  # 两家均为「启用了就必须有凭据」：enabled=true 而凭据为空时 Sender 构造期直接失败，
+  # 不给静默降级留口子；enabled=false（默认）时对应 Sender 不注册，下发走站内兜底。
+  # 凭据属服务端密钥：只经 deploy/env/.env.<env> 注入，禁入仓库、禁入镜像。
+  push:
+    huawei:
+      # 华为 Push Kit（v1 REST：AppID + AppSecret 换 OAuth2 Token）
+      enabled: ${HUAWEI_PUSH_ENABLED:false}
+      app-id: ${HUAWEI_PUSH_APP_ID:}
+      app-secret: ${HUAWEI_PUSH_APP_SECRET:}
+    xiaomi:
+      # 小米推送（v3 REST：AppSecret 作 Authorization；AppId/AppKey 属客户端）
+      enabled: ${XIAOMI_PUSH_ENABLED:false}
+      app-secret: ${XIAOMI_PUSH_APP_SECRET:}
+      # 包名须与小米推送后台登记一致（当前沿用开发期包名，换正式包名须同步重登）
+      package-name: ${XIAOMI_PUSH_PACKAGE_NAME:com.s2s.zhaoyazhao.dev}
+      # 私信消息必填项（2026-12-31 前须完成模板接入）：channel 与模板均在小米运营平台申请。
+      # 未配置时按普通通道下发（可用于联调/公信消息），配置后自动附带三者。
+      channel-id: ${XIAOMI_PUSH_CHANNEL_ID:}
+      template-id: ${XIAOMI_PUSH_TEMPLATE_ID:}
+      # 模板变量 JSON（须与模板预配置变量一致；无变量模板留空 = 传 {}）
+      template-param: ${XIAOMI_PUSH_TEMPLATE_PARAM:}
   # --- 可观测性定时任务的输入路径（[148]）---
   observability:
     # 定时任务 #8 的 T3 判据要读的主看板 SQL 清单路径（《可观测性架构方案》§9.1.1）。

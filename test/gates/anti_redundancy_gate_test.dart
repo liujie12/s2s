@@ -827,7 +827,9 @@ void main() {
     /// 56 = 55 + post_dto ×1（[B2-11]：`PostDetail.media` 非数组时抛 parseError）。
     /// 59 = 56 + post_dto ×3（[B2-8]：`RepostDraftDto` 的 attributes 对象校验 1
     /// + lng/lat 缺失校验 2）。
-    const int parseFactoryTotalBaseline = 59;
+    /// 60 = 59 + push_device_repository ×1（[B2-2]：`DeviceUpsertResult.platform`
+    /// 未知通道按契约违约抛 parseError，不静默降级）。
+    const int parseFactoryTotalBaseline = 60;
 
     test('lib/features/ 无 for/while 循环重试（详设 §14.2，判据 A1）', () {
       // 先断言扫描面非空且不小于基线（部署 §14.5：先断言待判对象存在），

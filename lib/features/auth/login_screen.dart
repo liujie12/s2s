@@ -28,6 +28,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../design_tokens.dart';
 import '../../router/app_router.dart';
+import '../notify/push_service.dart';
 import 'auth_repository.dart';
 import 'wechat_auth_bridge.dart';
 
@@ -239,6 +240,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   /// 返回：void；页面随 pop/go 离开。
   void _completeLogin(AuthSession session) {
     ref.read(authSessionProvider.notifier).signIn(session);
+    // 登录成功后补报一次推送 token（详设 §10.2.2）；未配置厂商凭据时静默跳过。
+    unawaited(ref.read(pushServiceProvider).registerIfAvailable());
     // 用 pop 而非 go(home)：登录多半是从收藏/联系按钮弹上来的，
     // 跳首页会让用户丢失原本正在看的那条信息，还得自己找回去。
     final router = GoRouter.of(context);
