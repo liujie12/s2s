@@ -251,10 +251,10 @@ def build_doc():
     style.element.rPr.rFonts.set(qn("w:eastAsia"), "微软雅黑")
 
     # 页眉
-    set_page_header(doc, "Scope校正版 v2.1  ·  找鸭找 APP v2 PRD  ·  2026-08-19")
+    set_page_header(doc, "Scope校正版 v2.1  ·  找丫找 APP v2 PRD  ·  2026-08-19")
 
     # ---------------- 标题页 ----------------
-    add_para(doc, "找鸭找 APP v2", size=30, bold=True,
+    add_para(doc, "找丫找 APP v2", size=30, bold=True,
              color=(0x1F, 0x4E, 0x79), align=WD_ALIGN_PARAGRAPH.CENTER,
              space_before=80, space_after=10)
     add_para(doc, "产品需求文档（PRD）", size=22, bold=True,
@@ -290,7 +290,7 @@ def build_doc():
     add_heading(doc, "0. 产品总览", level=1)
 
     add_heading(doc, "0.1 一句话定义", level=2)
-    add_para(doc, "找鸭找 = 5公里生活圈 · 双向供需信息撮合 APP", size=12, bold=True,
+    add_para(doc, "找丫找 = 5公里生活圈 · 双向供需信息撮合 APP", size=12, bold=True,
              color=(0x1F, 0x4E, 0x79))
     add_para(doc, "用就近的资源解决本地的需求。资源方与需求方双向发布，平台做就近匹配与信息共享，交易在线下达成。",
              size=10)

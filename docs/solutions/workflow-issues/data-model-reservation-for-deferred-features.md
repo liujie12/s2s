@@ -65,7 +65,7 @@ tags: [data-model, feature-deferral, identity-normalization, cross-constraint, d
 
 ## Examples
 
-**本期案例（找鸭找项目）：** 微信登录评估后延到 Batch2，但做出以下三项决策：
+**本期案例（找丫找项目）：** 微信登录评估后延到 Batch2，但做出以下三项决策：
 
 1. 引入 `user_identity` 表，Batch1 只写 `phone` 行，建表时即预留好 `wechat`/`apple` 类型的数据模型
 2. 发现 Apple 登录与微信登录的强制共交付约束（App Store 4.8），写入 PRD 避免 Batch2 按「一项功能」排期

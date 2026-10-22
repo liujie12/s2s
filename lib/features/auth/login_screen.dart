@@ -462,7 +462,7 @@ class _BrandHeader extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.md),
         Text(
-          '找鸭找',
+          '找丫找',
           style: TextStyle(
             fontSize: AppTypeScale.h1.size,
             height: AppTypeScale.h1.lineHeight,

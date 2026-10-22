@@ -1,4 +1,4 @@
-"""生成 找鸭找-市场需求文档-v2.1.pptx —— 基于「市场需求模板」改造。
+"""生成 找丫找-市场需求文档-v2.1.pptx —— 基于「市场需求模板」改造。
 
 功能：读取市场需求模板 pptx（28 页 / 5 章），按 probe_mrd.txt 的 Group 路径
       逐个替换全部幻灯片文字为 MRD v2.1 真实内容，保留模板视觉设计。
@@ -6,7 +6,7 @@
         1. path_map —— 按「形状名路径」定位（主用）
         2. text_map —— 按「原始文字」定位（用于形状名为乱码字符的页）
 参数：无（路径写死在 main 中）
-返回：无返回值，结果写入 找鸭找-市场需求文档-v2.1.pptx
+返回：无返回值，结果写入 找丫找-市场需求文档-v2.1.pptx
 """
 
 import sys
@@ -94,7 +94,7 @@ def build_content_map():
     return {
         # ================= 封面 =================
         1: {"path": {
-            "Title 4": "找鸭找 APP",
+            "Title 4": "找丫找 APP",
             "Subtitle 8": "市场需求文档（MRD）v2.1 评审版",
             "Text Placeholder 3": "产品经理：刘杰",
             "Text Placeholder 6": "2026-08-19",
@@ -423,7 +423,7 @@ def build_content_map():
         28: {"path": {
             "Title 4": "Thank You",
             "Text Placeholder 3": "产品经理：刘杰",
-            "Text Placeholder 6": "找鸭找 APP · MRD v2.1 评审版",
+            "Text Placeholder 6": "找丫找 APP · MRD v2.1 评审版",
         }},
     }
 
@@ -431,7 +431,7 @@ def build_content_map():
 def main():
     """主流程：读取模板 → 按映射表替换文字 → 输出到临时文件。"""
     template_path = r"d:\developer\code\aicoding\s2s\docs\模板\市场需求模板.pptx"
-    output_path = r"d:\developer\code\aicoding\s2s\docs\找鸭找-市场需求文档-v2.1_tmp.pptx"
+    output_path = r"d:\developer\code\aicoding\s2s\docs\找丫找-市场需求文档-v2.1_tmp.pptx"
 
     prs = Presentation(template_path)
     content_map = build_content_map()

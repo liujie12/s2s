@@ -1,4 +1,4 @@
-"""生成 找鸭找-商业需求文档-v2.1.pptx —— 基于 a2c9499b 模板改造。
+"""生成 找丫找-商业需求文档-v2.1.pptx —— 基于 a2c9499b 模板改造。
 
 功能：读取模板 pptx，按 probe_out.txt 的 Group 路径逐个替换全部 23 张幻灯片
       的文字为 BRD v2.1 真实内容，保留模板视觉设计。
@@ -6,7 +6,7 @@
         1. 字符串        —— 仅替换文字，保留原字号
         2. (文字, 字号)  —— 替换文字并强制指定字号（用于长文本防溢出）
 参数：无（路径写死在 main 中）
-返回：无返回值，结果写入 找鸭找-商业需求文档-v2.1.pptx
+返回：无返回值，结果写入 找丫找-商业需求文档-v2.1.pptx
 """
 
 import sys
@@ -86,7 +86,7 @@ def build_content_map():
     return {
         # ---- Slide 1: 封面 ----
         1: {
-            "Title 4": "找鸭找 APP",
+            "Title 4": "找丫找 APP",
             "Subtitle 8": "商业需求文档（BRD）v2.1 评审版",
             "Text Placeholder 3": "产品经理：刘杰",
             "Text Placeholder 6": "2026-08-19",
@@ -356,7 +356,7 @@ def build_content_map():
         23: {
             "Title 4": "Thank You",
             "Text Placeholder 3": "产品经理：刘杰",
-            "Text Placeholder 6": "找鸭找 APP · BRD v2.1 评审版",
+            "Text Placeholder 6": "找丫找 APP · BRD v2.1 评审版",
         },
     }
 
@@ -367,7 +367,7 @@ def main():
         r"d:\developer\code\aicoding\s2s\docs\模板"
         r"\a2c9499b-b91f-4fbc-7c4e-3a1b385f0921.pptx"
     )
-    output_path = r"d:\developer\code\aicoding\s2s\docs\找鸭找-商业需求文档-v2.1_tmp.pptx"
+    output_path = r"d:\developer\code\aicoding\s2s\docs\找丫找-商业需求文档-v2.1_tmp.pptx"
 
     prs = Presentation(template_path)
     content_map = build_content_map()

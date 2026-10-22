@@ -1,5 +1,5 @@
 /**
- * 找鸭找 v2 原型生成器 · Figma Plugin 主逻辑
+ * 找丫找 v2 原型生成器 · Figma Plugin 主逻辑
  * 依据：docs/PRD.md v2.1 §2 视觉系统（:110-181）、§10.1 页面清单（:1458-1477）、§8 T6 组件（:1051-1054）
  *
  * 设计约束（来自技术验证结论）：
@@ -3585,7 +3585,7 @@ async function batchSetup() {
   var scaleKeys = ['h1', 'h2', 'h3', 'body', 'small', 'caption'];
   for (var si = 0; si < scaleKeys.length; si++) {
     var sk = scaleKeys[si];
-    typeBoard.appendChild(text(sk.toUpperCase() + ' · ' + TYPE_SCALE[sk].size + 'sp · 找鸭找 Sample', sk));
+    typeBoard.appendChild(text(sk.toUpperCase() + ' · ' + TYPE_SCALE[sk].size + 'sp · 找丫找 Sample', sk));
   }
   typeBoard.appendChild(text('按钮六类', 'h3'));
   for (var vi = 0; vi < BUTTON_VARIANTS.length; vi++) {
@@ -5344,14 +5344,14 @@ async function batchMap() {
     {
       key: 'permission-guide',
       heading: '先让我知道你在哪',
-      lead: '找鸭找只推你走得到的地方——身边几公里内的活儿、房子、顺路车。',
+      lead: '找丫找只推你走得到的地方——身边几公里内的活儿、房子、顺路车。',
       sub: '不开定位就只能看全城，近处的机会会被淹掉。',
       primaryLabel: '开启位置权限'
     },
     {
       key: 'permission-reopen',
       heading: '你之前允许过定位，现在被关掉了',
-      lead: '找鸭找只推你走得到的地方——身边几公里内的活儿、房子、顺路车。',
+      lead: '找丫找只推你走得到的地方——身边几公里内的活儿、房子、顺路车。',
       // 这一行是 B 态与 A 态的实质差异所在：必须说明「为什么这次要去系统设置」，
       // 否则用户看到按钮文字变了却不知道原因，会反复点回不存在的系统弹窗
       sub: '系统已记住上次的拒绝，App 内无法再次弹窗，需要到系统设置里打开。',
@@ -5708,7 +5708,7 @@ function buildSplash() {
   body.appendChild(duckSymbol(132.6));
   // 品牌色底上文字必须走 surface：h1 默认的 text-primary 深灰压主色底
   // 对比度不足（PRD §1.8 正文 ≥ 4.5:1）
-  body.appendChild(text('找鸭找', 'h1', 'color/surface'));
+  body.appendChild(text('找丫找', 'h1', 'color/surface'));
   // slogan 取 PRD §3.4.1 的原文，与登录页同一句。此前「本地供需，一图看清」
   // 是自拟文案，PRD 里没有出处
   body.appendChild(text('用就近的资源解决本地的需求', 'body', 'color/surface'));
@@ -5761,7 +5761,7 @@ function buildPrivacyGate() {
   // 不受容器约束，会横向撑破 390 画框（同 buildPermission 两态那处）。
   // layoutSizingHorizontal='FILL' 必须在 appendChild【之后】赋值 ——
   // 该属性要求节点已是某个 Auto Layout 父级的直接子节点。
-  var heading = text('欢迎使用找鸭找', 'h1', 'color/text-primary');
+  var heading = text('欢迎使用找丫找', 'h1', 'color/text-primary');
   heading.textAutoResize = 'HEIGHT';
   body.appendChild(heading);
   heading.layoutSizingHorizontal = 'FILL';
@@ -5887,11 +5887,11 @@ function buildLogin() {
   // 比容器可用宽多 16px，会被 Auto Layout 挤压或溢出，故显式传宽
   var innerW = CANVAS.w - SPACING.xl * 2;
 
-  // 品牌位改用真实 IP 符号（2026-08-25）：此前只有 text('找鸭找')，PRD §1.4.1.2 明列
+  // 品牌位改用真实 IP 符号（2026-08-25）：此前只有 text('找丫找')，PRD §1.4.1.2 明列
   // 「登录页顶部（§3.4.1）」属完整版消费位置，故取 96px 完整版（两道弧）
   var brand = box('_brand', 'VERTICAL', { gap: SPACING.sm, align: 'CENTER' });
   brand.appendChild(duckSymbol(96));
-  brand.appendChild(text('找鸭找', 'h1', 'color/primary'));
+  brand.appendChild(text('找丫找', 'h1', 'color/primary'));
   // slogan 取 PRD §3.4.1 原文。此前「本地供需，一图看清」是自拟文案，PRD 无出处
   brand.appendChild(text('用就近的资源解决本地的需求', 'small', 'color/text-secondary'));
   body.appendChild(brand);

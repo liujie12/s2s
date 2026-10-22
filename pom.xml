@@ -21,7 +21,7 @@
     <artifactId>s2s-server</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <name>s2s-server</name>
-    <description>找鸭找（s2s）后端单体服务：Java 21 + Spring Boot 3 + MyBatis-Plus（详设 §1；技术栈 §3）</description>
+    <description>找丫找（s2s）后端单体服务：Java 21 + Spring Boot 3 + MyBatis-Plus（详设 §1；技术栈 §3）</description>
 
     <properties>
         <java.version>21</java.version>

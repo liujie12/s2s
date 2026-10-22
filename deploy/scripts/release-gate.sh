@@ -46,7 +46,7 @@ source "${GATE_LIB}" || { echo "[ERROR] 门禁外壳加载失败：${GATE_LIB}" 
 # 常量
 # ---------------------------------------------------------------------------
 # 正式签名证书 SHA-256 指纹（registered）。来源：条目 [131] 生成的 s2s-release.jks
-# （alias=s2s-release，CN=找鸭找，有效期 10000 天）。换证书等于换应用身份、老用户无法
+# （alias=s2s-release，CN=找丫找，有效期 10000 天）。换证书等于换应用身份、老用户无法
 # 覆盖安装，故此处是「一经写死不再改」的锚点；确需更换须同步 P7 备案材料。
 readonly EXPECTED_CERT_SHA256="4EFB8B219F897D42B51B7D8FB4F7C76116C8DCF3C5D0654757FD02E3CD205CFA"
 

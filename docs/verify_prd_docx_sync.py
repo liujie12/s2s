@@ -28,7 +28,7 @@ from docx import Document
 
 BASE = Path(__file__).resolve().parent
 MD = BASE / 'PRD.md'
-DOCX = BASE / '找鸭找-产品需求文档-v2.1.docx'
+DOCX = BASE / '找丫找-产品需求文档-v2.1.docx'
 
 # 特征句必须逐字从 PRD.md 复制（含 ** 与 ` 标记也无妨，比对前会剥掉）。
 # 选句原则：覆盖 8/24 之后各轮改动的落点，且用具体标识符、路径名、

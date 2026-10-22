@@ -8,7 +8,7 @@ import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.FilterType;
 
 /**
- * 找鸭找（s2s）后端单体服务启动类。
+ * 找丫找（s2s）后端单体服务启动类。
  *
  * <p>职责：Spring Boot 应用入口，承载 {@code com.s2s.server} 根包组件扫描；包结构定案见详设 §1.2
  * （common 七子包 + 九域 + task/，包骨架由条目[121] U-2 落地）。

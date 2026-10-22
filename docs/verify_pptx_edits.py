@@ -79,8 +79,8 @@ def check(path, expect):
 
 def main():
     """主流程。"""
-    check("找鸭找-商业需求文档-v2.1.pptx", BRD_EXPECT)
-    check("找鸭找-市场需求文档-v2.1.pptx", MRD_EXPECT)
+    check("找丫找-商业需求文档-v2.1.pptx", BRD_EXPECT)
+    check("找丫找-市场需求文档-v2.1.pptx", MRD_EXPECT)
 
 
 if __name__ == "__main__":

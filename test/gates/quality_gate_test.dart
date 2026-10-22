@@ -221,7 +221,9 @@ bool isScanExcluded(String path) {
       p.endsWith('.pptx') ||
       p.endsWith('.xlsx') ||
       p.endsWith('.pdf') ||
-      p.endsWith('.zip');
+      p.endsWith('.zip') ||
+      // Android 第三方 SDK 归档（小米推送 AAR）：二进制容器，同上。
+      p.endsWith('.aar');
 }
 
 /// CI 环境判定（复审 #11：全文件唯一承载处，调用点不得再手写字面量比较）。

@@ -78,7 +78,7 @@ class _ZhaoYaZhaoAppState extends ConsumerState<ZhaoYaZhaoApp> {
     });
 
     return MaterialApp.router(
-      title: '找鸭找',
+      title: '找丫找',
       routerConfig: ref.watch(routerProvider),
       theme: _buildTheme(),
       // 暗色模式与多语言本期不做（PRD §14.6 附近条目已明确）

@@ -13,7 +13,7 @@ import sys
 from pptx import Presentation
 
 
-PPTX = r"d:\developer\code\aicoding\s2s\docs\找鸭找-商业需求文档-v2.1.pptx"
+PPTX = r"d:\developer\code\aicoding\s2s\docs\找丫找-商业需求文档-v2.1.pptx"
 MD = r"d:\developer\code\aicoding\s2s\docs\BRD.md"
 
 # 本轮在 gen_brd_pptx.py 中改写过的原句片段（slide 20 路线图 + slide 22 资源依赖）

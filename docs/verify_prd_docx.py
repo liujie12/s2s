@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 verify_prd_docx.py
-验证 找鸭找-产品需求文档-v2.1.docx 内容完整性。
+验证 找丫找-产品需求文档-v2.1.docx 内容完整性。
 """
 from docx import Document
 import os
@@ -10,7 +10,7 @@ import sys
 # Windows 终端默认 GBK，无法输出 emoji（如 🟢），强制切 UTF-8 避免 UnicodeEncodeError
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-doc_path = r"d:\developer\code\aicoding\s2s\docs\找鸭找-产品需求文档-v2.1.docx"
+doc_path = r"d:\developer\code\aicoding\s2s\docs\找丫找-产品需求文档-v2.1.docx"
 size = os.path.getsize(doc_path)
 print(f"[OK] 文件大小: {size} 字节 ({size/1024:.1f} KB)")
 

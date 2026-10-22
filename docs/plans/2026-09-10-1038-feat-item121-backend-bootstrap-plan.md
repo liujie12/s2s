@@ -12,7 +12,7 @@ execution: code
 
 ## Goal Capsule
 
-在工作树 `s2s-wt-backend`（分支 `item/121-backend-init`）落地找鸭找后端工程底座：Maven（Java 21 / Spring Boot 3 / 显式版本）+ `com.s2s.server` 九域包骨架 + common 三组件（`ApiResponse`/`ResponseBodyWrapper`/`GlobalExceptionHandler`）+ `ErrorCode` 25 枚举 + Flyway 接入两份 V1 DDL 与 `restart_window` 补 DDL（缺口 #1 前半）+ 配置全 `${VAR:?}` 占位且缺变量启动快速失败 + 聚合性能客户端 POC 书面结论（缺口 #2 输入）。本条目是 Sprint S1 出口闸门之一，后续全部后端条目依赖此底座。
+在工作树 `s2s-wt-backend`（分支 `item/121-backend-init`）落地找丫找后端工程底座：Maven（Java 21 / Spring Boot 3 / 显式版本）+ `com.s2s.server` 九域包骨架 + common 三组件（`ApiResponse`/`ResponseBodyWrapper`/`GlobalExceptionHandler`）+ `ErrorCode` 25 枚举 + Flyway 接入两份 V1 DDL 与 `restart_window` 补 DDL（缺口 #1 前半）+ 配置全 `${VAR:?}` 占位且缺变量启动快速失败 + 聚合性能客户端 POC 书面结论（缺口 #2 输入）。本条目是 Sprint S1 出口闸门之一，后续全部后端条目依赖此底座。
 
 ## Product Contract
 

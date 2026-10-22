@@ -2,7 +2,7 @@
 """
 gen_prd_v2.1_docx.py
 功能：基于 PRD.md 生成 Word 版产品需求文档。
-输出：d:\\developer\\code\\aicoding\\s2s\\docs\\找鸭找-产品需求文档-v2.1.docx
+输出：d:\\developer\\code\\aicoding\\s2s\\docs\\找丫找-产品需求文档-v2.1.docx
 """
 import re
 from docx import Document
@@ -302,7 +302,7 @@ def add_title_page(doc):
     add_para(doc, "", size=11, space_before=24, space_after=12)
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    r = p.add_run("找鸭找 APP")
+    r = p.add_run("找丫找 APP")
     set_run_font(r, name="微软雅黑", size=28, bold=True,
                  color=(0x1F, 0x4E, 0x79))
 
@@ -509,7 +509,7 @@ def render_inline_paragraph(doc, line, base_size=11, line_spacing=1.25,
 def main():
     """主函数：读取 PRD.md 并生成 Word 版产品需求文档。"""
     src = r"d:\developer\code\aicoding\s2s\docs\PRD.md"
-    dst = r"d:\developer\code\aicoding\s2s\docs\找鸭找-产品需求文档-v2.1_tmp.docx"  # 避开 Word 文件锁，生成后由外部改名
+    dst = r"d:\developer\code\aicoding\s2s\docs\找丫找-产品需求文档-v2.1_tmp.docx"  # 避开 Word 文件锁，生成后由外部改名
 
     with open(src, "r", encoding="utf-8") as f:
         lines = f.readlines()

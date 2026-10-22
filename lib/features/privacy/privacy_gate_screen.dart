@@ -96,7 +96,7 @@ class _AgreementView extends StatelessWidget {
       children: [
         const SizedBox(height: AppSpacing.xxl),
         Text(
-          '欢迎使用找鸭找',
+          '欢迎使用找丫找',
           style: TextStyle(
             fontSize: AppTypeScale.h1.size,
             height: AppTypeScale.h1.lineHeight,

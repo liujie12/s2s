@@ -15,7 +15,7 @@
          审核里为相机用例过审。 -->
 
     <application
-        android:label="找鸭找"
+        android:label="找丫找"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:allowNativeHeapPointerTagging="false">

@@ -24,9 +24,9 @@ tags: [prd, pptx, docx, python-pptx, consistency, overflow-check, single-source-
 
 | 交付件 | 生成脚本 | 内容源 |
 |---|---|---|
-| 找鸭找-产品需求文档-v2.1.docx | `gen_prd_v2.1_docx.py` | **读取 `PRD.md`** |
-| 找鸭找-商业需求文档-v2.1.pptx | `gen_brd_pptx.py` | **脚本内硬编码字典** |
-| 找鸭找-市场需求文档-v2.1.pptx | `gen_mrd_pptx.py` | **脚本内硬编码字典** |
+| 找丫找-产品需求文档-v2.1.docx | `gen_prd_v2.1_docx.py` | **读取 `PRD.md`** |
+| 找丫找-商业需求文档-v2.1.pptx | `gen_brd_pptx.py` | **脚本内硬编码字典** |
+| 找丫找-市场需求文档-v2.1.pptx | `gen_mrd_pptx.py` | **脚本内硬编码字典** |
 
 当需求口径发生变更（本次是 8 项核心口径，含技术栈更换、性能承诺改为前置 POC、指标定义收窄等），需要把变更从权威源传导到全部三份交付件。
 
@@ -64,7 +64,7 @@ Grep pattern: "\.md|open\(|read_text" 于生成脚本目录
 
 上面那张传导图把 PRD 一路标成「改 MD 即可」，容易被读成「MD 驱动型没有同步风险」。**2026-08-24 的一次事故证明恰恰相反 —— 出事的就是 MD 驱动型这一路。**
 
-当天 13:04 `PRD.md` 新增了整个「第十部分：工程契约（接口 / 数据 / 非功能）」约 420 行（§12 接口需求 / §13 数据需求 / §14 非功能需求），并把原「第十部分：附录」顺推为「第十一部分：附录」。但派生的 `找鸭找-产品需求文档-v2.1.docx` 仍是前一天 19:26 生成的旧版（95,909 字节），**滞后近 18 小时，整章工程契约根本不在里面**。脚本本身完全正常，它确实读 MD —— 只是没有人重跑它。
+当天 13:04 `PRD.md` 新增了整个「第十部分：工程契约（接口 / 数据 / 非功能）」约 420 行（§12 接口需求 / §13 数据需求 / §14 非功能需求），并把原「第十部分：附录」顺推为「第十一部分：附录」。但派生的 `找丫找-产品需求文档-v2.1.docx` 仍是前一天 19:26 生成的旧版（95,909 字节），**滞后近 18 小时，整章工程契约根本不在里面**。脚本本身完全正常，它确实读 MD —— 只是没有人重跑它。
 
 这个缺口不是任何报错暴露的，是用户追问「两者信息拉齐同步了吗」才触发核查。**权威源与派生件之间的时间差是一种静默缺陷**：没有编译失败，没有脚本报错，两个文件各自都是内部自洽的合法文件，只有把它们放在一起比才看得出来。
 
@@ -78,7 +78,7 @@ Get-Process WINWORD -ErrorAction SilentlyContinue
 
 $env:PYTHONUTF8 = 1
 python docs\gen_prd_v2.1_docx.py
-Move-Item -Force "docs\找鸭找-产品需求文档-v2.1_tmp.docx" "docs\找鸭找-产品需求文档-v2.1.docx"
+Move-Item -Force "docs\找丫找-产品需求文档-v2.1_tmp.docx" "docs\找丫找-产品需求文档-v2.1.docx"
 ```
 
 两个配套经验：`docs` 下若见 `~$*` 锁文件要看清扩展名 —— 那次的两个是 pptx 残留，与 docx 无关，不构成阻塞。以及 Windows 下 Python 按默认 GBK 读中文文件会 `UnicodeDecodeError`，**自写读 MD 的探针与随 skill 附带的校验脚本**是这个错的高发处，都得先设 `$env:PYTHONUTF8=1`（既有闸门 [verify_prd_docx.py](file:///d:/developer/code/aicoding/s2s/docs/verify_prd_docx.py#L10-L11) 只用 `sys.stdout.reconfigure` 处理了输出侧 —— 它自己不读文本文件，只读 docx 二进制，所以不会撞解码错，但也就没有现成的读入侧范例可抄）。
@@ -156,7 +156,7 @@ docx 侧目前没有等价的固化工具（`verify_prd_docx.py` 验的是规格
 ```python
 from docx import Document
 
-doc = Document(r"docs\找鸭找-产品需求文档-v2.1.docx")
+doc = Document(r"docs\找丫找-产品需求文档-v2.1.docx")
 text = "\n".join(p.text for p in doc.paragraphs)
 for t in doc.tables:
     for row in t.rows:

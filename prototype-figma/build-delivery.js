@@ -134,7 +134,7 @@ function renderReadme(r) {
   const boardCount = (r.groups.find((g) => g.dir === '00-规格板') || { files: [] }).files.length;
   const frameCount = r.total - boardCount;
 
-  return `# 找鸭找 · UI 设计交付物
+  return `# 找丫找 · UI 设计交付物
 
 本目录由 \`prototype-figma/build-delivery.js\` 自动生成，请勿手工修改 ——
 设计稿更新后重跑该脚本即可全量重建。

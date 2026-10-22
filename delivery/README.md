@@ -1,4 +1,4 @@
-# 找鸭找 · UI 设计交付物
+# 找丫找 · UI 设计交付物
 
 本目录由 `prototype-figma/build-delivery.js` 自动生成，请勿手工修改 ——
 设计稿更新后重跑该脚本即可全量重建。
