@@ -23,10 +23,10 @@ import '../profile/profile_provider.dart';
 import 'settings_dto.dart';
 import 'settings_provider.dart';
 
-/// 客户端版本号（与设计稿 `settings-screen` 的「版本号 v2.1」一致）。
+/// 客户端版本号（与设计稿 `settings-screen` 的「版本号 V1.0.0」一致）。
 ///
 /// TODO(B2-11 收口)：接入 `package_info_plus` 读真实版本，替换本常量。
-const String _appVersionLabel = 'v2.1';
+const String _appVersionLabel = 'V1.0.0';
 
 /// 默认检索半径档位（openapi `RadiusEnum`；`city`＝全城）。
 const List<String> _radiusValues = ['1', '3', '5', '10', 'city'];

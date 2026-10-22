@@ -2283,7 +2283,7 @@ function allText(root) {
         }
       }
       // 缺省图只在首档与终态出：中间档再出鸭子会被读成「回退到第一档」。
-      // 必须只扫 _proc-panel 内部：底部 Tab 的「鸭圈」页签本身就是一个
+      // 必须只扫 _proc-panel 内部：底部 Tab 的「丫圈」页签本身就是一个
       // 24px duckSymbol（code.js:1662），扫全画框会把它当成缺省图，
       // 六档全部误报（首跑实测四处假红）—— 判据的作用域错了就是判据错。
       const panel = f.findOne((n) => n.name === '_proc-panel');
@@ -2606,7 +2606,7 @@ function allText(root) {
       'figma', '__html__',
       rawSB + '\n;return { navBar: navBar };'
     )(figma, '');
-    const sbNav = sbM.navBar('鸭圈', { search: '搜索', right: '列表', bell: 3 });
+    const sbNav = sbM.navBar('丫圈', { search: '搜索', right: '列表', bell: 3 });
     const hasConflict = sbNav.primaryAxisAlignItems === 'SPACE_BETWEEN' &&
       sbNav.children.some((c) => c.layoutGrow > 0);
     check(

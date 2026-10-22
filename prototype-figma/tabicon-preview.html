@@ -2,7 +2,7 @@
 <!--
   底部导航栏图标候选对照页（2026-08-26）
 
-  为什么要有这一页：用户反馈「鸭圈」图标不美观。根因是三个 Tab 键里只有中键
+  为什么要有这一页：用户反馈「丫圈」图标不美观。根因是三个 Tab 键里只有中键
   是矢量鸭子，左右两键仍是 emoji（🗺️ / 👤）。emoji 由系统字体渲染，字重、
   色彩、基线都不受设计 Token 控制，选中态该变主色也不会变，与旁边的矢量
   图形并排必然风格断裂。
@@ -88,11 +88,11 @@
 
 <h1>底部导航栏图标候选对照</h1>
 <p class="lead">
-  每条 Tab 栏都是 390×64 的真实尺寸，图标 24px。左侧「鸭圈」为选中态（主色 #0B7C8C），
+  每条 Tab 栏都是 390×64 的真实尺寸，图标 24px。左侧「丫圈」为选中态（主色 #0B7C8C），
   右侧「我的」为未选中态（#6B7280）。放大区是等比放大，用于判断 24px 下笔画是否粘连。
 </p>
 
-<h2>一、「鸭圈」左键候选</h2>
+<h2>一、「丫圈」左键候选</h2>
 <div class="grid" id="left"></div>
 
 <h2>二、「我的」右键：emoji 与矢量对比</h2>
@@ -207,7 +207,7 @@ function duckIcon(variant, px, brand) {
 function tabbar(cfg) {
   var BRAND = '#0B7C8C', SEC = '#6B7280';
   var items = [
-    { label: '鸭圈', icon: cfg.left },
+    { label: '丫圈', icon: cfg.left },
     { label: '发布', icon: null },
     { label: '我的', icon: cfg.right }
   ];
@@ -257,11 +257,11 @@ function card(o) {
 
 var BRAND = '#0B7C8C';
 
-/* 一、「鸭圈」左键 */
+/* 一、「丫圈」左键 */
 var leftCands = [
   {
     name: 'explore_nearby', title: 'A · explore_nearby', tag: '推荐', reco: true,
-    note: '实心圆底 + 内嵌白色定位针。外轮廓是完整圆，与中键鸭子的圆形符号同族，整条 Tab 栏轮廓节奏一致。语义为「附近发现」，正对鸭圈的地图发现定位。',
+    note: '实心圆底 + 内嵌白色定位针。外轮廓是完整圆，与中键鸭子的圆形符号同族，整条 Tab 栏轮廓节奏一致。语义为「附近发现」，正对丫圈的地图发现定位。',
     verdict: '24px 下针形与圆底之间留白足够，无粘连。', verdictCls: 'ok'
   },
   {
@@ -353,12 +353,12 @@ document.getElementById('duck').innerHTML =
 document.getElementById('combo').innerHTML =
   card({
     title: '推荐组合：explore_nearby + 主色圆盘鸭 + person', tag: '推荐', reco: true,
-    note: '三键全矢量、全圆轮廓、全部跟随设计 Token 染色。以下依次为「鸭圈」「发布」「我的」三种选中态，可确认每种状态下主色与次色的切换都正确。',
+    note: '三键全矢量、全圆轮廓、全部跟随设计 Token 染色。以下依次为「丫圈」「发布」「我的」三种选中态，可确认每种状态下主色与次色的切换都正确。',
     bar: tabbar({ left: 'explore_nearby', right: 'person', mid: 'disc', activeIdx: 0 })
        + tabbar({ left: 'explore_nearby', right: 'person', mid: 'disc', activeIdx: 1 })
        + tabbar({ left: 'explore_nearby', right: 'person', mid: 'disc', activeIdx: 2 }),
     zooms: [
-      { svg: msIcon('explore_nearby', BRAND, 72), cap: '鸭圈' },
+      { svg: msIcon('explore_nearby', BRAND, 72), cap: '丫圈' },
       { svg: duckIcon('disc', 72, BRAND), cap: '发布' },
       { svg: msIcon('person', BRAND, 72), cap: '我的' }
     ]

@@ -139,7 +139,7 @@ class _ConsentListenable extends ChangeNotifier {
 ///
 /// 路由表分两层：
 /// - [StatefulShellRoute] 承载底部三 Tab 壳（PRD §10.2）的两个持久分支
-///   「鸭圈（地图/列表）」「我的」。中间的「发布」键由 HomeShell 直接
+///   「丫圈（地图/列表）」「我的」。中间的「发布」键由 HomeShell 直接
 ///   push `/publish` 覆盖整个壳（发布页无底部 Tab，见 home_shell.dart 头注）。
 /// - 其余页面（登录/详情/发布流程/联系/我的发布/信任/模态）为顶层路由，
 ///   由壳内 push 后覆盖底部导航，属标准「全屏页」语义。
@@ -152,7 +152,7 @@ final List<RouteBase> _routes = [
     builder: (context, state, navigationShell) =>
         HomeShell(navigationShell: navigationShell),
     branches: [
-      // 鸭圈：地图（/）与列表（/list）是同层级两视图，靠 context.go 互切。
+      // 丫圈：地图（/）与列表（/list）是同层级两视图，靠 context.go 互切。
       StatefulShellBranch(routes: [
         GoRoute(
           path: AppRoutes.home,

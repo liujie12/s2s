@@ -623,7 +623,7 @@ function log(text) {
  * 提到模块级的原因：此前 registerComponents 与 batchSetup 各持一份字面量副本，
  * 加一个 Tab 要改两处，漏一处则 master 与规格板对不上。
  */
-var SHELL_TABS = ['鸭圈', '发布', '我的'];
+var SHELL_TABS = ['丫圈', '发布', '我的'];
 
 /** 按钮六类（PRD §1.4.6），同样由 master 注册与规格板共用 */
 var BUTTON_VARIANTS = ['primary', 'secondary', 'ghost', 'danger', 'capsule', 'disabled'];
@@ -1515,11 +1515,11 @@ var ICON_PATHS = {
     vb: ICON_VIEWBOX_MS,
     d: '<path fill="#000" d="m256-200-56-56 224-224-224-224 56-56 224 224 224-224 56 56-224 224 224 224-56 56-224-224-224 224Z"/>'
   },
-  // 折叠地图册 = map：底部 Tab「鸭圈」键（PRD §10.2）。
+  // 折叠地图册 = map：底部 Tab「丫圈」键（PRD §10.2）。
   // 此前是 emoji 🗺️，emoji 由系统字体渲染，字重与色彩不受 paintOf(role) 控制，
   // 选中态无法跟随主色，与同排矢量图标风格断裂，故换矢量。
   // 为什么不用 explore_nearby（圆底+定位针）：该图标语义偏「附近的某个点」，
-  // 而地图册剪影直接表达「一整片可翻阅的区域」，与「鸭圈」的圈子语义更贴。
+  // 而地图册剪影直接表达「一整片可翻阅的区域」，与「丫圈」的圈子语义更贴。
   // 24px 下已实测无粘连（probe-tabicon.py 渲染对照）
   'tab-map': {
     vb: ICON_VIEWBOX_MS,
@@ -2335,8 +2335,8 @@ function navBell(unread) {
 }
 
 /**
- * 创建底部三 Tab（PRD §10.2：鸭圈 / 发布 / 我的）
- * @param {string} active 当前高亮的 Tab 名，取值 "鸭圈"/"发布"/"我的"
+ * 创建底部三 Tab（PRD §10.2：丫圈 / 发布 / 我的）
+ * @param {string} active 当前高亮的 Tab 名，取值 "丫圈"/"发布"/"我的"
  * @returns {FrameNode} 底部 Tab 栏节点
  */
 function bottomTabRaw(active) {
@@ -2344,12 +2344,12 @@ function bottomTabRaw(active) {
     w: CANVAS.w, h: 64, fill: 'color/surface',
     stroke: 'color/border', align: 'CENTER', justify: 'CENTER'
   });
-  // 三键全部矢量（2026-08-26）：此前「鸭圈」用 emoji 🗺️、「我的」用 emoji 👤。
+  // 三键全部矢量（2026-08-26）：此前「丫圈」用 emoji 🗺️、「我的」用 emoji 👤。
   // emoji 由系统字体渲染，字重与色彩不受 paintOf(role) 控制 —— 选中时文字变主色
   // 而 emoji 不变，且与同排的矢量鸭子风格断裂，这是用户实机反馈的成因。
   // 「发布」中键走 duckSymbol（PRD §1.4.1.2 明列的 IP 微缩版消费位置）。
   var items = [
-    [ICON_PATHS['tab-map'], '鸭圈'],
+    [ICON_PATHS['tab-map'], '丫圈'],
     [null, '发布'],
     [ICON_PATHS['tab-person'], '我的']
   ];
@@ -2899,7 +2899,7 @@ function statusBar() {
 }
 
 /**
- * 底部 Tab：按高亮项分别注册三个 master（鸭圈/发布/我的）
+ * 底部 Tab：按高亮项分别注册三个 master（丫圈/发布/我的）
  * @param {string} active 高亮 Tab 名
  * @returns {SceneNode} 底部 Tab Instance 或原生 Frame
  */
@@ -5052,7 +5052,7 @@ function listFilterBar() {
  * （位置权限引导页不引用本表——它不出导航栏，见该画框构造处的注释）
  *
  * 占位文案为什么不用 PRD §6.4.1 图里的「搜索"就近的保洁/拼车/二手"」原句：
- * 导航栏可用宽 = 390 − 左右 padding 32 = 358，扣掉标题「鸭圈」约 32
+ * 导航栏可用宽 = 390 − 左右 padding 32 = 358，扣掉标题「丫圈」约 32
  * + 「列表」约 28 + 铃 24 + 三档 gap 24 = 108，搜索框实得约 250px；
  * 其内部再扣 padding 24 + 放大镜 14 + 两档 gap 8 = 46，文案实得约 204px。
  * 原句 20 字按 12px 字号约需 240px，必被截断；压缩为「保洁/拼车/租房」
@@ -5080,9 +5080,9 @@ async function batchMap() {
   var frames = [];
 
   // ---- home-screen 主态（PRD §10.1）：默认收起，最大化地图可视区 ----
-  var home = screen('home-screen', '鸭圈首页·主态（筛选收起）', 'PRD §10.1');
+  var home = screen('home-screen', '丫圈首页·主态（筛选收起）', 'PRD §10.1');
   home.appendChild(statusBar());
-  home.appendChild(navBar('鸭圈', HOME_NAV));
+  home.appendChild(navBar('丫圈', HOME_NAV));
   home.appendChild(mapCanvas('地图画布（高德 SDK 承载区）', false, [
     annotation('主态 = 筛选收起', [
       '常驻件仅三竖点入口 44px + 摘要胶囊 44px，其余全收起',
@@ -5103,13 +5103,13 @@ async function batchMap() {
       '已于 2026-08-27 回写 PRD §6.4.2（条目 [60]），不再是待补项'
     ], { severity: 'a11y' })
   ]));
-  home.appendChild(bottomTab('鸭圈'));
+  home.appendChild(bottomTab('丫圈'));
   frames.push(home);
 
   // ---- 筛选展开态：范围档 + 供需 + 五大类全部铺开（PRD §6.4.1）----
   var expanded = screen('home-screen', '筛选展开态', 'PRD §6.4.1', true);
   expanded.appendChild(statusBar());
-  expanded.appendChild(navBar('鸭圈', HOME_NAV));
+  expanded.appendChild(navBar('丫圈', HOME_NAV));
   expanded.appendChild(mapCanvas('筛选展开：范围 + 供需 + 五大类', false, [
     annotation('展开态', [
       '展开时占用约 200px，故不作为默认态',
@@ -5127,25 +5127,25 @@ async function batchMap() {
       '切换期间不重建 Marker 节点，只改属性 —— 重建会看到闪一下'
     ], { severity: 'interact', target: '_overlay-cats' })
   ], { collapsed: false }));
-  expanded.appendChild(bottomTab('鸭圈'));
+  expanded.appendChild(bottomTab('丫圈'));
   frames.push(expanded);
 
   // ---- 图例唤起态：点右上「?」才出图例，验证图例不常驻的方案 ----
   var legendOn = screen('home-screen', '图例唤起态', 'PRD §6.4.1', true);
   legendOn.appendChild(statusBar());
-  legendOn.appendChild(navBar('鸭圈', HOME_NAV));
+  legendOn.appendChild(navBar('丫圈', HOME_NAV));
   legendOn.appendChild(mapCanvas('点「?」唤起图例', false,
     annotation('图例按需唤起', [
       '图例是一次性认知，无需每次看地图都复读',
       '实心 = 资源 / 空心 + ? = 需求（PRD §2.5）'
     ]), { legend: true }));
-  legendOn.appendChild(bottomTab('鸭圈'));
+  legendOn.appendChild(bottomTab('丫圈'));
   frames.push(legendOn);
 
   // ---- 点击 Marker 信息卡态：承载从 Marker 上卸下来的完整度信息（PRD §6.4.2）----
   var infoOn = screen('home-screen', '点击 Marker 信息卡态', 'PRD §6.4.2', true);
   infoOn.appendChild(statusBar());
-  infoOn.appendChild(navBar('鸭圈', HOME_NAV));
+  infoOn.appendChild(navBar('丫圈', HOME_NAV));
   infoOn.appendChild(mapCanvas('点选中 Pin 后底部弹出信息卡', false,
     annotation('完整度的新落点', [
       'Marker 已不带完整度角标：40px 内曾叠 4 条信息，分类被重复编码两次',
@@ -5158,7 +5158,7 @@ async function batchMap() {
         CONTENT.marker.title, CONTENT.marker.subtitle,
         CONTENT.marker.kind, CONTENT.marker.completeness)
     }));
-  infoOn.appendChild(bottomTab('鸭圈'));
+  infoOn.appendChild(bottomTab('丫圈'));
   frames.push(infoOn);
 
   // ---- 搜索过滤态：输入关键词「租房」后地图只剩房屋类 Marker（PRD §2.9 同义词映射）----
@@ -5167,7 +5167,7 @@ async function batchMap() {
   // 且三个都是房屋类，与摘要胶囊回显的分类范围严格一致。
   var searched = screen('home-screen', '搜索过滤态 · 关键词「租房」', 'PRD §2.9', true);
   searched.appendChild(statusBar());
-  searched.appendChild(navBar('鸭圈', {
+  searched.appendChild(navBar('丫圈', {
     right: '列表', search: HOME_NAV.search, searchValue: '租房', bell: 3
   }));
   searched.appendChild(mapCanvas('关键词「租房」命中：房屋 › 租房（整租/合租/单间）', false,
@@ -5187,7 +5187,7 @@ async function batchMap() {
       ],
       summary: '5km · 资源+需求 · 关键词「租房」'
     }));
-  searched.appendChild(bottomTab('鸭圈'));
+  searched.appendChild(bottomTab('丫圈'));
   frames.push(searched);
 
   // ---- T3 分类三级树弹层三层下钻（PRD §6.9 + §6.13 T6-②）----
@@ -5201,7 +5201,7 @@ async function batchMap() {
   for (var t = 0; t < treeSteps.length; t++) {
     var ts = screen('home-screen', 'T3 三级树 · ' + treeSteps[t][3], 'PRD §6.9', true);
     ts.appendChild(statusBar());
-    ts.appendChild(navBar('鸭圈', HOME_NAV));
+    ts.appendChild(navBar('丫圈', HOME_NAV));
     // 弹层与遮罩两档只挂在第 1 层（2026-08-27，I5）：三个下钻框是同一个弹层的
     // 三个内部状态，进场动效只发生在第 1 层出现的那一刻。三框各挂一份会让人
     // 以为每次切层都要重播一次上滑。
@@ -5223,7 +5223,7 @@ async function batchMap() {
     }
     ts.appendChild(mapCanvas('三点入口唤起分类三级树', false, treeNotes,
       { sheet: catTreeSheet(treeSteps[t][0], treeSteps[t][1], treeSteps[t][2]) }));
-    ts.appendChild(bottomTab('鸭圈'));
+    ts.appendChild(bottomTab('丫圈'));
     frames.push(ts);
   }
 
@@ -5307,7 +5307,7 @@ async function batchMap() {
         '依据 §6.4.4 空状态兜底六行时间轴',
         '本时间轴与性能降级态互不叉乘'
       ]));
-      f.appendChild(navBar('鸭圈', HOME_NAV));
+      f.appendChild(navBar('丫圈', HOME_NAV));
       f.appendChild(emptyBody);
       // 用 layoutGrow=1 而非 layoutSizingVertical='FILL'：两者在实机等价，
       // 但 grow 是稿内其余贴底页（profile/trust 的 _body）一致的写法，
@@ -5315,14 +5315,14 @@ async function batchMap() {
       // 写 FILL 则 Tab 会被判成悬在内容尽头（内容只到 407 < 844）。
       emptyBody.layoutGrow = 1;
     } else {
-      f.appendChild(navBar('鸭圈', HOME_NAV));
+      f.appendChild(navBar('丫圈', HOME_NAV));
       f.appendChild(mapCanvas(step.lead, false, annotation('过程态 ' + step.at, [
         step.ui,
         '依据 §6.4.4 空状态兜底六行时间轴',
         '本时间轴与性能降级态互不叉乘'
       ]), { infoCard: procPanel }));
     }
-    f.appendChild(bottomTab('鸭圈'));
+    f.appendChild(bottomTab('丫圈'));
     frames.push(f);
   }
 
@@ -5401,7 +5401,7 @@ async function batchMap() {
   var cf = COVERAGE_STATES['cell-fallback'];
   var cell = screen('home-screen', cf.title, cf.prdRef, true);
   cell.appendChild(statusBar());
-  cell.appendChild(navBar('鸭圈', HOME_NAV));
+  cell.appendChild(navBar('丫圈', HOME_NAV));
   cell.appendChild(mapCanvas('基站+商圈定位 · 精度约 1–3km，非城市中心假值', false,
     annotation(cf.title, cf.notes),
     // 商圈名不写具体地名（2026-08-31 条目 [70-h] 出图查出）：
@@ -5410,7 +5410,7 @@ async function batchMap() {
     // 具体是哪个商圈与本状态无关，故改为不含地名的表述 —— 同理也避免
     // 往后换底图时又落下一处需要同步的地名。
     { summary: '当前商圈附近 · 全部类 · 供需全开' }));
-  cell.appendChild(bottomTab('鸭圈'));
+  cell.appendChild(bottomTab('丫圈'));
   frames.push(cell);
 
   // ---- 三个性能降级态（PRD §6.10.1 POC 前置与降级开关）----
@@ -5422,13 +5422,13 @@ async function batchMap() {
   for (var d = 0; d < degrade.length; d++) {
     var g = screen('home-screen', degrade[d][0], 'PRD §6.10.1', true);
     g.appendChild(statusBar());
-    g.appendChild(navBar('鸭圈', HOME_NAV));
+    g.appendChild(navBar('丫圈', HOME_NAV));
     g.appendChild(mapCanvas(degrade[d][1], false, annotation(degrade[d][0], [
       degrade[d][1],
       'P95≤300ms 为四段之和：缓存查找+网络+Dart聚合+上屏（PRD §6.10）',
       'amap_map 无原生 MarkerCluster，聚合须 Dart 侧网格自实现'
     ])));
-    g.appendChild(bottomTab('鸭圈'));
+    g.appendChild(bottomTab('丫圈'));
     frames.push(g);
   }
 
@@ -5439,7 +5439,7 @@ async function batchMap() {
     var tier = S2_RADIUS_TIERS[r];
     var rf = screen('home-screen', '半径档 ' + tier.tier, 'PRD §6.4.4', true);
     rf.appendChild(statusBar());
-    rf.appendChild(navBar('鸭圈', HOME_NAV));
+    rf.appendChild(navBar('丫圈', HOME_NAV));
     rf.appendChild(mapCanvas('半径 ' + tier.tier + ' · ' + tier.density, false,
       annotation('S2 动态蜂窝半径档 ' + tier.tier, [
         tier.density,
@@ -5452,7 +5452,7 @@ async function batchMap() {
       // 自相矛盾，评审无从判断哪个才是当前档。摘要是画面上唯一显示当前半径
       // 的常驻控件，它不跟着变，这四框就等于没表达出档位差异。
       { summary: tier.tier + ' · 资源+需求 · 全部分类' }));
-    rf.appendChild(bottomTab('鸭圈'));
+    rf.appendChild(bottomTab('丫圈'));
     frames.push(rf);
   }
 
@@ -5499,7 +5499,7 @@ async function batchMap() {
   // 都在屏幕最下沿（home 系列靠 _map-canvas 的 grow=1 撑满，profile 靠 _spacer）。
   // 本页原先是裸 appendChild，Tab 随内容高度悬在 693px、离底 151px，评审会
   // 误以为列表页的 Tab 是另一种形态。
-  pushToBottom(list, [bottomTab('鸭圈')]);
+  pushToBottom(list, [bottomTab('丫圈')]);
   frames.push(list);
 
   layout(reset.section, frames, 5, 0);
@@ -6359,7 +6359,7 @@ function buildProfile() {
   });
   head.appendChild(box('_avatar', 'HORIZONTAL', { w: 56, h: 56, radius: RADIUS.full, fill: 'color/primary-light' }));
   var info = box('_info', 'VERTICAL', { gap: SPACING.xs });
-  info.appendChild(text('鸭友 138****8888', 'h3'));
+  info.appendChild(text('丫友 138****8888', 'h3'));
   // 「已实名 ✅ · 资质认证待完成」拆成两段（条目 [70]）：前段已完成走 doneTag，
   // 后段未完成不该带勾，保持纯文字
   var idRow = box('_id-status', 'HORIZONTAL', { gap: SPACING.xs, align: 'CENTER' });

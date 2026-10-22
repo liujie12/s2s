@@ -325,6 +325,7 @@ ul, ol { padding: 0; list-style: none; }
 }
 .phone img {
   width: 100%;
+  height: auto;
   border-radius: 32px;
   aspect-ratio: 390 / 844;
   object-fit: cover;
@@ -937,6 +938,7 @@ code {
 }
 .flow-shot img {
   width: 100%;
+  height: auto;
   aspect-ratio: 390 / 844;
   object-fit: cover;
   border-radius: 18px;

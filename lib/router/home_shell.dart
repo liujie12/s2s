@@ -1,12 +1,12 @@
 /// 底部三 Tab 导航壳（PRD §10.2）。
 ///
 /// 结构依据 prototype-figma/code.js 的 `FLOW_LINKS` 与 `bottomTabRaw`：
-/// - `bottomTab('鸭圈')` 只出现在 home/list、`bottomTab('我的')` 只出现在 profile，
+/// - `bottomTab('丫圈')` 只出现在 home/list、`bottomTab('我的')` 只出现在 profile，
 ///   **全文件没有任何 `bottomTab('发布')`** —— 发布页没有底部 Tab 栏；
 /// - `FLOW_LINKS` 里 `_tab-发布 → publish-screen`、`_tab-我的 → profile-screen`，
 ///   「发布」是点击后 push 全屏发布页的键，不是持久分支。
 ///
-/// 故本壳只承载两个持久分支（鸭圈 = 地图/列表、我的 = profile），
+/// 故本壳只承载两个持久分支（丫圈 = 地图/列表、我的 = profile），
 /// 中间的「发布」键复用同一排 44px 命中区，但 onTap 是 `push('/publish')`
 /// 而非 `goBranch` —— 发布页是顶层路由，push 后底部导航随壳一起被覆盖。
 ///
@@ -67,7 +67,7 @@ class _BottomNavBar extends StatelessWidget {
             children: [
               _TabItem(
                 icon: Icons.map,
-                label: '鸭圈',
+                label: '丫圈',
                 selected: index == 0,
                 onTap: () => navigationShell.goBranch(0),
               ),
@@ -86,7 +86,7 @@ class _BottomNavBar extends StatelessWidget {
   }
 }
 
-/// 普通 Tab 键（鸭圈 / 我的）。
+/// 普通 Tab 键（丫圈 / 我的）。
 ///
 /// 选中态主色、未选中态次要文字色：只改色不改形（PRD §1.4.1.1 叠加铁律），
 /// 且两态同时改图标与文字颜色，避免 emoji 那种「文字变色图标不变」的断裂。
