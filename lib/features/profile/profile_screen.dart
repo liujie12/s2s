@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/network/api_error_code.dart';
 import '../../core/network/api_exception.dart';
 import '../../design_tokens.dart';
 import '../../router/app_router.dart';
@@ -256,6 +257,9 @@ class _HeaderSkeleton extends StatelessWidget {
 }
 
 /// 头部错误态（本人资料拉取失败）。
+///
+/// 未登录 / 登录过期（`40101`）时额外给出「去登录」入口：该态下服务端只会
+/// 返回「登录已过期」，若不给入口，新装用户与过期用户都无路可走到 `/login`。
 class _HeaderError extends StatelessWidget {
   /// 构造头部错误态。
   ///
@@ -267,9 +271,29 @@ class _HeaderError extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      error.uiMessage,
-      style: TextStyle(fontSize: AppTypeScale.body.size, color: Color(AppColors.textSecondary)),
+    final needLogin = error.code == ApiErrorCode.unauthorized;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          error.uiMessage,
+          style: TextStyle(fontSize: AppTypeScale.body.size, color: Color(AppColors.textSecondary)),
+        ),
+        if (needLogin)
+          Padding(
+            padding: const EdgeInsets.only(top: AppSpacing.sm),
+            child: TextButton(
+              onPressed: () => context.push(AppRoutes.login),
+              style: TextButton.styleFrom(
+                padding: EdgeInsets.zero,
+                minimumSize: const Size(0, 44),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                alignment: Alignment.centerLeft,
+              ),
+              child: const Text('去登录'),
+            ),
+          ),
+      ],
     );
   }
 }

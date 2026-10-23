@@ -78,6 +78,10 @@ services:
       # 重复声明整个 volumes 数组（重复声明时 Compose 是整体覆盖而非逐项合并，
       # 漏写一行命名卷就会导致证书或日志不落盘）。
       - ./config/Caddyfile.${S2S_ENV:-prod}:/etc/caddy/Caddyfile:ro
+      # 官网静态站：仓库根 website/ 只读挂载为 /srv/www（《官网设计文档》§7.1/§7.2）。
+      # 相对路径以本 compose 文件所在目录为基准，故为 ../website。
+      # APK 与流程图 PNG 放 website/download/（.gitignore 排除，由发版步骤上传）。
+      - ../website:/srv/www:ro
       - caddy_data:/data
       - caddy_config:/config
       - caddy_logs:/var/log/caddy
