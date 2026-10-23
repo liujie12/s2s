@@ -92,6 +92,7 @@ class SettingServiceTest {
         assertThat(response.notifySettings().cert()).isTrue();
         assertThat(response.defaultRadius()).isEqualTo("3");
         assertThat(response.privacy().contactDisplay()).isEqualTo("transit_only");
+        assertThat(response.privacy().personalizedRecommend()).isTrue();
     }
 
     /**
@@ -124,12 +125,12 @@ class SettingServiceTest {
         when(userSettingMapper.selectByUserId(USER_ID)).thenReturn(null);
 
         SettingsResponse response = service.update(USER_ID,
-                new SettingsUpdateRequest(null, "10"));
+                new SettingsUpdateRequest(null, "10", null));
 
         assertThat(response.defaultRadius()).isEqualTo("10");
         verify(userMapper).updateById(any(UserEntity.class));
         verify(userSettingMapper, never()).upsert(any(), anyBoolean(), anyBoolean(),
-                anyBoolean(), anyBoolean());
+                anyBoolean(), anyBoolean(), anyBoolean());
     }
 
     /**
@@ -144,11 +145,34 @@ class SettingServiceTest {
         when(userSettingMapper.selectByUserId(USER_ID)).thenReturn(settingRow(1, 1, 1, 1));
 
         SettingsResponse response = service.update(USER_ID,
-                new SettingsUpdateRequest(new SettingsUpdateRequest.NotifyPatch(false, null, null, null), null));
+                new SettingsUpdateRequest(new SettingsUpdateRequest.NotifyPatch(false, null, null, null),
+                        null, null));
 
         assertThat(response.notifySettings().enabled()).isFalse();
         assertThat(response.notifySettings().system()).isTrue();
-        verify(userSettingMapper).upsert(USER_ID, false, true, true, true);
+        verify(userSettingMapper).upsert(USER_ID, false, true, true, true, true);
+        verify(userMapper, never()).updateById(any(UserEntity.class));
+    }
+
+    /**
+     * 只提交隐私补丁（关闭个性化排序）→ upsert 合并，其余开关不动。
+     *
+     * @return void；断言失败即「关闭个性化推荐」未落库（算法推荐可关闭义务失效）
+     */
+    @Test
+    @DisplayName("更新：关闭个性化排序 → upsert 写入 0，其余保持")
+    void updatePersonalizedOnly() {
+        when(userMapper.selectById(USER_ID)).thenReturn(user("3"));
+        when(userSettingMapper.selectByUserId(USER_ID)).thenReturn(settingRow(1, 1, 1, 1));
+
+        SettingsResponse response = service.update(USER_ID,
+                new SettingsUpdateRequest(null, null,
+                        new SettingsUpdateRequest.PrivacyPatch(false)));
+
+        assertThat(response.privacy().personalizedRecommend()).isFalse();
+        assertThat(response.notifySettings().enabled()).isTrue();
+        assertThat(response.defaultRadius()).isEqualTo("3");
+        verify(userSettingMapper).upsert(USER_ID, true, true, true, true, false);
         verify(userMapper, never()).updateById(any(UserEntity.class));
     }
 
@@ -164,13 +188,13 @@ class SettingServiceTest {
         when(userSettingMapper.selectByUserId(USER_ID)).thenReturn(null);
 
         assertThatThrownBy(() -> service.update(USER_ID,
-                new SettingsUpdateRequest(null, "999")))
+                new SettingsUpdateRequest(null, "999", null)))
                 .isInstanceOf(BizException.class)
                 .satisfies(ex -> assertThat(((BizException) ex).getErrorCode())
                         .isSameAs(ErrorCode.PARAM_INVALID));
         verify(userMapper, never()).updateById(any(UserEntity.class));
         verify(userSettingMapper, never()).upsert(any(), anyBoolean(), anyBoolean(),
-                anyBoolean(), anyBoolean());
+                anyBoolean(), anyBoolean(), anyBoolean());
     }
 
     /**
@@ -184,14 +208,15 @@ class SettingServiceTest {
         SettingsResponse response = new SettingsResponse(
                 new SettingsResponse.NotifySettings(true, true, false, true),
                 "5",
-                new SettingsResponse.PrivacySettings("transit_only"));
+                new SettingsResponse.PrivacySettings("transit_only", true));
 
         JsonNode root = new ObjectMapper().readTree(new ObjectMapper().writeValueAsString(response));
 
         assertThat(fieldNamesOf(root)).containsExactlyInAnyOrder("notify", "default_radius", "privacy");
         assertThat(fieldNamesOf(root.get("notify")))
                 .containsExactlyInAnyOrder("enabled", "system", "interaction", "cert");
-        assertThat(fieldNamesOf(root.get("privacy"))).containsExactly("contact_display");
+        assertThat(fieldNamesOf(root.get("privacy")))
+                .containsExactlyInAnyOrder("contact_display", "personalized_recommend");
     }
 
     /**
@@ -234,6 +259,7 @@ class SettingServiceTest {
         row.put("notify_system", system);
         row.put("notify_interaction", interaction);
         row.put("notify_cert", cert);
+        row.put("personalized_recommend", 1);
         return row;
     }
 }

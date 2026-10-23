@@ -61,6 +61,12 @@ public class MapService {
     private static final String MODE_PIN = "pin";
     private static final String MODE_CLUSTER = "cluster";
 
+    /** 排序值字面量：仅按距离（非个性化）。 */
+    private static final String SORT_DISTANCE = "distance";
+
+    /** 排序值字面量：综合加权（时效/距离/完整度），属个性化排序，受用户开关约束。 */
+    private static final String SORT_COMPOSITE = "composite";
+
     /** pins 的固定列序声明（openapi {@code PinsCompactResponse.schema}）。 */
     private static final List<String> PIN_SCHEMA =
             List.of("id", "lng", "lat", "category_id", "type", "completeness_level");
@@ -147,12 +153,48 @@ public class MapService {
             String radius,
             String gridId, String categoryVersion, Double lng, Double lat,
             String keyword, String sort, Integer page, Integer pageSize, Long userId) {
+        return searchPosts(categoryIds, postTypes, radius, gridId, categoryVersion, lng, lat,
+                keyword, sort, page, pageSize, userId, true);
+    }
+
+    /**
+     * 列表检索（带「个性化排序」开关）。
+     *
+     * <p>开关口径（《个人信息保护法》第二十四条 / 算法推荐管理规定第十七条）：
+     * 用户关闭个性化排序后，{@code sort=composite} 回落为 {@code distance}（仅按距离）；
+     * 其余排序值（{@code publish_time}/{@code price_asc}/{@code price_desc}/{@code completeness}）
+     * 是用户显式选择，不受开关影响。</p>
+     *
+     * @param categoryIds                 分类 ID 列表
+     * @param postTypes                   供需态
+     * @param radius                      半径档
+     * @param gridId                      坐标网格
+     * @param categoryVersion            分类树版本号
+     * @param lng                         视野中心经度
+     * @param lat                         视野中心纬度
+     * @param keyword                     关键词（可空）
+     * @param sort                        排序方式（缺省 distance）
+     * @param page                        页码（从 1 起，缺省 1）
+     * @param pageSize                    每页条数（缺省/上限见 NfrApi）
+     * @param userId                      当前登录用户 ID（游客为 {@code null}）
+     * @param personalizedRecommendEnabled 个性化排序是否开启（{@code false} 时 composite 回落 distance）
+     * @return 分页列表检索响应
+     */
+    public SearchPostsResponse searchPosts(List<Integer> categoryIds, List<String> postTypes,
+            String radius,
+            String gridId, String categoryVersion, Double lng, Double lat,
+            String keyword, String sort, Integer page, Integer pageSize, Long userId,
+            boolean personalizedRecommendEnabled) {
         validateSearchParams(categoryIds, postTypes, radius, gridId, categoryVersion, lng, lat, sort);
 
         List<String> gridIds = expandGridCells(gridId, radius);
         boolean stale = categoryService.isVersionStale(categoryVersion);
         String normalizedKeyword = keyword == null || keyword.isBlank() ? null : keyword.trim();
-        String resolvedSort = sort == null || sort.isBlank() ? "distance" : sort;
+        String resolvedSort = sort == null || sort.isBlank() ? SORT_DISTANCE : sort;
+        if (SORT_COMPOSITE.equals(resolvedSort) && !personalizedRecommendEnabled) {
+            // 用户已关闭个性化排序：不进入加权排序，退回客观距离排序
+            resolvedSort = SORT_DISTANCE;
+        }
         int resolvedPage = page == null ? 1 : page;
         int resolvedPageSize = pageSize == null ? NfrApi.PAGE_SIZE_DEFAULT : pageSize;
 
@@ -415,7 +457,7 @@ public class MapService {
                             .thenComparing(PostCard::publishAt).reversed());
             case "price_asc" -> cards.sort(priceComparator(true));
             case "price_desc" -> cards.sort(priceComparator(false));
-            case "composite" -> cards.sort(Comparator.comparingDouble(this::compositeScore));
+            case SORT_COMPOSITE -> cards.sort(Comparator.comparingDouble(this::compositeScore));
             default -> cards.sort(Comparator.comparingInt(c -> c.distanceM() == null
                     ? Integer.MAX_VALUE : c.distanceM()));
         }

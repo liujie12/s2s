@@ -63,7 +63,8 @@ public class SettingService {
                 row == null || row.get("notify_interaction") == null
                         ? true : isTrue(row.get("notify_interaction")),
                 row == null || row.get("notify_cert") == null
-                        ? true : isTrue(row.get("notify_cert")));
+                        ? true : isTrue(row.get("notify_cert")),
+                personalizedOf(row));
     }
 
     /**
@@ -83,8 +84,9 @@ public class SettingService {
         boolean interaction = row == null || row.get("notify_interaction") == null
                 ? true : isTrue(row.get("notify_interaction"));
         boolean cert = row == null || row.get("notify_cert") == null ? true : isTrue(row.get("notify_cert"));
+        boolean personalized = personalizedOf(row);
         String radius = user.getDefaultRadius();
-        boolean notifyTouched = false;
+        boolean touched = false;
 
         if (request != null) {
             if (request.defaultRadius() != null) {
@@ -99,45 +101,81 @@ public class SettingService {
             if (patch != null) {
                 if (patch.enabled() != null) {
                     enabled = patch.enabled();
-                    notifyTouched = true;
+                    touched = true;
                 }
                 if (patch.system() != null) {
                     system = patch.system();
-                    notifyTouched = true;
+                    touched = true;
                 }
                 if (patch.interaction() != null) {
                     interaction = patch.interaction();
-                    notifyTouched = true;
+                    touched = true;
                 }
                 if (patch.cert() != null) {
                     cert = patch.cert();
-                    notifyTouched = true;
+                    touched = true;
                 }
+            }
+            SettingsUpdateRequest.PrivacyPatch privacyPatch = request.privacyPatch();
+            if (privacyPatch != null && privacyPatch.personalizedRecommend() != null) {
+                personalized = privacyPatch.personalizedRecommend();
+                touched = true;
             }
         }
 
-        if (notifyTouched) {
-            userSettingMapper.upsert(userId, enabled, system, interaction, cert);
+        if (touched) {
+            userSettingMapper.upsert(userId, enabled, system, interaction, cert, personalized);
         }
-        return build(radius, enabled, system, interaction, cert);
+        return build(radius, enabled, system, interaction, cert, personalized);
     }
 
     /**
-     * 组装设置响应（隐私项为固定只读值）。
+     * 判断某用户的个性化排序是否开启（供排序链路判定，不抛业务异常）。
      *
-     * @param radius      默认检索半径档位
-     * @param enabled     通知总开关
-     * @param system      系统通知分通道
-     * @param interaction 互动通知分通道
-     * @param cert        认证通知分通道
+     * <p>刻意<b>不</b>调 {@link #get(Long)}：排序是高频读路径，且游客/无设置行都应按默认
+     * （开启）处理，不该因用户行缺失而影响检索。</p>
+     *
+     * @param userId 用户 ID（游客传 {@code null}）
+     * @return boolean {@code false} 表示用户已关闭个性化排序（列表应回落为仅按距离排序）；
+     *         无设置行或 {userId} 为 {@code null} 时返回 {@code true}
+     */
+    public boolean isPersonalizedRecommendEnabled(Long userId) {
+        if (userId == null) {
+            return true;
+        }
+        return personalizedOf(userSettingMapper.selectByUserId(userId));
+    }
+
+    /**
+     * 组装设置响应（{@code contactDisplay} 为固定只读值）。
+     *
+     * @param radius       默认检索半径档位
+     * @param enabled      通知总开关
+     * @param system       系统通知分通道
+     * @param interaction  互动通知分通道
+     * @param cert         认证通知分通道
+     * @param personalized 个性化排序开关
      * @return {@link SettingsResponse}
      */
     private SettingsResponse build(String radius, boolean enabled, boolean system, boolean interaction,
-            boolean cert) {
+            boolean cert, boolean personalized) {
         return new SettingsResponse(
                 new SettingsResponse.NotifySettings(enabled, system, interaction, cert),
                 radius,
-                new SettingsResponse.PrivacySettings(CONTACT_DISPLAY_TRANSIT_ONLY));
+                new SettingsResponse.PrivacySettings(CONTACT_DISPLAY_TRANSIT_ONLY, personalized));
+    }
+
+    /**
+     * 从设置行读个性化排序开关（缺行/缺列一律默认开启）。
+     *
+     * @param row {@code user_setting} 行（可空）
+     * @return boolean true＝开启
+     */
+    private static boolean personalizedOf(Map<String, Object> row) {
+        if (row == null || row.get("personalized_recommend") == null) {
+            return true;
+        }
+        return isTrue(row.get("personalized_recommend"));
     }
 
     /**

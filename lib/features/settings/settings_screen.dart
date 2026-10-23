@@ -5,6 +5,7 @@
 /// 数据来源：
 ///   - 有契约支撑的行走真接口：`消息通知`（PATCH notify.enabled 切换）、
 ///     `默认范围`（PATCH default_radius + 档位选择）、`联系方式展示策略`（GET 只读值）、
+///     `个性化推荐`（PATCH privacy.personalized_recommend 切换，2026-10-23）、
 ///     `手机号`（`GET /users/me` 的 phone_mask）；
 ///   - 无对应端点的行（修改密码/注销账号/清除缓存/位置权限说明/版本号/用户协议/隐私政策）
 ///     按项目既有降级口径提示「本期内测版暂未开放」，不做假交互。
@@ -123,6 +124,16 @@ class SettingsScreen extends ConsumerWidget {
           value: _contactDisplayLabel(settings.contactDisplay),
           onTap: () => _notOpen(context),
         ),
+        // 算法推荐「可关闭」义务（PIPL 第二十四条 / 算法推荐管理规定第十七条）
+        _SettingRow(
+          label: '个性化推荐',
+          value: settings.personalizedRecommend ? '已开启' : '已关闭',
+          onTap: () => _togglePersonalized(
+            context,
+            ref,
+            settings.personalizedRecommend,
+          ),
+        ),
         const _GroupTitle('关于'),
         _SettingRow(label: '版本号', value: _appVersionLabel, onTap: () => _notOpen(context)),
         _SettingRow(label: '用户协议', value: null, onTap: () => _notOpen(context)),
@@ -210,6 +221,25 @@ class SettingsScreen extends ConsumerWidget {
   Future<void> _toggleNotify(BuildContext context, WidgetRef ref, bool current) async {
     try {
       await ref.read(settingsProvider.notifier).setNotifyEnabled(enabled: !current);
+    } catch (e) {
+      if (!context.mounted) return;
+      _toast(context, asApiException(e).uiMessage);
+    }
+  }
+
+  /// 切换个性化排序开关（关闭后列表 `sort=composite` 回落为仅按距离排序）。
+  ///
+  /// 参数：[context] 构建上下文；[ref] Riverpod 句柄；[current] 当前值。
+  /// 返回：[Future<void>]。
+  Future<void> _togglePersonalized(
+    BuildContext context,
+    WidgetRef ref,
+    bool current,
+  ) async {
+    try {
+      await ref
+          .read(settingsProvider.notifier)
+          .setPersonalizedRecommend(enabled: !current);
     } catch (e) {
       if (!context.mounted) return;
       _toast(context, asApiException(e).uiMessage);

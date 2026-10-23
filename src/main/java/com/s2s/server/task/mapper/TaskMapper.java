@@ -148,4 +148,32 @@ public interface TaskMapper {
      * @return int 实际删除行数
      */
     int deletePostsByUserIds(@Param("userIds") List<Long> userIds);
+
+    /**
+     * 取到期应清理的证照原件图（保留策略 {@code ocr_image_7d}；2026-10-23 补实现）。
+     *
+     * @param threshold 保留阈值（{@code submitted_at} 早于它的行）
+     * @param limit     单批上限
+     * @return {@link List} 每行两列 {@code id} / {@code ocr_image_ref}
+     */
+    List<Map<String, Object>> selectExpiredCertImages(@Param("threshold") LocalDateTime threshold,
+            @Param("limit") int limit);
+
+    /**
+     * 清空证照图引用（OSS 对象删除成功后执行，保留认证结果本身）。
+     *
+     * @param ids 认证记录 ID（非空）
+     * @return int 实际更新行数
+     */
+    int clearCertImageRefs(@Param("ids") List<Long> ids);
+
+    /**
+     * 删除超过保留期的联系事件（保留策略 {@code transit_log_30d}；2026-10-23 补实现）。
+     *
+     * @param threshold 保留阈值（{@code created_at} 早于它的行被删）
+     * @param limit     单批上限
+     * @return int 实际删除行数
+     */
+    int deleteContactEventsBefore(@Param("threshold") LocalDateTime threshold,
+            @Param("limit") int limit);
 }

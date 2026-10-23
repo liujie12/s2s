@@ -1,5 +1,6 @@
 package com.s2s.server.map;
 
+import com.s2s.server.auth.SettingService;
 import com.s2s.server.common.web.AuthContext;
 import com.s2s.server.map.dto.PinsCompactResponse;
 import com.s2s.server.map.dto.SearchPostsResponse;
@@ -24,14 +25,17 @@ import org.springframework.web.bind.annotation.RestController;
 public class MapController {
 
     private final MapService mapService;
+    private final SettingService settingService;
 
     /**
      * 构造地图域控制器。
      *
-     * @param mapService 地图域服务
+     * @param mapService     地图域服务
+     * @param settingService 设置域服务（读「个性化排序」开关，游客/缺省视为开启）
      */
-    public MapController(MapService mapService) {
+    public MapController(MapService mapService, SettingService settingService) {
         this.mapService = mapService;
+        this.settingService = settingService;
     }
 
     /**
@@ -93,7 +97,9 @@ public class MapController {
             @RequestParam(name = "page_size", required = false) Integer pageSize) {
         // 游客可访问 → userId 可能为 null；仅用于「空圈入队」的线索归属（PRD §6.4.4）
         Long userId = AuthContext.currentUserId(http);
+        // 个性化排序开关（2026-10-23）：关闭后 composite 回落 distance，见 MapService 重载说明
+        boolean personalizedEnabled = settingService.isPersonalizedRecommendEnabled(userId);
         return mapService.searchPosts(categoryIds, postTypes, radius, gridId, categoryVersion,
-                lng, lat, keyword, sort, page, pageSize, userId);
+                lng, lat, keyword, sort, page, pageSize, userId, personalizedEnabled);
     }
 }

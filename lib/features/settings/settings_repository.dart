@@ -2,7 +2,7 @@
 ///
 /// 与 `PostRepository` 同一模式：真网络走 [dioProvider] 生产同款五拦截器链，
 /// 本层只做「发请求 + 交 DTO 解析」。PATCH 为局部更新：只为**非 null 入参**
-/// 组装请求体字段（`null`＝不动），隐私项只读、不入请求。
+/// 组装请求体字段（`null`＝不动）；隐私项中仅 `personalized_recommend` 可写。
 library;
 
 import 'package:dio/dio.dart';
@@ -35,7 +35,7 @@ class SettingsRepository {
 
   /// 局部更新我的设置（`PATCH /settings`）。
   ///
-  /// 参数：各通知开关与 [defaultRadius] 均为「null＝不动」；
+  /// 参数：各通知开关、[defaultRadius] 与 [personalizedRecommend] 均为「null＝不动」；
   ///   [interactionId] X-Interaction-Id。
   /// 返回：[SettingsDto] 更新后的完整设置。
   /// 抛出：[ApiException]（40001 default_radius 非法 / 40101 未登录）等。
@@ -45,6 +45,7 @@ class SettingsRepository {
     bool? notifyInteraction,
     bool? notifyCert,
     String? defaultRadius,
+    bool? personalizedRecommend,
     String? interactionId,
   }) async {
     final notify = <String, Object?>{
@@ -56,6 +57,10 @@ class SettingsRepository {
     final body = <String, Object?>{
       if (notify.isNotEmpty) 'notify': notify,
       'default_radius': ?defaultRadius,
+      if (personalizedRecommend != null)
+        'privacy': <String, Object?>{
+          'personalized_recommend': personalizedRecommend,
+        },
     };
     final response = await _dio.patch<Object?>(
       '/settings',

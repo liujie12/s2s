@@ -4181,13 +4181,19 @@ components:
         default_radius: { $ref: '#/components/schemas/RadiusEnum' }
         privacy:
           type: object
-          description: 隐私项（只读展示，PRD §9.3；`PATCH` 提交即忽略）
-          required: [contact_display]
+          description: 隐私项（PRD §9.3）。`contact_display` 只读；`personalized_recommend` 可经 `PATCH` 修改（算法推荐「可关闭」义务，2026-10-23 新增）
+          required: [contact_display, personalized_recommend]
           properties:
             contact_display:
               type: string
               description: 联系方式展示策略，恒 `transit_only`（仅在联系中转时展示完整号）
               enum: [transit_only]
+            personalized_recommend:
+              type: boolean
+              description: |
+                个性化排序开关。`true`（默认）= 列表检索允许 `sort=composite`（时效 40 / 距离 40 / 完整度 20 加权）；
+                `false` = `sort=composite` 回落为 `distance`（仅按距离排序）。
+                其余显式排序值（`publish_time`/`price_asc`/`price_desc`/`completeness`）不受本开关影响。
 
     SettingsUpdateRequest:
       type: object
@@ -4202,6 +4208,13 @@ components:
             interaction: { type: boolean }
             cert: { type: boolean }
         default_radius: { $ref: '#/components/schemas/RadiusEnum' }
+        privacy:
+          type: object
+          description: 隐私项补丁（仅 `personalized_recommend` 可写；`contact_display` 提交即忽略）
+          properties:
+            personalized_recommend:
+              type: boolean
+              description: 个性化排序开关（`false` = 列表 `sort=composite` 回落 `distance`）
 
     # ---------- 分类与模板 ----------
 

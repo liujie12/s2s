@@ -66,6 +66,18 @@ class SettingsNotifier extends Notifier<AsyncValue<SettingsDto>> {
         .updateSettings(defaultRadius: radius);
     state = AsyncValue.data(updated);
   }
+
+  /// 切换个性化排序开关（《个人信息保护法》第二十四条「可关闭」义务）。
+  ///
+  /// 参数：[enabled] 目标值（false＝关闭，列表 `sort=composite` 回落为仅按距离）。
+  /// 返回：[Future<void>]。
+  /// 抛出：[ApiException] 由页面提示。
+  Future<void> setPersonalizedRecommend({required bool enabled}) async {
+    final updated = await ref
+        .read(settingsRepositoryProvider)
+        .updateSettings(personalizedRecommend: enabled);
+    state = AsyncValue.data(updated);
+  }
 }
 
 /// 设置 Provider。

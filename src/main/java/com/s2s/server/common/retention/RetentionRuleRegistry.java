@@ -20,15 +20,13 @@ import java.util.stream.Collectors;
  * 若把值强制为 bean 名，就得为不存在的东西编造 bean；故值统一为「执行者说明」文本
  * （任务类名 / 域内方法 / Batch2 标注），并允许 {@link #PENDING} 标注未落地项。</p>
  *
- * <p><b>当前 9 条的落地状态</b>（2026-09-29 [129] 落地时）：</p>
+ * <p><b>当前 9 条的落地状态</b>（2026-10-23 更新）：</p>
  * <ul>
- *   <li>已实现：{@code favorite_deleted_30d}（收藏记录清理任务）、{@code deactivate_7d}
- *       （注销清理任务）、{@code audit_log_180d}（审计日志清理任务）；</li>
- *   <li>非任务型执行者（既有代码路径，本轮不改）：{@code exif_strip}、{@code location_no_collect}、
+ *   <li>已实现：{@code favorite_deleted_30d}、{@code deactivate_7d}、{@code audit_log_180d}、
+ *       {@code ocr_image_7d}（证照图清理任务）、{@code transit_log_30d}（联系事件清理任务）；</li>
+ *   <li>非任务型执行者（既有代码路径）：{@code exif_strip}、{@code location_no_collect}、
  *       {@code post_archived_keep}；</li>
- *   <li>Batch2 随域交付：{@code ocr_image_7d}、{@code publish_memory_180d}；</li>
- *   <li><b>待裁定</b>：{@code transit_log_30d} —— 存储载体设计文档未定义，清理动作未实现，
- *       见说明文档 §2.9（用户 2026-09-29 裁定「登记缺口 + 只注册保留键」）。</li>
+ *   <li>仍未落地：{@code publish_memory_180d}（发布记忆功能未开发，随该功能交付）。</li>
  * </ul>
  */
 public final class RetentionRuleRegistry {
@@ -45,10 +43,9 @@ public final class RetentionRuleRegistry {
 
     static {
         RULES.put("ocr_image_7d",
-                PENDING + "Batch2 随 cert 域交付（删 OSS + 清 cert.ocr_image_ref）");
+                "task.CertImageCleanupTask（删 OSS 证照对象 + 清 cert.ocr_image_ref）");
         RULES.put("transit_log_30d",
-                PENDING + "存储载体设计文档未定义（PRD §7.4.2 无载体、可观测 §2 三类数据中无此对象），"
-                        + "见说明文档 §2.9 待裁定项");
+                "task.ContactEventCleanupTask（删 contact_event 过期行；载体 = 联系事件表）");
         RULES.put("favorite_deleted_30d", "task.FavoriteCleanupTask（软删满 30 天物理删除）");
         RULES.put("publish_memory_180d", PENDING + "Batch2 随发布记忆功能交付");
         RULES.put("deactivate_7d",

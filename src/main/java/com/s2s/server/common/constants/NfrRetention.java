@@ -44,8 +44,12 @@ public final class NfrRetention {
     public static final int MEDIA_PENDING_TTL_HOURS = 24;
 
     /** 中转脱敏日志保留天数（保留策略键 {@code transit_log_30d}，PRD §13.4）。
-     * <b>当前无消费方</b>：该日志的存储载体在全套设计文档中查无定义（PRD §7.4.2 只写了
-     * 联系中转页的脱敏展示行为，可观测 §2 的三类数据中亦无此对象），故清理动作未实现，
-     * 详见说明文档 §2.9 待裁定项。常量先落于此，避免将来实现时手敲数字。 */
+     * 消费方：联系事件清理任务（{@code ContactEventCleanupTask}，2026-10-23 补实现）——
+     * 载体 = {@code contact_event} 表（只记「联系动作发生过」，供限频与北极星辅助指标）。 */
     public static final int TRANSIT_LOG_RETENTION_DAYS = 30;
+
+    /** 证照原件图片保留天数（保留策略键 {@code ocr_image_7d}，{@code cert.ocr_image_ref} 列注释）。
+     * 消费方：证件图清理任务（{@code CertImageCleanupTask}，2026-10-23 补实现）——
+     * 到期删 OSS 对象并清空 {@code cert.ocr_image_ref}，保留认证结果本身。 */
+    public static final int CERT_IMAGE_RETENTION_DAYS = 7;
 }

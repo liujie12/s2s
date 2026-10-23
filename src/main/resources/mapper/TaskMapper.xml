@@ -213,5 +213,58 @@
             #{userId}
         </foreach>
     </delete>
+    <!--
+      取到期应清理的证照原件图（保留策略 ocr_image_7d；数据库设计 §5）。
+
+      EXPLAIN 结论：`cert` 的二级索引为 idx_user_type_status(user_id, cert_type, status) 与
+      idx_status_submitted(status, submitted_at)，最左列均不含 submitted_at 单独可用路径，
+      故 type=ALL、Extra=Using where（全表扫）。这是刻意取舍：cert 行数 = 认证申请次数
+      （量级百到千），全表扫代价可忽略；不为单条清理语句新增 idx_submitted——那会与
+      idx_status_submitted 的次列重复，只增写放大（同 audit_log 清理的容量纪律）。
+
+      只出 id + ocr_image_ref：本任务只需「删哪个对象、清哪一行」。
+    -->
+    <select id="selectExpiredCertImages" resultType="map">
+        SELECT id,
+               ocr_image_ref
+        FROM cert
+        WHERE ocr_image_ref IS NOT NULL
+          AND submitted_at &lt; #{threshold}
+        ORDER BY submitted_at
+        LIMIT #{limit}
+    </select>
+
+    <!--
+      清空证照图引用（保留策略 ocr_image_7d 第二步：OSS 对象删除成功后执行）。
+
+      EXPLAIN 结论：按主键 IN 定位，type=range、key=PRIMARY。
+      只置 NULL，不删 cert 行——认证结果本身（状态/审核时间）需保留可追溯。
+    -->
+    <update id="clearCertImageRefs">
+        UPDATE cert
+        SET ocr_image_ref = NULL
+        WHERE id IN
+        <foreach collection="ids" item="certId" open="(" separator="," close=")">
+            #{certId}
+        </foreach>
+    </update>
+
+    <!--
+      删除超过保留期的联系事件（保留策略 transit_log_30d，PRD §13.4）。
+
+      EXPLAIN 结论：`contact_event` 的两个索引 idx_from_user_created(from_user_id, created_at)
+      与 idx_post_id_created(post_id, created_at) 最左列都不是 created_at，故 type=ALL、
+      Extra=Using where。这是刻意取舍：联系事件受三维日限约束（账号 30/日、设备 30/日、
+      IP 100/日），30 天存量有上界，全表扫可接受；不新增 idx_created_at——清理是唯一
+      使用场景，与两个复合索引的尾列重复，只增写放大。
+
+      ORDER BY created_at + LIMIT：保证多批收敛时每批都推进，不会反复取同一批。
+    -->
+    <delete id="deleteContactEventsBefore">
+        DELETE FROM contact_event
+        WHERE created_at &lt; #{threshold}
+        ORDER BY created_at
+        LIMIT #{limit}
+    </delete>
 
 </mapper>

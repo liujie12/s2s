@@ -31,11 +31,17 @@ public record SettingsResponse(
     }
 
     /**
-     * 隐私项（openapi {@code SettingsResponse.privacy}；只读展示，PATCH 提交即忽略）。
+     * 隐私项（openapi {@code SettingsResponse.privacy}）。
      *
-     * @param contactDisplay 联系方式展示策略，恒 {@code transit_only}
+     * <p>{@code contactDisplay} 只读；{@code personalizedRecommend} 可经
+     * {@code PATCH /settings} 的 {@code privacy.personalized_recommend} 修改
+     * （2026-10-23 新增，算法推荐「可关闭」义务）。</p>
+     *
+     * @param contactDisplay        联系方式展示策略，恒 {@code transit_only}
+     * @param personalizedRecommend 个性化排序开关：{@code false} 时 {@code sort=composite}
+     *                              回落为 {@code distance}（仅按距离排序）
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public record PrivacySettings(String contactDisplay) {
+    public record PrivacySettings(String contactDisplay, boolean personalizedRecommend) {
     }
 }

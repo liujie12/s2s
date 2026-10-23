@@ -44,11 +44,12 @@ class NotifySwitchesDto {
 
 /// 我的设置 DTO（openapi `SettingsResponse`）。
 class SettingsDto {
-  /// 构造设置 DTO。
+  /// 构建设置 DTO。
   const SettingsDto({
     required this.notify,
     required this.defaultRadius,
     required this.contactDisplay,
+    required this.personalizedRecommend,
   });
 
   /// 由信封 data 构造。
@@ -63,6 +64,8 @@ class SettingsDto {
       notify: NotifySwitchesDto.fromJson(map['notify']),
       defaultRadius: requireString(map, 'default_radius', 'SettingsResponse'),
       contactDisplay: requireString(privacy, 'contact_display', 'SettingsResponse.privacy'),
+      personalizedRecommend:
+          requireBool(privacy, 'personalized_recommend', 'SettingsResponse.privacy'),
     );
   }
 
@@ -74,4 +77,7 @@ class SettingsDto {
 
   /// 联系方式展示策略（恒 `transit_only`，只读）。
   final String contactDisplay;
+
+  /// 个性化排序开关（`false` = 列表 `sort=composite` 回落为仅按距离排序）。
+  final bool personalizedRecommend;
 }
