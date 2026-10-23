@@ -31,8 +31,8 @@
 
 # ---------------------------------------------------------------------------
 # HTTPS 站点 —— 唯一业务入口
-# 域名由 env_file 中的 SITE_DOMAIN 注入：zhaoyazhaoapp.com
-# （2026-10-23 起唯一域名；应用未上架，故不保留旧域名过渡）
+# 域名由 env_file 中的 SITE_DOMAIN 注入：备案下号前为 s2s.build110.com，
+# 下号后切为 zhaoyazhaoapp.com（应用未上架，不保留旧域名过渡）
 # ---------------------------------------------------------------------------
 {$SITE_DOMAIN} {
     # TLS 配置：Caddy 自动申请与续期 Let's Encrypt 证书（零人工、零费用）
@@ -52,31 +52,57 @@
     # —— 官网静态白名单（《官网设计文档》§7.2）——
     # 只把明确的静态路径交给 file_server，其余一律回落 API，行为与既有完全一致。
     # 不使用 SPA fallback，避免吞掉 API 404 语义。
+    #
+    # ⚠ Caddyfile 的块【必须换行】，`file_server { root /srv/www }` 这种单行块会被
+    #   适配器拒绝：`Unexpected next token after '{' on same line`（2026-10-23 生产
+    #   实测踩坑，曾导致 caddy 重启循环）。新增块一律按多行书写。
     handle /flow {
         rewrite * /flow.html
-        file_server { root /srv/www }
+        file_server {
+            root /srv/www
+        }
     }
     handle /terms {
         rewrite * /terms.html
-        file_server { root /srv/www }
+        file_server {
+            root /srv/www
+        }
     }
     handle /privacy {
         rewrite * /privacy.html
-        file_server { root /srv/www }
+        file_server {
+            root /srv/www
+        }
     }
     handle /download/* {
         header Cache-Control "public, max-age=86400"
         @apk path *.apk
         header @apk Content-Type "application/vnd.android.package-archive"
-        file_server { root /srv/www }
+        file_server {
+            root /srv/www
+        }
     }
     handle /assets/* {
         header Cache-Control "public, max-age=604800"
-        file_server { root /srv/www }
+        file_server {
+            root /srv/www
+        }
     }
-    handle /robots.txt  { file_server { root /srv/www } }
-    handle /favicon.ico { file_server { root /srv/www } }
-    handle /            { file_server { root /srv/www } }
+    handle /robots.txt {
+        file_server {
+            root /srv/www
+        }
+    }
+    handle /favicon.ico {
+        file_server {
+            root /srv/www
+        }
+    }
+    handle / {
+        file_server {
+            root /srv/www
+        }
+    }
 
     # 反向代理到 Spring Boot 应用容器（明文 HTTP，仅容器网络内）
     handle {
