@@ -56,6 +56,10 @@ public class AiParseService {
      * 与 Step 4 逆向比对一正一反共同守住幻觉 ≈ 0（PRD §5.10）。同时给出<b>输出结构</b>：
      * 真实模型不知道 Step 4 的字段口径，不写清结构会返回自造键名（全被 Step 4 拒掉）。</p>
      *
+     * <p>唯一放宽项 = <b>类目可由图片物体识别决定</b>（2026-10-23 用户裁定：
+     * 「识别图片的物体信息并自动分类」），但仍只能从 {@code category_options} 里挑，
+     * 不得自造类目；title / price / price_unit / template_values 仍须以 text/options 为源。</p>
+     *
      * <p>提示词口径与 {@link #verifyAgainstScope} 一一对应（title 须能在 text 溯源、
      * leaf_category_id 须等于 scope 已选叶子或落在 {@code category_options} 清单内、
      * price 数字须在 text 出现（中文数字价格如
@@ -67,7 +71,8 @@ public class AiParseService {
             + "用户消息是一段 JSON（scope）：text=用户原话，leaf_category_id=用户已选叶子类目（可空），"
             + "category_options=平台叶子类目清单（id + path，用户未选类目时提供），"
             + "template_fields=平台模板字段（key）及其可选项（options）。"
-            + "只允许从 scope 中已有的内容搬运，禁止编造任何未出现的实体（价格、地名、型号、单位、类目等）。"
+            + "只允许从 scope 中已有的内容搬运（唯一的例外：leaf_category_id 可依据图片识别结果，"
+            + "从 category_options 中挑一个最匹配项），禁止编造任何未出现的实体（价格、地名、型号、单位等）。"
             + "输出结构："
             + "{\"title\":字符串（必须是 text 的子串，≤40 字，无法确定则省略）,"
             + "\"leaf_category_id\":整数（只能是 scope.leaf_category_id 或 scope.category_options 中的 id；"
@@ -75,8 +80,10 @@ public class AiParseService {
             + "\"price\":数字（必须是 text 中出现过的数字；text 中以中文数字表达的价格（如「五元」「十五块」）须归一为阿拉伯数字输出，没有则省略）,"
             + "\"price_unit\":字符串（必须是 text 中出现过的单位，没有则省略）,"
             + "\"template_values\":对象（键必须来自 template_fields 的 key，值必须是该字段 options 之一或 text 中出现过）}。"
-            + "scope.media=用户上传的图片（经 image_url 附带）：仅可用来理解 text 含义并在 options 中做选择，"
-            + "禁止输出仅在图片中出现而 text/options 里不存在的实体。"
+            + "scope.media=用户上传的图片（经 image_url 附带）：可据此识别图中物体，并从 category_options 中"
+            + "选出最匹配的叶子类目（例：图中是儿童餐椅 ⇒ 选生活服务相关叶子）；"
+            + "title/price/price_unit/template_values 仍须以 text/options 为源，"
+            + "禁止把仅在图片中出现的内容写进这些字段。"
             + "无法从 scope 确定的字段一律省略，不要猜测。";
 
     /** 猜测字段名（scope_verified / unresolved_fields 的键）。 */

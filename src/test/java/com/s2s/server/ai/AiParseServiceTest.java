@@ -189,6 +189,29 @@ class AiParseServiceTest {
     }
 
     /**
+     * 仅图片输入（无文本）时，模型可凭图识别物体并从平台清单中选叶子类目 ⇒ 保留；
+     * 但标题等仍不得凭空来自图片（无 text 可溯源 ⇒ 留待用户补）。
+     */
+    @Test
+    void 仅图片时按识别物体自动分类() {
+        when(mediaService.signAiReadAccess(1L, "7"))
+                .thenReturn(new MediaService.AiMediaAccess("https://oss.test/chair", "image/jpeg"));
+        when(categoryService.listLeafOptions()).thenReturn(List.of(
+                new CategoryService.LeafOption(50103, "生活 / 生活服务 / 家政保洁"),
+                new CategoryService.LeafOption(50201, "生活 / 生活服务 / 维修安装")));
+        when(provider.generate(anyLong(), anyString(), anyString()))
+                .thenReturn("{\"leaf_category_id\":50103,\"title\":\"儿童餐椅\"}");
+
+        AiParseResult result = service.parse(1L,
+                new AiParseRequest("7", null, null, null, "resource", null, 0));
+
+        assertThat(result.guess().leafCategoryId()).isEqualTo(50103);
+        assertThat(result.scopeVerified()).containsEntry("leaf_category_id", "platform");
+        assertThat(result.guess().title()).isNull();
+        assertThat(result.unresolvedFields()).contains("title");
+    }
+
+    /**
      * 模型返回的类目不在平台清单内 ⇒ 拒绝注入（严格 Scope 不放松）。
      */
     @Test

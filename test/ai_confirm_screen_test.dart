@@ -134,6 +134,29 @@ void main() {
       expect(find.textContaining('AI 辅助生成'), findsOneWidget);
     });
 
+    testWidgets('拍的照片进入媒体图集（确认页可见，不会被丢弃）', (tester) async {
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 2;
+      addTearDown(tester.view.reset);
+      final ai = FakeAiRepository()..resultToReturn = fullResult();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [aiRepositoryProvider.overrideWithValue(ai)],
+          child: MaterialApp(
+            home: AiConfirmScreen(
+              args: AiConfirmArgs(
+                form: complete().copyWith(mediaIds: const <String>['m_1']),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('媒体图集 1 / 9'), findsOneWidget);
+      expect(find.byIcon(Icons.image_outlined), findsOneWidget);
+    });
+
     testWidgets('「全部重填」在右上而非底部 —— 放弃动作要与确认动作拉开距离', (tester) async {
       await pump(tester, complete());
       final reset = tester.widget<TextButton>(

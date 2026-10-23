@@ -669,6 +669,15 @@ class _AiConfirmScreenState extends ConsumerState<AiConfirmScreen> {
           ),
         ),
         const SizedBox(height: AppSpacing.md),
+        // 拍的照片必须看得见：它已进 `media_ids` 随帖子发布，这里给出缩略图与张数，
+        // 避免「确认页没有图 = 图被丢了」的错觉（2026-10-23 用户反馈）。
+        if (_form.mediaIds.isNotEmpty) ...[
+          _MediaGallery(
+            count: _form.mediaIds.length,
+            url: widget.args.initialMediaUrl,
+          ),
+          const SizedBox(height: AppSpacing.sm),
+        ],
         // B2-4 内容标识落点一：AI 辅助生成显式标注（PRD §5.9 合规裁定）。
         const _AiAssistNote(),
         const SizedBox(height: AppSpacing.sm),
@@ -1151,6 +1160,89 @@ class _GreenSprint extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+/// 媒体图集（确认页）：展示随帖提交的照片，证明它没有被丢弃。
+///
+/// 缩略图取上传返回的限时地址；地址缺失（历史草稿/重发态）时退化为占位图标，
+/// 张数仍按 [count] 如实显示 —— 计数与提交载荷同源（[PublishFormState.mediaIds]）。
+class _MediaGallery extends StatelessWidget {
+  /// 构造媒体图集。
+  ///
+  /// 参数：[count] 已 commit 的图片张数；[url] 首张图片的访问地址（可空）。
+  const _MediaGallery({required this.count, this.url});
+
+  /// 已 commit 的图片张数。
+  final int count;
+
+  /// 首张图片的访问地址（可空）。
+  final String? url;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: const Color(AppColors.surface),
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: const Color(AppColors.border)),
+      ),
+      child: Row(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(AppRadius.sm),
+            child: _buildThumbnail(),
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Text(
+              '媒体图集 $count / $kMaxImageCount · 随这条信息一起发布',
+              style: TextStyle(
+                fontSize: AppTypeScale.small.size,
+                color: const Color(AppColors.textSecondary),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 缩略图：有地址走网络图（失败退占位），无地址直接占位。
+  ///
+  /// 返回：[Widget] 缩略图。
+  Widget _buildThumbnail() {
+    final imageUrl = url;
+    if (imageUrl == null || imageUrl.isEmpty) {
+      return const _MediaThumbPlaceholder();
+    }
+    return Image.network(
+      imageUrl,
+      width: 56,
+      height: 56,
+      fit: BoxFit.cover,
+      errorBuilder: (_, _, _) => const _MediaThumbPlaceholder(),
+    );
+  }
+}
+
+/// 缩略图占位（无地址或加载失败）。
+class _MediaThumbPlaceholder extends StatelessWidget {
+  const _MediaThumbPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 56,
+      height: 56,
+      color: const Color(AppColors.background),
+      child: const Icon(
+        Icons.image_outlined,
+        size: 24,
+        color: Color(AppColors.textPlaceholder),
       ),
     );
   }

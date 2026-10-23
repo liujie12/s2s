@@ -4,8 +4,8 @@
 /// 「Accent 的唯一用途 = AI 猜角标 + AI 帮我发 FAB」）。点击后弹四模式。
 ///
 /// **本期实现**：
-/// - ① 多媒体：选 1 张图 + 说 1 句话 → 上传图 → 进确认页（带 `media_id`）；
-/// - ④ 抢发：填标题 + 选 1 张图 → 上传图 → 进确认页（`flashMode`，可落 🔴）；
+/// - ① 多媒体：拍 1 张图（相机优先）+ 说 1 句话 → 上传图 → 进确认页（带 `media_id`）；
+/// - ④ 抢发：填标题 + 拍 1 张图 → 上传图 → 进确认页（`flashMode`，可落 🔴）；
 /// - ②③ 呈现但禁用（注明「即将开放」），不做假入口（见 [AiPublishModeX.isAvailable]）。
 ///
 /// **为什么快速输入用 BottomSheet 而非新路由**：它不需要出现在深链/返回栈语义里，
@@ -25,6 +25,7 @@ import '../../nfr_constants.dart';
 import '../../router/app_router.dart';
 import '../auth/auth_repository.dart';
 import '../media/audio_recorder.dart';
+import '../media/media_image_encoder.dart';
 import '../media/media_picker.dart';
 import '../media/media_upload_service.dart';
 import 'ai_confirm_args.dart';
@@ -259,8 +260,10 @@ class _AiModeRow extends StatelessWidget {
 
 /// 快速输入弹层（模式① 拍图 + 一句话 / 模式④ 标题 + 拍照）。
 ///
-/// 职责：选 1 张图 → 上传（票据 → OSS 直传 → commit）→ 以 [AiConfirmArgs]
-/// 形式 pop 出去（导航由 [startAiPublish] 统一做，避免用弹层 context push）。
+/// 职责：拍 1 张图（相机优先）→ 上传（票据 → OSS 直传 → commit）→ 以
+/// [AiConfirmArgs] 形式 pop 出去（导航由 [startAiPublish] 统一做，避免用弹层
+/// context push）。照片同时进入 [AiConfirmArgs.form] 的 `mediaIds` 与确认页的
+/// 媒体图集展示，不会被丢弃。
 class _AiQuickSheet extends ConsumerStatefulWidget {
   const _AiQuickSheet({required this.mode});
 
@@ -288,6 +291,9 @@ class _AiQuickSheetState extends ConsumerState<_AiQuickSheet> {
   /// 选图/上传中（防重入）。
   bool _busy = false;
 
+  /// 拍照/归一化中（防重入；与上传态分开，避免按钮文案在拍照时变成「上传中…」）。
+  bool _picking = false;
+
   @override
   void dispose() {
     _titleCtrl.dispose();
@@ -295,24 +301,51 @@ class _AiQuickSheetState extends ConsumerState<_AiQuickSheet> {
     super.dispose();
   }
 
-  /// 选 1 张图（走统一 [MediaPicker]，白名单与体积校验在其中）。
+  /// 拍 1 张图（相机优先；相机不可用时降级相册）。
+  ///
+  /// 拍摄产物先做上传前归一化（烘焙 EXIF 方向 + 长边限幅 + 统一 JPEG）：
+  /// 相机竖拍照片常以「横像素 + orientation」存储，直接上传详情页会横躺。
   ///
   /// 返回：[Future] 完成信号。
   Future<void> _pick() async {
-    if (_busy) return;
+    if (_busy || _picking) return;
+    setState(() => _picking = true);
     try {
-      final picked = await ref.read(mediaPickerProvider).pickImages(limit: 1);
-      if (picked.isEmpty || !mounted) return;
-      final media = picked.first;
+      final picked = await _takePhoto();
+      if (picked == null || !mounted) return;
+      final normalized = await ref.read(mediaNormalizerProvider)(
+        CropEncodeInput(bytes: picked.bytes, filename: picked.filename),
+      );
+      if (!mounted) return;
       setState(() {
-        _bytes = media.bytes;
-        _filename = media.filename;
-        _contentType = media.contentType;
+        _bytes = normalized.bytes;
+        _filename = normalized.filename;
+        _contentType = normalized.contentType;
       });
     } on MediaPickException catch (error) {
       _toast(error.userMessage);
     } catch (error) {
       _toast(asApiException(error).uiMessage);
+    } finally {
+      if (mounted) setState(() => _picking = false);
+    }
+  }
+
+  /// 调系统相机拍一张；相机不可用（权限被拒 / 无摄像头 / 平台异常）时降级相册。
+  ///
+  /// 返回：[PickedMedia?] 拍摄或选择结果；用户取消返回 null。
+  /// 抛出：[MediaPickException] 产物格式不在白名单 / 单文件超限（不降级）。
+  Future<PickedMedia?> _takePhoto() async {
+    final picker = ref.read(mediaPickerProvider);
+    try {
+      return await picker.pickFromCamera();
+    } on MediaPickException {
+      rethrow;
+    } catch (_) {
+      // 相机打不开时不把用户卡死：明确告知后给相册出口。
+      if (mounted) _toast('相机不可用，已改为从相册选');
+      final picked = await picker.pickImages(limit: 1);
+      return picked.isEmpty ? null : picked.first;
     }
   }
 
@@ -325,7 +358,7 @@ class _AiQuickSheetState extends ConsumerState<_AiQuickSheet> {
     final filename = _filename;
     final contentType = _contentType;
     if (bytes == null || filename == null || contentType == null) {
-      _toast('先加 1 张图');
+      _toast('先拍 1 张图');
       return;
     }
     final bool flash = widget.mode == AiPublishMode.flash;
@@ -355,6 +388,8 @@ class _AiQuickSheetState extends ConsumerState<_AiQuickSheet> {
           form: form,
           initialText: flash ? null : sentence,
           initialMediaId: uploaded.mediaId,
+          // 确认页「媒体图集」要显示这张照片：带访问地址，用户才看得见它没被丢弃。
+          initialMediaUrl: uploaded.url,
           flashMode: flash,
         ),
       );
@@ -422,7 +457,7 @@ class _AiQuickSheetState extends ConsumerState<_AiQuickSheet> {
           ],
           _ImagePickRow(
             bytes: _bytes,
-            busy: _busy,
+            busy: _busy || _picking,
             onPick: _pick,
           ),
           const SizedBox(height: AppSpacing.md),
@@ -746,9 +781,9 @@ class _ImagePickRow extends StatelessWidget {
               child: const Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.add_a_photo_outlined, size: 20, color: Color(AppColors.primary)),
+                  Icon(Icons.photo_camera_outlined, size: 20, color: Color(AppColors.primary)),
                   SizedBox(width: AppSpacing.sm),
-                  Text('加 1 张图'),
+                  Text('拍 1 张图'),
                 ],
               ),
             )
@@ -774,7 +809,7 @@ class _ImagePickRow extends StatelessWidget {
                       minimumSize: const Size(0, 32),
                       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
                     ),
-                    child: const Text('换一张'),
+                    child: const Text('重拍'),
                   ),
                 ),
               ],

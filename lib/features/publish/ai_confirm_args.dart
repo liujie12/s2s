@@ -19,6 +19,7 @@ class AiConfirmArgs {
   ///   [form] 进入时的表单快照（AI 猜测的 scope，§5.10 Step 2）；
   ///   [initialText] 模式① 的「一句话」原文；为空时用 [form] 的标题/描述兜底；
   ///   [initialMediaId] 模式①④ 已 commit 的图片媒体 ID（解析入参 `media_id`）；
+  ///   [initialMediaUrl] 同一图片的限时访问地址（确认页媒体图集缩略图用）；
   ///   [initialVoiceMediaId] 模式② 已 commit 的音频媒体 ID（解析入参 `voice_media_id`）；
   ///   [flashMode] 是否抢发模式（④）——「只填标题 + 拍照就发布」，
   ///     允许必填未齐即发布并落 🔴（§5.9/§5.11 的 24h 补全口径）。
@@ -26,6 +27,7 @@ class AiConfirmArgs {
     this.form = const PublishFormState(),
     this.initialText,
     this.initialMediaId,
+    this.initialMediaUrl,
     this.initialVoiceMediaId,
     this.flashMode = false,
   });
@@ -38,6 +40,9 @@ class AiConfirmArgs {
 
   /// 已上传图片的媒体 ID（可空）。
   final String? initialMediaId;
+
+  /// 已上传图片的限时访问地址（确认页媒体图集缩略图；可空）。
+  final String? initialMediaUrl;
 
   /// 已上传音频的媒体 ID（模式②，可空）。
   final String? initialVoiceMediaId;

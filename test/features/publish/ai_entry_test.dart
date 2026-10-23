@@ -91,12 +91,12 @@ void main() {
       await tester.tap(find.text('拍张图，说一句'));
       await tester.pumpAndSettle();
 
-      expect(find.text('加 1 张图'), findsOneWidget);
+      expect(find.text('拍 1 张图'), findsOneWidget);
       expect(find.text('开始识别'), findsOneWidget);
       expect(find.text('说一句，例如「楼下超市卖苹果 5 元」'), findsOneWidget);
     });
 
-    testWidgets('没选图就点「开始识别」→ 提示先加图（不上传、不跳转）', (tester) async {
+    testWidgets('没选图就点「开始识别」→ 提示先拍图（不上传、不跳转）', (tester) async {
       await pumpFab(tester);
       await tester.tap(find.text('AI 帮我发'));
       await tester.pumpAndSettle();
@@ -105,7 +105,7 @@ void main() {
       await tester.tap(find.text('开始识别'));
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('先加 1 张图'), findsOneWidget);
+      expect(find.textContaining('先拍 1 张图'), findsOneWidget);
     });
   });
 
@@ -132,7 +132,7 @@ void main() {
       await tester.tap(find.text('拍好了，去发布'));
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('先加 1 张图'), findsOneWidget);
+      expect(find.textContaining('先拍 1 张图'), findsOneWidget);
     });
   });
 
