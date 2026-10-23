@@ -19,6 +19,8 @@ import org.junit.jupiter.api.Test;
 import org.slf4j.MDC;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.web.method.HandlerMethod;
+import org.springframework.web.servlet.resource.ResourceHttpRequestHandler;
 
 /**
  * {@link AuthInterceptor} 行为测试（[122] U3；详设 §3.1 鉴权段；KTD3/KTD7）。
@@ -44,6 +46,9 @@ class AuthInterceptorTest {
     /** 被测拦截器。 */
     private AuthInterceptor interceptor;
 
+    /** 控制器处理器（真实 MVC 派发时 preHandle 收到的 handler 形态）。 */
+    private HandlerMethod handler;
+
     /**
      * 每测前置：构造 mock verifier 与被测拦截器，清空 MDC。
      *
@@ -53,6 +58,7 @@ class AuthInterceptorTest {
     void setUp() {
         jwtVerifier = mock(JwtVerifier.class);
         interceptor = new AuthInterceptor(jwtVerifier);
+        handler = mock(HandlerMethod.class);
         MDC.clear();
     }
 
@@ -69,7 +75,7 @@ class AuthInterceptorTest {
         MockHttpServletResponse response = new MockHttpServletResponse();
         when(jwtVerifier.verifyAndGetUserId("valid-token-xyz")).thenReturn(123L);
 
-        boolean result = interceptor.preHandle(request, response, null);
+        boolean result = interceptor.preHandle(request, response, handler);
 
         assertThat(result).isTrue();
         assertThat(AuthContext.currentUserId(request)).isEqualTo(123L);
@@ -89,7 +95,7 @@ class AuthInterceptorTest {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/posts");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
-        boolean result = interceptor.preHandle(request, response, null);
+        boolean result = interceptor.preHandle(request, response, handler);
 
         assertThat(result).isTrue();
         assertThat(AuthContext.currentUserId(request)).isNull();
@@ -108,7 +114,7 @@ class AuthInterceptorTest {
         request.addHeader("Authorization", "Basic dXNlcjpwYXNz");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
-        assertThatThrownBy(() -> interceptor.preHandle(request, response, null))
+        assertThatThrownBy(() -> interceptor.preHandle(request, response, handler))
                 .isInstanceOf(BizException.class)
                 .satisfies(ex -> assertThat(((BizException) ex).getErrorCode())
                         .isEqualTo(ErrorCode.UNAUTHORIZED));
@@ -125,7 +131,7 @@ class AuthInterceptorTest {
         request.addHeader("Authorization", "Bearer ");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
-        assertThatThrownBy(() -> interceptor.preHandle(request, response, null))
+        assertThatThrownBy(() -> interceptor.preHandle(request, response, handler))
                 .isInstanceOf(BizException.class)
                 .satisfies(ex -> assertThat(((BizException) ex).getErrorCode())
                         .isEqualTo(ErrorCode.UNAUTHORIZED));
@@ -145,7 +151,7 @@ class AuthInterceptorTest {
         when(jwtVerifier.verifyAndGetUserId("bad-token"))
                 .thenThrow(BizException.of(ErrorCode.UNAUTHORIZED));
 
-        assertThatThrownBy(() -> interceptor.preHandle(request, response, null))
+        assertThatThrownBy(() -> interceptor.preHandle(request, response, handler))
                 .isInstanceOf(BizException.class)
                 .satisfies(ex -> assertThat(((BizException) ex).getErrorCode())
                         .isEqualTo(ErrorCode.UNAUTHORIZED));
@@ -167,7 +173,7 @@ class AuthInterceptorTest {
         when(jwtVerifier.verifyAndGetUserId("blacklisted-token"))
                 .thenThrow(BizException.of(ErrorCode.UNAUTHORIZED));
 
-        assertThatThrownBy(() -> interceptor.preHandle(request, response, null))
+        assertThatThrownBy(() -> interceptor.preHandle(request, response, handler))
                 .isInstanceOf(BizException.class)
                 .satisfies(ex -> assertThat(((BizException) ex).getErrorCode())
                         .isEqualTo(ErrorCode.UNAUTHORIZED));
@@ -186,7 +192,7 @@ class AuthInterceptorTest {
         when(jwtVerifier.verifyAndGetUserId("any-token"))
                 .thenThrow(BizException.of(ErrorCode.INTERNAL_ERROR));
 
-        assertThatThrownBy(() -> interceptor.preHandle(request, response, null))
+        assertThatThrownBy(() -> interceptor.preHandle(request, response, handler))
                 .isInstanceOf(BizException.class)
                 .satisfies(ex -> assertThat(((BizException) ex).getErrorCode())
                         .isEqualTo(ErrorCode.INTERNAL_ERROR));
@@ -208,9 +214,33 @@ class AuthInterceptorTest {
         when(jwtVerifier.verifyAndGetUserId("invalid-on-anon-path"))
                 .thenThrow(BizException.of(ErrorCode.UNAUTHORIZED));
 
-        assertThatThrownBy(() -> interceptor.preHandle(request, response, null))
+        assertThatThrownBy(() -> interceptor.preHandle(request, response, handler))
                 .isInstanceOf(BizException.class)
                 .satisfies(ex -> assertThat(((BizException) ex).getErrorCode())
                         .isEqualTo(ErrorCode.UNAUTHORIZED));
+    }
+
+    /**
+     * 场景七：非控制器处理器（静态资源 / 错误派发）→ 直接放行，不校验 Token。
+     *
+     * <p>回归背景（2026-10-23 线上）：未匹配路径会落到 {@code ResourceHttpRequestHandler}，
+     * 若在此处对无效 Bearer 抛 {@code BizException}，因该 handler 不是 {@code HandlerMethod}，
+     * {@code @RestControllerAdvice(basePackages)} 匹配不上，异常退化为 Tomcat HTML 500。
+     *
+     * @return void；断言失败即静态资源仍会因无效 Token 被拦截
+     * @throws Exception 拦截器签名声明
+     */
+    @Test
+    void nonHandlerMethodIsPassedThrough() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/__no_such_path__");
+        request.addHeader("Authorization", "Bearer invalid-token");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        ResourceHttpRequestHandler resourceHandler = mock(ResourceHttpRequestHandler.class);
+
+        boolean result = interceptor.preHandle(request, response, resourceHandler);
+
+        assertThat(result).isTrue();
+        verify(jwtVerifier, never()).verifyAndGetUserId(anyString());
+        assertThat(AuthContext.currentUserId(request)).isNull();
     }
 }

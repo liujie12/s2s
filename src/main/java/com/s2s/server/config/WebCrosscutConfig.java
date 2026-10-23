@@ -122,7 +122,10 @@ public class WebCrosscutConfig implements WebMvcConfigurer {
      */
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
-        registry.addInterceptor(authInterceptor).excludePathPatterns("/admin/**");
+        // /error 与 /error/** 必须排除：错误派发由 BasicErrorController 处理，
+        // 若再走鉴权，无效 Token 会在错误页上二次抛出 BizException，把 401 变成 HTML 500。
+        registry.addInterceptor(authInterceptor)
+                .excludePathPatterns("/admin/**", "/error", "/error/**");
         registry.addInterceptor(adminInterceptor)
                 .addPathPatterns("/admin/**")
                 .excludePathPatterns("/admin/login");

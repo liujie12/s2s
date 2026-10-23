@@ -4,6 +4,7 @@ import com.s2s.server.common.web.AuthContext;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.stereotype.Component;
+import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.HandlerInterceptor;
 
 /**
@@ -23,10 +24,15 @@ import org.springframework.web.servlet.HandlerInterceptor;
  *       JwtVerifier 内部已转 {@code BizException(INTERNAL_ERROR)}，此处不二次处理。</li>
  * </ol>
  *
- * <p><b>KTD3：匿名接口带无效 Token 的处理</b>——本拦截器对所有路径生效（WebCrosscutConfig
- * 注册时不做路径排除），只要请求头带 Token 就尝试验证，验证失败即 40101，
- * 「是否是匿名接口」不影响鉴权判定结果——匿名接口是业务层语义，不是横切链语义
+ * <p><b>KTD3：匿名接口带无效 Token 的处理</b>——本拦截器除 {@code /admin/**}（后台独立体系）
+ * 与 {@code /error}（错误派发）外对所有路径生效，只要请求头带 Token 就尝试验证，验证失败即
+ * 40101，「是否是匿名接口」不影响鉴权判定结果——匿名接口是业务层语义，不是横切链语义
  * （详设 §3.1：Token 无效 = 请求身份无效，不管请求的是什么资源）。
+ *
+ * <p><b>非控制器处理器直接放行</b>：静态资源（{@code ResourceHttpRequestHandler}）与错误派发
+ * 等非 {@link HandlerMethod} 处理器不参与鉴权——它们没有业务身份语义，且其异常无法被
+ * {@code @RestControllerAdvice(basePackages = "com.s2s.server")} 匹配，会把 401 兜成
+ * Tomcat 的 HTML 500（2026-10-23 线上实测：未匹配路径 + 无效 Bearer 触发）。
  *
  * <p>链序位置：RequestIdFilter（已注入 request_id/MDC）之后、RateLimitInterceptor
  * 之前——鉴权结果是 42907（游客详情限流）的判定输入，必须先于限流。
@@ -77,6 +83,11 @@ public class AuthInterceptor implements HandlerInterceptor {
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response,
             Object handler) throws Exception {
+        // 非控制器处理器：静态资源、错误派发（/error）等不参与鉴权，直接放行。
+        // 这类处理器抛出的 BizException 无 @ControllerAdvice 可匹配，会退化成 HTML 500。
+        if (!(handler instanceof HandlerMethod)) {
+            return true;
+        }
         String authHeader = request.getHeader(AUTHORIZATION_HEADER);
         if (authHeader == null || authHeader.isBlank()) {
             // 无 Token：游客态放行，上下文为空（AuthContext.currentUserId 返回 null）
