@@ -35,8 +35,8 @@ class SettingsRepository {
 
   /// 局部更新我的设置（`PATCH /settings`）。
   ///
-  /// 参数：各通知开关、[defaultRadius] 与 [personalizedRecommend] 均为「null＝不动」；
-  ///   [interactionId] X-Interaction-Id。
+  /// 参数：各通知开关、[defaultRadius]、[personalizedRecommend] 与 [aiImprove]
+  ///   均为「null＝不动」；[interactionId] X-Interaction-Id。
   /// 返回：[SettingsDto] 更新后的完整设置。
   /// 抛出：[ApiException]（40001 default_radius 非法 / 40101 未登录）等。
   Future<SettingsDto> updateSettings({
@@ -46,6 +46,7 @@ class SettingsRepository {
     bool? notifyCert,
     String? defaultRadius,
     bool? personalizedRecommend,
+    bool? aiImprove,
     String? interactionId,
   }) async {
     final notify = <String, Object?>{
@@ -54,13 +55,14 @@ class SettingsRepository {
       'interaction': ?notifyInteraction,
       'cert': ?notifyCert,
     };
+    final privacy = <String, Object?>{
+      'personalized_recommend': ?personalizedRecommend,
+      'ai_improve': ?aiImprove,
+    };
     final body = <String, Object?>{
       if (notify.isNotEmpty) 'notify': notify,
       'default_radius': ?defaultRadius,
-      if (personalizedRecommend != null)
-        'privacy': <String, Object?>{
-          'personalized_recommend': personalizedRecommend,
-        },
+      if (privacy.isNotEmpty) 'privacy': privacy,
     };
     final response = await _dio.patch<Object?>(
       '/settings',

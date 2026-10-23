@@ -6,6 +6,7 @@
 ///   - 有契约支撑的行走真接口：`消息通知`（PATCH notify.enabled 切换）、
 ///     `默认范围`（PATCH default_radius + 档位选择）、`联系方式展示策略`（GET 只读值）、
 ///     `个性化推荐`（PATCH privacy.personalized_recommend 切换，2026-10-23）、
+///     `AI 数据用于改进`（PATCH privacy.ai_improve 切换，2026-10-23）、
 ///     `手机号`（`GET /users/me` 的 phone_mask）；
 ///   - 无对应端点的行（修改密码/注销账号/清除缓存/位置权限说明/版本号/用户协议/隐私政策）
 ///     按项目既有降级口径提示「本期内测版暂未开放」，不做假交互。
@@ -134,6 +135,12 @@ class SettingsScreen extends ConsumerWidget {
             settings.personalizedRecommend,
           ),
         ),
+        // PIPL 第十五条「撤回同意」：AI 输入与结果是否可用于改进解析
+        _SettingRow(
+          label: 'AI 数据用于改进',
+          value: settings.aiImprove ? '已开启' : '已关闭',
+          onTap: () => _toggleAiImprove(context, ref, settings.aiImprove),
+        ),
         const _GroupTitle('关于'),
         _SettingRow(label: '版本号', value: _appVersionLabel, onTap: () => _notOpen(context)),
         _SettingRow(label: '用户协议', value: null, onTap: () => _notOpen(context)),
@@ -240,6 +247,23 @@ class SettingsScreen extends ConsumerWidget {
       await ref
           .read(settingsProvider.notifier)
           .setPersonalizedRecommend(enabled: !current);
+    } catch (e) {
+      if (!context.mounted) return;
+      _toast(context, asApiException(e).uiMessage);
+    }
+  }
+
+  /// 切换「AI 数据用于改进解析」开关（关闭后输入与结果仅用于当次解析）。
+  ///
+  /// 参数：[context] 构建上下文；[ref] Riverpod 句柄；[current] 当前值。
+  /// 返回：[Future<void>]。
+  Future<void> _toggleAiImprove(
+    BuildContext context,
+    WidgetRef ref,
+    bool current,
+  ) async {
+    try {
+      await ref.read(settingsProvider.notifier).setAiImprove(enabled: !current);
     } catch (e) {
       if (!context.mounted) return;
       _toast(context, asApiException(e).uiMessage);

@@ -34,6 +34,7 @@ public interface UserSettingMapper {
      * @param notifyInteraction     互动通知分通道
      * @param notifyCert            认证通知分通道
      * @param personalizedRecommend 个性化排序开关（false=关闭，列表仅按距离排序）
+     * @param aiImproveEnabled      AI 数据用于改进解析开关（false=仅用于当次解析）
      * @return int 受影响行数
      */
     int upsert(@Param("userId") Long userId,
@@ -41,5 +42,6 @@ public interface UserSettingMapper {
             @Param("notifySystem") boolean notifySystem,
             @Param("notifyInteraction") boolean notifyInteraction,
             @Param("notifyCert") boolean notifyCert,
-            @Param("personalizedRecommend") boolean personalizedRecommend);
+            @Param("personalizedRecommend") boolean personalizedRecommend,
+            @Param("aiImproveEnabled") boolean aiImproveEnabled);
 }

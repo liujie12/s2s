@@ -4181,8 +4181,8 @@ components:
         default_radius: { $ref: '#/components/schemas/RadiusEnum' }
         privacy:
           type: object
-          description: 隐私项（PRD §9.3）。`contact_display` 只读；`personalized_recommend` 可经 `PATCH` 修改（算法推荐「可关闭」义务，2026-10-23 新增）
-          required: [contact_display, personalized_recommend]
+          description: 隐私项（PRD §9.3）。`contact_display` 只读；`personalized_recommend` 与 `ai_improve` 可经 `PATCH` 修改（算法推荐「可关闭」义务 + PIPL 第十五条撤回同意，2026-10-23 新增）
+          required: [contact_display, personalized_recommend, ai_improve]
           properties:
             contact_display:
               type: string
@@ -4194,6 +4194,11 @@ components:
                 个性化排序开关。`true`（默认）= 列表检索允许 `sort=composite`（时效 40 / 距离 40 / 完整度 20 加权）；
                 `false` = `sort=composite` 回落为 `distance`（仅按距离排序）。
                 其余显式排序值（`publish_time`/`price_asc`/`price_desc`/`completeness`）不受本开关影响。
+            ai_improve:
+              type: boolean
+              description: |
+                AI 数据用于改进解析开关。`true`（默认）= 允许将你确认/修改后的发布字段去标识化后用于改进解析能力；
+                `false` = 你的输入与结果仅用于完成当次解析，不入模型优化样本。
 
     SettingsUpdateRequest:
       type: object
@@ -4210,11 +4215,14 @@ components:
         default_radius: { $ref: '#/components/schemas/RadiusEnum' }
         privacy:
           type: object
-          description: 隐私项补丁（仅 `personalized_recommend` 可写；`contact_display` 提交即忽略）
+          description: 隐私项补丁（仅 `personalized_recommend` 与 `ai_improve` 可写；`contact_display` 提交即忽略）
           properties:
             personalized_recommend:
               type: boolean
               description: 个性化排序开关（`false` = 列表 `sort=composite` 回落 `distance`）
+            ai_improve:
+              type: boolean
+              description: AI 数据用于改进解析开关（`false` = 输入与结果仅用于当次解析）
 
     # ---------- 分类与模板 ----------
 

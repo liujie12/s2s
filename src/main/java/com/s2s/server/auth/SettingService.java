@@ -64,7 +64,8 @@ public class SettingService {
                         ? true : isTrue(row.get("notify_interaction")),
                 row == null || row.get("notify_cert") == null
                         ? true : isTrue(row.get("notify_cert")),
-                personalizedOf(row));
+                personalizedOf(row),
+                aiImproveOf(row));
     }
 
     /**
@@ -85,6 +86,7 @@ public class SettingService {
                 ? true : isTrue(row.get("notify_interaction"));
         boolean cert = row == null || row.get("notify_cert") == null ? true : isTrue(row.get("notify_cert"));
         boolean personalized = personalizedOf(row);
+        boolean aiImprove = aiImproveOf(row);
         String radius = user.getDefaultRadius();
         boolean touched = false;
 
@@ -117,16 +119,23 @@ public class SettingService {
                 }
             }
             SettingsUpdateRequest.PrivacyPatch privacyPatch = request.privacyPatch();
-            if (privacyPatch != null && privacyPatch.personalizedRecommend() != null) {
-                personalized = privacyPatch.personalizedRecommend();
-                touched = true;
+            if (privacyPatch != null) {
+                if (privacyPatch.personalizedRecommend() != null) {
+                    personalized = privacyPatch.personalizedRecommend();
+                    touched = true;
+                }
+                if (privacyPatch.aiImprove() != null) {
+                    aiImprove = privacyPatch.aiImprove();
+                    touched = true;
+                }
             }
         }
 
         if (touched) {
-            userSettingMapper.upsert(userId, enabled, system, interaction, cert, personalized);
+            userSettingMapper.upsert(userId, enabled, system, interaction, cert, personalized,
+                    aiImprove);
         }
-        return build(radius, enabled, system, interaction, cert, personalized);
+        return build(radius, enabled, system, interaction, cert, personalized, aiImprove);
     }
 
     /**
@@ -155,14 +164,16 @@ public class SettingService {
      * @param interaction  互动通知分通道
      * @param cert         认证通知分通道
      * @param personalized 个性化排序开关
+     * @param aiImprove    AI 数据用于改进解析开关
      * @return {@link SettingsResponse}
      */
     private SettingsResponse build(String radius, boolean enabled, boolean system, boolean interaction,
-            boolean cert, boolean personalized) {
+            boolean cert, boolean personalized, boolean aiImprove) {
         return new SettingsResponse(
                 new SettingsResponse.NotifySettings(enabled, system, interaction, cert),
                 radius,
-                new SettingsResponse.PrivacySettings(CONTACT_DISPLAY_TRANSIT_ONLY, personalized));
+                new SettingsResponse.PrivacySettings(CONTACT_DISPLAY_TRANSIT_ONLY, personalized,
+                        aiImprove));
     }
 
     /**
@@ -176,6 +187,19 @@ public class SettingService {
             return true;
         }
         return isTrue(row.get("personalized_recommend"));
+    }
+
+    /**
+     * 从设置行读「AI 数据用于改进解析」开关（缺行/缺列一律默认开启）。
+     *
+     * @param row {@code user_setting} 行（可空）
+     * @return boolean true＝允许用于改进解析
+     */
+    private static boolean aiImproveOf(Map<String, Object> row) {
+        if (row == null || row.get("ai_improve_enabled") == null) {
+            return true;
+        }
+        return isTrue(row.get("ai_improve_enabled"));
     }
 
     /**

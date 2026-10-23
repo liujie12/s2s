@@ -40,8 +40,11 @@ public record SettingsResponse(
      * @param contactDisplay        联系方式展示策略，恒 {@code transit_only}
      * @param personalizedRecommend 个性化排序开关：{@code false} 时 {@code sort=composite}
      *                              回落为 {@code distance}（仅按距离排序）
+     * @param aiImprove             AI 数据用于改进解析开关：{@code false} 时输入与结果
+     *                              仅用于完成当次解析，不用于模型优化
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public record PrivacySettings(String contactDisplay, boolean personalizedRecommend) {
+    public record PrivacySettings(String contactDisplay, boolean personalizedRecommend,
+            boolean aiImprove) {
     }
 }

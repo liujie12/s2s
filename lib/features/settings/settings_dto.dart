@@ -50,6 +50,7 @@ class SettingsDto {
     required this.defaultRadius,
     required this.contactDisplay,
     required this.personalizedRecommend,
+    required this.aiImprove,
   });
 
   /// 由信封 data 构造。
@@ -66,6 +67,7 @@ class SettingsDto {
       contactDisplay: requireString(privacy, 'contact_display', 'SettingsResponse.privacy'),
       personalizedRecommend:
           requireBool(privacy, 'personalized_recommend', 'SettingsResponse.privacy'),
+      aiImprove: requireBool(privacy, 'ai_improve', 'SettingsResponse.privacy'),
     );
   }
 
@@ -80,4 +82,7 @@ class SettingsDto {
 
   /// 个性化排序开关（`false` = 列表 `sort=composite` 回落为仅按距离排序）。
   final bool personalizedRecommend;
+
+  /// AI 数据用于改进解析开关（`false` = 输入与结果仅用于当次解析）。
+  final bool aiImprove;
 }

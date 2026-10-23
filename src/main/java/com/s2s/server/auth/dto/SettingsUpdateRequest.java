@@ -38,8 +38,9 @@ public record SettingsUpdateRequest(
      * 隐私项补丁（openapi {@code SettingsUpdateRequest.privacy}）。
      *
      * @param personalizedRecommend 个性化排序开关；{@code null}=不动
+     * @param aiImprove             AI 数据用于改进解析开关；{@code null}=不动
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public record PrivacyPatch(Boolean personalizedRecommend) {
+    public record PrivacyPatch(Boolean personalizedRecommend, Boolean aiImprove) {
     }
 }

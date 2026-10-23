@@ -3,13 +3,14 @@
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.s2s.server.auth.mapper.UserSettingMapper">
 
-    <!-- 出通知开关四列 + 个性化排序开关（V15 起本表共五列业务字段）。 -->
+    <!-- 出通知开关四列 + 个性化排序开关 + AI 改进开关（V16 起本表共六列业务字段）。 -->
     <select id="selectByUserId" resultType="map">
         SELECT notify_enabled,
                notify_system,
                notify_interaction,
                notify_cert,
-               personalized_recommend
+               personalized_recommend,
+               ai_improve_enabled
         FROM user_setting
         WHERE user_id = #{userId}
     </select>
@@ -20,15 +21,16 @@
     -->
     <insert id="upsert">
         INSERT INTO user_setting (user_id, notify_enabled, notify_system, notify_interaction, notify_cert,
-                                  personalized_recommend)
+                                  personalized_recommend, ai_improve_enabled)
         VALUES (#{userId}, #{notifyEnabled}, #{notifySystem}, #{notifyInteraction}, #{notifyCert},
-                #{personalizedRecommend}) AS new
+                #{personalizedRecommend}, #{aiImproveEnabled}) AS new
         ON DUPLICATE KEY UPDATE
             notify_enabled = new.notify_enabled,
             notify_system = new.notify_system,
             notify_interaction = new.notify_interaction,
             notify_cert = new.notify_cert,
-            personalized_recommend = new.personalized_recommend
+            personalized_recommend = new.personalized_recommend,
+            ai_improve_enabled = new.ai_improve_enabled
     </insert>
 
 </mapper>

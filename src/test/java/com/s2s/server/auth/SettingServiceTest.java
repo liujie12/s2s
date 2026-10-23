@@ -93,6 +93,7 @@ class SettingServiceTest {
         assertThat(response.defaultRadius()).isEqualTo("3");
         assertThat(response.privacy().contactDisplay()).isEqualTo("transit_only");
         assertThat(response.privacy().personalizedRecommend()).isTrue();
+        assertThat(response.privacy().aiImprove()).isTrue();
     }
 
     /**
@@ -130,7 +131,7 @@ class SettingServiceTest {
         assertThat(response.defaultRadius()).isEqualTo("10");
         verify(userMapper).updateById(any(UserEntity.class));
         verify(userSettingMapper, never()).upsert(any(), anyBoolean(), anyBoolean(),
-                anyBoolean(), anyBoolean(), anyBoolean());
+                anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean());
     }
 
     /**
@@ -150,7 +151,7 @@ class SettingServiceTest {
 
         assertThat(response.notifySettings().enabled()).isFalse();
         assertThat(response.notifySettings().system()).isTrue();
-        verify(userSettingMapper).upsert(USER_ID, false, true, true, true, true);
+        verify(userSettingMapper).upsert(USER_ID, false, true, true, true, true, true);
         verify(userMapper, never()).updateById(any(UserEntity.class));
     }
 
@@ -167,12 +168,34 @@ class SettingServiceTest {
 
         SettingsResponse response = service.update(USER_ID,
                 new SettingsUpdateRequest(null, null,
-                        new SettingsUpdateRequest.PrivacyPatch(false)));
+                        new SettingsUpdateRequest.PrivacyPatch(false, null)));
 
         assertThat(response.privacy().personalizedRecommend()).isFalse();
         assertThat(response.notifySettings().enabled()).isTrue();
         assertThat(response.defaultRadius()).isEqualTo("3");
-        verify(userSettingMapper).upsert(USER_ID, true, true, true, true, false);
+        verify(userSettingMapper).upsert(USER_ID, true, true, true, true, false, true);
+        verify(userMapper, never()).updateById(any(UserEntity.class));
+    }
+
+    /**
+     * 只提交隐私补丁（关闭 AI 数据用于改进）→ upsert 写入 0，个性化开关不动。
+     *
+     * @return void；断言失败即「撤回 AI 改进授权」未落库（PIPL 第十五条兑现失效）
+     */
+    @Test
+    @DisplayName("更新：关闭 AI 数据用于改进 → upsert 写入 0，其余保持")
+    void updateAiImproveOnly() {
+        when(userMapper.selectById(USER_ID)).thenReturn(user("3"));
+        when(userSettingMapper.selectByUserId(USER_ID)).thenReturn(settingRow(1, 1, 1, 1));
+
+        SettingsResponse response = service.update(USER_ID,
+                new SettingsUpdateRequest(null, null,
+                        new SettingsUpdateRequest.PrivacyPatch(null, false)));
+
+        assertThat(response.privacy().aiImprove()).isFalse();
+        assertThat(response.privacy().personalizedRecommend()).isTrue();
+        assertThat(response.defaultRadius()).isEqualTo("3");
+        verify(userSettingMapper).upsert(USER_ID, true, true, true, true, true, false);
         verify(userMapper, never()).updateById(any(UserEntity.class));
     }
 
@@ -194,7 +217,7 @@ class SettingServiceTest {
                         .isSameAs(ErrorCode.PARAM_INVALID));
         verify(userMapper, never()).updateById(any(UserEntity.class));
         verify(userSettingMapper, never()).upsert(any(), anyBoolean(), anyBoolean(),
-                anyBoolean(), anyBoolean(), anyBoolean());
+                anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean());
     }
 
     /**
@@ -208,7 +231,7 @@ class SettingServiceTest {
         SettingsResponse response = new SettingsResponse(
                 new SettingsResponse.NotifySettings(true, true, false, true),
                 "5",
-                new SettingsResponse.PrivacySettings("transit_only", true));
+                new SettingsResponse.PrivacySettings("transit_only", true, true));
 
         JsonNode root = new ObjectMapper().readTree(new ObjectMapper().writeValueAsString(response));
 
@@ -216,7 +239,7 @@ class SettingServiceTest {
         assertThat(fieldNamesOf(root.get("notify")))
                 .containsExactlyInAnyOrder("enabled", "system", "interaction", "cert");
         assertThat(fieldNamesOf(root.get("privacy")))
-                .containsExactlyInAnyOrder("contact_display", "personalized_recommend");
+                .containsExactlyInAnyOrder("contact_display", "personalized_recommend", "ai_improve");
     }
 
     /**

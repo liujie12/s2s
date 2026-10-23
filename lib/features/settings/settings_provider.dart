@@ -78,6 +78,18 @@ class SettingsNotifier extends Notifier<AsyncValue<SettingsDto>> {
         .updateSettings(personalizedRecommend: enabled);
     state = AsyncValue.data(updated);
   }
+
+  /// 切换「AI 数据用于改进解析」开关（《个人信息保护法》第十五条「撤回同意」）。
+  ///
+  /// 参数：[enabled] 目标值（false＝你的输入与结果仅用于完成当次解析）。
+  /// 返回：[Future<void>]。
+  /// 抛出：[ApiException] 由页面提示。
+  Future<void> setAiImprove({required bool enabled}) async {
+    final updated = await ref
+        .read(settingsRepositoryProvider)
+        .updateSettings(aiImprove: enabled);
+    state = AsyncValue.data(updated);
+  }
 }
 
 /// 设置 Provider。
