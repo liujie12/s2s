@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>隐私政策 — 找丫找</title>
-  <meta name="description" content="找丫找隐私政策：我们如何收集、使用、存储与共享你的个人信息，以及你对个人信息享有的权利。">
+  <meta name="description" content="找丫找隐私政策：我们如何收集、使用、存储与共享你的个人信息，第三方 SDK 清单，以及你对个人信息享有的权利。">
   <meta name="theme-color" content="#0B7C8C">
   <link rel="stylesheet" href="/assets/site.css">
   <link rel="icon" href="/assets/duck-symbol.svg" type="image/svg+xml">
@@ -39,18 +39,23 @@
             <li><a href="#p1">一、引言</a></li>
             <li><a href="#p2">二、我们如何收集和使用你的个人信息</a></li>
             <li><a href="#p3">三、我们如何存储你的个人信息</a></li>
+            <li><a href="#p4">四、我们如何共享、转让、公开披露</a></li>
+            <li><a href="#p5">五、你的个人信息权利</a></li>
+            <li><a href="#p6">六、未成年人保护</a></li>
+            <li><a href="#p7">七、我们如何保护你的个人信息</a></li>
+            <li><a href="#p8">八、关于 AI 能力的特别说明</a></li>
+            <li><a href="#p9">九、关于排序与个性化推荐</a></li>
+            <li><a href="#p10">十、本政策的更新与联系我们</a></li>
           </ol>
         </aside>
 
         <article class="doc">
-          <p class="design-note">设计预览：本页仅展示前三节用于确认版式（含宽表在手机端的横向滚动）；完整正文由 <code>docs/legal/隐私政策（草稿）.md</code> 转换后替换，上线前须经法务审阅并移除本提示。</p>
-
           <h1>找丫找 隐私政策</h1>
-          <p class="doc-meta">版本 v1.0.0　·　生效日期：2026-10-23　·　最近更新：2026-10-23</p>
+          <p class="doc-meta">版本 v1.0.0　·　生效日期：【待填：上线日】　·　最近更新：2026-10-23</p>
 
           <h2 id="p1">一、引言</h2>
-          <p>本政策由 合肥嘉联智能科技有限公司（以下简称“我们”）制定，适用于我们运营的「找丫找」移动客户端（以下简称“本产品”）。</p>
-          <p>我们深知个人信息对你的重要性，将按照《中华人民共和国个人信息保护法》《中华人民共和国网络安全法》《中华人民共和国数据安全法》《常见类型移动互联网应用程序必要个人信息范围规定》《移动互联网应用程序信息服务管理规定》《未成年人网络保护条例》等法律法规的要求，采取相应的安全保护措施，尽力保护你的个人信息安全可控。</p>
+          <p>本政策由 <strong>合肥嘉联智能科技有限公司</strong>（以下简称“我们”）制定，适用于我们运营的「找丫找」移动客户端（以下简称“本产品”）。</p>
+          <p>我们深知个人信息对你的重要性，将按照《中华人民共和国个人信息保护法》《中华人民共和国网络安全法》《中华人民共和国数据安全法》《常见类型移动互联网应用程序必要个人信息范围规定》《移动互联网应用程序信息服务管理规定》《未成年人网络保护条例》《互联网信息服务算法推荐管理规定》等法律法规的要求，采取相应的安全保护措施，尽力保护你的个人信息安全可控。</p>
           <p><strong>核心承诺</strong>：</p>
           <ol class="numbered">
             <li><strong>最小必要</strong>：只收集实现功能所必需的信息，不收集与提供服务无关的个人信息；</li>
@@ -84,14 +89,22 @@
               </tr>
               <tr>
                 <td>2</td>
+                <td><strong>微信账号标识</strong>（unionid；如你授权昵称头像则一并获取）</td>
+                <td>你选择「微信登录」或绑定微信时</td>
+                <td>账号身份绑定与登录、防止账号冲突</td>
+                <td>非必要（可用手机号登录）</td>
+                <td>无法使用微信登录/绑定</td>
+              </tr>
+              <tr>
+                <td>3</td>
                 <td><strong>位置信息</strong>（粗略/精确位置）</td>
                 <td>浏览地图、发布时选点</td>
-                <td>展示附近供需信息、计算距离、按位置排序与筛选</td>
+                <td>展示附近供需信息、计算距离、按位置排序与筛选；<strong>仅记录你发布时的位置点，不采集移动轨迹</strong></td>
                 <td>非必要（可手动选择城市与位置）</td>
                 <td>地图与“附近”能力不可用，可手动选城后浏览列表</td>
               </tr>
               <tr>
-                <td>3</td>
+                <td>4</td>
                 <td><strong>发布内容</strong>（文字、图片、价格、地址、联系方式等）</td>
                 <td>你主动发布资源/需求信息时</td>
                 <td>在地图与列表展示你的信息、供他人查看与联系</td>
@@ -99,15 +112,15 @@
                 <td>无法发布信息</td>
               </tr>
               <tr>
-                <td>4</td>
+                <td>5</td>
                 <td><strong>实名认证信息</strong>（<strong>姓名 + 身份证号</strong>）</td>
                 <td>你<strong>主动</strong>申请实名认证时</td>
                 <td>通过供应商完成<strong>身份二要素核验</strong>，核验通过后标记账号实名状态</td>
                 <td>非必要（<strong>实名是增益项，不是使用门禁</strong>）</td>
-                <td>未实名可发布但处于受限态（见《用户协议》），部分功能受限</td>
+                <td>未实名可发布，但详情查看每日 5 条、联系方式对外隐藏、AI 额度 3 次/日</td>
               </tr>
               <tr>
-                <td>5</td>
+                <td>6</td>
                 <td><strong>资质认证材料</strong>（营业执照、行业资质证照图片）</td>
                 <td>你<strong>主动</strong>申请资质认证时</td>
                 <td>人工审核资质真实性，用于高敏感类目发布准入</td>
@@ -115,30 +128,31 @@
                 <td>无法发布需资质的高敏感类目信息</td>
               </tr>
               <tr>
-                <td>6</td>
-                <td><strong>设备与日志信息</strong>（设备标识、操作系统、IP 地址、访问日志、崩溃日志）</td>
+                <td>7</td>
+                <td><strong>设备与日志信息</strong>（<strong>本地随机生成的设备标识</strong>、操作系统、IP 地址、访问与操作日志、崩溃日志、埋点事件）</td>
                 <td>你使用本产品过程中自动收集</td>
-                <td>安全风控（防刷、防爬、防诈骗）、故障排查、性能优化</td>
-                <td>必要（安全所必需）</td>
+                <td>安全风控（防刷、防爬、防诈骗）、故障排查、性能优化、功能使用统计</td>
+                <td>必要（安全与稳定所必需）</td>
                 <td>无法使用本产品</td>
               </tr>
               <tr>
-                <td>7</td>
+                <td>8</td>
                 <td><strong>AI 解析输入与结果</strong>（你提交的语音转写文本、图片识别文本，以及你<strong>最终确认或修改后</strong>的发布字段）</td>
                 <td>你使用「AI 辅助发布」时</td>
-                <td>① 完成本次解析；② <strong>用于改进本产品的 AI 解析能力</strong>（见第八条特别说明）</td>
+                <td>① 完成本次解析；② <strong>用于改进本产品的 AI 解析能力</strong>（见第八条，可在设置中关闭）</td>
                 <td>非必要（可改用手动填写）</td>
                 <td>AI 辅助发布不可用，可手动填写发布</td>
               </tr>
             </tbody>
           </table>
           </div>
-          <p><strong>说明</strong>：本产品<strong>不收集</strong>你的通讯录、通话记录、短信、相册全量内容（仅在发布时经你选择后读取<strong>单张</strong>你选定的图片）、应用列表。</p>
+          <p><strong>设备标识口径</strong>：我们<strong>不收集</strong> IMEI、MAC 地址、通讯录、通话记录、短信、应用列表，也不读取相册全量内容（仅在你发布时经你选择后读取你选定的图片）。设备标识为<strong>安装在本地随机生成的 UUID</strong>，删除应用即失效。</p>
 
           <h3>2.1 敏感个人信息与单独同意</h3>
-          <p>以下属<strong>敏感个人信息</strong>，我们仅在取得你的<strong>单独同意</strong>后处理：</p>
+          <p>以下属<strong>敏感个人信息</strong>，我们仅在取得你的<strong>单独同意</strong>（或系统权限授权）后处理：</p>
           <ul class="numbered">
-            <li><strong>身份证号、姓名</strong>（实名认证）：仅用于身份核验。核验通过后，我们<strong>只保存不可逆哈希值与身份证号后 4 位明文</strong>，<strong>不保存身份证号完整明文</strong>；证照原件图片<strong>在核验完成后 7 天内删除</strong>。</li>
+            <li><strong>姓名、身份证号</strong>（实名认证）：仅用于身份核验。核验通过后，<strong>姓名以加密形式存储</strong>（解密受严格权限与审计约束，仅用于核验复核与客服核实），<strong>身份证号仅保存不可逆哈希值与后 4 位明文</strong>，<strong>不保存身份证号完整明文</strong>。</li>
+            <li><strong>资质证照原件图片</strong>：仅用于人工审核；<strong>核验完成后 7 天内自动删除</strong>（含对象存储中的原件与数据库引用）。</li>
             <li><strong>精确位置信息</strong>：仅在你在系统弹窗中授权定位后收集；你可随时在系统设置中关闭。</li>
           </ul>
 
@@ -159,17 +173,42 @@
               <tr>
                 <td><strong>高德地图 SDK</strong></td>
                 <td>高德软件有限公司</td>
-                <td>位置信息、设备标识（含设备信息与网络信息）</td>
+                <td>位置信息、设备信息与网络信息</td>
                 <td>地图展示与定位</td>
                 <td><a href="https://lbs.amap.com/pages/privacy/" target="_blank" rel="noopener">高德地图开放平台隐私权政策</a></td>
+              </tr>
+              <tr>
+                <td><strong>小米推送 SDK</strong></td>
+                <td>北京小米移动软件有限公司</td>
+                <td>设备标识（OAID、加密的 Android ID）、推送消息内容、设备信息（厂商/型号/归属地/运营商名称等）、通知栏设置</td>
+                <td>向你的设备下发站内通知对应的系统通知</td>
+                <td><a href="https://dev.mi.com/console/doc/detail?pId=1822" target="_blank" rel="noopener">小米推送隐私政策</a></td>
               </tr>
             </tbody>
           </table>
           </div>
-          <p><strong>已确认无需列入客户端 SDK 清单的服务</strong>（因其为<strong>纯服务端 API 调用</strong>，不引入客户端 SDK、不直连终端）：实名认证（阿里云实人认证 · 信息核验）、短信验证码服务、对象存储（阿里云 OSS）。上述服务商仅在其提供服务所必需的最小范围内接触相关数据。</p>
+          <p>小米推送 SDK <strong>可能调用的权限</strong>：访问网络状态、获取设备信息、写入设备存储。</p>
+          <p><strong>关于推送 SDK 的自启动/关联启动说明</strong>：为实现通知的及时送达，小米推送 SDK 可能在你<strong>未打开本产品</strong>时被系统或该 SDK 唤起（自启动或关联启动）；该行为仅用于接收与展示推送消息，不会在后台收集与推送无关的信息。你可在系统「设置 → 应用 → 自启动管理」中关闭该权限，关闭后仍可正常使用本产品，仅可能延迟或收不到推送。</p>
+          <p><strong>后续接入</strong>：本产品计划接入华为、荣耀、vivo、OPPO 推送通道及微信开放平台 SDK（微信登录/分享）。每一项接入前，我们都会更新本清单并<strong>重新征得你的同意</strong>；未列入本清单前不会实际启用。</p>
+
+          <h3>2.3 委托处理（服务端调用，不直连你的设备）</h3>
+          <div class="table-scroll">
+          <table class="wide">
+            <thead>
+              <tr><th>受托方</th><th>处理目的</th><th>涉及信息</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>阿里云（对象存储 OSS）</td><td>存储你发布的图片等媒体文件</td><td>你上传的媒体文件</td></tr>
+              <tr><td>阿里云（短信服务）</td><td>发送登录验证码</td><td>手机号码</td></tr>
+              <tr><td>阿里云（实人认证 · 信息核验）</td><td>实名二要素核验</td><td>姓名、身份证号</td></tr>
+              <tr><td>阿里云百炼（通义千问）</td><td>完成 AI 辅助发布的解析</td><td>你提交的语音转写文本、图片及其识别文本、你确认后的发布字段（不含手机号、身份证号等身份信息）</td></tr>
+            </tbody>
+          </table>
+          </div>
+          <p>上述服务商仅在其提供服务所必需的最小范围内接触相关数据，我们与其约定保密与安全义务，并要求其不得将数据用于其他目的。</p>
 
           <h2 id="p3">三、我们如何存储你的个人信息</h2>
-          <p><strong>存储地点</strong>：中国境内（阿里云华北 3 · 张家口）。目前<strong>不涉及</strong>个人信息出境。</p>
+          <p><strong>存储地点</strong>：中国境内（<strong>阿里云华北 3 · 张家口</strong>节点）。目前<strong>不涉及</strong>个人信息出境。</p>
           <p><strong>保存期限</strong>（超出期限将删除或匿名化）：</p>
           <div class="table-scroll">
           <table>
@@ -177,16 +216,106 @@
               <tr><th>信息种类</th><th>保存期限</th></tr>
             </thead>
             <tbody>
-              <tr><td>账号基本信息（手机号、昵称等）</td><td>账号存续期间；注销后删除或匿名化</td></tr>
-              <tr><td>实名认证信息</td><td>身份证号<strong>不可逆哈希 + 后 4 位明文</strong>，账号存续期间；注销后删除</td></tr>
-              <tr><td>实名认证<strong>证照原件图片</strong></td><td>核验完成后 <strong>7 天内删除</strong></td></tr>
+              <tr><td>账号基本信息（手机号、昵称等）</td><td>账号存续期间；注销冷静期届满后删除或匿名化</td></tr>
+              <tr><td>实名认证信息</td><td>姓名密文、身份证号<strong>不可逆哈希 + 后 4 位明文</strong>：账号存续期间；注销后删除</td></tr>
+              <tr><td>实名/资质<strong>证照原件图片</strong></td><td>核验完成后 <strong>7 天内删除</strong>（定时任务自动执行）</td></tr>
               <tr><td>发布内容</td><td>按其有效期（默认 <strong>7 天</strong>）；<strong>届满即下架、不再向他人展示</strong>，仍保留于“我的发布”可随时刷新恢复</td></tr>
-              <tr><td>联系中转脱敏日志</td><td><strong>30 天</strong>自动清理</td></tr>
+              <tr><td>联系中转记录（仅“联系动作发生过”，不含联系方式明文）</td><td><strong>30 天</strong>自动清理</td></tr>
+              <tr><td>功能使用埋点事件</td><td><strong>90 天</strong></td></tr>
+              <tr><td>安全审计日志</td><td><strong>180 天</strong></td></tr>
               <tr><td>设备与访问日志</td><td><strong>30 天</strong>（访问日志、应用运行与崩溃日志；超期自动清理）</td></tr>
               <tr><td>AI 解析输入与结果（去标识化后）</td><td>用于模型优化的，保存至项目终止或你撤回同意时删除</td></tr>
+              <tr><td>注销申请与账号数据</td><td>提交后 <strong>7 天冷静期</strong>（期内可撤回）；冷静期届满后删除账号信息、实名信息及<strong>你名下的全部发布信息（含媒体文件）</strong>，法律法规另有要求的除外</td></tr>
             </tbody>
           </table>
           </div>
+
+          <h2 id="p4">四、我们如何共享、转让、公开披露你的个人信息</h2>
+          <ol class="numbered">
+            <li><strong>我们不会出售你的个人信息</strong>。</li>
+            <li><strong>共享</strong>：仅在下列情形共享，且要求接收方遵守同等保护义务：
+              <ul>
+                <li>履行功能所必需的服务商（地图、短信、实名核验、对象存储、AI 解析）——见第二条 2.2 / 2.3；</li>
+                <li>你主动使用“联系中转”功能、选择向对方展示联系方式时（此时仅向你选择的目标展示<strong>脱敏/经你同意</strong>的联系方式）；</li>
+                <li>法律法规要求或有权机关依法要求时；</li>
+                <li>取得你的<strong>单独同意</strong>的其他情形。</li>
+              </ul>
+            </li>
+            <li><strong>转让</strong>：原则上不转让；如发生合并、分立、收购等，将告知你并要求承继方继续受本政策约束，否则重新征得同意。</li>
+            <li><strong>公开披露</strong>：除你主动发布的信息（将在本产品内公开展示）外，不公开披露你的个人信息。</li>
+          </ol>
+
+          <h2 id="p5">五、你的个人信息权利</h2>
+          <p>你对自己的个人信息享有下列权利，可通过本政策第十条的联系方式行使（我们将在 <strong>15 个工作日内</strong>答复）：</p>
+          <ol class="numbered">
+            <li><strong>查阅、复制</strong>：查阅获知你账号下的个人信息；</li>
+            <li><strong>更正、补充</strong>：更正不准确的个人信息；</li>
+            <li><strong>删除</strong>：在你撤回同意、注销账号，或处理目的已实现等情形下请求删除；</li>
+            <li><strong>撤回同意</strong>：
+              <ul>
+                <li>关闭位置权限（系统设置）；</li>
+                <li>关闭 <strong>「我的」→「设置」→「隐私」→「个性化推荐」</strong>；</li>
+                <li>关闭 <strong>「我的」→「设置」→「隐私」→「AI 数据用于改进」</strong>；</li>
+              </ul>
+            </li>
+            <li><strong>注销账号</strong>：通过 <strong>「我的」→「设置」→「注销账号」</strong> 提交注销申请；提交后有 <strong>7 天冷静期</strong>（可撤回），冷静期届满后账号信息、实名信息及<strong>你名下的全部发布信息（含媒体文件）</strong>将按第三条期限被删除或匿名化（法律法规另有要求的除外）；</li>
+            <li><strong>投诉举报</strong>：对本政策或个人信息处理有疑问、意见，可通过第十条渠道投诉。</li>
+          </ol>
+
+          <h2 id="p6">六、未成年人保护</h2>
+          <ol class="numbered">
+            <li>本产品<strong>不面向不满十四周岁的儿童</strong>提供服务，也不会主动收集其个人信息。</li>
+            <li>若我们发现在未取得监护人同意的情况下收集了不满十四周岁儿童的个人信息，将<strong>删除相关信息</strong>；监护人可通过第十条渠道联系我们。</li>
+            <li>若你为<strong>已满十四周岁不满十八周岁</strong>的未成年人，请在监护人指导下使用，并避免发布涉及个人隐私的信息。</li>
+            <li>我们不会向未成年人推送不适宜其接触的信息；若发现涉及未成年人的不当内容，将依法处置并提供快捷举报通道。</li>
+          </ol>
+
+          <h2 id="p7">七、我们如何保护你的个人信息</h2>
+          <ol class="numbered">
+            <li><strong>传输安全</strong>：全站 HTTPS（TLS 1.2 及以上）加密传输；</li>
+            <li><strong>存储安全</strong>：手机号、姓名、联系方式等敏感字段加密存储；解密走<strong>唯一受控入口</strong>并同步写入审计日志；</li>
+            <li><strong>访问控制</strong>：按最小必要授权，敏感操作留痕（审计日志保留 180 天）；</li>
+            <li><strong>日志脱敏</strong>：手机号、身份证号等敏感信息<strong>不以明文出现在日志中</strong>；</li>
+            <li><strong>应急处置</strong>：发生或可能发生个人信息泄露、篡改、丢失的，我们将<strong>立即</strong>采取补救措施，并<strong>立即</strong>通知你（无法逐一通知时将发布公告）及履行个人信息保护职责的部门。</li>
+          </ol>
+
+          <h2 id="p8">八、关于 AI 能力的特别说明（含授权条款）</h2>
+          <p>本产品提供 <strong>AI 辅助发布</strong>功能（将你的一句话 / 一张图解析为结构化的发布内容）。关于此功能：</p>
+          <ol class="numbered">
+            <li><strong>解析在你同意本政策后才会启用</strong>，你可随时改用手动填写；</li>
+            <li><strong>服务提供方</strong>：AI 能力由<strong>阿里云百炼平台的通义千问模型</strong>提供（受托处理方）。该生成式人工智能服务备案号 <strong>ZheJiang-TongYiQianWen-20230901</strong>，算法备案号 <strong>网信算备330110507206401230035号</strong>；</li>
+            <li><strong>为改进 AI 解析能力</strong>：当你使用 AI 辅助发布时，我们可能记录你的输入内容（语音转写文本、图片识别文本）以及你<strong>最终确认或修改后</strong>的发布字段，用于优化本产品的解析模型；</li>
+            <li>上述用于优化的数据将<strong>去标识化</strong>处理（不含手机号、身份证号等身份信息），且<strong>不会用于训练第三方模型</strong>；</li>
+            <li><strong>你可通过「我的」→「设置」→「隐私」→「AI 数据用于改进」关闭该用途</strong>；关闭后不影响你继续使用 AI 辅助发布；</li>
+            <li><strong>AI 生成的内容会被标识为“AI 辅助生成”</strong>：界面显式标识 + 内容元数据隐式标识。请你在发布前核对，平台<strong>不替你编造未提供的信息</strong>。</li>
+          </ol>
+
+          <h2 id="p9">九、关于排序与个性化推荐</h2>
+          <ol class="numbered">
+            <li>本产品的列表排序基于<strong>客观规则</strong>：距离、发布时间、信息完整度（综合排序权重为时效 40% + 距离 40% + 完整度 20%）。</li>
+            <li>我们<strong>不基于</strong>你的浏览、搜索、联系等行为建立兴趣画像，也不做定向内容推荐；排序对所有用户采用同一套规则。</li>
+            <li>你可在 <strong>「我的」→「设置」→「隐私」→「个性化推荐」</strong> 关闭该功能。关闭后，综合排序回落为<strong>仅按距离排序</strong>；你主动选择的其他排序方式不受影响。</li>
+            <li>关闭该功能不影响你正常发布、浏览与联系。</li>
+          </ol>
+
+          <h2 id="p10">十、本政策的更新与联系我们</h2>
+          <ol class="numbered">
+            <li><strong>更新</strong>：本政策发生<strong>重大变更</strong>（如新增信息收集类型、新增 SDK、扩大用途）时，我们将更新版本号并<strong>重新征得你的同意</strong>（客户端会再次弹出协议门）。</li>
+            <li><strong>联系我们</strong>：
+              <ul>
+                <li>运营主体：<strong>合肥嘉联智能科技有限公司</strong></li>
+                <li>统一社会信用代码：<strong>91340100MA2T4DPG4C</strong></li>
+                <li>注册地址：<strong>合肥市新站区皇藏峪路 669 号博通创意园 11 幢厂房 3 层</strong></li>
+                <li>个人信息保护负责人：<strong>刘杰 / 技术负责人</strong>（联系方式：liujie_flexi@163.com / 18674750845）</li>
+                <li>客服邮箱：<strong>liujie_flexi@163.com</strong></li>
+                <li>客服电话：<strong>18674750845</strong></li>
+                <li><strong>投诉举报渠道</strong>：本产品内「详情页 → 举报」入口 + 上述邮箱</li>
+              </ul>
+            </li>
+            <li><strong>监管投诉</strong>：如你对我们处理个人信息的行为不满，可向网信、市场监管等部门投诉举报。</li>
+          </ol>
+          <p><strong>附则</strong>：本政策的解释与争议解决适用中华人民共和国法律。本政策为<a href="/terms">《用户协议》</a>不可分割的组成部分。</p>
+          <p><strong>备案与资质信息</strong>：ICP 备案号：<strong>备案办理中</strong>（新域名 <code>zhaoyazhaoapp.com</code> 下号后回填，不套用其他域名的备案号）；APP 备案号：<strong>取得后回填</strong>；软件著作权登记号：<strong>取得后回填</strong>。</p>
         </article>
       </div>
     </div>
