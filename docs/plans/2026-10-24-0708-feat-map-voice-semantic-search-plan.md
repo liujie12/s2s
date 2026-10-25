@@ -303,37 +303,36 @@ flowchart TB
   - 转写失败 → 保留可编辑文本框，不阻塞文字输入。
 - **Verification:** widget 测试覆盖录音/停麦/权限三分支。
 
-### U7. 前端搜索圈、收窄、chip 回显与隐私合规
+### U7. 前端收窄、chip 回显与隐私合规
 
-- **Goal:** 地图上绘制搜索圈、按半径/价格/白名单内专属属性收窄、chip 回显与撤销，并补齐隐私合规。
+- **Goal:** 按半径/价格/小区收窄地图 Pin、回执 chip 回显与撤销、地址命中时相机跳转，并补齐隐私合规。
 - **Requirements:** R8, R9, R10, R11, R12, R13, R14
 - **Dependencies:** U4, U5, U6
 - **Files:**
-  - lib/features/map/search_circle_overlay.dart（新建）
-  - lib/features/map/map_screen.dart（修改，搜索圈 + 收窄 + chip + 撤销）
+  - lib/features/map/map_screen.dart（修改，收窄 + 紧凑 chip 条 + 相机跳转）
   - lib/features/privacy/privacy_gate_screen.dart（修改，补麦克风/录音/AI）
   - docs/legal/隐私政策（草稿）.md（修改，补原始音频留存与删除条款）
-  - test/features/map/search_circle_test.dart（新建）
 - **Approach:**
-  1. `search_circle_overlay` 用高德 `Circle` 覆盖物画半径圈；圈内正常、圈外压暗（遮罩）。
-  2. 解析出半径/价格/白名单内专属属性后，`PinsQuery` 带上价格与专属属性要素重拉，客户端按真实米数做 Haversine 精裁。
-  3. 圈边显示「圈内 N 条」+「圈外还有 M 条 · 放宽到 X」，可撤销回到上一档。
-  4. 解析槽位渲染成可点可删 chip，`unresolved_fields` 灰态「没敢用」。
-  5. 隐私门与隐私政策补齐（R14 是上线前置）。
+  1. **不画搜索圈**（2026-10-25 用户裁定）：半径只用于过滤 Pin，不再绘制圈形遮罩/压暗，避免干扰看图。
+  2. 解析出半径/价格/小区后，`PinsQuery` 带上对应要素重拉，客户端按真实米数做 Haversine 精裁兜底。
+  3. 回执条**紧贴搜索栏下方**、单行横滑（chip 再多也不撑高），摘要行给「听懂 N 项 · 命中 M 条 · 已滤掉 K 条」。
+  4. 解析槽位渲染成可点可删 chip，`unresolved_fields` 灰态「没敢用」；零结果时「扩大范围/放宽价格」并入同一横滑行。
+  5. 文本命中小区/地址 → 地图相机跳到目标区域，半径档同时把直径装进视口短边。
+  6. 隐私门与隐私政策补齐（R14 是上线前置）。
 - **Patterns to follow:** `_PinsStatusChip` 与 `_zoomOutToShowAll` 的现有角标/缩放模式；`location_guide` 的权限指引文案。
 - **Test scenarios:**
-  - 解析出半径 1km + 价格 2000 + 合租主卧 → 圈绘出、Pin 收窄到圈内且价格 ≤2000 且命中主卧。
-  - 圈外有命中 → 显示「圈外还有 N 条」，点撤销回上一档。
-  - 零结果 → 显示改写入口（扩圈/换供需/放宽类目）。
+  - 解析出半径 1km + 价格 2000 + 合租主卧 → Pin 收窄到半径内且价格 ≤2000 且命中主卧，**地图上不出现圈形遮罩**。
+  - 半径外有命中 → 摘要显示「已滤掉 N 条」。
+  - 零结果 → 横滑行里出现「扩大范围/放宽价格」。
   - `unresolved_fields` 渲染为灰态 chip，可删或手动绑定。
-  - 收窄回执显示「听懂什么 + 排除多少」。
+  - 文本命中小区 → 相机中心与缩放切到该小区及半径范围。
 - **Verification:** widget + 集成测试覆盖收窄/撤销/零结果三分支；隐私文案由法务确认后合入。
 
 ---
 
 ## Verification Contract
 
-- 前端：`flutter test`（覆盖 `search_intent_test.dart`、`voice_search_sheet_test.dart`、`search_circle_test.dart`、`pin_cache_key_test.dart`）。
+- 前端：`flutter test`（覆盖 `search_intent_test.dart`、`voice_search_sheet_test.dart`、`pin_cache_key_test.dart`）。
 - 后端：`mvn test`（覆盖 `SearchResolveServiceTest`）。
 - 契约：`docs/api/openapi.yaml` 通过 API contract gate（`/search/resolve` 与 `/map/pins` 参数一致性）。
 - 性能：`selectPins` 带价格与白名单生成列条件仍 `Using where; Using index`（EXPLAIN 结论注释写入 XML）。
@@ -437,6 +436,15 @@ sudo S2S_ENV=prod docker compose \
 - **回填实测**：`exit=0`（该进程只有 runner 会主动退出，故确认已执行），
   生产库 39 帖中仅 20 条有地址，且全为街道门牌（如「蜀山区长江西路 100 号」），不含小区名
   ⇒ `updated=0` 属正确结果；存量测试数据无可回填对象，真实用户帖由发布侧写入 `community_id`。
+
+### 口径变更（2026-10-25 真机评审）
+
+- **回执条位置与形态**：从地图中部大卡片改为紧贴搜索栏下方、单行横滑（摘要行 + 一行 chip），
+  chip 再多也不撑高；零结果动作「扩大范围/放宽价格」并入同一横滑行。
+- **不画搜索圈**：删除 `search_circle_overlay` 及其单测；半径只用于过滤 Pin（服务端 + 客户端精裁），
+  不再绘制圈形遮罩与压暗。
+- **地址命中即跳转相机**：文本小区/地址解析出锚点后，地图相机直接移到目标区域；
+  有半径档时同时把直径装进视口短边（无半径档保持当前缩放，不擅自改尺度）。
 
 ### 运维踩坑记录（2026-10-25）
 

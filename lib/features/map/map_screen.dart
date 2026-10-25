@@ -57,7 +57,6 @@ import 'clustering/marker_builder.dart';
 import 'fallback_map_canvas.dart';
 import 'map_projection.dart';
 import 'marker_layer.dart';
-import 'search_circle_overlay.dart';
 
 /// 聚合网格边长（逻辑像素）。
 ///
@@ -231,9 +230,26 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       final lat = intent.anchorLat;
       final lng = intent.anchorLng;
       if (lat != null && lng != null && (lat != _centerLat || lng != _centerLng)) {
+        // 地址/小区筛选命中 → 相机直接跳到目标区域（2026-10-25 用户裁定）。
+        // 有半径档时顺带把直径装进短边，落到目标区域就能看全筛选范围；
+        // 无半径档则保持当前缩放（不擅自改变用户视野尺度）。
+        final int? radiusMeters = intent.radiusMeters;
         setState(() {
           _centerLat = lat;
           _centerLng = lng;
+          if (radiusMeters != null) {
+            final size = MediaQuery.sizeOf(context);
+            final double shortSide = math.min(
+              size.width,
+              size.height - kToolbarHeight - MediaQuery.paddingOf(context).top,
+            );
+            if (shortSide > 0) {
+              _metersPerPixel = (2 * radiusMeters / shortSide).clamp(
+                _kMinMetersPerPixel,
+                _kMaxMetersPerPixel,
+              );
+            }
+          }
         });
         _pushCameraToAmap();
         _syncFetchViewport();
@@ -379,9 +395,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 supplyDemandById,
                 frame.offset,
                 frame.layerSize,
-                circleLat: circleLat,
-                circleLng: circleLng,
-                circleRadiusMeters: searchRadiusMeters,
               ),
               // 定位前骨架屏（PRD §6.7 `:1305`）：已授权但尚未取到点 → 遮罩 + 提示。
               if (phase == LocationPermissionPhase.granted &&
@@ -407,7 +420,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               if (pinsAsync.isLoading || pinsAsync.hasError)
                 Positioned(
                   left: AppSpacing.lg,
-                  top: AppSpacing.md + 40,
+                  // 语义回执条占用了搜索栏下方那一行，状态角标顺次下移，避免叠压。
+                  top: AppSpacing.md + 40 + (intent == null ? 0 : 72),
                   child: _PinsStatusChip(
                     text: pinsAsync.hasError ? '加载失败 · 点击重试' : '正在加载附近信息…',
                     onTap: pinsAsync.hasError
@@ -418,7 +432,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               else if (allOffScreen)
                 Positioned(
                   left: AppSpacing.lg,
-                  top: AppSpacing.md + 40,
+                  top: AppSpacing.md + 40 + (intent == null ? 0 : 72),
                   child: _PinsStatusChip(
                     text: '视野外还有 $pinsTotal 条，缩小地图查看',
                     onTap: () => _zoomOutToShowAll(
@@ -428,13 +442,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     ),
                   ),
                 ),
-              // 语义搜索回执与可删 chip（R12/R13）：听懂什么 + 排除多少，
-              // 每个条件可点删；未解析字段灰态「没敢用」。
+              // 语义搜索回执与可删 chip（R12/R13）：紧贴搜索栏下方，单行横滑，
+              // 尽量少遮挡地图（2026-10-25 用户裁定：不再用大卡片压在地图中间）。
               if (intent != null)
                 Positioned(
                   left: AppSpacing.md,
                   right: AppSpacing.md,
-                  top: AppSpacing.md + 96,
+                  top: AppSpacing.md + 40,
                   child: _SearchIntentBar(
                     intent: intent,
                     insideCount: pinList.length,
@@ -665,20 +679,18 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   /// - [markers]：本帧要画的 Marker（坐标属于精算视口，见 [_markerLayerFrame]）；
   /// - [supplyDemandById]：Marker 供需查表；
   /// - [markerOffset]：Marker 坐标 → 屏幕坐标的平移量；
-  /// - [markerLayerSize]：Marker 坐标系画布尺寸（= 精算视口尺寸）；
-  /// - [circleLat]/[circleLng]：搜索圈圆心（无锚点时取请求视口中心）；
-  /// - [circleRadiusMeters]：搜索圈真实半径（null 表示不画圈）。
+  /// - [markerLayerSize]：Marker 坐标系画布尺寸（= 精算视口尺寸）。
+  ///
+  /// 不再绘制搜索圈（2026-10-25 用户裁定）：半径只用于**过滤** Pin，
+  /// 圈形遮罩会额外压暗地图、干扰看图。
   Widget _buildMapBody(
     PrivacyConsentStatus consent,
     MapProjection projection,
     List<MapMarker> markers,
     Map<String, SupplyDemand> supplyDemandById,
     Offset markerOffset,
-    Size markerLayerSize, {
-    required double circleLat,
-    required double circleLng,
-    required int? circleRadiusMeters,
-  }) {
+    Size markerLayerSize,
+  ) {
     // 🔴 上架驳回点：构建 AMapWidget 即触发高德原生 SDK 初始化。
     // 未同意隐私协议时走到这一步就是违规，判据见 amap_init_guard.dart 文件头。
     //
@@ -731,16 +743,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               notice: consent == PrivacyConsentStatus.agreed
                   ? '高德地图 Key 未配置，当前为示意底图'
                   : '示意底图 · 位置为相对分布，不代表真实地理位置',
-            ),
-          ),
-        // 搜索圈（R8/R10）：圈外压暗、圈边描线；在 Marker 之下，避免压住 Pin。
-        if (circleRadiusMeters != null)
-          Positioned.fill(
-            child: SearchCircleOverlay(
-              projection: projection,
-              anchorLat: circleLat,
-              anchorLng: circleLng,
-              radiusMeters: circleRadiusMeters,
             ),
           ),
         // 拖动中降级渲染（见 [_markerLayerFrame]）：
@@ -2101,81 +2103,100 @@ class _SearchIntentBar extends ConsumerWidget {
         ),
     ];
 
+    // 零结果改写入口（R11）：只给显式动作，绝不自动改用户范围。
+    // 作为普通 chip 并入同一横滑行，不额外占一行高度。
+    if (insideCount == 0) {
+      chips.add(
+        ActionChip(
+          label: const Text('扩大范围'),
+          visualDensity: VisualDensity.compact,
+          onPressed: () => notifier.update(intent.widenRadius()),
+        ),
+      );
+      chips.add(
+        ActionChip(
+          label: const Text('放宽价格'),
+          visualDensity: VisualDensity.compact,
+          onPressed: () => notifier.update(intent.withoutPrice()),
+        ),
+      );
+    }
+
+    final summary =
+        intent.hasNoSlot
+            ? '没听懂具体条件，换个说法试试'
+            : '听懂 ${chips.length} 项 · 命中 $insideCount 条'
+                  '${outsideCount > 0 ? ' · 已滤掉 $outsideCount 条' : ''}'
+                  '${insideCount == 0 && intent.communityId != null ? ' · 该小区暂无信息' : ''}'
+                  '${intent.degraded ? ' · AI 降级为关键词' : ''}';
+
     return Container(
-      padding: EdgeInsets.all(AppSpacing.sm),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.xs,
+        vertical: 2,
+      ),
       decoration: BoxDecoration(
-        color: const Color(AppColors.surface).withValues(alpha: 0.96),
+        color: const Color(AppColors.surface).withValues(alpha: 0.92),
         borderRadius: BorderRadius.circular(AppRadius.md),
         boxShadow: const [
           BoxShadow(
             color: Color(0x14000000),
-            blurRadius: 8,
+            blurRadius: 6,
             offset: Offset(0, 2),
           ),
         ],
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Expanded(
                 child: Text(
-                  intent.hasNoSlot
-                      ? '没听懂具体条件，换个说法试试'
-                      : '听懂 ${chips.length} 项 · 圈内 $insideCount 条'
-                            '${outsideCount > 0 ? ' · 圈外还有 $outsideCount 条' : ''}'
-                            '${insideCount == 0 && intent.communityId != null ? ' · 该小区暂无信息，可删除小区条件' : ''}',
+                  summary,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: AppTypeScale.small.size,
                     color: const Color(AppColors.textSecondary),
                   ),
                 ),
               ),
-              if (state.canUndo)
-                TextButton(
-                  onPressed: notifier.undo,
-                  child: const Text('撤销'),
-                ),
-              TextButton(
-                onPressed: notifier.clear,
-                child: const Text('清除'),
-              ),
+              if (state.canUndo) _barTextButton('撤销', notifier.undo),
+              _barTextButton('清除', notifier.clear),
             ],
           ),
-          // 降级提示：AI 超时/不可用时按词表理解，明确告知而不是假装听懂。
-          if (intent.degraded) ...[
-            const SizedBox(height: AppSpacing.xs),
-            Text(
-              'AI 暂时不可用，已按关键词理解',
-              style: TextStyle(
-                fontSize: AppTypeScale.small.size,
-                color: const Color(AppColors.textPlaceholder),
+          // 单行横滑：chip 再多也不撑高卡片，避免遮挡地图。
+          if (chips.isNotEmpty)
+            SizedBox(
+              height: 36,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: chips.length,
+                separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.xs),
+                itemBuilder: (_, index) => Center(child: chips[index]),
               ),
             ),
-          ],
-          if (chips.isNotEmpty) ...[
-            const SizedBox(height: AppSpacing.xs),
-            Wrap(spacing: AppSpacing.xs, runSpacing: AppSpacing.xs, children: chips),
-          ],
-          // 零结果改写入口（R11）：只给显式动作，绝不自动改用户范围。
-          if (insideCount == 0) ...[
-            const SizedBox(height: AppSpacing.xs),
-            Row(
-              children: [
-                TextButton(
-                  onPressed: () => notifier.update(intent.widenRadius()),
-                  child: const Text('扩大范围'),
-                ),
-                TextButton(
-                  onPressed: () => notifier.update(intent.withoutPrice()),
-                  child: const Text('放宽价格'),
-                ),
-              ],
-            ),
-          ],
         ],
       ),
+    );
+  }
+
+  /// 回执条上的紧凑文字按钮（压缩内边距与点击区，换取更矮的条高）。
+  ///
+  /// 参数：[label] 文案；[onTap] 点击回调。
+  /// 返回：紧凑 TextButton。
+  Widget _barTextButton(String label, VoidCallback onTap) {
+    return TextButton(
+      onPressed: onTap,
+      style: TextButton.styleFrom(
+        minimumSize: const Size(0, 28),
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        visualDensity: VisualDensity.compact,
+      ),
+      child: Text(label, style: TextStyle(fontSize: AppTypeScale.small.size)),
     );
   }
 
