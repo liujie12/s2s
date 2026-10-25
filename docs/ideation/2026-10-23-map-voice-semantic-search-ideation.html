@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ideation · 地图内语音语义搜索</title>
+<style>
+:root {
+  color-scheme: light;
+  --bg: #FBFAF7;
+  --surface: #FFFFFF;
+  --surface-muted: #F2F1ED;
+  --text: #1A1A19;
+  --text-muted: #5E5E59;
+  --border: #DDDBD4;
+  --brand: #0B7A4B;
+  --brand-soft: #E4F5EC;
+  --brand-text: #07482D;
+  --warn-soft: #FDF1DE;
+  --warn-text: #7A4A05;
+  --radius: 8px;
+  --radius-card: 12px;
+  --font-sans: "SF Pro Text", "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #131312;
+    --surface: #1B1B1A;
+    --surface-muted: #242422;
+    --text: #E8E7E3;
+    --text-muted: #A3A29C;
+    --border: #35352F;
+    --brand: #4ADE9B;
+    --brand-soft: #07281A;
+    --brand-text: #B9F5D4;
+    --warn-soft: #2B2113;
+    --warn-text: #F0C784;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 400 15px/1.7 var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+.page {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 48px 28px 72px;
+}
+.prose p, .prose li { max-width: 72ch; }
+.eyebrow {
+  margin: 0 0 8px;
+  color: var(--brand);
+  font-size: 12px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+h1 {
+  margin: 0 0 20px;
+  font-size: 30px;
+  line-height: 1.3;
+  font-weight: 600;
+}
+h2 {
+  margin: 48px 0 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  font-size: 21px;
+  font-weight: 600;
+}
+h3 {
+  margin: 0 0 8px;
+  font-size: 18px;
+  line-height: 1.45;
+  font-weight: 600;
+}
+.meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px 20px;
+  margin: 0;
+  padding: 16px 18px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+}
+.meta div { min-width: 0; }
+.meta dt {
+  margin: 0 0 2px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.meta dd {
+  margin: 0;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 18px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.stats li {
+  padding: 4px 12px;
+  background: var(--brand-soft);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  color: var(--brand-text);
+  font-size: 12px;
+}
+code {
+  padding: 1px 5px;
+  background: var(--surface-muted);
+  border-radius: 4px;
+  font: 500 12.5px/1.5 var(--font-mono);
+  overflow-wrap: anywhere;
+}
+.jump {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 0 0 22px;
+  padding: 12px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  font-size: 13px;
+}
+.jump a { color: var(--brand); text-decoration: none; }
+.jump a:hover { text-decoration: underline; }
+.idea {
+  margin: 0 0 22px;
+  padding: 22px 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+}
+.idea .id {
+  color: var(--brand);
+  font-family: var(--font-mono);
+  font-size: 15px;
+  margin-right: 6px;
+}
+.axis {
+  margin: 0 0 14px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.tag {
+  display: inline-block;
+  margin-right: 8px;
+  padding: 2px 8px;
+  background: var(--brand-soft);
+  border-radius: 999px;
+  color: var(--brand-text);
+  font-size: 12px;
+  font-weight: 500;
+}
+.tag.ext { background: var(--surface-muted); color: var(--text-muted); }
+.tag.warn { background: var(--warn-soft); color: var(--warn-text); }
+.field { margin: 0 0 12px; }
+.field-label {
+  display: block;
+  margin: 0 0 4px;
+  color: var(--text-muted);
+  font-size: 12px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.idea ul { margin: 0 0 14px; padding-left: 20px; }
+.idea li { margin: 0 0 6px; }
+.score {
+  display: flex;
+  gap: 28px;
+  margin: 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.score dt { color: var(--text-muted); font-size: 12px; margin: 0 0 2px; }
+.score dd { margin: 0; font: 500 14px/1.4 var(--font-mono); }
+figure { margin: 0 0 16px; }
+figcaption {
+  margin-top: 8px;
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+.fig-text { fill: var(--text); font: 400 12px var(--font-sans); }
+.fig-small { fill: var(--text-muted); font: 400 12px var(--font-sans); }
+.fig-strong { fill: var(--text); font: 500 14px var(--font-sans); }
+.fig-brand { fill: var(--brand-text); font: 500 14px var(--font-sans); }
+.arr { stroke: var(--text-muted); stroke-width: 1.5; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  font-size: 13.5px;
+}
+th, td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+th {
+  background: var(--surface-muted);
+  color: var(--text-muted);
+  font-weight: 500;
+  font-size: 12px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+tr:last-child td { border-bottom: none; }
+.callout {
+  margin: 18px 0 0;
+  padding: 16px 18px;
+  background: var(--warn-soft);
+  border: 1px solid transparent;
+  border-radius: var(--radius-card);
+  color: var(--warn-text);
+  font-size: 13.5px;
+}
+.callout strong { color: inherit; }
+footer {
+  margin-top: 56px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+@media (max-width: 640px) {
+  .page { padding: 28px 16px 48px; }
+  h1 { font-size: 24px; }
+  .idea { padding: 18px; }
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+<header>
+  <p class="eyebrow">Ideation</p>
+  <h1>地图内语音语义搜索：7 个值得押注的方向</h1>
+  <dl class="meta">
+    <div><dt>Date</dt><dd><time datetime="2026-10-23">2026-10-23</time></dd></div>
+    <div><dt>Topic</dt><dd>map-voice-semantic-search</dd></div>
+    <div><dt>Focus</dt><dd>留在原地图、按半径收窄地图 Pin；新增语音识别作为核心亮点</dd></div>
+    <div><dt>Mode</dt><dd>repo-grounded</dd></div>
+  </dl>
+  <ul class="stats">
+    <li>30 条原始候选</li>
+    <li>合并为 17 条</li>
+    <li>保留 7 条</li>
+    <li>覆盖 5 个轴</li>
+  </ul>
+</header>
+
+<section id="grounding">
+<h2>Grounding Context</h2>
+<div class="prose">
+<p><strong>Codebase Context.</strong> 产品是 5 公里生活圈双向供需 App，地图优先；北极星为「AI 匹配召回率 × 图层加载成功率（P95≤300ms）× 🟢完整发布率」。本次范围限定在首页地图的搜索：用户说一句自然语言，系统解析出类目、供需方向、半径、地点锚点与类目专属信息，用户不离开地图，地图按半径收窄。</p>
+<p>仓库现状里，这些候选所依据的关键事实是：</p>
+<ul>
+  <li>搜索框是 AppBar 内 32px 的 <code>TextField</code>，逐字符写筛选态，无提交、无防抖、无清空、无麦克风；<code>lib/features/map/map_screen.dart:513-549</code>。</li>
+  <li><code>PinsQuery</code> 只有类目、供需、半径、网格、版本号、lng/lat/zoom，<strong>没有 keyword</strong>；<code>docs/api/openapi.yaml</code> 的 <code>/map/pins</code> 同样没有 keyword。地图上的搜索目前对 Pin 不生效。</li>
+  <li>半径是离散档位 <code>1/3/5/10/city</code>；服务端按约 500m 网格 <code>ceil</code> 扩圈，<strong>不做 Haversine 距离裁剪</strong>；<code>src/main/java/com/s2s/server/map/MapService.java:338-354</code>。</li>
+  <li>半径圆的直径只被用于计算缩放，<strong>从未画给用户看过</strong>；仓库内无 Circle/Polygon 覆盖物。已有同构的「视野外还有 N 条」角标。<code>map_screen.dart:288-303, 952-996</code>。</li>
+  <li>PRD 的 S2 动态蜂窝半径（按密度自动扩圈 + 30 秒分层兜底）未实现，推迟理由明写为「做半套会让用户看到范围莫名其妙变了却没有任何解释」；<code>lib/features/discovery/list_screen.dart:536-540</code>。</li>
+  <li>类目叶子已编码「合租/整租」：20101 主卧出租、20102 次卧出租、20103 整租出租，20201 个人求租；<code>src/main/resources/db/migration/V3__seed_category.sql:97-102</code>。这是口语到类目的事实底座。</li>
+  <li>同义词与拼音在 PRD 有规格（613/624/1150），代码零实现，且注明「同义词表属运营配置」；<code>lib/features/publish/category_selector_screen.dart:11-12</code>。</li>
+  <li>地址只有逆地理（坐标→地址、展示用），<strong>没有正向 POI/地理编码</strong>；<code>lib/features/location/reverse_geocode.dart:6-10</code>。</li>
+  <li>唯一「一句话→结构化字段」的实现是发布域的严格 Scope 管线：逐字段溯源，越界字段进 <code>unresolved_fields</code>，服务端不猜；<code>src/main/java/com/s2s/server/ai/AiParseService.java:192-197, 428-444</code>。</li>
+  <li>语音链路：录音 AAC-LC/m4a，60s 是实现护栏；录完上传音频得到 <code>voice_media_id</code>，再由服务端 ASR；客户端解析读超时 5s，后端上游 10s。<code>lib/features/publish/ai_entry_sheet.dart:569-596</code>、<code>NfrAi.java:43-50</code>。</li>
+  <li>隐私门告知清单只有位置、手机号、发布内容、高德 SDK，<strong>没有麦克风、录音、AI</strong>；隐私政策只覆盖「语音转写文本」，<strong>没有原始音频留存/删除条款</strong>；<code>lib/features/privacy/privacy_gate_screen.dart:111-118</code>、<code>docs/legal/隐私政策（草稿）.md</code>。</li>
+</ul>
+<p>外部参照包括：高德车机「语言大脑 + 空间大脑」的意图/事实分离；百度 POI 的时空上下文排序；58/赶集按 10km 圈选的 Query 理解；Yelp 的六类 query 分段；Amazon AsK 三档澄清与 LLM 的 under-clarification 偏差；微软语音的 time-to-first-audio 与「键盘输入即停收音」；ASR 2-pass 与流式 600ms 分片；雷达/声呐的由粗到细；eBay 的零结果改写（>25% 可救回）。</p>
+</div>
+</section>
+
+<section id="axes">
+<h2>Topic Axes</h2>
+<ul class="prose">
+  <li><strong>语音入口与转写体验</strong> —— 怎么开始说、说到一半能不能改、说完多久有反馈。</li>
+  <li><strong>一句话到筛选条件</strong> —— 类目、供需方向、半径、地点、价格与类目专属信息如何被解析、澄清与纠正。</li>
+  <li><strong>地图收窄与半径交互</strong> —— 收窄如何被看见、如何撤销、半径是承诺还是参数。</li>
+  <li><strong>性能预算与失败降级</strong> —— ASR → 解析 → POI → Pin 的逐段预算，失败时保留什么。</li>
+  <li><strong>亮点时刻与信任边界</strong> —— 用户如何感知「过滤掉了不相关」，以及语音/音频的隐私承诺。</li>
+</ul>
+</section>
+
+<section id="ideas">
+<h2>Ranked Ideas</h2>
+<nav class="jump" aria-label="Ranked ideas">
+  <a href="#i1">1. 可见的一次性搜索圈</a>
+  <a href="#i2">2. 确定性短路 + 一份运营词表</a>
+  <a href="#i3">3. 按住地图说话</a>
+  <a href="#i4">4. 解析过程可见且可反驳</a>
+  <a href="#i5">5. 两段式交付</a>
+  <a href="#i6">6. 自证台账</a>
+  <a href="#i7">7. SemanticQuery 语义快照</a>
+</nav>
+
+<article class="idea" id="i1">
+  <h3><span class="id">I1.</span>可见的一次性搜索圈</h3>
+  <p class="axis"><span class="tag">Axis</span>地图收窄与半径交互</p>
+  <p class="field"><span class="field-label">Description</span>解析出半径后，不把它写进用户的持久筛选，而是在地图上叠一个<strong>一次性搜索圈</strong>：圈内正常显示，圈边挂「1km · 37 条」，圈外命中压成「还有 45 条 · 放宽到 3km」，并提供一次性撤销回到上一档。零结果时，圈上直接长出三张改写牌（扩到 3km / 换成求租方向 / 放宽类目），每张写明「因为你点了…」。圈的几何用解析出的真实米数（800m、1200m）绘制，查询仍走既有档位，客户端按真实米数对返回点做 Haversine 精裁后再上图。</p>
+  <figure>
+    <svg viewBox="0 0 720 290" width="100%" height="auto" role="img" aria-label="5公里范围收窄为1公里搜索圈，圈外仍有45条">
+      <defs>
+        <marker id="ar1" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto">
+          <path d="M1 1 L7 4 L1 7 Z" fill="var(--text-muted)"/>
+        </marker>
+      </defs>
+      <circle cx="210" cy="130" r="100" fill="var(--surface-muted)" stroke="var(--border)"/>
+      <circle cx="210" cy="130" r="40" fill="var(--brand-soft)" stroke="var(--brand)"/>
+      <text x="210" y="127" text-anchor="middle" class="fig-brand">1km</text>
+      <text x="210" y="146" text-anchor="middle" class="fig-small">37 条</text>
+      <text x="210" y="252" text-anchor="middle" class="fig-small">原范围 5km · 82 条</text>
+      <rect x="380" y="36" width="300" height="44" rx="22" fill="var(--surface)" stroke="var(--border)"/>
+      <text x="396" y="64" class="fig-text">圈外还有 45 条 · 放宽到 3km</text>
+      <rect x="380" y="100" width="300" height="44" rx="22" fill="var(--surface)" stroke="var(--border)"/>
+      <text x="396" y="128" class="fig-text">0 条 → 扩圈 / 换供需 / 放宽类目</text>
+      <rect x="380" y="164" width="300" height="44" rx="22" fill="var(--surface)" stroke="var(--border)"/>
+      <text x="396" y="192" class="fig-text">点 × 撤销，回到上一档</text>
+      <text x="380" y="240" class="fig-small">圈是视觉层；查询仍走档位，</text>
+      <text x="380" y="258" class="fig-small">客户端按真实米数精裁后上图。</text>
+    </svg>
+    <figcaption>示意：收窄必须被看见，且每一步都可撤销；零结果不是空白，而是三个明确动作。</figcaption>
+  </figure>
+  <p class="field"><span class="tag">direct</span>半径圆直径今天只被用于缩放计算，从未绘制给用户看（<code>map_screen.dart:952-996</code>，仓库无 Circle/Polygon 覆盖物）；「视野外还有 N 条」角标已存在，可同构复用（<code>map_screen.dart:288-303</code>）；S2 被推迟的理由正是「范围变了没有解释」（<code>list_screen.dart:536-540</code>）；服务端只按 500m 网格扩圈、不做距离裁剪（<code>MapService.java:338-354</code>）。</p>
+  <p class="field"><span class="field-label">Rationale</span>用户原话是「留在原地图、根据半径收窄地图」。收窄若没有形态，用户只看到 Pin 变少，第一反应是「图坏了」而不是「筛掉了」。圈把技术妥协（网格近似）从隐患变成公开的诚实，同时把 PRD 推迟 S2 的理由反转成设计约束：只要变化可见、可撤销、有解释，就不需要自动扩圈。</p>
+  <p class="field-label">Downsides</p>
+  <ul>
+    <li>服务端网格扩圈是方形，圈是圆形；「圈内计数」必须在服务端按真实距离算，或明确标注为近似，否则数字会撒谎。</li>
+    <li>cluster 模式下没有单点可裁，圆与聚合点会打架，需要定义聚合态下的表现。</li>
+    <li>一次性圈与持久筛选并存，状态归属要写清楚，否则会出现「上次的圈还在」。</li>
+    <li>「圈外还有 N 条」与零结果改写都需要服务端返回对照计数，是新契约与额外查询成本。</li>
+  </ul>
+  <dl class="score"><div><dt>Confidence</dt><dd>78%</dd></div><div><dt>Complexity</dt><dd>Medium</dd></div></dl>
+</article>
+
+<article class="idea" id="i2">
+  <h3><span class="id">I2.</span>确定性短路 + 一份运营词表，三个消费方</h3>
+  <p class="axis"><span class="tag">Axis</span>一句话到筛选条件</p>
+  <p class="field"><span class="field-label">Description</span>把搜索槽位固定成一张卡（供需方向 / 类目 / 半径 / 位置锚点 / 预算 / 时间），然后先用<strong>确定性规则</strong>填卡：半径词映射到既有档位；供需意图词决定看资源还是需求；类目名、别名、首拼与「合租→20101/20102、整租→20103」走词表。命中即不出网、不扣 AI 配额、同一句话永远同一结果。只有剩余的自由文本（如「离地铁近点」）才进严格 Scope 的模型兜底。词表只维护一份，被三处同时消费：地图搜索、发布页类目推荐、筛选面板。</p>
+  <p class="field"><span class="tag">direct</span>半径是五档枚举，注释明确「允许任意值会让摘要需要处理 4.7km 这种不该存在的输入」（<code>discovery_filter.dart:19-28</code>）；合租/整租已在类目叶子里（<code>V3__seed_category.sql:97-100</code>）；同义词表 PRD 有规格、代码未做且注明属运营配置（<code>PRD.md:613,624,1150</code>；<code>category_selector_screen.dart:11-12</code>）；严格 Scope 的逐字段溯源已有可复用范式（<code>AiParseService.java:428-444</code>）。</p>
+  <p class="field"><span class="field-label">Rationale</span>这是成本、时延、可解释性同时改善的一层：语音搜索的量一旦起来，每次都说给模型听会把 20/10/3 的配额和费用上限先打穿；而规则层让「解析对不对」从概率问题变成可单测的问题。词表的三消费方是复利最强的一处——一次运营配置同时让三个界面变准。</p>
+  <p class="field-label">Downsides</p>
+  <ul>
+    <li>词表冷启动需要人工投入；方言、简称、错别字会持续产生长尾。</li>
+    <li>「不合租」「不要中介」这类否定表达容易误命中，需要否定窗口与优先级。</li>
+    <li>规则与模型双通道必须定死冲突时的优先级，否则同一句话两个答案。</li>
+    <li>槽位卡里的「预算/时间」在现有 <code>/map/pins</code> 没有落点，地图侧只能先展示、不能过滤。</li>
+  </ul>
+  <dl class="score"><div><dt>Confidence</dt><dd>85%</dd></div><div><dt>Complexity</dt><dd>Medium</dd></div></dl>
+</article>
+
+<article class="idea" id="i3">
+  <h3><span class="id">I3.</span>按住地图任意点说话</h3>
+  <p class="axis"><span class="tag">Axis</span>语音入口与转写体验</p>
+  <p class="field"><span class="field-label">Description</span>不新增一个孤立的麦克风按钮：长按地图任意点开始收音，<strong>按压点同时就是空间锚点</strong>；松手后半径圈从该点长出，Pin 分批落位。顶栏文字框保留，但一检测到键盘输入就立即停麦。这样「我在某某小区」不再需要 ASR 去猜地名——手指已经指定了位置，语音只负责补「要租房、合租、两千以内」。</p>
+  <p class="field"><span class="tag">direct</span>搜索框是 AppBar 内一个 32px 的 <code>TextField</code>，地图本身几乎不参与输入（<code>map_screen.dart:513-552</code>）；仓库只有逆地理、没有正向 POI，文本里的地名无法解析（<code>reverse_geocode.dart:6-10</code>）。<span class="tag ext">external</span>对讲机 PTT 的「按住即传输、松键即结束」；微软语音的「检测到键盘输入即停收音」；百度 POI 的时空上下文排序（同一前缀因位置不同需要不同结果）。</p>
+  <p class="field"><span class="field-label">Rationale</span>语音的入口摩擦不是点击次数，而是「用户得先知道有这个功能」。把入口绑在地图手势上，语音成为地图交互的一部分，而不是挂在顶部的输入法；同时它绕开了整条缺失的正向地理编码链路，让「某某小区」这个最容易被说出口、系统却最接不住的输入有了确定答案。</p>
+  <p class="field-label">Downsides</p>
+  <ul>
+    <li>长按与地图拖动手势冲突，需要明确按压阈值与取消手势。</li>
+    <li>没有麦克风权限时，用户会先长按才发现；需要在按压动画里提前露出权限提示。</li>
+    <li>「按住」对运动障碍用户不友好，必须保留点按、文字与手动选点三种替代。</li>
+    <li>地图上需要持续可见的「按住说话」提示，否则功能不可发现。</li>
+  </ul>
+  <dl class="score"><div><dt>Confidence</dt><dd>72%</dd></div><div><dt>Complexity</dt><dd>Medium</dd></div></dl>
+</article>
+
+<article class="idea" id="i4">
+  <h3><span class="id">I4.</span>解析过程可见且可反驳</h3>
+  <p class="axis"><span class="tag">Axis</span>一句话到筛选条件</p>
+  <p class="field"><span class="field-label">Description</span>三段可见：<strong>边说边出</strong>——流式转写驱动本地词表先匹配，每识别出一个约束就在搜索框下出现一枚可删的 chip；<strong>说完复诵</strong>——执行前先给一行「找：1km · 合租（主卧/次卧）· 只看房源」，点「改」只问最容易错的那一维；<strong>越界可见</strong>——模型返回了 scope 之外或未命中的词，不静默丢弃，而是灰/黄标成「没敢用」，点它可手动绑定或强制生效。每次纠正都沉淀成（原话、原解析、正确解析）三元组，脱敏后进入运营的未命中榜。</p>
+  <p class="field"><span class="tag">direct</span>录音停止后才上传与解析，整个窗口里用户看不到任何一行字（<code>ai_entry_sheet.dart:569-596</code>）；越界字段已算进 <code>unresolved_fields</code>，但只留在响应里，界面没有承载位（<code>AiParseService.java:192-197, 428-444</code>；<code>map_screen.dart:520-549</code>）；零结果已有运营入队队列可作为未命中榜底座（<code>MapService.java:213-220</code>）。</p>
+  <p class="field"><span class="field-label">Rationale</span>语音搜索的可信度不由识别准确率决定，而由「错了之后用户还能不能救」决定。ASR 有错误率、模型有保守性，把这两者变成界面上可点掉的灰块，比任何准确率宣传都更能留住用户；同时它把每次纠错变成词典的确定性供给。</p>
+  <p class="field-label">Downsides</p>
+  <ul>
+    <li>流式 ASR + 增量解析需要新的契约与状态机，工程量最大。</li>
+    <li>chip 会遮挡地图，收起与展开的时机需要真实用户验证。</li>
+    <li>边说边出可能让用户误以为「已经搜完了」，复诵与结果态必须区分清楚。</li>
+    <li>纠错数据涉及用户原话，必须脱敏并受 AI 改进开关约束。</li>
+  </ul>
+  <dl class="score"><div><dt>Confidence</dt><dd>80%</dd></div><div><dt>Complexity</dt><dd>High</dd></div></dl>
+</article>
+
+<article class="idea" id="i5">
+  <h3><span class="id">I5.</span>两段式交付：先给可感知结果，再做精算</h3>
+  <p class="axis"><span class="tag">Axis</span>性能预算与失败降级</p>
+  <p class="field"><span class="field-label">Description</span>说话结束后的第一个可感知结果不等解析完成：先把转写文本落在搜索框里（可读、可编辑），或用当前条件先发一次粗查询（cluster 级）。解析到达后 diff 出条件变化，只有差异非空才发第二次请求并静默替换。解析失败或超时，保留第一段结果，给一个「重新解析」按钮——只重跑解析，不重录、不重传音频；失败与超时不扣 AI 配额。</p>
+  <figure>
+    <svg viewBox="0 0 720 190" width="100%" height="auto" role="img" aria-label="两段式交付：松手后先给可感知结果，解析返回后再精算替换">
+      <defs>
+        <marker id="ar2" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto">
+          <path d="M1 1 L7 4 L1 7 Z" fill="var(--text-muted)"/>
+        </marker>
+      </defs>
+      <rect x="30" y="70" width="130" height="44" rx="22" fill="var(--surface-muted)" stroke="var(--border)"/>
+      <text x="95" y="97" text-anchor="middle" class="fig-text">松手</text>
+      <rect x="230" y="62" width="210" height="60" rx="8" fill="var(--brand-soft)" stroke="var(--brand)"/>
+      <text x="335" y="86" text-anchor="middle" class="fig-brand">第一段：可感知结果</text>
+      <text x="335" y="106" text-anchor="middle" class="fig-small">转写文本 / 粗结果</text>
+      <rect x="510" y="62" width="180" height="60" rx="8" fill="var(--surface-muted)" stroke="var(--border)"/>
+      <text x="600" y="86" text-anchor="middle" class="fig-strong">第二段：精算替换</text>
+      <text x="600" y="106" text-anchor="middle" class="fig-small">条件 diff 后静默更新</text>
+      <path class="arr" d="M160 92 H230" marker-end="url(#ar2)"/>
+      <path class="arr" d="M440 92 H510" marker-end="url(#ar2)"/>
+      <text x="30" y="160" class="fig-small">失败或超时：保留第一段，只重跑解析，不重录、不重传。</text>
+    </svg>
+    <figcaption>示意：守门守最先崩的那一段——「说完到看见第一个字」。</figcaption>
+  </figure>
+  <p class="field"><span class="tag">direct</span>录音停止后必须先上传拿到 <code>voice_media_id</code>，整个可感知窗口里没有任何一行字（<code>ai_entry_sheet.dart:569-596</code>）；客户端解析读超时 5s（<code>nfr_constants.dart:258-271</code>），后端上游 10s（<code>NfrAi.java:43-50</code>），语音路径还是转写 + 生成串行。<span class="tag ext">external</span>微软语音的 time-to-first-audio；ASR 的流式出字 + 句末离线重转；雷达/声呐的宽扫再窄扫。</p>
+  <p class="field"><span class="field-label">Rationale</span>用户已经等了一次「说话」，不能再等一次白屏。把首帧压到一帧内，准确率交给第二帧，是把「听得见的慢」变成「看得见的快」；超时保留前一段，则让失败不再是全损。</p>
+  <p class="field-label">Downsides</p>
+  <ul>
+    <li>同一句话可能发两次请求，幂等键与配额口径要重新定义。</li>
+    <li>两段结果不一致时会出现「先给后又收回」，需要视觉上的替换而非闪烁。</li>
+    <li>粗查询与精查询共用缓存键还是分键，会直接影响命中率。</li>
+    <li>「失败不扣配额」需要先确认服务端实际扣减点，不能凭口号实现。</li>
+  </ul>
+  <dl class="score"><div><dt>Confidence</dt><dd>74%</dd></div><div><dt>Complexity</dt><dd>Medium</dd></div></dl>
+</article>
+
+<article class="idea" id="i6">
+  <h3><span class="id">I6.</span>自证台账：把不可见的减法变成可查、可逆</h3>
+  <p class="axis"><span class="tag">Axis</span>亮点时刻与信任边界</p>
+  <p class="field"><span class="field-label">Description</span>收窄完成后给一张可停留的回执，只说三件可证的事：<strong>听懂了什么</strong>（条件 chips）、<strong>替你排除了多少</strong>（同半径、无语义条件下的基线计数，例如「同范围共 82 条，当前 37 条」，基线由服务端返回，不写死）、<strong>被排除的是什么类别</strong>（「已排除 45 条 · 家政/宠物」，可展开恢复某一类，不展示被排除条目正文）。隐私部分不写「音频未保存」这类无法证实的话，只陈述真实链路（音频会上传用于转写、留存策略是什么），并把「隐私门缺麦克风/录音/AI 告知」与「政策缺原始音频留存条款」作为上线前置修复。</p>
+  <p class="field"><span class="tag">direct</span>隐私门告知清单只有位置/手机号/发布内容/高德，没有麦克风、录音、AI（<code>privacy_gate_screen.dart:111-118</code>）；隐私政策只覆盖转写文本，没有原始音频留存条款；而代码确实会先上传音频再送 ASR（<code>ai_entry_sheet.dart:583-594</code>）。地图侧目前只有 L2 类目硬过滤，任何语义收窄都是新增的、用户看不见的减法（<code>NfrMatch.hardFilterCategoryLevel=2</code>；<code>/map/pins</code> 无 keyword）。</p>
+  <p class="field"><span class="field-label">Rationale</span>用户要的是「过滤不相关」，但过滤的对称风险是「过滤掉相关」，而后者不会报错。一行台账把不可见的减法变成可逆出口，同时给北极星里的「匹配召回率」补上可直接观测的误杀分母——否则召回率永远只能靠离线评测说话。隐私承诺只有建立在真实链路上才叫承诺，否则是负债。</p>
+  <p class="field-label">Downsides</p>
+  <ul>
+    <li>需要服务端返回按原因分组的排除计数与基线计数，是新契约，且对照查询有性能成本。</li>
+    <li>「恢复某一类」会改变当前结果集，需要与一次性搜索圈的状态协调。</li>
+    <li>隐私文案必须由法务确认，工程不得自拟「未保存」这类承诺。</li>
+    <li>排除类别过细会变成第二个筛选面板；建议只按 L1/L2 聚合。</li>
+  </ul>
+  <dl class="score"><div><dt>Confidence</dt><dd>76%</dd></div><div><dt>Complexity</dt><dd>Medium</dd></div></dl>
+</article>
+
+<article class="idea" id="i7">
+  <h3><span class="id">I7.</span>SemanticQuery 语义快照</h3>
+  <p class="axis"><span class="tag">Axis</span>性能预算与失败降级</p>
+  <p class="field"><span class="field-label">Description</span>不引入一个裸 keyword，而是把一次语音查询固化成可哈希对象：原话、归一化文本、叶子类目集、供需方向、半径档、解析器版本、置信度；实现值相等，并进入 Pin 缓存键。同一句话第二次说，直接命中缓存，不重复付 ASR 与模型费用；同一对象可以生成分享深链、可以存成评测 golden set、可以回放做 A/B。</p>
+  <p class="field"><span class="tag">direct</span><code>PinsQuery</code> 已经是值相等对象，字段与 <code>==/hashCode</code> 齐全（<code>discovery_providers.dart:26-85</code>）；Pin 缓存是五要素键 + LRU 50 + TTL 60s（<code>pin_cache_key.dart:49-57</code>）；AI 配额 20/10/3、费用日 1 元/月 10 元（<code>NfrAi.java:61-76</code>）。</p>
+  <p class="field"><span class="field-label">Rationale</span>它同时解决三件通常要三套系统解决的事：成本（缓存挡住重复 ASR + 解析）、可复现（评测集天然产生）、可分发性（一句话变成链接）。二序效应最狠：一旦解析产物是对象，共享与传播才有可能，否则「核心亮点」会被自己的账单先关掉。</p>
+  <p class="field-label">Downsides</p>
+  <ul>
+    <li><code>/map/pins</code> 没有语义参数，快照要么降维成「类目 + 供需 + 半径」，要么扩契约并把缓存键扩为六要素，前后端必须同构改。</li>
+    <li>分享深链需要落地页与权限策略，超出「地图内搜索」一小步。</li>
+    <li>解析器版本进入键会让每次模型/词表升级造成一次全量缓存失效，需要评估。</li>
+  </ul>
+  <dl class="score"><div><dt>Confidence</dt><dd>68%</dd></div><div><dt>Complexity</dt><dd>High</dd></div></dl>
+</article>
+</section>
+
+<section id="rejections">
+<h2>Rejection Summary</h2>
+<table>
+  <thead><tr><th>#</th><th>Idea</th><th>Reason Rejected</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>按住说话即发信（独立 PTT 控件）</td><td>与 I3 同一手势，但少了「按压点即空间锚点」这层价值，重复。</td></tr>
+    <tr><td>2</td><td>语音是打补丁（多轮增量、继承未提条件）</td><td>仓库没有任何会话基线；「什么时候清空上一句」的生命周期未定义，验证判为 weak。</td></tr>
+    <tr><td>3</td><td>把录音链抽成语音能力通道（举报/客服复用）</td><td>超出「地图内搜索」范围；权限 A/B/C 三态需要改接口，属另一个立项。</td></tr>
+    <tr><td>4</td><td>固定搜索槽位卡（独立成篇）</td><td>并入 I2：槽位卡是规则层的前置结构，不是独立方向。</td></tr>
+    <tr><td>5</td><td>越界字段黄标「没敢用」</td><td>并入 I4：与「解析可反驳」是同一机制的不同切面。</td></tr>
+    <tr><td>6</td><td>未命中词灰态 + 运营「听不懂榜」</td><td>并入 I4（可见与纠正）与 I2（词表供给），单独成篇会重复。</td></tr>
+    <tr><td>7</td><td>半径真实米数 + 客户端 Haversine 精裁</td><td>并入 I1，作为让搜索圈与计数「不撒谎」的机制。</td></tr>
+    <tr><td>8</td><td>零结果三张改写牌</td><td>并入 I1，作为搜索圈的空态分支。</td></tr>
+    <tr><td>9</td><td>三层自证卡（原主张「音频未保存」）</td><td>依据被反驳：音频确实上传并送 ASR，隐私政策也没有原始音频留存条款；该承诺不得写入产品文案。可证的部分并入 I6。</td></tr>
+    <tr><td>10</td><td>过检台账（被排除条目可查可恢复）</td><td>并入 I6：排除计数与恢复出口是同一张台账。</td></tr>
+  </tbody>
+</table>
+<div class="callout">
+  <strong>验证推翻的主张。</strong>「音频不留存 / 未保存」不成立：录音停止后先 <code>mediaUploadService.upload()</code>，再以 <code>voice_media_id</code> 进入服务端 ASR；「不进帖子媒体段」只说明它不作为帖子图片展示。隐私政策第 8 类与第三方清单只覆盖「语音转写文本」，没有原始音频的留存与删除条款。任何面向用户的隐私承诺必须先补这条链路，否则是合规负债。
+</div>
+<div class="callout">
+  <strong>需要先裁定的口径。</strong>P95 存在两个口径（单条查询 150ms vs 四段之和 300ms），语音链路新增了 ASR 与解析两段，必须先确认守的是哪一段、分母是谁，再谈预算分配。另：文中出现的 200ms/400ms 类数字均为示意，落地必须走 <code>NfrXxx</code> / <code>NfrAi</code> 常量。
+</div>
+</section>
+
+<footer class="composition-signal">
+  Composed 2026-10-23 by ce-ideate from <code>d:\developer\code\aicoding\s2s</code> 的仓库现状（地图 / 搜索 / AI / 语音 / 隐私链路）与外部先例研究。
+</footer>
+
+</div>
+</body>
+</html>
