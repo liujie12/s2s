@@ -197,7 +197,8 @@ flowchart TB
   1. 归一化文本（trim、全半角、大小写、去标点）。
   2. 词表提取：同义词/拼音/类目名命中叶子集；半径词映射 `1/3/5/10/city`；供需意图词定 `resource/demand`；价格正则提取数字 + 单位。词表结果只作锚点。
   3. POI 解析：`AmapPoiClient` 调 `place/text` / `inputtips`，返回坐标或小区实体；未命中返回空。
-  4. AI 主解析：先查 `SearchIntentCache`（文本 + 城市 + 提示词版本），未命中即调搜索侧独立 scope（KTD8），越界字段进 `unresolved_fields`；AI 结果覆盖词表槽位。
+  4. AI 主解析：先查 `SearchIntentCache`（文本 + 城市 + 提示词版本），未命中即调搜索侧独立 scope（KTD8），越界字段进 `unresolved_fields`；
+     AI 覆盖类目/供需槽位，但**半径与价格以正则为准**（句子里的显式数字不允许模型改写），**地点必须能在原文溯源**，否则丢弃。
   5. 降级：AI 超时/不可用/输出不可解析 → 沿用词表结果并置 `degraded=true`，不阻断搜索。
 - **Execution note:** 先写 `SearchResolveServiceTest` 覆盖「缓存未命中必调 AI」「缓存命中不调 AI」「AI 不可用降级词表」三条分界，再补实现。
 - **Patterns to follow:** `AiParseService` 的严格 Scope 逐字段溯源与错误映射；`MapService` 的 `validateFiveElements` 参数校验风格。
@@ -445,6 +446,11 @@ sudo S2S_ENV=prod docker compose \
   不再绘制圈形遮罩与压暗。
 - **地址命中即跳转相机**：文本小区/地址解析出锚点后，地图相机直接移到目标区域；
   有半径档时同时把直径装进视口短边（无半径档保持当前缩放，不擅自改尺度）。
+- **AI 地点必须可溯源**（真机事故：语音「北城新徽苑」被解析成新疆「拜城县」，相机跳飞、候选全空）：
+  `verifyAi` 现在要求 AI 输出的 `location` 能在原句里找到，否则丢弃并进 `unresolved_fields`；
+  仅容忍 AI 补行政区后缀（原文「合肥」→ 输出「合肥市」）。
+- **显式数字以正则为准**（真机事故：「1公里」被 AI 改成「全城」）：半径与价格槽位只在正则没抽到时才采用 AI 值；
+  同时补上中文数字半径（`一公里 / 两千米 / 五百米`），覆盖 ASR 把数字转成中文的常见情况。
 
 ### 运维踩坑记录（2026-10-25）
 

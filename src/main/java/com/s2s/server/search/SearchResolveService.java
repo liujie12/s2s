@@ -50,6 +50,10 @@ public class SearchResolveService {
     private static final Pattern RADIUS_PATTERN = Pattern.compile(
             "(\\d+(?:\\.\\d+)?)\\s*(公里|千米|km|KM|Km|米|m|M)");
 
+    /** 中文数字半径（一公里 / 两千米 / 五百米）——ASR 常把 1 公里转成「一公里」。 */
+    private static final Pattern RADIUS_CN_PATTERN = Pattern.compile(
+            "([零〇一二两三四五六七八九十百]+)\\s*(公里|千米|米)");
+
     /** 阿拉伯数字价格上限（2000以内 / 不超过2000 / 最多2千元）。组 1 数字、组 2 单位。 */
     private static final Pattern PRICE_MAX_PATTERN = Pattern.compile(
             "(\\d+(?:\\.\\d+)?)\\s*(元|块|千|k|K)?\\s*(?:以内|以下|之内|内|最多|不超过|封顶)");
@@ -126,6 +130,10 @@ public class SearchResolveService {
 
     /** 未敢采用/无法解析的字段名：地点。 */
     private static final String FIELD_LOCATION = "location";
+
+    /** 地点溯源时容许 AI 补上的行政区后缀（原文「合肥」→ AI 输出「合肥市」）。 */
+    private static final List<String> LOCATION_ADMIN_SUFFIXES =
+            List.of("市", "县", "区", "镇", "乡", "街道");
 
     private final CategorySynonymMapper synonymMapper;
     private final CategoryService categoryService;
@@ -231,11 +239,13 @@ public class SearchResolveService {
                 leafIds = ai.leafCategoryIds();
                 sources.put("category", "ai");
             }
-            if (ai.radius() != null) {
+            // 显式数字以正则为准（2026-10-25 用户裁定）：句子里写了「1公里」「2000以内」，
+            // 就不允许大模型改写（真机上出现过 1km 被 AI 改成全城）。AI 只补正则没抽到的空。
+            if (ai.radius() != null && radiusSlot == null) {
                 radiusSlot = new RadiusSlot(ai.radius(), metersOfTier(ai.radius()));
                 sources.put("radius", "ai");
             }
-            if (ai.priceMin() != null || ai.priceMax() != null) {
+            if ((ai.priceMin() != null || ai.priceMax() != null) && priceSlot == null) {
                 priceSlot = new PriceSlot(ai.priceMin(), ai.priceMax());
                 sources.put("price", "ai");
             }
@@ -378,16 +388,32 @@ public class SearchResolveService {
     /**
      * 解析半径：数字 + 单位 → 真实米数与最近契约档。
      *
+     * <p>先试阿拉伯数字，再试中文数字（ASR 常把「1公里」转成「一公里」）。</p>
+     *
      * @param text 归一化文本
      * @return {@link RadiusSlot} 未表达半径时返回 null
      */
     private RadiusSlot parseRadius(String text) {
         Matcher matcher = RADIUS_PATTERN.matcher(text);
-        if (!matcher.find()) {
+        if (matcher.find()) {
+            return radiusSlotOf(Double.parseDouble(matcher.group(1)), matcher.group(2));
+        }
+        Matcher cnMatcher = RADIUS_CN_PATTERN.matcher(text);
+        if (!cnMatcher.find()) {
             return null;
         }
-        double value = Double.parseDouble(matcher.group(1));
-        String unit = matcher.group(2);
+        long value = chineseNumber(cnMatcher.group(1));
+        return value <= 0 ? null : radiusSlotOf(value, cnMatcher.group(2));
+    }
+
+    /**
+     * 数值 + 单位 → 半径槽位（真实米数 + 最近契约档）。
+     *
+     * @param value 数值
+     * @param unit  单位（公里/千米/km/米/m）
+     * @return {@link RadiusSlot} 半径槽位
+     */
+    private RadiusSlot radiusSlotOf(double value, String unit) {
         double meters = ("米".equals(unit) || "m".equalsIgnoreCase(unit)) ? value : value * 1000;
         String tier = tierOfMeters(meters);
         if (NfrSearch.RADIUS_CITY.equals(tier)) {
@@ -775,7 +801,7 @@ public class SearchResolveService {
             }
             intentCache.put(text, cityAdcode, raw);
         }
-        return AiParseOutcome.success(verifyAi(raw, aiUnresolved));
+        return AiParseOutcome.success(verifyAi(raw, text, aiUnresolved));
     }
 
     /**
@@ -804,11 +830,16 @@ public class SearchResolveService {
     /**
      * 校验 AI 输出：越界字段不采用并记入 unresolved。
      *
-     * @param raw        AI 原始输出
-     * @param unresolved 未解析字段集合（原地写入）
+     * <p><b>地点必须可溯源</b>（2026-10-25 真机事故）：只接受能在这句话原文里找到的地名，
+     * 否则直接丢弃。此前只校验类目/半径/价格，AI 把「北城」编造成「拜城县」也被照单全收，
+     * 相机直接跳到新疆、小区候选全空 —— 严格 Scope 的「逐字段逆向比对」本就要求这一步。</p>
+     *
+     * @param raw         AI 原始输出
+     * @param sourceText  归一化后的原句（地点溯源的比对基准）
+     * @param unresolved  未解析字段集合（原地写入）
      * @return {@link AiSlots} 合法子集
      */
-    private AiSlots verifyAi(String raw, Set<String> unresolved) {
+    private AiSlots verifyAi(String raw, String sourceText, Set<String> unresolved) {
         JsonNode root = parseAiJson(raw);
         if (root == null) {
             unresolved.add("ai");
@@ -847,8 +878,41 @@ public class SearchResolveService {
             min = null;
             max = null;
         }
+        String location = textOrNull(root, "location");
+        if (location != null && !isLocationTraceable(location, sourceText)) {
+            // 原文里没有这个地名 → 视为 AI 编造，留空交给词表/长按点兜底。
+            unresolved.add(FIELD_LOCATION);
+            location = null;
+        }
         return new AiSlots(postType, leaves.stream().distinct().sorted().toList(), radius, min, max,
-                textOrNull(root, "location"));
+                location);
+    }
+
+    /**
+     * 判断 AI 给出的地点能否在原文里溯源。
+     *
+     * <p>容忍一种情况：AI 补了行政区后缀（原文「合肥」→ 输出「合肥市」），
+     * 去掉后缀后仍能在原文找到即视为可溯源。其余一律判为编造。</p>
+     *
+     * @param location AI 输出的地点
+     * @param text     归一化后的原句
+     * @return boolean 可溯源返回 true
+     */
+    private boolean isLocationTraceable(String location, String text) {
+        String loc = normalize(location);
+        if (loc.isEmpty()) {
+            return false;
+        }
+        if (text.contains(loc)) {
+            return true;
+        }
+        for (String suffix : LOCATION_ADMIN_SUFFIXES) {
+            if (loc.length() > suffix.length() && loc.endsWith(suffix)
+                    && text.contains(loc.substring(0, loc.length() - suffix.length()))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

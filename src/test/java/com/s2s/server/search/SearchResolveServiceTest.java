@@ -253,6 +253,85 @@ class SearchResolveServiceTest {
     }
 
     /**
+     * AI 编造原文里没有的地名（真机事故：北城 → 拜城县）必须丢弃，
+     * 改由词表抽出的「北城新徽苑」做锚点。
+     */
+    @Test
+    void AI编造地点不采用() {
+        when(aiProvider.generate(anyLong(), anyString(), anyString()))
+                .thenReturn("{\"location\":\"拜城县\",\"radius\":\"1\",\"post_type\":\"resource\"}");
+        when(communityResolver.resolve(eq("北城新徽苑"), any()))
+                .thenReturn(new CommunityResolver.CommunityMatch("B0FFG001", "新徽苑",
+                        117.2, 32.1, List.of()));
+
+        SearchResolveResult result = service.resolve(null, req("北城新徽苑附近1公里租房"));
+
+        assertEquals("B0FFG001", result.communityId());
+        assertEquals("新徽苑", result.anchorName());
+        assertEquals(117.2, result.anchorLng(), 1e-9);
+        assertFalse(result.unresolvedFields().contains("location"));
+    }
+
+    /**
+     * AI 补行政区后缀（原文「合肥」→ 输出「合肥市」）仍算可溯源，不误判为编造。
+     */
+    @Test
+    void AI地点带行政后缀仍可溯源() {
+        when(aiProvider.generate(anyLong(), anyString(), anyString()))
+                .thenReturn("{\"location\":\"合肥市\"}");
+        when(communityResolver.resolve(eq("合肥市"), any()))
+                .thenReturn(CommunityResolver.CommunityMatch.empty());
+        when(amapPoiClient.search(eq("合肥市")))
+                .thenReturn(Optional.of(new AmapPoiClient.PoiPoint(117.28, 31.86, "合肥市")));
+
+        SearchResolveResult result = service.resolve(null, req("合肥租房"));
+
+        assertEquals("合肥市", result.anchorName());
+        assertEquals(117.28, result.anchorLng(), 1e-9);
+        assertFalse(result.unresolvedFields().contains("location"));
+    }
+
+    /**
+     * 显式半径以正则为准：AI 把 1 公里改成全城，不采用 AI 值。
+     */
+    @Test
+    void 显式半径不被AI覆盖() {
+        when(aiProvider.generate(anyLong(), anyString(), anyString()))
+                .thenReturn("{\"radius\":\"city\"}");
+
+        SearchResolveResult result = service.resolve(null, req("1公里内租房"));
+
+        assertEquals("1", result.radius());
+        assertEquals(1000, result.radiusMeters());
+        assertEquals("vocab", result.sources().get("radius"));
+    }
+
+    /**
+     * 显式价格以正则为准：AI 给出的价格上限不覆盖句子里明写的 2000。
+     */
+    @Test
+    void 显式价格不被AI覆盖() {
+        when(aiProvider.generate(anyLong(), anyString(), anyString()))
+                .thenReturn("{\"price_max\":100}");
+
+        SearchResolveResult result = service.resolve(null, req("2000以内租房"));
+
+        assertEquals(new BigDecimal("2000"), result.priceMax());
+        assertEquals("vocab", result.sources().get("price"));
+    }
+
+    /**
+     * ASR 常输出「一公里」，中文数字半径也要能解析。
+     */
+    @Test
+    void 中文数字半径可解析() {
+        SearchResolveResult result = service.resolve(null, req("一公里内租房"));
+
+        assertEquals("1", result.radius());
+        assertEquals(1000, result.radiusMeters());
+    }
+
+    /**
      * 构造解析入参（只有文本，无坐标）。
      *
      * @param text 输入文本
