@@ -443,7 +443,9 @@ sudo S2S_ENV=prod docker compose \
 - **`APP_VERSION` 与实际镜像 tag 不一致会静默改走现场构建**：`env/.env.prod` 写的是 `1.0.0`，
   而实际发布 tag 是时间戳。`compose run` 找不到 `s2s-app:1.0.0` 就落到 `build:` 分支，
   用宿主旧产物构建出一个只有 5 条迁移的镜像（启动日志 `latest available migration (5)`）。
-  办法：`run` 时显式 `APP_VERSION=<实际tag>`（shell 变量优先于 `--env-file`），并建议把 env 里的值改成实际 tag 或删掉。
+  **已修**：① base compose 的 `image` 改为 `${APP_VERSION:?...}` 必填，缺值直接报错而非静默构建；
+  ② `deploy-manual.sh` 新增 `persist_app_version`，每次发版成功后把实际 tag 写回 env 文件。
+  本次应急：手工把 env 里的值改成当前 tag `20261025-201756`。
 - **`/search/resolve` 必须带 UUIDv4 的 `Idempotency-Key`**：`@Idempotent` 拦截器对匿名接口同样校验，
   缺失直接 40001。前端 `HeaderInterceptor` 对 POST 自动注入，手工 curl 容易漏。
 - **INFO 级日志看不到回填进度**：生产 console 只出 WARN，`/var/log/app` 里也没有回填行，
