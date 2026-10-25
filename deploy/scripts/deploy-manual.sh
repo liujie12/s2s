@@ -348,6 +348,32 @@ build_image() {
     || die "镜像 s2s-app:${APP_VERSION} 构建后不存在，停止发版（排查 docker compose build 输出）"
 }
 
+# ---------------------------------------------------------------------------
+# 函数：persist_app_version
+# 功能：把本次实际发布的镜像 tag 写回 env 文件（APP_VERSION=xxx）
+# 参数：无（使用全局 ENV_FILE / APP_VERSION）
+# 返回：无返回值；写入失败只告警，不改变本次发版结果（此时线上已是新版本）
+# 说明：base compose 的 image 取 ${APP_VERSION}，且该变量在 compose 里是「必填」。
+#       若 env 文件长期停留在历史 tag，任何手工 docker compose run/up 都会因镜像
+#       不存在而静默走 build 分支，用宿主旧产物重建出与线上不一致的镜像
+#       （2026-10-25 实际踩到：得到只有 5 条迁移的镜像，而库已到 V19）。
+#       发版成功后写回，使手工运维命令默认指向当前线上镜像。
+# ---------------------------------------------------------------------------
+persist_app_version() {
+  if [[ ! -f "${ENV_FILE}" ]]; then
+    log "[WARN] env 文件不存在，跳过 APP_VERSION 写回：${ENV_FILE}"
+    return 0
+  fi
+  if grep -q '^APP_VERSION=' "${ENV_FILE}"; then
+    sed -i "s|^APP_VERSION=.*|APP_VERSION=${APP_VERSION}|" "${ENV_FILE}" \
+      || { log "[WARN] 写回 APP_VERSION 失败：${ENV_FILE}"; return 0; }
+  else
+    printf '\nAPP_VERSION=%s\n' "${APP_VERSION}" >> "${ENV_FILE}" \
+      || { log "[WARN] 追加 APP_VERSION 失败：${ENV_FILE}"; return 0; }
+  fi
+  log "      已写回 APP_VERSION=${APP_VERSION} 到 ${ENV_FILE}"
+}
+
 parse_args "$@"
 
 OVERRIDE_FILE="${DEPLOY_DIR}/compose/docker-compose.${ENV_NAME}.yml"
@@ -416,6 +442,7 @@ cd "${DEPLOY_DIR}"
 # --wait 阻塞至 healthcheck 转 healthy，使脚本能真正感知启动成败。
 docker compose "${COMPOSE_ARGS[@]}" up -d --no-deps --wait app
 log "      应用重启完成"
+persist_app_version
 
 # --- 步骤 6：验证 ------------------------------------------------------------
 log "[6/6] 验证应用健康状态"

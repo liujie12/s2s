@@ -106,7 +106,12 @@ services:
       # 传入版本号供 Dockerfile 的 LABEL 使用（Dockerfile 侧已声明 ARG APP_VERSION）
       args:
         APP_VERSION: ${APP_VERSION:-latest}
-    image: s2s-app:${APP_VERSION:-latest}
+    # ${APP_VERSION:?...} 刻意用「必填」而非「缺省 latest」：
+    #   缺省写法下，env 文件里若停留在历史 tag（如 1.0.0），compose 找不到该镜像会
+    #   静默落到上面的 build: 分支，用宿主旧产物重新构建 —— 2026-10-25 实际踩到：
+    #   由此得到一个只有 5 条迁移的镜像，而库已到 V19。必填写法让手工命令直接失败，
+    #   而不是安静地产出错误镜像。deploy-manual.sh 每次发版会把实际 tag 写回 env 文件。
+    image: s2s-app:${APP_VERSION:?APP_VERSION 未设置：请用 deploy/scripts/deploy-manual.sh 发版，或显式传 APP_VERSION=<线上镜像tag>}
     container_name: s2s-app
     restart: unless-stopped
     env_file:
