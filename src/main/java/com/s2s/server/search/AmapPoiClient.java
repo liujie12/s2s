@@ -74,42 +74,51 @@ public class AmapPoiClient {
     /**
      * 按地名做正向 POI 查询，取第一个结果的坐标。
      *
-     * @param keyword 地名（已由调用方从文本中抽出的候选，非空）
+     * <p><b>必须带城市</b>：高德正向搜索是模糊匹配，同一句「北城新徽苑」不加城市约束时
+     * 会把北京的「北辰汇园国际公寓」排到第一（2026-10-25 真机实测相机跳到鸟巢）。
+     * 城市 adcode 为空时才退化为全国检索。</p>
+     *
+     * @param keyword    地名（已由调用方从文本中抽出的候选，非空）
+     * @param cityAdcode 城市 adcode（可空；非空时 citylimit=true）
      * @return {@link Optional} 命中时含坐标与名称；未配置 Key/无结果/上游失败均为空
      */
-    public Optional<PoiPoint> search(String keyword) {
+    public Optional<PoiPoint> search(String keyword, String cityAdcode) {
         String key = secrets.amapKey();
         if (key == null || keyword == null || keyword.isBlank()) {
             return Optional.empty();
         }
         String normalized = keyword.strip();
-        CacheEntry cached = cache.get(normalized);
+        String cacheKey = (cityAdcode == null ? "" : cityAdcode) + "|" + normalized;
+        CacheEntry cached = cache.get(cacheKey);
         long now = System.currentTimeMillis();
         if (cached != null && now - cached.createdAtMillis() < NfrSearch.POI_CACHE_TTL_SECONDS * 1000L) {
             return Optional.ofNullable(cached.point());
         }
 
-        Optional<PoiPoint> point = request(normalized, key);
+        Optional<PoiPoint> point = request(normalized, key, cityAdcode);
         if (cache.size() >= NfrSearch.POI_CACHE_MAX_ENTRIES) {
             cache.clear();
         }
         // 未命中同样缓存（null），避免对同一个查不到的地名反复打上游
-        cache.put(normalized, new CacheEntry(point.orElse(null), now));
+        cache.put(cacheKey, new CacheEntry(point.orElse(null), now));
         return point;
     }
 
     /**
      * 发起一次正向 POI 请求并解析首个结果。
      *
-     * @param keyword 地名
-     * @param key     高德 Web 服务 Key
+     * @param keyword    地名
+     * @param key        高德 Web 服务 Key
+     * @param cityAdcode 城市 adcode（可空）
      * @return {@link Optional} 坐标与名称；任何异常都归一为空
      */
-    private Optional<PoiPoint> request(String keyword, String key) {
+    private Optional<PoiPoint> request(String keyword, String key, String cityAdcode) {
         String url = PLACE_TEXT_URL
                 + "?key=" + urlEncode(key)
                 + "&keywords=" + urlEncode(keyword)
-                + "&offset=1&page=1";
+                + "&offset=1&page=1"
+                + (cityAdcode == null || cityAdcode.isBlank()
+                        ? "" : "&city=" + urlEncode(cityAdcode) + "&citylimit=true");
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
                 .timeout(Duration.ofSeconds(NfrSearch.POI_TIMEOUT_SECONDS))

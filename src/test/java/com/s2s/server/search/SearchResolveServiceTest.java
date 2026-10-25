@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -163,7 +164,7 @@ class SearchResolveServiceTest {
      */
     @Test
     void POI未命中不抛异常且地点未解析() {
-        when(amapPoiClient.search(anyString())).thenReturn(Optional.empty());
+        when(amapPoiClient.search(anyString(), any())).thenReturn(Optional.empty());
 
         SearchResolveResult result = service.resolve(null, req("我在锦绣小区要租房"));
 
@@ -240,7 +241,7 @@ class SearchResolveServiceTest {
                 .thenReturn(new CommunityResolver.CommunityMatch(null, null, null, null, List.of(
                         new CommunityResolver.CommunityCandidate(
                                 "B0FFFT15PD", "北城世纪城鑫徽苑", "长丰县", 117.24, 32.01))));
-        when(amapPoiClient.search(anyString())).thenReturn(Optional.empty());
+        when(amapPoiClient.search(anyString(), any())).thenReturn(Optional.empty());
 
         SearchResolveResult result = service.resolve(null, reqWithAnchor("北城新徽苑租房"));
 
@@ -250,6 +251,27 @@ class SearchResolveServiceTest {
         assertEquals("long_press", result.anchorSource());
         assertEquals(1, result.communityCandidates().size());
         assertFalse(result.unresolvedFields().contains("location"));
+    }
+
+    /**
+     * 正向 POI 检索必须带城市约束（真机事故：不带城市时「北城新徽苑」匹到北京
+     * 「北辰汇园国际公寓」，相机飞到鸟巢）。
+     */
+    @Test
+    void 正向POI检索带城市约束() {
+        when(amapPoiClient.reverseAdcode(anyDouble(), anyDouble())).thenReturn("340100");
+        when(aiProvider.generate(anyLong(), anyString(), anyString()))
+                .thenReturn("{\"location\":\"北城新徽苑\"}");
+        when(communityResolver.resolve(eq("北城新徽苑"), any()))
+                .thenReturn(CommunityResolver.CommunityMatch.empty());
+        when(amapPoiClient.search(eq("北城新徽苑"), eq("340100")))
+                .thenReturn(Optional.of(new AmapPoiClient.PoiPoint(117.24, 32.01, "北城世纪城鑫徽苑")));
+
+        SearchResolveResult result = service.resolve(null, reqWithAnchor("北城新徽苑租房"));
+
+        assertEquals("北城世纪城鑫徽苑", result.anchorName());
+        assertEquals("poi", result.sources().get("anchor"));
+        verify(amapPoiClient).search("北城新徽苑", "340100");
     }
 
     /**
@@ -281,7 +303,7 @@ class SearchResolveServiceTest {
                 .thenReturn("{\"location\":\"合肥市\"}");
         when(communityResolver.resolve(eq("合肥市"), any()))
                 .thenReturn(CommunityResolver.CommunityMatch.empty());
-        when(amapPoiClient.search(eq("合肥市")))
+        when(amapPoiClient.search(eq("合肥市"), any()))
                 .thenReturn(Optional.of(new AmapPoiClient.PoiPoint(117.28, 31.86, "合肥市")));
 
         SearchResolveResult result = service.resolve(null, req("合肥租房"));

@@ -724,7 +724,7 @@ public class SearchResolveService {
                     new AnchorSlot(match.lng(), match.lat(), match.communityName(), "poi"),
                     match.communityId(), match.communityName(), candidates);
         }
-        Optional<AmapPoiClient.PoiPoint> point = amapPoiClient.search(place);
+        Optional<AmapPoiClient.PoiPoint> point = amapPoiClient.search(place, cityAdcode);
         if (point.isEmpty()) {
             return new AnchorResolution(null, null, null, candidates);
         }
