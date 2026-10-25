@@ -425,3 +425,27 @@ sudo S2S_ENV=prod docker compose \
 **幂等**：只处理 `community_id IS NULL`，UPDATE 也带 `IS NULL` 条件，可反复执行。
 节流：`NfrSearch.BACKFILL_BATCH_SIZE` / `BACKFILL_DELAY_MILLIS` 控制高德 QPS；未回填的存量帖只能靠坐标半径命中。
 
+### 线上验证记录（2026-10-25）
+
+- **发版**：镜像 `s2s-app:20261025-201756`，`s2s-app` healthy；`flyway_schema_history` 中 V17/V18/V19 均 `success=1`；
+  `post.community_id/community_name` 与 11 列覆盖索引 `idx_pins_community` 均已就位。
+- **`/search/resolve` 实测**（游客 + `Idempotency-Key`）：
+  `{"text":"北城新徽苑租房","current_lng":117.22,"current_lat":31.95}` →
+  `ai_used=true`、`degraded=false`、`sources={category:ai, post_type:ai, radius:ai, anchor:poi}`、
+  `anchor_name=北城世纪城鑫徽苑`、`community_candidates` 1 条、`community_id=null`。
+  即 AI 主解析、高德 Key、小区候选确认三条链路线上均通。
+- **回填实测**：`exit=0`（该进程只有 runner 会主动退出，故确认已执行），
+  生产库 39 帖中仅 20 条有地址，且全为街道门牌（如「蜀山区长江西路 100 号」），不含小区名
+  ⇒ `updated=0` 属正确结果；存量测试数据无可回填对象，真实用户帖由发布侧写入 `community_id`。
+
+### 运维踩坑记录（2026-10-25）
+
+- **`APP_VERSION` 与实际镜像 tag 不一致会静默改走现场构建**：`env/.env.prod` 写的是 `1.0.0`，
+  而实际发布 tag 是时间戳。`compose run` 找不到 `s2s-app:1.0.0` 就落到 `build:` 分支，
+  用宿主旧产物构建出一个只有 5 条迁移的镜像（启动日志 `latest available migration (5)`）。
+  办法：`run` 时显式 `APP_VERSION=<实际tag>`（shell 变量优先于 `--env-file`），并建议把 env 里的值改成实际 tag 或删掉。
+- **`/search/resolve` 必须带 UUIDv4 的 `Idempotency-Key`**：`@Idempotent` 拦截器对匿名接口同样校验，
+  缺失直接 40001。前端 `HeaderInterceptor` 对 POST 自动注入，手工 curl 容易漏。
+- **INFO 级日志看不到回填进度**：生产 console 只出 WARN，`/var/log/app` 里也没有回填行，
+  判断是否执行过要看 `exit=0`（唯一退出路径是 runner）或直接查库 `community_id`。
+
