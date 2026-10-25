@@ -214,6 +214,45 @@ class SearchResolveServiceTest {
     }
 
     /**
+     * 长按点与文本小区同时存在：文本小区优先（2026-10-25 用户裁定），
+     * 锚点与 community_id 都取小区，长按点不再抢占。
+     */
+    @Test
+    void 文本小区优先于长按点() {
+        when(communityResolver.resolve(eq("北城新徽苑"), any()))
+                .thenReturn(new CommunityResolver.CommunityMatch("B0FFG001", "新徽苑",
+                        117.2, 32.1, List.of()));
+
+        SearchResolveResult result = service.resolve(null, reqWithAnchor("北城新徽苑租房"));
+
+        assertEquals("B0FFG001", result.communityId());
+        assertEquals(117.2, result.anchorLng(), 1e-9);
+        assertEquals(32.1, result.anchorLat(), 1e-9);
+        assertEquals("poi", result.sources().get("anchor"));
+    }
+
+    /**
+     * 文本小区低置信：保留长按点作锚点，同时回候选让用户点选，且不报「地点没解析」。
+     */
+    @Test
+    void 文本小区低置信保留长按点并回候选() {
+        when(communityResolver.resolve(eq("北城新徽苑"), any()))
+                .thenReturn(new CommunityResolver.CommunityMatch(null, null, null, null, List.of(
+                        new CommunityResolver.CommunityCandidate(
+                                "B0FFFT15PD", "北城世纪城鑫徽苑", "长丰县", 117.24, 32.01))));
+        when(amapPoiClient.search(anyString())).thenReturn(Optional.empty());
+
+        SearchResolveResult result = service.resolve(null, reqWithAnchor("北城新徽苑租房"));
+
+        assertNull(result.communityId());
+        assertEquals(117.0, result.anchorLng(), 1e-9);
+        assertEquals(32.0, result.anchorLat(), 1e-9);
+        assertEquals("long_press", result.anchorSource());
+        assertEquals(1, result.communityCandidates().size());
+        assertFalse(result.unresolvedFields().contains("location"));
+    }
+
+    /**
      * 构造解析入参（只有文本，无坐标）。
      *
      * @param text 输入文本
@@ -221,5 +260,15 @@ class SearchResolveServiceTest {
      */
     private SearchResolveRequest req(String text) {
         return new SearchResolveRequest(text, null, null, null, null, null, null, null, null);
+    }
+
+    /**
+     * 构造带长按锚点的解析入参。
+     *
+     * @param text 输入文本
+     * @return {@link SearchResolveRequest}（anchor 117.0/32.0）
+     */
+    private SearchResolveRequest reqWithAnchor(String text) {
+        return new SearchResolveRequest(text, null, null, null, null, 117.0, 32.0, null, null);
     }
 }

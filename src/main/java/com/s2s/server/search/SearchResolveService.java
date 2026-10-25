@@ -625,37 +625,53 @@ public class SearchResolveService {
     }
 
     /**
-     * 解析地点锚点：长按点 > 文本地名（小区/POI） > 当前定位。
+     * 解析地点锚点，同时产出小区实体与候选。
+     *
+     * <p><b>优先级（2026-10-25 用户裁定）</b>：文本地点 &gt; 长按点 &gt; 当前定位。
+     * 文本里说出的地名比任意长按点更精确；长按点只在文本没给出地点、或文本小区低置信
+     * 时作为兜底锚点，此时仍把候选带回前端让用户点选。</p>
      *
      * @param req        解析入参
-     * @param place      地点短语（可空；来自 AI 或词表）
-     * @param cityAdcode 城市 adcode（可空）
-     * @param sources    来源标记（原地写入）
-     * @param unresolved 未解析字段集合（原地写入）
-     * @return {@link AnchorResolution} 无法定位时 anchor 为 null（候选可能非空）
+     * @param place      文本地名（AI 或词表抽取，可空）
+     * @param cityAdcode 城市 adcode（约束小区检索范围）
+     * @param sources    各槽位来源标记（就地写入）
+     * @param unresolved 未解析字段集合（就地写入）
+     * @return {@link AnchorResolution} 锚点 + 小区实体 + 候选
      */
     private AnchorResolution resolveAnchor(SearchResolveRequest req, String place,
             String cityAdcode, Map<String, String> sources, Set<String> unresolved) {
-        if (req.anchorLng() != null && req.anchorLat() != null) {
+        boolean hasLongPress = req.anchorLng() != null && req.anchorLat() != null;
+        if (place != null && !place.isBlank()) {
+            AnchorResolution resolved = poiAnchor(place, sources, cityAdcode);
+            if (resolved.anchor() != null) {
+                return resolved;
+            }
+            if (!resolved.candidates().isEmpty()) {
+                // 低置信：有长按点就保留长按点作锚，但候选照常回给用户点选。
+                if (hasLongPress) {
+                    sources.put("anchor", "anchor");
+                    return new AnchorResolution(
+                            new AnchorSlot(req.anchorLng(), req.anchorLat(), null, "long_press"),
+                            null, null, resolved.candidates());
+                }
+                unresolved.add(FIELD_LOCATION);
+                return resolved;
+            }
+        }
+        if (hasLongPress) {
             sources.put("anchor", "anchor");
             return new AnchorResolution(
                     new AnchorSlot(req.anchorLng(), req.anchorLat(), null, "long_press"),
                     null, null, List.of());
-        }
-        if (place != null && !place.isBlank()) {
-            AnchorResolution resolved = poiAnchor(place, sources, cityAdcode);
-            if (resolved.anchor() == null) {
-                unresolved.add(FIELD_LOCATION);
-            }
-            if (resolved.anchor() != null || !resolved.candidates().isEmpty()) {
-                return resolved;
-            }
         }
         if (req.currentLng() != null && req.currentLat() != null) {
             sources.put("anchor", "current");
             return new AnchorResolution(
                     new AnchorSlot(req.currentLng(), req.currentLat(), null, "current"),
                     null, null, List.of());
+        }
+        if (place != null && !place.isBlank()) {
+            unresolved.add(FIELD_LOCATION);
         }
         return AnchorResolution.empty();
     }
