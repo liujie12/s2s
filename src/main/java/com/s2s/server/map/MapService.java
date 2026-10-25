@@ -105,11 +105,16 @@ public class MapService {
      * @param lng             视野中心经度（GCJ-02）
      * @param lat             视野中心纬度（GCJ-02）
      * @param zoom            地图缩放级别（决定 cluster/pin 模式）
+     * @param priceMin        价格下限（元，可空；语义搜索一次性收窄，不写持久筛选）
+     * @param priceMax        价格上限（元，可空；设置时面议 price IS NULL 被排除）
+     * @param communityId     小区实体 ID（可空；口语地址精确过滤）
      * @return 图钉紧凑响应
      */
     public PinsCompactResponse getPins(List<Integer> categoryIds, String postType, String radius,
-            String gridId, String categoryVersion, Double lng, Double lat, Double zoom) {
+            String gridId, String categoryVersion, Double lng, Double lat, Double zoom,
+            BigDecimal priceMin, BigDecimal priceMax, String communityId) {
         validatePinsParams(categoryIds, postType, radius, gridId, categoryVersion, lng, lat, zoom);
+        validatePriceRange(priceMin, priceMax);
 
         List<String> gridIds = expandGridCells(gridId, radius);
         boolean stale = categoryService.isVersionStale(categoryVersion);
@@ -117,7 +122,8 @@ public class MapService {
 
         if (MODE_CLUSTER.equals(mode)) {
             List<ClusterItem> clusters = mapPostMapper.selectClusters(
-                            gridIds, categoryIds, postType, NfrPerf.RENDER_MAX_PINS).stream()
+                            gridIds, categoryIds, postType, priceMin, priceMax, communityId,
+                            NfrPerf.RENDER_MAX_PINS).stream()
                     .map(this::toCluster)
                     .toList();
             int total = clusters.stream().mapToInt(ClusterItem::count).sum();
@@ -125,11 +131,35 @@ public class MapService {
         }
 
         List<List<Object>> pins = mapPostMapper.selectPins(
-                        gridIds, categoryIds, postType, NfrPerf.RENDER_MAX_PINS).stream()
+                        gridIds, categoryIds, postType, priceMin, priceMax, communityId,
+                        NfrPerf.RENDER_MAX_PINS).stream()
                 .map(this::toPin)
                 .toList();
-        long total = mapPostMapper.countPins(gridIds, categoryIds, postType);
+        long total = mapPostMapper.countPins(
+                gridIds, categoryIds, postType, priceMin, priceMax, communityId);
         return new PinsCompactResponse(mode, PIN_SCHEMA, pins, null, (int) total, stale);
+    }
+
+    /**
+     * 校验地图价格区间（语义搜索一次性收窄）。
+     *
+     * <p>负数视为非法；{@code priceMin > priceMax} 视为非法（前端解析不应产出该组合，
+     * 一旦出现说明上游解析有问题，直接回 {@code 40001} 而非静默交换上下限）。</p>
+     *
+     * @param priceMin 价格下限（元，可空）
+     * @param priceMax 价格上限（元，可空）
+     * @throws BizException 负数或上下限倒置 → {@code 40001}
+     */
+    private void validatePriceRange(BigDecimal priceMin, BigDecimal priceMax) {
+        if (priceMin != null && priceMin.signum() < 0) {
+            throw BizException.of(ErrorCode.PARAM_INVALID);
+        }
+        if (priceMax != null && priceMax.signum() < 0) {
+            throw BizException.of(ErrorCode.PARAM_INVALID);
+        }
+        if (priceMin != null && priceMax != null && priceMin.compareTo(priceMax) > 0) {
+            throw BizException.of(ErrorCode.PARAM_INVALID);
+        }
     }
 
     /**

@@ -5,6 +5,7 @@ import com.s2s.server.common.web.AuthContext;
 import com.s2s.server.map.dto.PinsCompactResponse;
 import com.s2s.server.map.dto.SearchPostsResponse;
 import jakarta.servlet.http.HttpServletRequest;
+import java.math.BigDecimal;
 import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -49,6 +50,9 @@ public class MapController {
      * @param lng             视野中心经度（GCJ-02）
      * @param lat             视野中心纬度（GCJ-02）
      * @param zoom            地图缩放级别（决定 cluster/pin 模式）
+     * @param priceMin        价格下限（元，可空；语义搜索一次性收窄）
+     * @param priceMax        价格上限（元，可空；设置时面议被排除）
+     * @param communityId     小区实体 ID（可空；口语地址精确过滤）
      * @return {@link PinsCompactResponse}
      */
     @GetMapping("/map/pins")
@@ -60,9 +64,12 @@ public class MapController {
             @RequestParam(name = "category_version", required = false) String categoryVersion,
             @RequestParam(required = false) Double lng,
             @RequestParam(required = false) Double lat,
-            @RequestParam(required = false) Double zoom) {
+            @RequestParam(required = false) Double zoom,
+            @RequestParam(name = "price_min", required = false) BigDecimal priceMin,
+            @RequestParam(name = "price_max", required = false) BigDecimal priceMax,
+            @RequestParam(name = "community_id", required = false) String communityId) {
         return mapService.getPins(categoryIds, postType, radius, gridId, categoryVersion,
-                lng, lat, zoom);
+                lng, lat, zoom, priceMin, priceMax, communityId);
     }
 
     /**

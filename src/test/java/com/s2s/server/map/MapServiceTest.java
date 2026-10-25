@@ -9,6 +9,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -57,7 +58,7 @@ class MapServiceTest {
     @Test
     void 五要素缺失回40001() {
         BizException ex = assertThrows(BizException.class, () -> mapService.getPins(
-                null, "resource", "3", "0_0", "2026-08-31.1", 120.0, 30.0, 14.0));
+                null, "resource", "3", "0_0", "2026-08-31.1", 120.0, 30.0, 14.0, null, null, null));
         assertEquals(ErrorCode.PARAM_INVALID, ex.getErrorCode());
     }
 
@@ -67,7 +68,8 @@ class MapServiceTest {
     @Test
     void gridId正则不符回40001() {
         BizException ex = assertThrows(BizException.class, () -> mapService.getPins(
-                List.of(10101), "resource", "3", "abc", "2026-08-31.1", 120.0, 30.0, 14.0));
+                List.of(10101), "resource", "3", "abc", "2026-08-31.1", 120.0, 30.0, 14.0,
+                null, null, null));
         assertEquals(ErrorCode.PARAM_INVALID, ex.getErrorCode());
     }
 
@@ -77,7 +79,8 @@ class MapServiceTest {
     @Test
     void 半径档非法回40001() {
         BizException ex = assertThrows(BizException.class, () -> mapService.getPins(
-                List.of(10101), "resource", "2", "0_0", "2026-08-31.1", 120.0, 30.0, 14.0));
+                List.of(10101), "resource", "2", "0_0", "2026-08-31.1", 120.0, 30.0, 14.0,
+                null, null, null));
         assertEquals(ErrorCode.PARAM_INVALID, ex.getErrorCode());
     }
 
@@ -93,12 +96,14 @@ class MapServiceTest {
                 "leaf_category_id", 10101,
                 "type", "resource",
                 "completeness_level", 2);
-        when(mapper.selectPins(anyList(), anyList(), anyString(), anyInt()))
+        when(mapper.selectPins(anyList(), anyList(), anyString(), any(), any(), any(), anyInt()))
                 .thenReturn(List.of(row));
-        when(mapper.countPins(anyList(), anyList(), anyString())).thenReturn(1L);
+        when(mapper.countPins(anyList(), anyList(), anyString(), any(), any(), any()))
+                .thenReturn(1L);
 
         PinsCompactResponse resp = mapService.getPins(
-                List.of(10101), "resource", "3", "0_0", "2026-08-31.1", 120.15, 30.28, 14.5);
+                List.of(10101), "resource", "3", "0_0", "2026-08-31.1", 120.15, 30.28, 14.5,
+                null, null, null);
 
         assertEquals("pin", resp.mode());
         assertEquals(List.of("id", "lng", "lat", "category_id", "type", "completeness_level"),
@@ -118,11 +123,12 @@ class MapServiceTest {
                 "lng", new BigDecimal("120.15012"),
                 "lat", new BigDecimal("30.28034"),
                 "count", 3);
-        when(mapper.selectClusters(anyList(), anyList(), anyString(), anyInt()))
+        when(mapper.selectClusters(anyList(), anyList(), anyString(), any(), any(), any(), anyInt()))
                 .thenReturn(List.of(clusterRow));
 
         PinsCompactResponse resp = mapService.getPins(
-                List.of(10101), "resource", "3", "0_0", "2026-08-31.1", 120.15, 30.28, 12.0);
+                List.of(10101), "resource", "3", "0_0", "2026-08-31.1", 120.15, 30.28, 12.0,
+                null, null, null);
 
         assertEquals("cluster", resp.mode());
         assertEquals(3, resp.total());
@@ -135,13 +141,52 @@ class MapServiceTest {
      */
     @Test
     void 全城半径网格展开为null() {
-        when(mapper.selectPins(any(), any(), any(), anyInt())).thenReturn(List.of());
-        when(mapper.countPins(any(), any(), any())).thenReturn(0L);
+        when(mapper.selectPins(any(), any(), any(), any(), any(), any(), anyInt()))
+                .thenReturn(List.of());
+        when(mapper.countPins(any(), any(), any(), any(), any(), any())).thenReturn(0L);
 
         mapService.getPins(List.of(10101), "resource", "city", "0_0", "2026-08-31.1",
-                120.15, 30.28, 14.5);
+                120.15, 30.28, 14.5, null, null, null);
 
-        verify(mapper).selectPins(isNull(), anyList(), anyString(), anyInt());
+        verify(mapper).selectPins(isNull(), anyList(), anyString(), any(), any(), any(), anyInt());
+    }
+
+    /**
+     * 场景六之二：语义搜索价格上限透传到 mapper（selectPins/countPins 同步）。
+     */
+    @Test
+    void 价格上限透传到mapper() {
+        when(mapper.selectPins(any(), any(), any(), any(), any(), any(), anyInt()))
+                .thenReturn(List.of());
+        when(mapper.countPins(any(), any(), any(), any(), any(), any())).thenReturn(0L);
+
+        BigDecimal priceMax = new BigDecimal("2000");
+        mapService.getPins(List.of(20101, 20102, 20103), "demand", "1", "0_0",
+                "2026-08-31.1", 120.15, 30.28, 14.5, null, priceMax, null);
+
+        ArgumentCaptor<BigDecimal> minCaptor = ArgumentCaptor.forClass(BigDecimal.class);
+        ArgumentCaptor<BigDecimal> maxCaptor = ArgumentCaptor.forClass(BigDecimal.class);
+        verify(mapper).selectPins(anyList(), anyList(), anyString(),
+                minCaptor.capture(), maxCaptor.capture(), isNull(), anyInt());
+        assertNull(minCaptor.getValue());
+        assertEquals(priceMax, maxCaptor.getValue());
+        verify(mapper).countPins(anyList(), anyList(), anyString(), isNull(), eq(priceMax), isNull());
+    }
+
+    /**
+     * 场景六之三：价格区间非法（负数或下限大于上限）→ 40001。
+     */
+    @Test
+    void 非法价格区间回40001() {
+        BizException negative = assertThrows(BizException.class, () -> mapService.getPins(
+                List.of(10101), "resource", "3", "0_0", "2026-08-31.1", 120.0, 30.0, 14.0,
+                new BigDecimal("-1"), null, null));
+        assertEquals(ErrorCode.PARAM_INVALID, negative.getErrorCode());
+
+        BizException reversed = assertThrows(BizException.class, () -> mapService.getPins(
+                List.of(10101), "resource", "3", "0_0", "2026-08-31.1", 120.0, 30.0, 14.0,
+                new BigDecimal("3000"), new BigDecimal("2000"), null));
+        assertEquals(ErrorCode.PARAM_INVALID, reversed.getErrorCode());
     }
 
     /**

@@ -11,18 +11,46 @@
       全部落在 idx_pins_cover 后 5 列 + 前缀段（category_id/type），无任何回表列。
       反例：若 SELECT * 或加 user_id/desc 等非索引列，Extra 退化为 "Using index condition"（回表）。
       纪律：本查询列集合不得增删，否则覆盖索引失效（技术栈选型 §7）。
+      V18 起 idx_pins_cover 在 expire_at 之后纳入 price：语义搜索的价格区间过滤
+      与其余过滤条件同处一个覆盖索引，仍为 index-only scan。price IS NULL（面议）
+      在设置上限时按 SQL 三值逻辑自然排除，这是产品口径。
+      范围裁定：不建「类目专属属性」生成列——V4 模板种子只为 101/301/401/501
+      四个 L2 建了自定义模板，201 租房无模板（主卧/次卧/整租本身就是叶子类目），
+      不存在可筛的 select 字段（方案 KTD3b 暂不落地）。
+    -->
+    <!--
+      EXPLAIN 实测（MySQL 8.0.46，2026-10-24，V18/V19 应用后）：
+        · 无小区：FORCE INDEX(idx_pins_cover) → key=idx_pins_cover,
+          Extra="Using where; Using index; Using filesort"；
+        · 有小区：community_id 存在时**不拼 grid 条件**（小区范围比网格更紧，且
+          idx_pins_community 未含 grid_id，拼上去会退化为回表），
+          FORCE INDEX(idx_pins_community) → Extra="Using where; Using index; Using filesort"；
+          countPins → Extra="Using where; Using index"。
+        · filesort 来源于「price 范围列在 id 之前」导致 ORDER BY id 无法借索引排序，
+          候选上限 500 条，代价可接受。
+        · 表为空时优化器会因基数统计偏差选 idx_status_completeness；上面的结论用
+          FORCE INDEX 验证索引本身的覆盖能力，不代表线上一定选该索引。
     -->
     <select id="selectPins" resultType="map">
         SELECT id, lng, lat, leaf_category_id, type, completeness_level
         FROM post
         WHERE status = 'active' AND expire_at &gt; NOW()
-        <if test="gridIds != null">
+        <if test="gridIds != null and communityId == null">
             AND grid_id IN
             <foreach collection="gridIds" item="g" open="(" separator="," close=")">#{g}</foreach>
         </if>
         AND leaf_category_id IN
         <foreach collection="leafCategoryIds" item="c" open="(" separator="," close=")">#{c}</foreach>
         AND type = #{type}
+        <if test="priceMin != null">
+            AND price &gt;= #{priceMin}
+        </if>
+        <if test="priceMax != null">
+            AND price &lt;= #{priceMax}
+        </if>
+        <if test="communityId != null">
+            AND community_id = #{communityId}
+        </if>
         LIMIT #{limit}
     </select>
 
@@ -30,13 +58,22 @@
         SELECT COUNT(*)
         FROM post
         WHERE status = 'active' AND expire_at &gt; NOW()
-        <if test="gridIds != null">
+        <if test="gridIds != null and communityId == null">
             AND grid_id IN
             <foreach collection="gridIds" item="g" open="(" separator="," close=")">#{g}</foreach>
         </if>
         AND leaf_category_id IN
         <foreach collection="leafCategoryIds" item="c" open="(" separator="," close=")">#{c}</foreach>
         AND type = #{type}
+        <if test="priceMin != null">
+            AND price &gt;= #{priceMin}
+        </if>
+        <if test="priceMax != null">
+            AND price &lt;= #{priceMax}
+        </if>
+        <if test="communityId != null">
+            AND community_id = #{communityId}
+        </if>
     </select>
 
     <!-- 远景服务端预聚合：按 grid_id 聚簇，返回聚合点坐标与计数（category_id 由客户端用默认色）。 -->
@@ -44,13 +81,22 @@
         SELECT ROUND(AVG(lng), 5) AS lng, ROUND(AVG(lat), 5) AS lat, COUNT(*) AS count
         FROM post
         WHERE status = 'active' AND expire_at &gt; NOW()
-        <if test="gridIds != null">
+        <if test="gridIds != null and communityId == null">
             AND grid_id IN
             <foreach collection="gridIds" item="g" open="(" separator="," close=")">#{g}</foreach>
         </if>
         AND leaf_category_id IN
         <foreach collection="leafCategoryIds" item="c" open="(" separator="," close=")">#{c}</foreach>
         AND type = #{type}
+        <if test="priceMin != null">
+            AND price &gt;= #{priceMin}
+        </if>
+        <if test="priceMax != null">
+            AND price &lt;= #{priceMax}
+        </if>
+        <if test="communityId != null">
+            AND community_id = #{communityId}
+        </if>
         GROUP BY grid_id
         LIMIT #{limit}
     </select>

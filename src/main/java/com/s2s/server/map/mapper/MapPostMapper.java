@@ -28,6 +28,9 @@ public interface MapPostMapper {
      * @param gridIds        按半径展开的网格集合（null 表示全城，不加 grid 过滤）
      * @param leafCategoryIds 叶子类目 ID 集合
      * @param type           供需态（resource/demand）
+     * @param priceMin       价格下限（元，可空；语义搜索一次性收窄用）
+     * @param priceMax       价格上限（元，可空；设置时 price IS NULL 的面议自然排除）
+     * @param communityId    小区实体 ID（可空；口语地址精确过滤）
      * @param limit          条数上限（NfrPerf.RENDER_MAX_PINS）
      * @return Pin 行集合（列名：id/lng/lat/leaf_category_id/type/completeness_level）
      */
@@ -35,6 +38,9 @@ public interface MapPostMapper {
             @Param("gridIds") List<String> gridIds,
             @Param("leafCategoryIds") List<Integer> leafCategoryIds,
             @Param("type") String type,
+            @Param("priceMin") java.math.BigDecimal priceMin,
+            @Param("priceMax") java.math.BigDecimal priceMax,
+            @Param("communityId") String communityId,
             @Param("limit") int limit);
 
     /**
@@ -43,12 +49,18 @@ public interface MapPostMapper {
      * @param gridIds        网格集合（null 表示全城）
      * @param leafCategoryIds 叶子类目 ID 集合
      * @param type           供需态
+     * @param priceMin       价格下限（元，可空）
+     * @param priceMax       价格上限（元，可空）
+     * @param communityId    小区实体 ID（可空）
      * @return 命中总数
      */
     long countPins(
             @Param("gridIds") List<String> gridIds,
             @Param("leafCategoryIds") List<Integer> leafCategoryIds,
-            @Param("type") String type);
+            @Param("type") String type,
+            @Param("priceMin") java.math.BigDecimal priceMin,
+            @Param("priceMax") java.math.BigDecimal priceMax,
+            @Param("communityId") String communityId);
 
     /**
      * 服务端预聚合：按网格聚簇（{@code mode=cluster}）。
@@ -56,6 +68,9 @@ public interface MapPostMapper {
      * @param gridIds        网格集合（null 表示全城）
      * @param leafCategoryIds 叶子类目 ID 集合
      * @param type           供需态
+     * @param priceMin       价格下限（元，可空）
+     * @param priceMax       价格上限（元，可空）
+     * @param communityId    小区实体 ID（可空）
      * @param limit          聚合点上限
      * @return 聚合点行集合（列名：lng/lat/count）
      */
@@ -63,6 +78,9 @@ public interface MapPostMapper {
             @Param("gridIds") List<String> gridIds,
             @Param("leafCategoryIds") List<Integer> leafCategoryIds,
             @Param("type") String type,
+            @Param("priceMin") java.math.BigDecimal priceMin,
+            @Param("priceMax") java.math.BigDecimal priceMax,
+            @Param("communityId") String communityId,
             @Param("limit") int limit);
 
     /**

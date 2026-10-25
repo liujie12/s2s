@@ -1,5 +1,6 @@
 package com.s2s.server.task;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
@@ -16,8 +17,16 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  * 当前部署形态为单实例（架构 §4）。<b>多实例部署前，本包全部任务必须先加分布式锁</b>——
  * 否则到期下架、月表 DROP、注销清理会在多个实例上并发重复执行（DROP 与 DELETE 重复执行
  * 尚可容忍，但「按月表名解析并删除」这类操作在并发下会出现彼此删同一张表与元数据竞争）。</p>
+ *
+ * <p><b>一次性运维进程必须关掉调度</b>：小区回填（{@code CommunityBackfillRunner}）等
+ * 运维任务会以「同一镜像再起一个短命进程」的方式执行，它会完整装配 Spring 上下文。
+ * 若不禁用调度，这 11 个任务就会与常驻实例并发跑，直接违反上面的单实例前提。
+ * 故加 {@code s2s.scheduling.enabled} 开关（缺省 true，不影响常驻实例），
+ * 运维进程显式传 {@code --s2s.scheduling.enabled=false}。</p>
  */
 @Configuration
 @EnableScheduling
+@ConditionalOnProperty(name = "s2s.scheduling.enabled", havingValue = "true",
+        matchIfMissing = true)
 public class TaskSchedulingConfig {
 }

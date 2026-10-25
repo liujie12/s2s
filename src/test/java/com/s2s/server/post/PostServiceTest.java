@@ -27,6 +27,8 @@ import com.s2s.server.post.dto.RepostDraft;
 import com.s2s.server.post.entity.PostEntity;
 import com.s2s.server.post.entity.PostMediaEntity;
 import com.s2s.server.post.mapper.PostMapper;
+import com.s2s.server.search.AmapPoiClient;
+import com.s2s.server.search.CommunityResolver;
 import com.s2s.server.post.mapper.PostMediaMapper;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -51,6 +53,8 @@ class PostServiceTest {
     private ObjectMapper objectMapper;
     private AiQuotaGate aiQuotaGate;
     private IdentityBindingService identityBindingService;
+    private AmapPoiClient amapPoiClient;
+    private CommunityResolver communityResolver;
     private PostService postService;
 
     @BeforeEach
@@ -63,8 +67,12 @@ class PostServiceTest {
         objectMapper = new ObjectMapper();
         aiQuotaGate = mock(AiQuotaGate.class);
         identityBindingService = mock(IdentityBindingService.class);
+        amapPoiClient = mock(AmapPoiClient.class);
+        communityResolver = mock(CommunityResolver.class);
+        when(communityResolver.resolve(any(), any())).thenReturn(CommunityResolver.CommunityMatch.empty());
         postService = new PostService(postMapper, mediaMapper, cryptoFacade, validator,
-                mediaAssembler, objectMapper, aiQuotaGate, identityBindingService);
+                mediaAssembler, objectMapper, aiQuotaGate, identityBindingService,
+                amapPoiClient, communityResolver);
 
         when(validator.computeDerived(any(), any(), any()))
                 .thenReturn(new PrecheckResult.Derived(true, false, true));

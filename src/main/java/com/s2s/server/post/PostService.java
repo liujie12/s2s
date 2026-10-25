@@ -24,12 +24,16 @@ import com.s2s.server.post.entity.PostEntity;
 import com.s2s.server.post.entity.PostMediaEntity;
 import com.s2s.server.post.mapper.PostMapper;
 import com.s2s.server.post.mapper.PostMediaMapper;
+import com.s2s.server.search.AmapPoiClient;
+import com.s2s.server.search.CommunityResolver;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -41,6 +45,9 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Service
 public class PostService {
+
+    /** 日志。 */
+    private static final Logger LOG = LoggerFactory.getLogger(PostService.class);
 
     /** 帖子初始状态：已发布上架。 */
     private static final String STATUS_ACTIVE = "active";
@@ -56,12 +63,16 @@ public class PostService {
     private final ObjectMapper objectMapper;
     private final AiQuotaGate aiQuotaGate;
     private final IdentityBindingService identityBindingService;
+    private final AmapPoiClient amapPoiClient;
+    private final CommunityResolver communityResolver;
 
     /**
      * 构造发布服务。
      *
      * @param aiQuotaGate AI 配额闸（B2-4；ai_assisted 发布成功后扣 1 次）
      * @param identityBindingService 身份绑定门禁（B2-6a：未绑手机号禁止发布）
+     * @param amapPoiClient 高德 Web 服务（逆地理取城市 adcode；未配置 Key 自动降级）
+     * @param communityResolver 小区实体归一（发布时把地址收敛为 community_id）
      */
     public PostService(PostMapper postMapper,
             PostMediaMapper mediaMapper,
@@ -70,7 +81,9 @@ public class PostService {
             MediaAssembler mediaAssembler,
             ObjectMapper objectMapper,
             AiQuotaGate aiQuotaGate,
-            IdentityBindingService identityBindingService) {
+            IdentityBindingService identityBindingService,
+            AmapPoiClient amapPoiClient,
+            CommunityResolver communityResolver) {
         this.postMapper = postMapper;
         this.mediaMapper = mediaMapper;
         this.cryptoFacade = cryptoFacade;
@@ -79,6 +92,35 @@ public class PostService {
         this.objectMapper = objectMapper;
         this.aiQuotaGate = aiQuotaGate;
         this.identityBindingService = identityBindingService;
+        this.amapPoiClient = amapPoiClient;
+        this.communityResolver = communityResolver;
+    }
+
+    /**
+     * 发布时把自由文本地址收敛为小区实体（best-effort，失败不阻断发布）。
+     *
+     * <p>为什么必须在发布侧做：地图「小区精确过滤」按 {@code community_id} 等值命中，
+     * 搜索时无法从自由文本可靠还原实体。解析失败（未配置 Key、无匹配、上游超时）
+     * 只记录日志并留空，搜索走「半径 + 地址」近似回退。</p>
+     *
+     * @param post 待落库的帖子实体（原地写入 communityId/communityName）
+     * @param req  发布载荷
+     */
+    private void resolveCommunity(PostEntity post, PostCreateRequest req) {
+        if (req.address() == null || req.address().isBlank()) {
+            return;
+        }
+        try {
+            String cityAdcode = amapPoiClient.reverseAdcode(req.lng(), req.lat());
+            CommunityResolver.CommunityMatch match =
+                    communityResolver.resolve(req.address(), cityAdcode);
+            if (match.communityId() != null) {
+                post.setCommunityId(match.communityId());
+                post.setCommunityName(match.communityName());
+            }
+        } catch (RuntimeException exception) {
+            LOG.warn("发布时小区解析失败，已降级为空：{}", exception.getClass().getSimpleName());
+        }
     }
 
     /**
@@ -121,6 +163,7 @@ public class PostService {
         post.setLng(BigDecimal.valueOf(req.lng()));
         post.setLat(BigDecimal.valueOf(req.lat()));
         post.setAddress(req.address());
+        resolveCommunity(post, req);
         post.setContactChannel(req.contactType());
         post.setContactValueEnc(new byte[0]);
         // [147] DEC-13：发布时由明文派生脱敏掩码落库（详情/联系中转页未拉取态展示用，

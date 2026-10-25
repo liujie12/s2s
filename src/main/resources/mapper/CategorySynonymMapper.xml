@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.s2s.server.search.mapper.CategorySynonymMapper">
+
+    <!--
+      搜索同义词整表加载（U1/U2）：词表为百级小表，加载后在服务层做最长包含匹配，
+      比逐词 LIKE 查询少一轮往返，也避免「词条数量决定 SQL 参数个数」。
+      仅取 enabled=1，weight 降序保证同分时按种子顺序稳定。
+    -->
+    <select id="selectAllEnabled" resultType="com.s2s.server.search.CategorySynonym">
+        SELECT term, pinyin, leaf_category_id, weight
+        FROM category_synonym
+        WHERE enabled = 1
+        ORDER BY weight DESC, id ASC
+    </select>
+
+</mapper>

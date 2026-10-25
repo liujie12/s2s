@@ -77,6 +77,12 @@ public class PostEntity {
     /** 门牌号地址（影响完整度档）。 */
     private String address;
 
+    /** 小区实体 ID（高德住宅区 POI ID；发布时解析，可空）。 */
+    private String communityId;
+
+    /** 小区规范名（回显用，可空）。 */
+    private String communityName;
+
     /** 模板字段实际值 JSON；列名 {@code template_values}。 */
     @TableField("template_values")
     private String templateValues;
@@ -237,6 +243,22 @@ public class PostEntity {
 
     public void setAddress(String address) {
         this.address = address;
+    }
+
+    public String getCommunityId() {
+        return communityId;
+    }
+
+    public void setCommunityId(String communityId) {
+        this.communityId = communityId;
+    }
+
+    public String getCommunityName() {
+        return communityName;
+    }
+
+    public void setCommunityName(String communityName) {
+        this.communityName = communityName;
     }
 
     public String getTemplateValues() {
