@@ -101,6 +101,27 @@ class MapProjection {
     );
   }
 
+  /// 视口像素坐标 → 经纬度（[toPixel] 的逆运算）。
+  ///
+  /// 用途：降级底图上长按取点（语音搜索的空间锚点）。真地图分支由高德
+  /// `onLongPress` 直接回传经纬度，不走本方法。
+  ///
+  /// 参数：
+  /// - [x]/[y]：视口内像素坐标（原点左上角，y 向下）。
+  /// 返回：`(lat, lng)`（GCJ-02）。
+  ({double lat, double lng}) toLatLng(double x, double y) {
+    final double dLatMeters =
+        (viewportSize.height / 2 - y) * metersPerPixel;
+    final double dLngMeters = (x - viewportSize.width / 2) * metersPerPixel;
+    return (
+      lat: centerLat + dLatMeters / _metersPerDegreeLat,
+      lng:
+          centerLng +
+          dLngMeters /
+              (_metersPerDegreeLat * math.cos(centerLat * math.pi / 180)),
+    );
+  }
+
   /// 判断某经纬度点是否已偏离视口中心超过 [thresholdPx]。
   ///
   /// 用途：「回到当前位置」按钮的显隐判据 —— 相机被拖离定位点后按钮出现，

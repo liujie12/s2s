@@ -42,6 +42,8 @@ import '../discovery/discovery_providers.dart';
 import '../discovery/discovery_query.dart';
 import '../discovery/filter_panel.dart';
 import '../discovery/map_dto.dart';
+import '../discovery/search_intent.dart';
+import '../discovery/voice_search_sheet.dart';
 import '../location/location_center.dart';
 import '../location/location_guide.dart';
 import '../location/location_permission.dart';
@@ -55,6 +57,7 @@ import 'clustering/marker_builder.dart';
 import 'fallback_map_canvas.dart';
 import 'map_projection.dart';
 import 'marker_layer.dart';
+import 'search_circle_overlay.dart';
 
 /// 聚合网格边长（逻辑像素）。
 ///
@@ -172,6 +175,15 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   /// 是否已排过「FAB 避让筛选面板」的帧后校正（防重复调度）。
   bool _fabAvoidScheduled = false;
 
+  /// 搜索框控制器（语义搜索把转写文本/原句回显到这里，保持可编辑）。
+  final TextEditingController _searchController = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -206,23 +218,57 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       // 与后续 onCameraMoveEnd 重复同步无副作用：`PinsQuery` 值相等 → 同键 → 不发请求。
       _syncFetchViewport();
     });
+    // 语义搜索结果变化 → 搜索框回显原句/转写文本；有地点锚点时把相机移过去。
+    // 与 locationCenter 监听分开：搜索锚点是**一次性**的，不能写回共享参考中心，
+    // 否则撤销搜索后地图仍停在被搜索出来的地名上。
+    ref.listen(searchIntentProvider, (previous, next) {
+      final intent = next.intent;
+      if (intent == null) return;
+      final echo = intent.queryText;
+      if (echo.isNotEmpty && _searchController.text != echo) {
+        _searchController.text = echo;
+      }
+      final lat = intent.anchorLat;
+      final lng = intent.anchorLng;
+      if (lat != null && lng != null && (lat != _centerLat || lng != _centerLng)) {
+        setState(() {
+          _centerLat = lat;
+          _centerLng = lng;
+        });
+        _pushCameraToAmap();
+        _syncFetchViewport();
+      }
+    });
     final consent = ref.watch(privacyConsentProvider);
     // 探索数据源：真后端 `/map/pins`（[126] 前端段切入；此前读的是本地 mock 样例，
     // 而详情页读真后端 —— 两者 ID 空间不通，正是「详情看不了」的根因）。
     // 五要素随筛选态与视口变化；`PinsQuery` 实现值相等，故同一组合只发一次。
     final filter = ref.watch(discoveryFilterProvider);
+    // 语义搜索是**一次性收窄**（KTD4）：命中项覆盖持久筛选，未命中项沿用持久筛选。
+    // 不写回 DiscoveryFilter —— 撤销时才能干净回到原筛选。
+    final intent = ref.watch(searchIntentProvider).intent;
+    final double queryLat = intent?.anchorLat ?? _fetchLat;
+    final double queryLng = intent?.anchorLng ?? _fetchLng;
     final pinsQuery = PinsQuery(
-      leafCategoryIds: leafCategoryIdsFor(filter.categories),
-      postTypes: postTypesFor(filter.supplyDemand),
-      radius: toApiRadius(filter.radius),
-      gridId: gridIdOf(_fetchLng, _fetchLat),
+      leafCategoryIds: intent != null && intent.leafCategoryIds.isNotEmpty
+          ? intent.leafCategoryIds
+          : leafCategoryIdsFor(filter.categories),
+      postTypes: intent?.postType != null
+          ? <String>[intent!.postType!]
+          : postTypesFor(filter.supplyDemand),
+      radius: intent?.radius ?? toApiRadius(filter.radius),
+      gridId: gridIdOf(queryLng, queryLat),
       // 分类树版本号取本地常量真源（随包发布，与服务端不一致时契约只回 stale 标记、
       // 不报错，故落后是降级而非故障）。
       categoryVersion: categoryTreeVersion,
       // lng/lat/zoom 取**请求视口**而非渲染视口，见 `_fetchLat` 的注释。
-      lng: _fetchLng,
-      lat: _fetchLat,
-      zoom: MapProjection.zoomForMetersPerPixel(_fetchLat, _fetchMetersPerPixel),
+      lng: queryLng,
+      lat: queryLat,
+      zoom: MapProjection.zoomForMetersPerPixel(queryLat, _fetchMetersPerPixel),
+      priceMin: intent?.priceMin,
+      priceMax: intent?.priceMax,
+      // 口语地址命中的小区：等值过滤「只看这个小区」，与价格/半径叠加。
+      communityId: intent?.communityId,
     );
     final pinsAsync = ref.watch(pinsProvider(pinsQuery));
 
@@ -268,7 +314,24 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           // 状态另行以角标提示（见下方 _PinsStatusChip）。
           final merged = pinsAsync.asData?.value;
           final bool clusterMode = merged?.mode == 'cluster';
-          final pinList = merged?.pins ?? const <MapPinDto>[];
+          final rawPins = merged?.pins ?? const <MapPinDto>[];
+          // 搜索圈内精裁（R10）：服务端按网格档位扩圈，边缘会多出圈外点；
+          // 客户端按**真实米数**再过一遍，保证「圈内只显示圈内」。
+          final int? searchRadiusMeters = intent?.radiusMeters;
+          final double circleLat = intent?.anchorLat ?? queryLat;
+          final double circleLng = intent?.anchorLng ?? queryLng;
+          final bool cropByCircle = searchRadiusMeters != null;
+          final pinList = cropByCircle
+              ? rawPins
+                    .where(
+                      (pin) =>
+                          _distanceMeters(circleLat, circleLng, pin.lat, pin.lng) <=
+                          searchRadiusMeters,
+                    )
+                    .toList()
+              : rawPins;
+          // 圈外命中数：同一次服务端结果里被精裁掉的条数（回执「排除多少」）。
+          final int outsideCount = rawPins.length - pinList.length;
           final clusterList = merged?.clusters ?? const <MapClusterDto>[];
           // pins/簇派生量按**引用**记忆化，避免随每一帧重算（见 [_PinsDerived]）。
           final derived = _derivedFor(pinList, clusterList);
@@ -316,6 +379,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 supplyDemandById,
                 frame.offset,
                 frame.layerSize,
+                circleLat: circleLat,
+                circleLng: circleLng,
+                circleRadiusMeters: searchRadiusMeters,
               ),
               // 定位前骨架屏（PRD §6.7 `:1305`）：已授权但尚未取到点 → 遮罩 + 提示。
               if (phase == LocationPermissionPhase.granted &&
@@ -360,6 +426,19 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                       viewportHeight: constraints.maxHeight,
                       pins: pinList,
                     ),
+                  ),
+                ),
+              // 语义搜索回执与可删 chip（R12/R13）：听懂什么 + 排除多少，
+              // 每个条件可点删；未解析字段灰态「没敢用」。
+              if (intent != null)
+                Positioned(
+                  left: AppSpacing.md,
+                  right: AppSpacing.md,
+                  top: AppSpacing.md + 96,
+                  child: _SearchIntentBar(
+                    intent: intent,
+                    insideCount: pinList.length,
+                    outsideCount: outsideCount,
                   ),
                 ),
               const Positioned(
@@ -517,36 +596,63 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       backgroundColor: Color(AppColors.surface),
       elevation: 0,
       titleSpacing: AppSpacing.md,
-      title: SizedBox(
-        height: 32,
-        child: TextField(
-          onChanged: (v) =>
-              ref.read(discoveryFilterProvider.notifier).setKeyword(v),
-          style: TextStyle(fontSize: AppTypeScale.body.size),
-          decoration: InputDecoration(
-            hintText: '搜索保洁/拼车/租房',
-            hintStyle: TextStyle(
-              fontSize: AppTypeScale.body.size,
-              color: Color(AppColors.textPlaceholder),
-            ),
-            prefixIcon: Icon(
-              Icons.search,
-              size: 18,
-              color: Color(AppColors.textPlaceholder),
-            ),
-            // 输入框内高仅 32px，默认的 prefixIcon 约束会把它撑高。
-            prefixIconConstraints: const BoxConstraints(minWidth: 32),
-            filled: true,
-            fillColor: Color(AppColors.background),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.sm,
-            ),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(AppRadius.full),
-              borderSide: BorderSide.none,
+      title: Row(
+        children: [
+          Expanded(
+            child: SizedBox(
+              height: 32,
+              child: TextField(
+                controller: _searchController,
+                // 关键词仍写持久筛选（列表页同源）；地图侧按回车走语义解析。
+                onChanged: (v) =>
+                    ref.read(discoveryFilterProvider.notifier).setKeyword(v),
+                onSubmitted: (value) {
+                  final fix = ref.read(locationFixProvider);
+                  ref.read(searchIntentProvider.notifier).resolve(
+                    text: value,
+                    currentLat: fix?.lat,
+                    currentLng: fix?.lng,
+                  );
+                },
+                style: TextStyle(fontSize: AppTypeScale.body.size),
+                decoration: InputDecoration(
+                  hintText: '搜索保洁/拼车/租房',
+                  hintStyle: TextStyle(
+                    fontSize: AppTypeScale.body.size,
+                    color: Color(AppColors.textPlaceholder),
+                  ),
+                  prefixIcon: Icon(
+                    Icons.search,
+                    size: 18,
+                    color: Color(AppColors.textPlaceholder),
+                  ),
+                  // 输入框内高仅 32px，默认的 prefixIcon 约束会把它撑高。
+                  prefixIconConstraints: const BoxConstraints(minWidth: 32),
+                  filled: true,
+                  fillColor: Color(AppColors.background),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.sm,
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.full),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
             ),
           ),
-        ),
+          // 语音搜索入口（核心亮点）：面板内按住说话，地点锚点默认当前视野中心。
+          IconButton(
+            tooltip: '语音搜索',
+            icon: const Icon(Icons.mic_none, size: 20),
+            color: Color(AppColors.primary),
+            onPressed: () => showVoiceSearchSheet(
+              context,
+              anchorLat: _centerLat,
+              anchorLng: _centerLng,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -559,15 +665,20 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   /// - [markers]：本帧要画的 Marker（坐标属于精算视口，见 [_markerLayerFrame]）；
   /// - [supplyDemandById]：Marker 供需查表；
   /// - [markerOffset]：Marker 坐标 → 屏幕坐标的平移量；
-  /// - [markerLayerSize]：Marker 坐标系画布尺寸（= 精算视口尺寸）。
+  /// - [markerLayerSize]：Marker 坐标系画布尺寸（= 精算视口尺寸）；
+  /// - [circleLat]/[circleLng]：搜索圈圆心（无锚点时取请求视口中心）；
+  /// - [circleRadiusMeters]：搜索圈真实半径（null 表示不画圈）。
   Widget _buildMapBody(
     PrivacyConsentStatus consent,
     MapProjection projection,
     List<MapMarker> markers,
     Map<String, SupplyDemand> supplyDemandById,
     Offset markerOffset,
-    Size markerLayerSize,
-  ) {
+    Size markerLayerSize, {
+    required double circleLat,
+    required double circleLng,
+    required int? circleRadiusMeters,
+  }) {
     // 🔴 上架驳回点：构建 AMapWidget 即触发高德原生 SDK 初始化。
     // 未同意隐私协议时走到这一步就是违规，判据见 amap_init_guard.dart 文件头。
     //
@@ -598,6 +709,18 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           GestureDetector(
             onScaleStart: (_) => _scaleStartMetersPerPixel = _metersPerPixel,
             onScaleUpdate: (details) => _onScaleUpdate(details, projection),
+            // 降级底图没有原生相机，长按取点由本层把像素换算成经纬度。
+            onLongPressStart: (details) {
+              final point = projection.toLatLng(
+                details.localPosition.dx,
+                details.localPosition.dy,
+              );
+              showVoiceSearchSheet(
+                context,
+                anchorLat: point.lat,
+                anchorLng: point.lng,
+              );
+            },
             // 降级底图没有原生相机，故没有 onCameraMoveEnd；若不同步，这条路
             // 仍会退化成「每帧一个请求」的老问题。
             onScaleEnd: (_) => _syncFetchViewport(),
@@ -608,6 +731,16 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               notice: consent == PrivacyConsentStatus.agreed
                   ? '高德地图 Key 未配置，当前为示意底图'
                   : '示意底图 · 位置为相对分布，不代表真实地理位置',
+            ),
+          ),
+        // 搜索圈（R8/R10）：圈外压暗、圈边描线；在 Marker 之下，避免压住 Pin。
+        if (circleRadiusMeters != null)
+          Positioned.fill(
+            child: SearchCircleOverlay(
+              projection: projection,
+              anchorLat: circleLat,
+              anchorLng: circleLng,
+              radiusMeters: circleRadiusMeters,
             ),
           ),
         // 拖动中降级渲染（见 [_markerLayerFrame]）：
@@ -679,6 +812,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         _syncCameraFromNative();
       },
       onCameraMove: _onCameraMove,
+      // 长按地图任意点 → 以该点为空间锚点唤起语音搜索（R1「按压点即空间锚点」）。
+      onLongPress: (latLng) => showVoiceSearchSheet(
+        context,
+        anchorLat: latLng.latitude,
+        anchorLng: latLng.longitude,
+      ),
       // 手势结束才同步请求视口 → 一次拖动只发一次请求。
       // 用插件原生回调而非自写 debounce 计时器：不引入「多久算停」的魔法时长。
       onCameraMoveEnd: _onCameraMoveEnd,
@@ -1813,4 +1952,262 @@ class _LocateFailedBanner extends StatelessWidget {
       ),
     );
   }
+}
+
+/// 两点间球面距离（米），Haversine。
+///
+/// 参数：
+/// - [lat1]/[lng1] 起点纬度/经度；
+/// - [lat2]/[lng2] 终点纬度/经度。
+/// 返回：球面距离（米）。
+double _distanceMeters(double lat1, double lng1, double lat2, double lng2) {
+  const earthRadiusMeters = 6371000.0;
+  final dLat = (lat2 - lat1) * math.pi / 180;
+  final dLng = (lng2 - lng1) * math.pi / 180;
+  final a =
+      math.sin(dLat / 2) * math.sin(dLat / 2) +
+      math.cos(lat1 * math.pi / 180) *
+          math.cos(lat2 * math.pi / 180) *
+          math.sin(dLng / 2) *
+          math.sin(dLng / 2);
+  return 2 * earthRadiusMeters * math.asin(math.min(1, math.sqrt(a)));
+}
+
+/// 语义搜索回执条：听懂什么 + 圈内/圈外计数 + 逐项可删 + 撤销。
+///
+/// R12/R13：每个解析出的条件渲染成可删 chip；越界/未解析字段灰态「没敢用」；
+/// 收窄完成后给一行回执，避免「地图莫名其妙变空」。
+class _SearchIntentBar extends ConsumerWidget {
+  /// 构造回执条。
+  ///
+  /// 参数：
+  /// - [intent] 当前槽位卡；
+  /// - [insideCount] 圈内命中数；
+  /// - [outsideCount] 圈外被精裁掉的命中数。
+  const _SearchIntentBar({
+    required this.intent,
+    required this.insideCount,
+    required this.outsideCount,
+  });
+
+  /// 当前槽位卡。
+  final SearchIntent intent;
+
+  /// 圈内命中数。
+  final int insideCount;
+
+  /// 圈外命中数。
+  final int outsideCount;
+
+  /// 低置信小区点选：不猜，让用户从高德候选里选一个。
+  ///
+  /// 参数：
+  /// - [context] 页面上下文；
+  /// - [notifier] 语义搜索状态；
+  /// - [intent] 当前槽位卡（携带候选）。
+  void _showCommunityPicker(
+    BuildContext context,
+    SearchIntentNotifier notifier,
+    SearchIntent intent,
+  ) {
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: EdgeInsets.all(AppSpacing.md),
+              child: Text(
+                '「${intent.queryText}」是指哪个小区？',
+                style: TextStyle(
+                  fontSize: AppTypeScale.body.size,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            for (final candidate in intent.communityCandidates)
+              ListTile(
+                title: Text(candidate.name),
+                subtitle: Text(
+                  candidate.district.isEmpty ? '小区' : candidate.district,
+                ),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  notifier.update(intent.selectCommunity(candidate));
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final notifier = ref.read(searchIntentProvider.notifier);
+    final state = ref.watch(searchIntentProvider);
+    final chips = <Widget>[
+      for (var i = 0; i < intent.categoryLabels.length; i++)
+        _intentChip(
+          label: intent.categoryLabels[i],
+          onDeleted: () => notifier.update(intent.withoutCategoryAt(i)),
+        ),
+      if (intent.postType != null)
+        _intentChip(
+          label: postTypeLabel(intent.postType),
+          onDeleted: () => notifier.update(intent.withoutPostType()),
+        ),
+      if (intent.radius != null)
+        _intentChip(
+          label: radiusTierLabel(intent.radius),
+          onDeleted: () => notifier.update(intent.withoutRadius()),
+        ),
+      if (intent.communityId != null)
+        _intentChip(
+          label: intent.communityLabel.isEmpty ? '小区' : intent.communityLabel,
+          onDeleted: () => notifier.update(intent.withoutCommunity()),
+        )
+      else if (intent.communityCandidates.isNotEmpty)
+        ActionChip(
+          label: Text('选小区（${intent.communityCandidates.length}）'),
+          visualDensity: VisualDensity.compact,
+          onPressed: () => _showCommunityPicker(context, notifier, intent),
+        ),
+      if (intent.priceLabel.isNotEmpty)
+        _intentChip(
+          label: intent.priceLabel,
+          onDeleted: () => notifier.update(intent.withoutPrice()),
+        ),
+      // 小区已作为独立 chip 回显时不再重复显示锚点 chip。
+      if (intent.communityId == null &&
+          intent.anchorLat != null &&
+          intent.anchorLng != null)
+        _intentChip(
+          label: intent.anchorName ?? '地图选点',
+          onDeleted: () => notifier.update(intent.withoutAnchor()),
+        ),
+      // 未解析字段灰态：不给删除按钮（本来就没生效），只提示「没敢用」。
+      for (final field in intent.unresolvedFields)
+        Chip(
+          label: Text('${_unresolvedLabel(field)} · 没敢用'),
+          visualDensity: VisualDensity.compact,
+          backgroundColor: const Color(AppColors.background),
+          labelStyle: TextStyle(
+            fontSize: AppTypeScale.small.size,
+            color: Color(AppColors.textPlaceholder),
+          ),
+          side: BorderSide(color: Color(AppColors.border)),
+        ),
+    ];
+
+    return Container(
+      padding: EdgeInsets.all(AppSpacing.sm),
+      decoration: BoxDecoration(
+        color: const Color(AppColors.surface).withValues(alpha: 0.96),
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x14000000),
+            blurRadius: 8,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  intent.hasNoSlot
+                      ? '没听懂具体条件，换个说法试试'
+                      : '听懂 ${chips.length} 项 · 圈内 $insideCount 条'
+                            '${outsideCount > 0 ? ' · 圈外还有 $outsideCount 条' : ''}'
+                            '${insideCount == 0 && intent.communityId != null ? ' · 该小区暂无信息，可删除小区条件' : ''}',
+                  style: TextStyle(
+                    fontSize: AppTypeScale.small.size,
+                    color: const Color(AppColors.textSecondary),
+                  ),
+                ),
+              ),
+              if (state.canUndo)
+                TextButton(
+                  onPressed: notifier.undo,
+                  child: const Text('撤销'),
+                ),
+              TextButton(
+                onPressed: notifier.clear,
+                child: const Text('清除'),
+              ),
+            ],
+          ),
+          // 降级提示：AI 超时/不可用时按词表理解，明确告知而不是假装听懂。
+          if (intent.degraded) ...[
+            const SizedBox(height: AppSpacing.xs),
+            Text(
+              'AI 暂时不可用，已按关键词理解',
+              style: TextStyle(
+                fontSize: AppTypeScale.small.size,
+                color: const Color(AppColors.textPlaceholder),
+              ),
+            ),
+          ],
+          if (chips.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.xs),
+            Wrap(spacing: AppSpacing.xs, runSpacing: AppSpacing.xs, children: chips),
+          ],
+          // 零结果改写入口（R11）：只给显式动作，绝不自动改用户范围。
+          if (insideCount == 0) ...[
+            const SizedBox(height: AppSpacing.xs),
+            Row(
+              children: [
+                TextButton(
+                  onPressed: () => notifier.update(intent.widenRadius()),
+                  child: const Text('扩大范围'),
+                ),
+                TextButton(
+                  onPressed: () => notifier.update(intent.withoutPrice()),
+                  child: const Text('放宽价格'),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// 构造可删除的条件 chip。
+  ///
+  /// 参数：[label] 文案；[onDeleted] 删除回调。
+  /// 返回：条件 chip 控件。
+  Widget _intentChip({required String label, required VoidCallback onDeleted}) {
+    return InputChip(
+      label: Text(label),
+      visualDensity: VisualDensity.compact,
+      onDeleted: onDeleted,
+      deleteIconColor: const Color(AppColors.textSecondary),
+      backgroundColor: const Color(AppColors.background),
+      labelStyle: TextStyle(
+        fontSize: AppTypeScale.small.size,
+        color: const Color(AppColors.textPrimary),
+      ),
+      side: BorderSide(color: Color(AppColors.border)),
+    );
+  }
+
+  /// 未解析字段的显示名。
+  ///
+  /// 参数：[field] 契约字段名。
+  /// 返回：中文文案。
+  String _unresolvedLabel(String field) => switch (field) {
+    'location' => '地点',
+    'price' => '价格',
+    'radius' => '范围',
+    'category' => '分类',
+    'post_type' => '供需',
+    _ => field,
+  };
 }

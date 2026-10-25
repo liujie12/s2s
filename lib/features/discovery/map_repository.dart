@@ -38,6 +38,9 @@ class MapRepository {
   ///   [categoryVersion]   分类树版本号（缓存键要素 5）；
   ///   [lng]、[lat]        视野中心（GCJ-02）；
   ///   [zoom]              地图缩放级别（决定 cluster/pin 模式切换）。
+  ///   [priceMin]          价格下限（元，可空；语义搜索一次性收窄）。
+  ///   [priceMax]          价格上限（元，可空；设置时面议被排除）。
+  ///   [communityId]       小区实体 ID（可空；口语地址精确过滤）。
   ///   [interactionId]     交互起点生成的 X-Interaction-Id；null 由拦截器兜底。
   /// 返回：[PinsCompactDto]（紧凑数组已按 schema 解析）。
   /// 抛出：[ApiException] 信封业务错误（含 40001 五要素缺失）/解析失败。
@@ -50,6 +53,9 @@ class MapRepository {
     required double lng,
     required double lat,
     required double zoom,
+    double? priceMin,
+    double? priceMax,
+    String? communityId,
     String? interactionId,
   }) async {
     final response = await _dio.get<Object?>(
@@ -66,6 +72,10 @@ class MapRepository {
         'lng': lng,
         'lat': lat,
         'zoom': zoom,
+        // 缺省即不传：传空串会被服务端判非法值。
+        'price_min': ?priceMin,
+        'price_max': ?priceMax,
+        'community_id': ?communityId,
       },
       options: _pinsOptions(interactionId),
     );

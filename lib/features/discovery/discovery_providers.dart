@@ -35,6 +35,9 @@ class PinsQuery {
     required this.lng,
     required this.lat,
     required this.zoom,
+    this.priceMin,
+    this.priceMax,
+    this.communityId,
   });
 
   /// 叶子类目 ID（见 `leafCategoryIdsFor`）。
@@ -59,6 +62,18 @@ class PinsQuery {
   /// 地图缩放级别（决定 pin/cluster 模式）。
   final double zoom;
 
+  /// 价格下限（元，可空；语义搜索一次性收窄，不写持久筛选）。
+  final double? priceMin;
+
+  /// 价格上限（元，可空；设置时面议被排除）。
+  final double? priceMax;
+
+  /// 小区实体 ID（可空；口语地址精确过滤）。
+  final String? communityId;
+
+  /// 是否带价格收窄。
+  bool get hasPriceFilter => priceMin != null || priceMax != null;
+
   @override
   bool operator ==(Object other) =>
       other is PinsQuery &&
@@ -69,7 +84,10 @@ class PinsQuery {
       other.categoryVersion == categoryVersion &&
       other.lng == lng &&
       other.lat == lat &&
-      other.zoom == zoom;
+      other.zoom == zoom &&
+      other.priceMin == priceMin &&
+      other.priceMax == priceMax &&
+      other.communityId == communityId;
 
   @override
   int get hashCode => Object.hash(
@@ -81,6 +99,9 @@ class PinsQuery {
         lng,
         lat,
         zoom,
+        priceMin,
+        priceMax,
+        communityId,
       );
 }
 
@@ -200,6 +221,9 @@ final pinsProvider = FutureProvider.autoDispose.family<MergedPins, PinsQuery>((
             lng: query.lng,
             lat: query.lat,
             zoom: query.zoom,
+            priceMin: query.priceMin,
+            priceMax: query.priceMax,
+            communityId: query.communityId,
           ),
       ]);
     } finally {
@@ -262,6 +286,9 @@ String? _pinCacheKeyOf(PinsQuery query, String postType) {
     radius: query.radius,
     gridId: query.gridId,
     categoryVersion: query.categoryVersion,
+    priceMin: query.priceMin,
+    priceMax: query.priceMax,
+    communityId: query.communityId,
   );
 }
 

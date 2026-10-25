@@ -39,11 +39,18 @@ bool hasAllPinCacheElements({
 /// 分类 ID 集合排序后拼装：集合无序，不排序会对同一语义产生「等价键的多份缓存」，
 /// 既浪费容量又让命中率失真（前端设计 §16.2）。
 ///
+/// 价格区间是语义搜索的一次性收窄条件（方案 KTD3/KTD4）：不设区间时不追加后缀，
+/// 与旧键逐字一致（历史缓存继续命中）；设了区间才追加 `:p{min}-{max}`，
+/// 避免「带价格过滤的点集」被当成「全量点集」复用。
+///
 /// [leafCategoryIds] 已选叶子类目 ID 集合
 /// [postType]        供需态
 /// [radius]          半径档
 /// [gridId]          网格 ID
 /// [categoryVersion] 分类树版本号
+/// [priceMin]        价格下限（元，可空）
+/// [priceMax]        价格上限（元，可空）
+/// [communityId]     小区实体 ID（可空；口语地址精确过滤，附在键尾）
 ///
 /// 返回：可直接用于本地 KV 存储的字符串键
 String buildPinCacheKey({
@@ -52,7 +59,17 @@ String buildPinCacheKey({
   required String radius,
   required String gridId,
   required String categoryVersion,
+  double? priceMin,
+  double? priceMax,
+  String? communityId,
 }) {
   final sorted = [...leafCategoryIds]..sort();
-  return 'pins:${sorted.join(',')}:$postType:$radius:$gridId:$categoryVersion';
+  final priceSuffix = (priceMin == null && priceMax == null)
+      ? ''
+      : ':p${priceMin ?? ''}-${priceMax ?? ''}';
+  final communitySuffix = (communityId == null || communityId.isEmpty)
+      ? ''
+      : ':c$communityId';
+  return 'pins:${sorted.join(',')}:$postType:$radius:$gridId:$categoryVersion'
+      '$priceSuffix$communitySuffix';
 }
