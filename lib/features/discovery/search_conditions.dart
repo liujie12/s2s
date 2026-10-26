@@ -6,6 +6,7 @@
 library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../domain/listing_category.dart';
 import 'condition_slots.dart';
@@ -24,7 +25,7 @@ typedef ConditionsSnapshot = ({DiscoveryFilter filter, SearchIntent? intent});
 /// 无法跨页共享；切视图后会出现「输入框空着但 chip 在过滤」。
 class SearchConditionsState {
   /// 构造状态。
-  const SearchConditionsState({this.queryText = '', this.snapshot});
+  const SearchConditionsState({this.queryText = '', this.snapshot, this.interactionId});
 
   /// 当前搜索输入文本（只用于回显，不参与过滤）。
   final String queryText;
@@ -32,14 +33,27 @@ class SearchConditionsState {
   /// 可撤销的快照；null 表示无可撤销状态。
   final ConditionsSnapshot? snapshot;
 
+  /// 本次搜索的交互标识（解析与取数共用；null 表示当前没有进行中的搜索）。
+  ///
+  /// 由门面持有而不是每个请求各自生成：拦截器只在头缺失时兜底补新 UUID，
+  /// 两条请求各自生成就会拿到不同标识，服务端日志无法成对检索。
+  final String? interactionId;
+
   /// 是否可撤销。
   bool get canUndo => snapshot != null;
 
   /// 复制并替换字段。
-  SearchConditionsState copyWith({String? queryText, ConditionsSnapshot? snapshot, bool clearSnapshot = false}) {
+  SearchConditionsState copyWith({
+    String? queryText,
+    ConditionsSnapshot? snapshot,
+    bool clearSnapshot = false,
+    String? interactionId,
+    bool clearInteractionId = false,
+  }) {
     return SearchConditionsState(
       queryText: queryText ?? this.queryText,
       snapshot: clearSnapshot ? null : (snapshot ?? this.snapshot),
+      interactionId: clearInteractionId ? null : (interactionId ?? this.interactionId),
     );
   }
 }
@@ -212,7 +226,8 @@ class SearchConditionsNotifier extends Notifier<SearchConditionsState> {
   /// 清除搜索后仍应生效（R23）。
   ///
   /// 参数：[text] 文本（可空）；[voiceMediaId]/[voiceBase64]/[voiceContentType]
-  /// 语音入口三选一；[anchorLat]/[anchorLng] 长按点；[currentLat]/[currentLng] 定位。
+  /// 语音入口三选一；[anchorLat]/[anchorLng] 长按点；[currentLat]/[currentLng] 定位；
+  /// [retry] 是否为「没听懂」后的重试（复用同一交互标识，视作同一次搜索的修正）。
   /// 返回：[Future] 完成信号。
   Future<void> submit({
     String? text,
@@ -223,8 +238,14 @@ class SearchConditionsNotifier extends Notifier<SearchConditionsState> {
     double? anchorLng,
     double? currentLat,
     double? currentLng,
+    bool retry = false,
   }) async {
     if (text != null) state = state.copyWith(queryText: text);
+    // 重试沿用同一标识；新提交换新标识（一次搜索一对请求）。
+    final String interactionId = retry && state.interactionId != null
+        ? state.interactionId!
+        : const Uuid().v4();
+    state = state.copyWith(interactionId: interactionId);
     _recordSnapshot();
     await ref.read(searchIntentProvider.notifier).resolve(
       text: text,
@@ -235,6 +256,7 @@ class SearchConditionsNotifier extends Notifier<SearchConditionsState> {
       anchorLng: anchorLng,
       currentLat: currentLat,
       currentLng: currentLng,
+      interactionId: interactionId,
     );
     final SearchIntent? intent = _intent;
     if (intent == null) return;

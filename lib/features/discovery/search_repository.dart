@@ -28,7 +28,8 @@ class SearchRepository {
   /// - [voiceBase64] 游客音频 base64（可空，不落 OSS）；
   /// - [voiceContentType] 游客音频 MIME（可空，后端缺省 audio/mp4）；
   /// - [anchorLat]/[anchorLng] 长按地图锚点（可空）；
-  /// - [currentLat]/[currentLng] 当前定位（可空）。
+  /// - [currentLat]/[currentLng] 当前定位（可空）；
+  /// - [interactionId] 一次搜索的交互标识（与后续取数共用，可空）。
   /// 返回：[SearchIntent] 槽位卡。
   /// 抛出：[ApiException] 信封业务错误（40001/42901/50301）与解析失败。
   Future<SearchIntent> resolve({
@@ -40,6 +41,7 @@ class SearchRepository {
     double? anchorLng,
     double? currentLat,
     double? currentLng,
+    String? interactionId,
   }) async {
     final payload = <String, Object?>{
       if (text != null && text.trim().isNotEmpty) 'text': text.trim(),
@@ -53,7 +55,13 @@ class SearchRepository {
     };
     // 解析是「语音 ASR + 词表 + 可能 AI 兜底」的组合链路，按全局 10s 读超时；
     // 不套 AI 发布那档 5s（那条链路有骨架屏兜底，本链路失败即整句不可用）。
-    final response = await _dio.post<Object?>('/search/resolve', data: payload);
+    final response = await _dio.post<Object?>(
+      '/search/resolve',
+      data: payload,
+      options: interactionId == null
+          ? null
+          : Options(headers: {'X-Interaction-Id': interactionId}),
+    );
     return SearchIntent.fromJson(response.data);
   }
 }

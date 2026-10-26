@@ -21,6 +21,7 @@ import '../../core/cache/pin_cache_key.dart';
 import '../perf/layer_switch_recorder.dart';
 import 'map_dto.dart';
 import 'map_repository.dart';
+import 'search_conditions.dart';
 import 'stress_data.dart';
 
 /// 地图图钉请求参数（值相等即复用，故实现 ==/hashCode）。
@@ -224,6 +225,8 @@ final pinsProvider = FutureProvider.autoDispose.family<MergedPins, PinsQuery>((
             priceMin: query.priceMin,
             priceMax: query.priceMax,
             communityId: query.communityId,
+            // 与解析共用同一次搜索的交互标识；缺失时由拦截器兜底补新值。
+            interactionId: ref.read(searchConditionsProvider).interactionId,
           ),
       ]);
     } finally {
@@ -612,6 +615,7 @@ class SearchPager extends AsyncNotifier<SearchPageState> {
       sort: query.sort,
       page: page,
       pageSize: query.pageSize,
+      interactionId: ref.read(searchConditionsProvider).interactionId,
     );
 
     return MergedSearchPage(

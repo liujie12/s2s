@@ -588,7 +588,8 @@ class SearchIntentNotifier extends Notifier<SearchIntentState> {
   /// - [voiceBase64] 游客音频 base64（可空）；
   /// - [voiceContentType] 游客音频 MIME（可空）；
   /// - [anchorLat]/[anchorLng] 长按地图锚点（可空）；
-  /// - [currentLat]/[currentLng] 当前定位（可空）。
+  /// - [currentLat]/[currentLng] 当前定位（可空）；
+  /// - [interactionId] 一次搜索的交互标识（解析与后续取数共用）。
   /// 返回：[Future] 完成信号（失败写入 error，不向 UI 抛出）。
   Future<void> resolve({
     String? text,
@@ -599,6 +600,7 @@ class SearchIntentNotifier extends Notifier<SearchIntentState> {
     double? anchorLng,
     double? currentLat,
     double? currentLng,
+    String? interactionId,
   }) async {
     state = SearchIntentState(intent: state.intent, previous: state.previous, busy: true);
     try {
@@ -611,6 +613,7 @@ class SearchIntentNotifier extends Notifier<SearchIntentState> {
         anchorLng: anchorLng,
         currentLat: currentLat,
         currentLng: currentLng,
+        interactionId: interactionId,
       );
       state = SearchIntentState(
         intent: intent,

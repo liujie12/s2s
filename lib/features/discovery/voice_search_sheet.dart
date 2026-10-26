@@ -14,6 +14,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../../design_tokens.dart';
 import '../auth/auth_repository.dart';
+import '../discovery/search_conditions.dart';
 import '../discovery/search_intent.dart';
 import '../media/audio_recorder.dart';
 import '../media/media_picker.dart';
@@ -177,7 +178,8 @@ class _VoiceSearchSheetState extends ConsumerState<VoiceSearchSheet> {
     String? voiceBase64,
     String? voiceContentType,
   }) async {
-    await ref.read(searchIntentProvider.notifier).resolve(
+    // 经条件门面提交：它负责交互标识与文本回显，语音链不再自建一份入口。
+    await ref.read(searchConditionsProvider.notifier).submit(
       text: text,
       voiceMediaId: voiceMediaId,
       voiceBase64: voiceBase64,

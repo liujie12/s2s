@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zhaoyazhao/domain/listing_category.dart';
@@ -7,6 +8,31 @@ import 'package:zhaoyazhao/features/discovery/effective_filter.dart';
 import 'package:zhaoyazhao/features/discovery/effective_filter_provider.dart';
 import 'package:zhaoyazhao/features/discovery/search_conditions.dart';
 import 'package:zhaoyazhao/features/discovery/search_intent.dart';
+import 'package:zhaoyazhao/features/discovery/search_repository.dart';
+
+/// 解析仓库替身：只记录收到的交互标识，不发网络请求。
+class _FakeSearchRepository extends SearchRepository {
+  _FakeSearchRepository() : super(Dio());
+
+  /// 每次解析收到的交互标识（按调用顺序）。
+  final List<String?> seen = <String?>[];
+
+  @override
+  Future<SearchIntent> resolve({
+    String? text,
+    String? voiceMediaId,
+    String? voiceBase64,
+    String? voiceContentType,
+    double? anchorLat,
+    double? anchorLng,
+    double? currentLat,
+    double? currentLng,
+    String? interactionId,
+  }) async {
+    seen.add(interactionId);
+    return SearchIntent(queryText: text ?? '');
+  }
+}
 
 /// 条件写入门面的单测（U3）。
 ///
@@ -109,6 +135,31 @@ void main() {
       expect(container.read(discoveryFilterProvider).priceMin, isNull);
       expect(container.read(searchIntentProvider).intent?.radius, '5');
       expect(container.read(searchConditionsProvider).canUndo, isFalse);
+    });
+  });
+
+  group('交互标识', () {
+    test('提交生成标识，重试复用、新提交换新、清除置空', () async {
+      final repo = _FakeSearchRepository();
+      final container = ProviderContainer(
+        overrides: [searchRepositoryProvider.overrideWithValue(repo)],
+      );
+      addTearDown(container.dispose);
+      final notifier = container.read(searchConditionsProvider.notifier);
+
+      await notifier.submit(text: '合租');
+      final String? first = container.read(searchConditionsProvider).interactionId;
+      expect(first, isNotNull);
+      expect(repo.seen.last, first);
+
+      await notifier.submit(text: '合租', retry: true);
+      expect(repo.seen.last, first, reason: '重试应复用同一标识');
+
+      await notifier.submit(text: '保洁');
+      expect(repo.seen.last, isNot(first), reason: '新一次搜索应换新标识');
+
+      notifier.clearAll();
+      expect(container.read(searchConditionsProvider).interactionId, isNull);
     });
   });
 

@@ -46,7 +46,6 @@ import '../discovery/effective_filter_provider.dart';
 import '../discovery/filter_panel.dart';
 import '../discovery/map_dto.dart';
 import '../discovery/search_conditions.dart';
-import '../discovery/search_intent.dart';
 import '../discovery/voice_search_sheet.dart';
 import '../location/location_center.dart';
 import '../location/location_guide.dart';
@@ -220,19 +219,20 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       // 与后续 onCameraMoveEnd 重复同步无副作用：`PinsQuery` 值相等 → 同键 → 不发请求。
       _syncFetchViewport();
     });
-    // 语义搜索结果变化 → 有地点锚点时把相机移过去（文本回显由条件带自己读门面）。
+    // 生效条件里的地点锚点变化 → 把相机移过去（文本回显由条件带自己读门面）。
     // 与 locationCenter 监听分开：搜索锚点是**一次性**的，不能写回共享参考中心，
     // 否则撤销搜索后地图仍停在被搜索出来的地名上。
-    ref.listen(searchIntentProvider, (previous, next) {
-      final intent = next.intent;
-      if (intent == null) return;
-      final lat = intent.anchorLat;
-      final lng = intent.anchorLng;
-      if (lat != null && lng != null && (lat != _centerLat || lng != _centerLng)) {
+    ref.listen(
+      effectiveFilterProvider.select((e) => (e.anchorLat, e.anchorLng, e.radiusMeters)),
+      (previous, next) {
+        final double? lat = next.$1;
+        final double? lng = next.$2;
+        if (lat == null || lng == null) return;
+        if (lat == _centerLat && lng == _centerLng) return;
         // 地址/小区筛选命中 → 相机直接跳到目标区域（2026-10-25 用户裁定）。
         // 有半径档时顺带把直径装进短边，落到目标区域就能看全筛选范围；
         // 无半径档则保持当前缩放（不擅自改变用户视野尺度）。
-        final int? radiusMeters = intent.radiusMeters;
+        final int? radiusMeters = next.$3;
         setState(() {
           _centerLat = lat;
           _centerLng = lng;
@@ -252,8 +252,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         });
         _pushCameraToAmap();
         _syncFetchViewport();
-      }
-    });
+      },
+    );
     final consent = ref.watch(privacyConsentProvider);
     // 探索数据源：真后端 `/map/pins`（[126] 前端段切入；此前读的是本地 mock 样例，
     // 而详情页读真后端 —— 两者 ID 空间不通，正是「详情看不了」的根因）。
