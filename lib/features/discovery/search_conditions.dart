@@ -212,6 +212,16 @@ class SearchConditionsNotifier extends Notifier<SearchConditionsState> {
     }
   }
 
+  /// 采用某个小区候选（低置信点选后调用）。
+  ///
+  /// 参数：[candidate] 用户选中的候选；返回：无。
+  void selectCommunity(CommunityCandidate candidate) {
+    final SearchIntent? intent = _intent;
+    if (intent == null) return;
+    _recordSnapshot();
+    _writeIntent(intent.selectCommunity(candidate));
+  }
+
   /// 结束整次搜索（清除）。
   ///
   /// 文本、槽位、撤销栈一并清空，持久筛选逐字段保持不变（R14）。

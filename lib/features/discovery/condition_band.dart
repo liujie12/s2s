@@ -14,7 +14,6 @@ import '../../design_tokens.dart';
 import 'effective_filter.dart';
 import 'effective_filter_provider.dart';
 import 'search_conditions.dart';
-import 'search_intent.dart';
 
 /// 两行条件带。
 class ConditionBand extends ConsumerStatefulWidget {
@@ -103,10 +102,9 @@ class _ConditionBandState extends ConsumerState<ConditionBand> {
 
     final SearchConditionsState conditions = ref.watch(searchConditionsProvider);
     final EffectiveFilter effective = ref.watch(effectiveFilterProvider);
-    final SearchIntentState intentState = ref.watch(searchIntentProvider);
-    final bool busy = intentState.busy;
-    final bool noUnderstand =
-        !busy && intentState.intent != null && intentState.intent!.hasNoSlot;
+    final SearchStatus status = ref.watch(searchStatusProvider);
+    final bool busy = status.busy;
+    final bool noUnderstand = status.noUnderstand;
 
     return Container(
       padding: const EdgeInsets.all(AppSpacing.sm),

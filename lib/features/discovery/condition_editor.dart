@@ -15,7 +15,6 @@ import 'discovery_filter.dart';
 import 'effective_filter.dart';
 import 'effective_filter_provider.dart';
 import 'search_conditions.dart';
-import 'search_intent.dart';
 
 /// 打开某枚 chip 的改值层。
 ///
@@ -273,8 +272,7 @@ Future<void> _showPriceSheet(BuildContext context, WidgetRef ref) async {
 
 /// 小区候选重选（只从解析给出的候选里选，不调起地图选点）。
 Future<void> _showCommunitySheet(BuildContext context, WidgetRef ref) async {
-  final candidates = ref.read(searchIntentProvider).intent?.communityCandidates ??
-      const <CommunityCandidate>[];
+  final candidates = ref.read(effectiveFilterProvider).communityCandidates;
   if (candidates.isEmpty) return;
   await showModalBottomSheet<void>(
     context: context,
@@ -289,12 +287,7 @@ Future<void> _showCommunitySheet(BuildContext context, WidgetRef ref) async {
               title: Text(candidate.name, style: _bodyStyle()),
               subtitle: Text(candidate.district, style: _captionStyle()),
               onTap: () {
-                final intent = ref.read(searchIntentProvider).intent;
-                if (intent != null) {
-                  ref.read(searchIntentProvider.notifier).replace(
-                        intent.selectCommunity(candidate),
-                      );
-                }
+                ref.read(searchConditionsProvider.notifier).selectCommunity(candidate);
                 Navigator.of(sheetContext).pop();
               },
             ),

@@ -77,6 +77,7 @@ class EffectiveFilter {
     this.anchorSource,
     this.communityId,
     this.communityName,
+    this.communityCandidates = const <CommunityCandidate>[],
     this.active = false,
   });
 
@@ -115,6 +116,9 @@ class EffectiveFilter {
 
   /// 小区规范名。
   final String? communityName;
+
+  /// 低置信时的小区候选（供 chip 点开重选）。
+  final List<CommunityCandidate> communityCandidates;
 
   /// 条件带要渲染的 chip（已排序）。
   final List<ConditionChip> chips;
@@ -339,6 +343,9 @@ EffectiveFilter effectiveFilterOf(DiscoveryFilter filter, SearchIntent? intent) 
     anchorSource: anchorSource,
     communityId: anchorCleared ? null : intent?.communityId,
     communityName: communityName,
+    communityCandidates: anchorCleared
+        ? const <CommunityCandidate>[]
+        : (intent?.communityCandidates ?? const <CommunityCandidate>[]),
     chips: chips,
     unresolvedLabels: [
       for (final String field in intent?.unresolvedFields ?? const <String>[])
