@@ -69,6 +69,11 @@ void main() {
       final l = _listing(price: 12.5, unit: '件');
       expect(l.priceLabel, '12.50 元/件');
     });
+
+    test('单位自带「元」时不再补前缀 —— 不能拼出「200 元/元」', () {
+      final l = _listing(price: 200, unit: '元');
+      expect(l.priceLabel, '200 元');
+    });
   });
 
   group('剩余有效期（§5.11 默认 7 天）', () {

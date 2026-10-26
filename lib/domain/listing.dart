@@ -90,7 +90,10 @@ String? formatPriceLabel(double? price, String? priceUnit) {
   final String amount = price % 1 == 0
       ? price.toInt().toString()
       : price.toStringAsFixed(2);
-  return priceUnit == null ? '$amount 元' : '$amount 元/$priceUnit';
+  if (priceUnit == null) return '$amount 元';
+  // 模板的 price_units 本身就可能以「元」开头（如「元」「元/小时」），
+  // 再补「元/」会拼出「200 元/元」。只对不含「元」的单位补前缀。
+  return priceUnit.startsWith('元') ? '$amount $priceUnit' : '$amount 元/$priceUnit';
 }
 
 /// 地球平均半径（米）。

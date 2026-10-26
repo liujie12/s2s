@@ -288,7 +288,15 @@ class _ConditionChipView extends StatelessWidget {
         label: Text(chip.label),
         onPressed: onTap,
         onDeleted: onDelete,
-        deleteIcon: onDelete == null ? null : const Icon(Icons.close, size: 14),
+        // × 的触控区单独撑到 32：图标只有 14，直接拿图标当热区时
+        // 真机上一次点中率极低，误触反而落到 chip 主体打开改值面板。
+        deleteIcon: onDelete == null
+            ? null
+            : const SizedBox(
+                width: 32,
+                height: 32,
+                child: Icon(Icons.close, size: 14),
+              ),
         visualDensity: VisualDensity.compact,
         // 来源可辨：本次搜索用品牌色描边，持久筛选用中性描边。
         side: BorderSide(

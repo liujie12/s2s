@@ -76,8 +76,8 @@ void main() {
       expect(find.text(label), findsWidgets, reason: '页签「$label」必须在场');
     }
     expect(find.text('九成新实木餐桌转让'), findsOneWidget);
-    // 价格与单位同详情页口径（整数去小数尾巴）
-    expect(find.text('299 元/元'), findsOneWidget);
+    // 价格与单位同详情页口径（整数去小数尾巴；单位自带「元」不再补前缀）
+    expect(find.text('299 元'), findsOneWidget);
     // 无价格显示「面议」而非留空
     expect(find.text('面议'), findsOneWidget);
     // 操作组随状态变化（设计稿规格：在架 → 编辑/下架；已下架 → 刷新重发/删除）
