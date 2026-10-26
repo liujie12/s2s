@@ -54,7 +54,8 @@ class ListScreen extends ConsumerWidget {
       categoryVersion: categoryTreeVersion,
       lng: center.lng,
       lat: center.lat,
-      keyword: filter.keyword.isEmpty ? null : filter.keyword,
+      priceMin: filter.priceMin,
+      priceMax: filter.priceMax,
       sort: sort.apiValue,
     );
     final pageAsync = ref.watch(searchPagerProvider(query));

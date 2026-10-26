@@ -174,6 +174,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   /// 是否已排过「FAB 避让筛选面板」的帧后校正（防重复调度）。
   bool _fabAvoidScheduled = false;
 
+  /// 语义回执条 key 与实测高度。
+  ///
+  /// 用途：回执条出现时把右上角按钮列整体下移避让，撤销后自动归位
+  /// （2026-10-25 用户裁定）。高度取实测值而非写死，跟随字号/换行变化。
+  final GlobalKey _intentBarKey = GlobalKey();
+  double _intentBarHeight = 0;
+  bool _intentBarMeasureScheduled = false;
+
   /// 搜索框控制器（语义搜索把转写文本/原句回显到这里，保持可编辑）。
   final TextEditingController _searchController = TextEditingController();
 
@@ -384,6 +392,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           final bool panelExpanded = ref.watch(filterPanelExpandedProvider);
           // 面板展开时排一次帧后避让，让 FAB 抬到面板上方（入口保持可见）。
           if (panelExpanded) _avoidFilterPanel();
+          // 回执条出现后测一次高度，用于把右上角按钮列整体下移避让。
+          if (intent != null) _measureIntentBar();
 
           return Stack(
             key: _mapStackKey,
@@ -410,63 +420,67 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   bottom: AppSpacing.md,
                   child: _LocateFailedBanner(onManualCity: _showManualCity),
                 ),
-              const Positioned(
+              // 顶部浮层纵向栈：语义回执条紧贴搜索栏下方，筛选摘要与状态角标顺次下移，
+              // 撤销回执后整体自动归位（2026-10-25 用户裁定：不吃固定高度硬叠）。
+              Positioned(
                 left: AppSpacing.lg,
-                top: AppSpacing.md,
-                child: _FilterSummaryChip(),
-              ),
-              // 探索数据态（[126]）：加载中/失败必须可见 —— 否则「附近没有信息」
-              // 与「数据没回来」在用户眼里完全同形，而两者的处置方式相反。
-              if (pinsAsync.isLoading || pinsAsync.hasError)
-                Positioned(
-                  left: AppSpacing.lg,
-                  // 语义回执条占用了搜索栏下方那一行，状态角标顺次下移，避免叠压。
-                  top: AppSpacing.md + 40 + (intent == null ? 0 : 72),
-                  child: _PinsStatusChip(
-                    text: pinsAsync.hasError ? '加载失败 · 点击重试' : '正在加载附近信息…',
-                    onTap: pinsAsync.hasError
-                        ? () => ref.invalidate(pinsProvider(pinsQuery))
-                        : null,
-                  ),
-                )
-              else if (allOffScreen)
-                Positioned(
-                  left: AppSpacing.lg,
-                  top: AppSpacing.md + 40 + (intent == null ? 0 : 72),
-                  child: _PinsStatusChip(
-                    text: '视野外还有 $pinsTotal 条，缩小地图查看',
-                    onTap: () => _zoomOutToShowAll(
-                      viewportWidth: constraints.maxWidth,
-                      viewportHeight: constraints.maxHeight,
-                      pins: pinList,
-                    ),
-                  ),
-                ),
-              // 语义搜索回执与可删 chip（R12/R13）：紧贴搜索栏下方，单行横滑，
-              // 尽量少遮挡地图（2026-10-25 用户裁定：不再用大卡片压在地图中间）。
-              if (intent != null)
-                Positioned(
-                  left: AppSpacing.md,
-                  right: AppSpacing.md,
-                  top: AppSpacing.md + 40,
-                  child: _SearchIntentBar(
-                    intent: intent,
-                    insideCount: pinList.length,
-                    outsideCount: outsideCount,
-                  ),
-                ),
-              const Positioned(
                 right: AppSpacing.lg,
                 top: AppSpacing.md,
-                child: _FilterEntryButton(),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (intent != null) ...[
+                      _SearchIntentBar(
+                        key: _intentBarKey,
+                        intent: intent,
+                        insideCount: pinList.length,
+                        outsideCount: outsideCount,
+                      ),
+                      const SizedBox(height: AppSpacing.sm),
+                    ],
+                    const _FilterSummaryChip(),
+                    // 探索数据态（[126]）：加载中/失败必须可见 —— 否则「附近没有信息」
+                    // 与「数据没回来」在用户眼里完全同形，而两者的处置方式相反。
+                    if (pinsAsync.isLoading || pinsAsync.hasError) ...[
+                      const SizedBox(height: AppSpacing.sm),
+                      _PinsStatusChip(
+                        text: pinsAsync.hasError ? '加载失败 · 点击重试' : '正在加载附近信息…',
+                        onTap: pinsAsync.hasError
+                            ? () => ref.invalidate(pinsProvider(pinsQuery))
+                            : null,
+                      ),
+                    ] else if (allOffScreen) ...[
+                      const SizedBox(height: AppSpacing.sm),
+                      _PinsStatusChip(
+                        text: '视野外还有 $pinsTotal 条，缩小地图查看',
+                        onTap: () => _zoomOutToShowAll(
+                          viewportWidth: constraints.maxWidth,
+                          viewportHeight: constraints.maxHeight,
+                          pins: pinList,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              // 右上角按钮列：回执条出现时整体下移让位，撤销后归位。
+              Positioned(
+                right: AppSpacing.lg,
+                top: AppSpacing.md +
+                    (intent == null ? 0 : _intentBarHeight + AppSpacing.sm),
+                child: const _FilterEntryButton(),
               ),
               // 列表视图入口（PRD §10.1：地图与列表是同层级的两个视图）。
               // 放在筛选入口正下方而非底部中央：底部要留给筛选面板与信息卡，
               // 三者叠在一起会互相遮挡。
-              const Positioned(
+              Positioned(
                 right: AppSpacing.lg,
-                top: AppSpacing.md + 44 + AppSpacing.sm,
-                child: _ListViewEntryButton(),
+                top:
+                    AppSpacing.md +
+                    44 +
+                    AppSpacing.sm +
+                    (intent == null ? 0 : _intentBarHeight + AppSpacing.sm),
+                child: const _ListViewEntryButton(),
               ),
               // 「回到当前位置」：相机被拖离定位点后出现，点击把视口移回用户位置。
               // 底部有筛选面板或信息卡时不渲染，避免三者叠在一起互相遮挡。
@@ -603,6 +617,25 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     });
   }
 
+  /// 测量语义回执条高度，供右上角按钮列下移避让。
+  ///
+  /// 参数：无。
+  /// 返回：void（实际测量在帧后回调完成；同帧只调度一次）。
+  void _measureIntentBar() {
+    if (_intentBarMeasureScheduled) return;
+    _intentBarMeasureScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _intentBarMeasureScheduled = false;
+      if (!mounted) return;
+      final box = _intentBarKey.currentContext?.findRenderObject() as RenderBox?;
+      if (box == null) return;
+      // 条与按钮之间留一个最小间距，避免贴死。
+      final double measured = box.size.height + AppSpacing.xs;
+      if ((measured - _intentBarHeight).abs() < 0.5) return;
+      setState(() => _intentBarHeight = measured);
+    });
+  }
+
   /// 导航栏（PRD §6.4.1：实体 48px，含搜索框与通知铃）。
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
@@ -617,15 +650,17 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               height: 32,
               child: TextField(
                 controller: _searchController,
-                // 关键词仍写持久筛选（列表页同源）；地图侧按回车走语义解析。
-                onChanged: (v) =>
-                    ref.read(discoveryFilterProvider.notifier).setKeyword(v),
+                // 文字只作语义解析输入，不再写持久筛选：字面匹配收益低，且会让
+                // 「打字已改变列表、地图却没动」两页分叉（R17）。
                 onSubmitted: (value) {
                   final fix = ref.read(locationFixProvider);
+                  // 坐标必须给：后端据它逆地理解析城市 adcode，再按城市约束小区检索。
+                  // GPS 未就绪时回退到当前视野中心，否则会变成全国检索，
+                  // 把「北城新徽苑」匹到香港的同名「新辉苑」（2026-10-25 真机实测）。
                   ref.read(searchIntentProvider.notifier).resolve(
                     text: value,
-                    currentLat: fix?.lat,
-                    currentLng: fix?.lng,
+                    currentLat: fix?.lat ?? _centerLat,
+                    currentLng: fix?.lng ?? _centerLng,
                   );
                 },
                 style: TextStyle(fontSize: AppTypeScale.body.size),
@@ -1511,7 +1546,6 @@ class _FilterSummaryChip extends ConsumerWidget {
       child: Container(
         height: 44,
         padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-        alignment: Alignment.center,
         decoration: BoxDecoration(
           color: Color(AppColors.surface),
           borderRadius: BorderRadius.circular(AppRadius.full),
@@ -1524,11 +1558,16 @@ class _FilterSummaryChip extends ConsumerWidget {
             ),
           ],
         ),
-        child: Text(
-          filter.summaryLabel,
-          style: TextStyle(
-            fontSize: AppTypeScale.small.size,
-            color: Color(AppColors.textPrimary),
+        // widthFactor=1：按内容收窄。若用 Container.alignment 会撑满整行，
+        // 在顶部纵向栈里会变成一条横贯屏幕的白条（2026-10-25 真机实测）。
+        child: Center(
+          widthFactor: 1,
+          child: Text(
+            filter.summaryLabel,
+            style: TextStyle(
+              fontSize: AppTypeScale.small.size,
+              color: Color(AppColors.textPrimary),
+            ),
           ),
         ),
       ),
@@ -1987,6 +2026,7 @@ class _SearchIntentBar extends ConsumerWidget {
   /// - [insideCount] 圈内命中数；
   /// - [outsideCount] 圈外被精裁掉的命中数。
   const _SearchIntentBar({
+    super.key,
     required this.intent,
     required this.insideCount,
     required this.outsideCount,

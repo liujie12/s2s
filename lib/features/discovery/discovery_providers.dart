@@ -359,7 +359,8 @@ class SearchQuery {
     required this.categoryVersion,
     required this.lng,
     required this.lat,
-    this.keyword,
+    this.priceMin,
+    this.priceMax,
     this.sort,
     this.pageSize,
   });
@@ -383,8 +384,11 @@ class SearchQuery {
   final double lng;
   final double lat;
 
-  /// 关键词（可空）。
-  final String? keyword;
+  /// 价格下限（元，可空）。
+  final int? priceMin;
+
+  /// 价格上限（元，可空；设置时排除面议）。
+  final int? priceMax;
 
   /// 排序（契约六值之一，见 `ListingSort.apiValue`）。
   final String? sort;
@@ -402,7 +406,8 @@ class SearchQuery {
       other.categoryVersion == categoryVersion &&
       other.lng == lng &&
       other.lat == lat &&
-      other.keyword == keyword &&
+      other.priceMin == priceMin &&
+      other.priceMax == priceMax &&
       other.sort == sort &&
       other.pageSize == pageSize;
 
@@ -415,7 +420,8 @@ class SearchQuery {
         categoryVersion,
         lng,
         lat,
-        keyword,
+        priceMin,
+        priceMax,
         sort,
         pageSize,
       );
@@ -601,7 +607,8 @@ class SearchPager extends AsyncNotifier<SearchPageState> {
       categoryVersion: query.categoryVersion,
       lng: query.lng,
       lat: query.lat,
-      keyword: query.keyword,
+      priceMin: query.priceMin,
+      priceMax: query.priceMax,
       sort: query.sort,
       page: page,
       pageSize: query.pageSize,

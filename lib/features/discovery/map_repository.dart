@@ -85,7 +85,8 @@ class MapRepository {
   /// 列表检索（`GET /posts/search`，与地图同源筛选条件）。
   ///
   /// 参数同 [fetchPins]，另加：
-  ///   [keyword]  关键词（可空；长度上限由契约 maxLength 32 约束）；
+  ///   [priceMin] 价格下限（元，可空）；
+  ///   [priceMax] 价格上限（元，可空；设置时排除面议）；
   ///   [sort]     排序（`distance`/`publish_time`/`completeness`，缺省 distance）；
   ///   [page]     页码（从 1 起）；
   ///   [pageSize] 每页条数（契约默认 20、上限 50）。
@@ -99,7 +100,8 @@ class MapRepository {
     required String categoryVersion,
     required double lng,
     required double lat,
-    String? keyword,
+    int? priceMin,
+    int? priceMax,
     String? sort,
     int? page,
     int? pageSize,
@@ -115,8 +117,9 @@ class MapRepository {
       'category_version': categoryVersion,
       'lng': lng,
       'lat': lat,
-      // 可选项缺省即不传：传空串会被服务端判非法值。
-      if (keyword != null && keyword.isNotEmpty) 'keyword': keyword,
+      // 可选项缺省即不传：传空值会被服务端判非法值。
+      'price_min': ?priceMin,
+      'price_max': ?priceMax,
       'sort': ?sort,
       'page': ?page,
       'page_size': ?pageSize,
