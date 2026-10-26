@@ -89,6 +89,9 @@ public interface MapPostMapper {
      * @param gridIds        网格集合（null 表示全城）
      * @param leafCategoryIds 叶子类目 ID 集合
      * @param postTypes      供需态集合（1–2 个；多值走一次查询，排序与分页才是全局的）
+     * @param priceMin       价格下限（元，可空）
+     * @param priceMax       价格上限（元，可空；设置时面议被排除）
+     * @param communityId    小区实体 ID（可空；与 `/map/pins` 同口径）
      * @param keyword        关键词（可空）
      * @return 候选行集合（列名：id/type/leaf_category_id/l2_category_id/title/summary/
      *         lng/lat/completeness_level/publish_at/author_id/nickname/avatar_url/realname_status）
@@ -97,5 +100,8 @@ public interface MapPostMapper {
             @Param("gridIds") List<String> gridIds,
             @Param("leafCategoryIds") List<Integer> leafCategoryIds,
             @Param("postTypes") List<String> postTypes,
+            @Param("priceMin") java.math.BigDecimal priceMin,
+            @Param("priceMax") java.math.BigDecimal priceMax,
+            @Param("communityId") String communityId,
             @Param("keyword") String keyword);
 }

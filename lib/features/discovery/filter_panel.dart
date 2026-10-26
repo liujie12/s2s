@@ -7,6 +7,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../design_tokens.dart';
@@ -15,6 +16,9 @@ import '../../domain/listing_category.dart';
 import '../../domain/listing_category_style.dart';
 import '../perf/layer_switch_recorder.dart';
 import 'discovery_filter.dart';
+import 'effective_filter.dart';
+import 'effective_filter_provider.dart';
+import 'search_conditions.dart';
 
 /// 筛选面板本体。
 class FilterPanel extends ConsumerWidget {
@@ -65,6 +69,8 @@ class FilterPanel extends ConsumerWidget {
           const SizedBox(height: AppSpacing.md),
           const _SupplyDemandRow(),
           const SizedBox(height: AppSpacing.md),
+          const _PriceRow(),
+          const SizedBox(height: AppSpacing.md),
           _CategoryRow(measureLayerSwitch: measureLayerSwitch),
           const SizedBox(height: AppSpacing.md),
           const _LegendRow(),
@@ -80,7 +86,7 @@ class _RadiusRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final current = ref.watch(discoveryFilterProvider).radius;
+    final SearchRadius current = ref.watch(effectiveFilterProvider).radius;
     return Row(
       children: [
         _RowLabel('范围'),
@@ -92,7 +98,7 @@ class _RadiusRow extends ConsumerWidget {
                 label: r.label,
                 selected: r == current,
                 onTap: () =>
-                    ref.read(discoveryFilterProvider.notifier).setRadius(r),
+                    ref.read(searchConditionsProvider.notifier).setRadius(r),
               );
             }).toList(),
           ),
@@ -108,7 +114,7 @@ class _SupplyDemandRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final selected = ref.watch(discoveryFilterProvider).supplyDemand;
+    final Set<SupplyDemand> selected = ref.watch(effectiveFilterProvider).supplyDemand;
     return Row(
       children: [
         _RowLabel('供需'),
@@ -119,12 +125,161 @@ class _SupplyDemandRow extends ConsumerWidget {
               label: sd.label,
               selected: selected.contains(sd),
               onTap: () => ref
-                  .read(discoveryFilterProvider.notifier)
+                  .read(searchConditionsProvider.notifier)
                   .toggleSupplyDemand(sd),
             ),
           );
         }),
       ],
+    );
+  }
+}
+
+/// 价格行（R23：持久条件，默认不过滤；上下限可分别设置与清空）。
+///
+/// 为什么放在供需下方：价格与供需同属「这笔交易怎么算」，且都不依赖分类树；
+/// 放在分类下方会让用户在选完分类后还要再回到上半区输入价格。
+class _PriceRow extends ConsumerStatefulWidget {
+  const _PriceRow();
+
+  @override
+  ConsumerState<_PriceRow> createState() => _PriceRowState();
+}
+
+class _PriceRowState extends ConsumerState<_PriceRow> {
+  late final TextEditingController _min;
+  late final TextEditingController _max;
+  late final FocusNode _minFocus;
+  late final FocusNode _maxFocus;
+
+  @override
+  void initState() {
+    super.initState();
+    final EffectiveFilter effective = ref.read(effectiveFilterProvider);
+    _min = TextEditingController(text: effective.priceMin?.toString() ?? '');
+    _max = TextEditingController(text: effective.priceMax?.toString() ?? '');
+    _minFocus = FocusNode()..addListener(_onFocusChange);
+    _maxFocus = FocusNode()..addListener(_onFocusChange);
+  }
+
+  /// 两个输入都失焦时才提交，避免在两侧之间切换时反复写入。
+  void _onFocusChange() {
+    if (!_minFocus.hasFocus && !_maxFocus.hasFocus) _commit();
+  }
+
+  @override
+  void dispose() {
+    _min.dispose();
+    _max.dispose();
+    _minFocus.dispose();
+    _maxFocus.dispose();
+    super.dispose();
+  }
+
+  /// 提交两侧输入。
+  ///
+  /// `digitsOnly` 已挡住非数字，故解析失败只可能是空串（= 不限该侧）。
+  /// 区间倒置时不写入：静默交换会让用户输入的数字出现在错的一侧。
+  void _commit() {
+    final int? min = int.tryParse(_min.text);
+    final int? max = int.tryParse(_max.text);
+    if (min != null && max != null && min > max) return;
+    ref.read(searchConditionsProvider.notifier).setPrice(min: min, max: max);
+  }
+
+  /// 清空两侧，回到「不限」。
+  void _clear() {
+    _min.clear();
+    _max.clear();
+    ref.read(searchConditionsProvider.notifier).setPrice();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // 价格可能从别处改（chip 改值层、撤销）：面板开着时也要跟上，
+    // 否则输入框会一直显示旧数字，用户以为没改成功。
+    ref.listen(
+      effectiveFilterProvider.select((e) => (e.priceMin, e.priceMax)),
+      (_, next) {
+        if (_minFocus.hasFocus || _maxFocus.hasFocus) return;
+        final String minText = next.$1?.toString() ?? '';
+        final String maxText = next.$2?.toString() ?? '';
+        if (_min.text != minText) _min.text = minText;
+        if (_max.text != maxText) _max.text = maxText;
+      },
+    );
+    final bool hasPrice = ref.watch(effectiveFilterProvider).hasPrice;
+    return Row(
+      children: [
+        const _RowLabel('价格'),
+        _PriceField(controller: _min, focusNode: _minFocus, hint: '下限', onSubmitted: _commit),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
+          child: Text(
+            '–',
+            style: TextStyle(
+              fontSize: AppTypeScale.small.size,
+              color: Color(AppColors.textSecondary),
+            ),
+          ),
+        ),
+        _PriceField(controller: _max, focusNode: _maxFocus, hint: '上限', onSubmitted: _commit),
+        const SizedBox(width: AppSpacing.sm),
+        _PillButton(label: '不限', selected: !hasPrice, onTap: _clear),
+      ],
+    );
+  }
+}
+
+/// 单侧价格输入框：视觉高度 32 与胶囊对齐，命中区由外层 padding 补足。
+class _PriceField extends StatelessWidget {
+  const _PriceField({
+    required this.controller,
+    required this.focusNode,
+    required this.hint,
+    required this.onSubmitted,
+  });
+
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final String hint;
+  final VoidCallback onSubmitted;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 56,
+      height: 32,
+      child: TextField(
+        controller: controller,
+        focusNode: focusNode,
+        keyboardType: TextInputType.number,
+        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+        textAlign: TextAlign.center,
+        textInputAction: TextInputAction.done,
+        onSubmitted: (_) => onSubmitted(),
+        style: TextStyle(
+          fontSize: AppTypeScale.small.size,
+          color: Color(AppColors.textPrimary),
+        ),
+        decoration: InputDecoration(
+          isDense: true,
+          hintText: hint,
+          hintStyle: TextStyle(
+            fontSize: AppTypeScale.small.size,
+            color: Color(AppColors.textSecondary),
+          ),
+          contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(AppRadius.md),
+            borderSide: BorderSide(color: Color(AppColors.border)),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(AppRadius.md),
+            borderSide: BorderSide(color: Color(AppColors.border)),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -138,8 +293,8 @@ class _CategoryRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final filter = ref.watch(discoveryFilterProvider);
-    final notifier = ref.read(discoveryFilterProvider.notifier);
+    final EffectiveFilter effective = ref.watch(effectiveFilterProvider);
+    final notifier = ref.read(searchConditionsProvider.notifier);
 
     /// 记一次图层切换的**起点**（[140] / PRD §6.10）：胶囊 `onTap` 即「手指离开
     /// 分类 Tab」的那一刻，与口径起点一致。
@@ -158,17 +313,17 @@ class _CategoryRow extends ConsumerWidget {
               children: [
                 _PillButton(
                   label: '全部',
-                  selected: filter.isAllCategories,
+                  selected: effective.isAllCategories,
                   // 已是「全部」时再点不改变筛选态 —— 不算一次切换，也不能开新会话：
                   // 否则会记下一条「零耗时」的假样本，把 P95 白拉低。
                   onTap: () {
-                    if (filter.isAllCategories) return;
+                    if (effective.isAllCategories) return;
                     markSwitchStart();
                     notifier.clearCategories();
                   },
                 ),
                 ...ListingCategory.values.map((c) {
-                  final on = filter.categories.contains(c);
+                  final on = effective.includesCategory(c);
                   return Padding(
                     padding: const EdgeInsets.only(left: AppSpacing.sm),
                     child: _PillButton(

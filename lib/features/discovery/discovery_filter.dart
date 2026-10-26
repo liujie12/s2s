@@ -80,7 +80,8 @@ class DiscoveryFilter {
     this.radius = SearchRadius.km5,
     this.supplyDemand = const {SupplyDemand.supply, SupplyDemand.demand},
     this.categories = const {},
-    this.keyword = '',
+    this.priceMin,
+    this.priceMax,
   });
 
   /// 范围档位。默认 5km —— PRD §6.4.1 ASCII 图中 `[5]` 为选中态。
@@ -98,46 +99,79 @@ class DiscoveryFilter {
   /// 用空集表示它是最直接的映射；而供需只有两个胶囊，没有「全部」这一档。
   final Set<ListingCategory> categories;
 
-  /// 搜索关键词（PRD §6.4.1 导航栏搜索框）。
+  /// 价格下限（元）；null 表示不限下界。
   ///
-  /// 与范围/供需/分类是「与」关系，不互相覆盖。
-  final String keyword;
+  /// 价格是**持久条件**：与半径、供需、分类同源，默认不过滤，可被手动设置，
+  /// 不随一次语义搜索结束而消失。
+  final int? priceMin;
+
+  /// 价格上限（元）；null 表示不限上界。
+  ///
+  /// 上限存在时排除面议，与语义解析产出的价格口径一致（`priceExcludesNegotiable`）。
+  final int? priceMax;
+
+  /// 是否设置了任一侧价格。
+  bool get hasPrice => priceMin != null || priceMax != null;
 
   /// 是否为全部分类。
   bool get isAllCategories => categories.isEmpty;
 
-  /// 摘要胶囊回显文案（PRD §6.4.1：收起态须回显当前筛的是什么）。
-  ///
-  /// 有关键词时优先显示关键词而非分类 —— PRD §6.4.1 明确要求，
-  /// 否则摘要说「全部分类」而搜索框里写着「租房」，两处自相矛盾。
-  String get summaryLabel {
-    final String supplyDemandPart = switch (supplyDemand.length) {
-      0 => '未选',
-      2 => '资源+需求',
-      _ => supplyDemand.first.label,
-    };
-    final String lastPart = keyword.isNotEmpty
-        ? '关键词「$keyword」'
-        : isAllCategories
-        ? '全部分类'
-        : categories.map((c) => c.label).join('/');
-    return '${radius.label} · $supplyDemandPart · $lastPart';
-  }
+  /// 价格的显示文案：区间 / 单侧上限 / 单侧下限。
+  String get priceLabel => switch ((priceMin, priceMax)) {
+    (final int min, final int max) => '$min–$max 元',
+    (null, final int max) => '≤$max 元',
+    (final int min, null) => '≥$min 元',
+    _ => '',
+  };
 
+  /// 复制并替换字段。
+  ///
+  /// 价格用 `Object?` 哨兵而不是 `int?`：`null` 本身是有效值（取消该侧过滤），
+  /// 用 `int?` 参数无法区分「不修改」与「显式清空」，删除价格条件就会失效。
   DiscoveryFilter copyWith({
     SearchRadius? radius,
     Set<SupplyDemand>? supplyDemand,
     Set<ListingCategory>? categories,
-    String? keyword,
+    Object? priceMin = _unset,
+    Object? priceMax = _unset,
   }) {
     return DiscoveryFilter(
       radius: radius ?? this.radius,
       supplyDemand: supplyDemand ?? this.supplyDemand,
       categories: categories ?? this.categories,
-      keyword: keyword ?? this.keyword,
+      priceMin: identical(priceMin, _unset) ? this.priceMin : priceMin as int?,
+      priceMax: identical(priceMax, _unset) ? this.priceMax : priceMax as int?,
     );
   }
+
+  @override
+  bool operator ==(Object other) =>
+      other is DiscoveryFilter &&
+      other.radius == radius &&
+      _sameSet(other.supplyDemand, supplyDemand) &&
+      _sameSet(other.categories, categories) &&
+      other.priceMin == priceMin &&
+      other.priceMax == priceMax;
+
+  @override
+  int get hashCode => Object.hash(
+    radius,
+    Object.hashAllUnordered(supplyDemand),
+    Object.hashAllUnordered(categories),
+    priceMin,
+    priceMax,
+  );
 }
+
+/// `copyWith` 的「未传该参数」哨兵。
+const Object _unset = Object();
+
+/// 集合值相等。
+///
+/// 不引 `flutter/foundation` 的 `setEquals`：本文件是纯状态层，保持只依赖
+/// Riverpod 可让它不被 widget 层绑定，也便于单测直接构造。
+bool _sameSet<T>(Set<T> a, Set<T> b) =>
+    a.length == b.length && a.containsAll(b);
 
 /// 筛选态的读写入口。
 class DiscoveryFilterNotifier extends Notifier<DiscoveryFilter> {
@@ -168,9 +202,33 @@ class DiscoveryFilterNotifier extends Notifier<DiscoveryFilter> {
     state = state.copyWith(categories: const {});
   }
 
-  /// 设置搜索关键词；传空串即清空（对应搜索框右侧叉号）。
-  void setKeyword(String keyword) {
-    state = state.copyWith(keyword: keyword.trim());
+  /// 设置价格区间；任一侧传 null 即取消该侧过滤。
+  ///
+  /// 只做「写入」，不做区间合法性判断：非法值由调用方（价格输入层）就地拦下，
+  /// 避免状态层静默改写用户输入。
+  void setPriceRange({int? min, int? max}) {
+    state = state.copyWith(priceMin: min, priceMax: max);
+  }
+
+  /// 设置供需集合（门面用；面板的胶囊仍走 [toggleSupplyDemand]）。
+  ///
+  /// 参数：[value] 目标集合；返回：无。
+  void setSupplyDemand(Set<SupplyDemand> value) {
+    state = state.copyWith(supplyDemand: {...value});
+  }
+
+  /// 设置一级大类集合（门面用；空集 = 全部分类）。
+  ///
+  /// 参数：[value] 目标集合；返回：无。
+  void setCategories(Set<ListingCategory> value) {
+    state = state.copyWith(categories: {...value});
+  }
+
+  /// 整体替换（撤销回滚用）。
+  ///
+  /// 参数：[value] 快照里的筛选态；返回：无。
+  void replace(DiscoveryFilter value) {
+    state = value;
   }
 }
 

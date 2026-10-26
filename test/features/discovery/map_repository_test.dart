@@ -107,7 +107,7 @@ void main() {
   });
 
   group('searchPosts', () {
-    test('五要素 + 可选项透传（keyword/sort/page/page_size）', () async {
+    test('五要素 + 可选项透传（price/sort/page/page_size）', () async {
       harness.stub('GET', '/api/v1/posts/search', (req) async {
         return MockResponse(
           body: ApiEnvelope.success(
@@ -136,7 +136,9 @@ void main() {
         categoryVersion: '2026-08-31.1',
         lng: 120.1551,
         lat: 30.2741,
-        keyword: '服务员',
+        priceMin: 500,
+        priceMax: 2000,
+        communityId: 'B0FFG12345',
         sort: 'distance',
         page: 2,
         pageSize: 20,
@@ -146,7 +148,9 @@ void main() {
       expect(query['category_ids'], '10101');
       expect(query['post_type'], 'resource');
       expect(query['radius'], 'city');
-      expect(query['keyword'], '服务员');
+      expect(query['price_min'], '500.0');
+      expect(query['price_max'], '2000.0');
+      expect(query['community_id'], 'B0FFG12345');
       expect(query['sort'], 'distance');
       expect(query['page'], '2');
       expect(query['page_size'], '20');
@@ -211,7 +215,8 @@ void main() {
       );
 
       final query = Uri.parse(harness.server.lastRequest!.path).queryParameters;
-      expect(query.containsKey('keyword'), isFalse);
+      expect(query.containsKey('price_min'), isFalse);
+      expect(query.containsKey('price_max'), isFalse);
       expect(query.containsKey('sort'), isFalse);
       expect(query.containsKey('page'), isFalse);
       expect(query.containsKey('page_size'), isFalse);

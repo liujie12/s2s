@@ -14,7 +14,8 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../../design_tokens.dart';
 import '../auth/auth_repository.dart';
-import '../discovery/search_intent.dart';
+import '../discovery/effective_filter_provider.dart';
+import '../discovery/search_conditions.dart';
 import '../media/audio_recorder.dart';
 import '../media/media_picker.dart';
 import '../media/media_upload_service.dart';
@@ -177,7 +178,8 @@ class _VoiceSearchSheetState extends ConsumerState<VoiceSearchSheet> {
     String? voiceBase64,
     String? voiceContentType,
   }) async {
-    await ref.read(searchIntentProvider.notifier).resolve(
+    // 经条件门面提交：它负责交互标识与文本回显，语音链不再自建一份入口。
+    await ref.read(searchConditionsProvider.notifier).submit(
       text: text,
       voiceMediaId: voiceMediaId,
       voiceBase64: voiceBase64,
@@ -186,24 +188,21 @@ class _VoiceSearchSheetState extends ConsumerState<VoiceSearchSheet> {
       anchorLng: widget.anchorLng,
     );
     if (!mounted) return;
-    final state = ref.read(searchIntentProvider);
-    if (state.error != null) {
+    final status = ref.read(searchStatusProvider);
+    if (status.error != null) {
       setState(() {
         _busy = false;
-        _hint = state.error;
+        _hint = status.error;
       });
       return;
     }
-    final intent = state.intent;
-    if (intent != null) {
-      // 转写文本回显到面板输入框，关闭后由地图页写回搜索框。
-      Navigator.of(context).pop();
-    }
+    // 解析成功（有槽位或已判「没听懂」）都关闭面板，结果由条件带呈现。
+    Navigator.of(context).pop();
   }
 
   @override
   Widget build(BuildContext context) {
-    final state = ref.watch(searchIntentProvider);
+    final status = ref.watch(searchStatusProvider);
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
     return Padding(
       padding: EdgeInsets.fromLTRB(
@@ -284,7 +283,7 @@ class _VoiceSearchSheetState extends ConsumerState<VoiceSearchSheet> {
               color: const Color(AppColors.textSecondary),
             ),
           ),
-          if (_busy || state.busy) ...[
+          if (_busy || status.busy) ...[
             const SizedBox(height: AppSpacing.md),
             const LinearProgressIndicator(minHeight: 2),
           ],
@@ -306,10 +305,10 @@ class _VoiceSearchSheetState extends ConsumerState<VoiceSearchSheet> {
               child: const Text('去系统设置开启麦克风权限'),
             ),
           ],
-          if (state.error != null) ...[
+          if (status.error != null) ...[
             const SizedBox(height: AppSpacing.sm),
             Text(
-              state.error!,
+              status.error!,
               textAlign: TextAlign.center,
               style: const TextStyle(color: Color(AppColors.errorText)),
             ),

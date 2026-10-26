@@ -21,6 +21,7 @@ import '../../core/cache/pin_cache_key.dart';
 import '../perf/layer_switch_recorder.dart';
 import 'map_dto.dart';
 import 'map_repository.dart';
+import 'search_conditions.dart';
 import 'stress_data.dart';
 
 /// 地图图钉请求参数（值相等即复用，故实现 ==/hashCode）。
@@ -224,6 +225,8 @@ final pinsProvider = FutureProvider.autoDispose.family<MergedPins, PinsQuery>((
             priceMin: query.priceMin,
             priceMax: query.priceMax,
             communityId: query.communityId,
+            // 与解析共用同一次搜索的交互标识；缺失时由拦截器兜底补新值。
+            interactionId: ref.read(searchConditionsProvider).interactionId,
           ),
       ]);
     } finally {
@@ -359,7 +362,9 @@ class SearchQuery {
     required this.categoryVersion,
     required this.lng,
     required this.lat,
-    this.keyword,
+    this.priceMin,
+    this.priceMax,
+    this.communityId,
     this.sort,
     this.pageSize,
   });
@@ -383,8 +388,17 @@ class SearchQuery {
   final double lng;
   final double lat;
 
-  /// 关键词（可空）。
-  final String? keyword;
+  /// 价格下限（元，可空）。
+  final int? priceMin;
+
+  /// 价格上限（元，可空；设置时排除面议）。
+  final int? priceMax;
+
+  /// 小区实体 ID（可空；口语地址精确过滤）。
+  ///
+  /// 与 `/map/pins` 同参：缺了它，带小区的搜索会在地图收窄、列表不收窄，
+  /// 两页结果直接对不上。
+  final String? communityId;
 
   /// 排序（契约六值之一，见 `ListingSort.apiValue`）。
   final String? sort;
@@ -402,7 +416,9 @@ class SearchQuery {
       other.categoryVersion == categoryVersion &&
       other.lng == lng &&
       other.lat == lat &&
-      other.keyword == keyword &&
+      other.priceMin == priceMin &&
+      other.priceMax == priceMax &&
+      other.communityId == communityId &&
       other.sort == sort &&
       other.pageSize == pageSize;
 
@@ -415,7 +431,9 @@ class SearchQuery {
         categoryVersion,
         lng,
         lat,
-        keyword,
+        priceMin,
+        priceMax,
+        communityId,
         sort,
         pageSize,
       );
@@ -601,10 +619,13 @@ class SearchPager extends AsyncNotifier<SearchPageState> {
       categoryVersion: query.categoryVersion,
       lng: query.lng,
       lat: query.lat,
-      keyword: query.keyword,
+      priceMin: query.priceMin?.toDouble(),
+      priceMax: query.priceMax?.toDouble(),
+      communityId: query.communityId,
       sort: query.sort,
       page: page,
       pageSize: query.pageSize,
+      interactionId: ref.read(searchConditionsProvider).interactionId,
     );
 
     return MergedSearchPage(

@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/contract_json.dart';
 import '../../core/network/api_exception.dart';
+import 'condition_slots.dart';
 import 'search_repository.dart';
 
 /// copyWith 的「保持不变」哨兵（null 表示显式清除某槽位）。
@@ -123,6 +124,7 @@ class SearchIntent {
     this.priceExcludesNegotiable = false,
     this.unresolvedFields = const <String>[],
     this.sources = const <String, String>{},
+    this.clearedSlots = const <ConditionSlot>{},
     this.aiUsed = false,
     this.degraded = false,
   });
@@ -221,6 +223,18 @@ class SearchIntent {
   /// 槽位来源标记。
   final Map<String, String> sources;
 
+  /// 被用户**显式清空**的槽位。
+  ///
+  /// 为什么需要它：槽位值为 null 有歧义 —— 既可能表示「本次搜索没提到这一维」
+  /// （应回落持久筛选），也可能表示「用户把这一维删掉了」（不该回落）。
+  /// 缺这份标记，删掉搜索态的一枚 chip，它会立刻以持久值重新出现。
+  final Set<ConditionSlot> clearedSlots;
+
+  /// 该槽位是否被显式清空。
+  ///
+  /// 参数：[slot] 槽位；返回：是否被显式清空。
+  bool isCleared(ConditionSlot slot) => clearedSlots.contains(slot);
+
   /// 是否走了 AI 解析（缓存命中也算）。
   final bool aiUsed;
 
@@ -256,28 +270,28 @@ class SearchIntent {
   SearchIntent withoutCategoryAt(int index) {
     final ids = [...leafCategoryIds]..removeAt(index);
     final labels = [...categoryLabels]..removeAt(index);
-    return _copy(leafCategoryIds: ids, categoryLabels: labels);
+    return copyWith(leafCategoryIds: ids, categoryLabels: labels);
   }
 
   /// 删除价格条件。
   ///
   /// 返回：删除后的新槽位卡。
-  SearchIntent withoutPrice() => _copy(priceMin: null, priceMax: null);
+  SearchIntent withoutPrice() => copyWith(priceMin: null, priceMax: null);
 
   /// 删除半径条件（搜索圈随之消失）。
   ///
   /// 返回：删除后的新槽位卡。
-  SearchIntent withoutRadius() => _copy(radius: null, radiusMeters: null);
+  SearchIntent withoutRadius() => copyWith(radius: null, radiusMeters: null);
 
   /// 删除供需条件。
   ///
   /// 返回：删除后的新槽位卡。
-  SearchIntent withoutPostType() => _copy(postType: null);
+  SearchIntent withoutPostType() => copyWith(postType: null);
 
   /// 删除地点锚点。
   ///
   /// 返回：删除后的新槽位卡（半径保留时搜索圈以地图中心兜底）。
-  SearchIntent withoutAnchor() => _copy(anchorLat: null, anchorLng: null);
+  SearchIntent withoutAnchor() => copyWith(anchorLat: null, anchorLng: null);
 
   /// 小区显示文案（无小区为空串）。
   String get communityLabel => communityName ?? '';
@@ -285,7 +299,7 @@ class SearchIntent {
   /// 删除小区筛选（回退到半径/地址近似匹配）。
   ///
   /// 返回：删除后的新槽位卡。
-  SearchIntent withoutCommunity() => _copy(
+  SearchIntent withoutCommunity() => copyWith(
         communityId: null,
         communityName: null,
         communityCandidates: const <CommunityCandidate>[],
@@ -295,7 +309,7 @@ class SearchIntent {
   ///
   /// 参数：[candidate] 用户选中的候选。
   /// 返回：带 `communityId` 与新锚点的新槽位卡。
-  SearchIntent selectCommunity(CommunityCandidate candidate) => _copy(
+  SearchIntent selectCommunity(CommunityCandidate candidate) => copyWith(
         communityId: candidate.id,
         communityName: candidate.name,
         communityCandidates: const <CommunityCandidate>[],
@@ -312,7 +326,7 @@ class SearchIntent {
     final current = _radiusTiers.indexOf(radius ?? '');
     final nextIndex = current < 0 ? 0 : (current + 1).clamp(0, _radiusTiers.length - 1);
     final next = _radiusTiers[nextIndex];
-    return _copy(
+    return copyWith(
       radius: next,
       radiusMeters: switch (next) {
         '1' => 1000,
@@ -340,6 +354,7 @@ class SearchIntent {
     Object? communityCandidates = _keep,
     Object? priceMin = _keep,
     Object? priceMax = _keep,
+    Set<ConditionSlot>? clearedSlots,
   }) {
     final nextPostType = identical(postType, _keep) ? this.postType : postType as String?;
     final nextIds = identical(leafCategoryIds, _keep)
@@ -390,8 +405,65 @@ class SearchIntent {
       priceExcludesNegotiable: nextPriceMax != null,
       unresolvedFields: unresolvedFields,
       sources: sources,
+      clearedSlots: clearedSlots ?? this.clearedSlots,
       aiUsed: aiUsed,
       degraded: degraded,
+    );
+  }
+
+  /// 公开的槽位改写入口（门面专用）。
+  ///
+  /// 语义与 `_copy` 一致：未传的槽位保持不变，显式传 null 表示清空该槽位。
+  /// 与 `_copy` 的差别只有一处 —— 它同时维护 [clearedSlots]：
+  /// 传 null 记入「显式清空」，传新值则撤销该标记。这样门面不必在每次
+  /// 删除/改值后自己拼标记，也就不会漏。
+  ///
+  /// 参数：各槽位新值（全部可选）；返回：改写后的槽位卡。
+  SearchIntent copyWith({
+    Object? postType = _keep,
+    Object? leafCategoryIds = _keep,
+    Object? categoryLabels = _keep,
+    Object? radius = _keep,
+    Object? radiusMeters = _keep,
+    Object? anchorLat = _keep,
+    Object? anchorLng = _keep,
+    Object? anchorName = _keep,
+    Object? anchorSource = _keep,
+    Object? communityId = _keep,
+    Object? communityName = _keep,
+    Object? communityCandidates = _keep,
+    Object? priceMin = _keep,
+    Object? priceMax = _keep,
+  }) {
+    final Set<ConditionSlot> cleared = {...clearedSlots};
+    void mark(ConditionSlot slot, Object? value, {bool clearsOnEmpty = false}) {
+      if (identical(value, _keep)) return;
+      final bool emptied = value == null || (clearsOnEmpty && (value as List<Object?>).isEmpty);
+      emptied ? cleared.add(slot) : cleared.remove(slot);
+    }
+
+    mark(ConditionSlot.supplyDemand, postType);
+    mark(ConditionSlot.radius, radius);
+    mark(ConditionSlot.category, leafCategoryIds, clearsOnEmpty: true);
+    mark(ConditionSlot.anchor, anchorLat);
+    mark(ConditionSlot.community, communityId);
+
+    return _copy(
+      postType: postType,
+      leafCategoryIds: leafCategoryIds,
+      categoryLabels: categoryLabels,
+      radius: radius,
+      radiusMeters: radiusMeters,
+      anchorLat: anchorLat,
+      anchorLng: anchorLng,
+      anchorName: anchorName,
+      anchorSource: anchorSource,
+      communityId: communityId,
+      communityName: communityName,
+      communityCandidates: communityCandidates,
+      priceMin: priceMin,
+      priceMax: priceMax,
+      clearedSlots: cleared,
     );
   }
 
@@ -441,6 +513,7 @@ class SearchIntent {
       other.priceMax == priceMax &&
       other.priceExcludesNegotiable == priceExcludesNegotiable &&
       listEquals(other.unresolvedFields, unresolvedFields) &&
+      setEquals(other.clearedSlots, clearedSlots) &&
       mapEquals(other.sources, sources) &&
       other.aiUsed == aiUsed &&
       other.degraded == degraded;
@@ -464,7 +537,12 @@ class SearchIntent {
     priceMin,
     priceMax,
     priceExcludesNegotiable,
-    Object.hashAll(unresolvedFields),
+    Object.hashAll([
+      ...unresolvedFields,
+      // 排序后再入 hash：== 用 setEquals（顺序无关），hash 若依赖 Set 迭代顺序
+      // 会让两个相等的实例算出不同 hash，违反 Object 契约。
+      ...(clearedSlots.map((slot) => slot.name).toList()..sort()),
+    ]),
     Object.hashAll(sources.entries.map((e) => '${e.key}=${e.value}')),
     Object.hash(aiUsed, degraded),
   );
@@ -512,7 +590,8 @@ class SearchIntentNotifier extends Notifier<SearchIntentState> {
   /// - [voiceBase64] 游客音频 base64（可空）；
   /// - [voiceContentType] 游客音频 MIME（可空）；
   /// - [anchorLat]/[anchorLng] 长按地图锚点（可空）；
-  /// - [currentLat]/[currentLng] 当前定位（可空）。
+  /// - [currentLat]/[currentLng] 当前定位（可空）；
+  /// - [interactionId] 一次搜索的交互标识（解析与后续取数共用）。
   /// 返回：[Future] 完成信号（失败写入 error，不向 UI 抛出）。
   Future<void> resolve({
     String? text,
@@ -523,6 +602,7 @@ class SearchIntentNotifier extends Notifier<SearchIntentState> {
     double? anchorLng,
     double? currentLat,
     double? currentLng,
+    String? interactionId,
   }) async {
     state = SearchIntentState(intent: state.intent, previous: state.previous, busy: true);
     try {
@@ -535,6 +615,7 @@ class SearchIntentNotifier extends Notifier<SearchIntentState> {
         anchorLng: anchorLng,
         currentLat: currentLat,
         currentLng: currentLng,
+        interactionId: interactionId,
       );
       state = SearchIntentState(
         intent: intent,
@@ -569,6 +650,16 @@ class SearchIntentNotifier extends Notifier<SearchIntentState> {
   /// 清除搜索态（回到持久筛选）。
   void clear() {
     state = const SearchIntentState();
+  }
+
+  /// 整体替换当前槽位卡（撤销回滚与门面写入用）。
+  ///
+  /// 与 [update] 的差别：它不记录 `previous`。撤销统一由
+  /// `SearchConditionsNotifier` 的快照承担，两条撤销路径并存会各自回退一半。
+  ///
+  /// 参数：[next] 新的槽位卡；返回：无。
+  void replace(SearchIntent next) {
+    state = SearchIntentState(intent: next);
   }
 }
 
