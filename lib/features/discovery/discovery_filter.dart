@@ -230,6 +230,27 @@ class DiscoveryFilterNotifier extends Notifier<DiscoveryFilter> {
   void setPriceRange({int? min, int? max}) {
     state = state.copyWith(priceMin: min, priceMax: max);
   }
+
+  /// 设置供需集合（门面用；面板的胶囊仍走 [toggleSupplyDemand]）。
+  ///
+  /// 参数：[value] 目标集合；返回：无。
+  void setSupplyDemand(Set<SupplyDemand> value) {
+    state = state.copyWith(supplyDemand: {...value});
+  }
+
+  /// 设置一级大类集合（门面用；空集 = 全部分类）。
+  ///
+  /// 参数：[value] 目标集合；返回：无。
+  void setCategories(Set<ListingCategory> value) {
+    state = state.copyWith(categories: {...value});
+  }
+
+  /// 整体替换（撤销回滚用）。
+  ///
+  /// 参数：[value] 快照里的筛选态；返回：无。
+  void replace(DiscoveryFilter value) {
+    state = value;
+  }
 }
 
 /// 地图页与列表页共享的筛选态。
