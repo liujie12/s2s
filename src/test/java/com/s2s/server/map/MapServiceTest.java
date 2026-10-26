@@ -213,7 +213,7 @@ class MapServiceTest {
             row.put("realname_status", "none");
             rows.add(row);
         }
-        when(mapper.selectSearchPosts(any(), any(), any(), any())).thenReturn(rows);
+        when(mapper.selectSearchPosts(any(), any(), any(), any(), any(), any())).thenReturn(rows);
 
         SearchPostsResponse resp = mapService.searchPosts(
                 List.of(10101), List.of("resource"), "3", "0_0", "2026-08-31.1",
@@ -241,6 +241,32 @@ class MapServiceTest {
     }
 
     /**
+     * 场景：列表检索把价格上下限原样透传给持久层，倒置区间回 40001。
+     *
+     * <p>价格本轮由「一次性收窄」变为持久条件，地图与列表必须按同一组上下限过滤；
+     * 若列表侧漏传，用户在条件带上设了价格、地图收窄了而列表没变，
+     * 就又回到「两页结果对不上」的原始缺陷。</p>
+     */
+    @Test
+    void 列表检索价格透传且倒置回40001() {
+        when(mapper.selectSearchPosts(any(), any(), any(), any(), any(), any())).thenReturn(List.of());
+
+        mapService.searchPosts(List.of(10101), List.of("resource"), "3", "0_0",
+                "2026-08-31.1", 120.15, 30.28,
+                new BigDecimal("500"), new BigDecimal("2000"),
+                null, "distance", 1, 20, null, true);
+
+        verify(mapper).selectSearchPosts(anyList(), anyList(), anyList(),
+                eq(new BigDecimal("500")), eq(new BigDecimal("2000")), any());
+
+        BizException ex = assertThrows(BizException.class, () -> mapService.searchPosts(
+                List.of(10101), List.of("resource"), "3", "0_0", "2026-08-31.1",
+                120.15, 30.28, new BigDecimal("2000"), new BigDecimal("500"),
+                null, "distance", 1, 20, null, true));
+        assertEquals(ErrorCode.PARAM_INVALID, ex.getErrorCode());
+    }
+
+    /**
      * 场景八：`composite` 排序的**时效维度**确实参与计算，而非退化成距离排序。
      *
      * <p>构造一对互相矛盾的数据：「近而旧」与「远而新」。若时效项缺失或权重为 0，
@@ -257,7 +283,7 @@ class MapServiceTest {
         // B：正北约 10km（距离项 ≈ 0.5）但刚发布 → 0.4×0.5 + 0.4×0 + 0.1 = 0.3，应排到 A 之前
         Map<String, Object> farFresh = searchRow(2L, "120.15000", "30.37000",
                 java.time.LocalDateTime.now(), null);
-        when(mapper.selectSearchPosts(any(), any(), any(), any()))
+        when(mapper.selectSearchPosts(any(), any(), any(), any(), any(), any()))
                 .thenReturn(List.of(nearOld, farFresh));
 
         // 距离排序：近者在前
@@ -278,7 +304,7 @@ class MapServiceTest {
         java.time.LocalDateTime published = java.time.LocalDateTime.now().minusHours(2);
         Map<String, Object> red = searchRow(1L, "120.15000", "30.28000", published, null, 0);
         Map<String, Object> green = searchRow(2L, "120.15000", "30.28000", published, null, 2);
-        when(mapper.selectSearchPosts(any(), any(), any(), any()))
+        when(mapper.selectSearchPosts(any(), any(), any(), any(), any(), any()))
                 .thenReturn(List.of(red, green));
 
         assertEquals(List.of(2L, 1L), fetchedIds("composite"));
@@ -293,7 +319,7 @@ class MapServiceTest {
     @Test
     void 价格排序面议恒沉底() {
         java.time.LocalDateTime now = java.time.LocalDateTime.now();
-        when(mapper.selectSearchPosts(any(), any(), any(), any())).thenReturn(List.of(
+        when(mapper.selectSearchPosts(any(), any(), any(), any(), any(), any())).thenReturn(List.of(
                 searchRow(1L, "120.15000", "30.28000", now, new BigDecimal("100.00")),
                 searchRow(2L, "120.15000", "30.28000", now, null),
                 searchRow(3L, "120.15000", "30.28000", now, new BigDecimal("300.00"))));
@@ -313,14 +339,15 @@ class MapServiceTest {
      */
     @Test
     void 数值半径按网格边长展开() {
-        when(mapper.selectSearchPosts(any(), any(), any(), any())).thenReturn(List.of());
+        when(mapper.selectSearchPosts(any(), any(), any(), any(), any(), any())).thenReturn(List.of());
         for (String radius : List.of("1", "3", "5", "10")) {
             mapService.searchPosts(List.of(10101), List.of("resource"), radius, "0_0",
                     "2026-08-31.1", 120.15, 30.28, null, "distance", 1, 20, null);
         }
 
         ArgumentCaptor<List<String>> captor = ArgumentCaptor.forClass(List.class);
-        verify(mapper, times(4)).selectSearchPosts(captor.capture(), anyList(), anyList(), any());
+        verify(mapper, times(4))
+                .selectSearchPosts(captor.capture(), anyList(), anyList(), any(), any(), any());
 
         List<List<String>> captured = captor.getAllValues();
         assertEquals(25, captured.get(0).size());

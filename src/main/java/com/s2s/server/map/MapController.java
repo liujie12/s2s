@@ -82,6 +82,8 @@ public class MapController {
      * @param categoryVersion 分类树版本号
      * @param lng             视野中心经度
      * @param lat             视野中心纬度
+     * @param priceMin        价格下限（元，可空）
+     * @param priceMax        价格上限（元，可空；设置时面议被排除）
      * @param keyword         关键词（可空）
      * @param sort            排序方式（六值，缺省 distance；见 openapi `/posts/search`）
      * @param page            页码（从 1 起）
@@ -98,6 +100,8 @@ public class MapController {
             @RequestParam(name = "category_version", required = false) String categoryVersion,
             @RequestParam(required = false) Double lng,
             @RequestParam(required = false) Double lat,
+            @RequestParam(name = "price_min", required = false) BigDecimal priceMin,
+            @RequestParam(name = "price_max", required = false) BigDecimal priceMax,
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) Integer page,
@@ -107,6 +111,7 @@ public class MapController {
         // 个性化排序开关（2026-10-23）：关闭后 composite 回落 distance，见 MapService 重载说明
         boolean personalizedEnabled = settingService.isPersonalizedRecommendEnabled(userId);
         return mapService.searchPosts(categoryIds, postTypes, radius, gridId, categoryVersion,
-                lng, lat, keyword, sort, page, pageSize, userId, personalizedEnabled);
+                lng, lat, priceMin, priceMax, keyword, sort, page, pageSize, userId,
+                personalizedEnabled);
     }
 }

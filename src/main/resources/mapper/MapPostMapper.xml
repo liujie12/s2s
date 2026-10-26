@@ -130,6 +130,12 @@
         <foreach collection="leafCategoryIds" item="c" open="(" separator="," close=")">#{c}</foreach>
         AND p.type IN
         <foreach collection="postTypes" item="t" open="(" separator="," close=")">#{t}</foreach>
+        <if test="priceMin != null">
+            AND p.price &gt;= #{priceMin}
+        </if>
+        <if test="priceMax != null">
+            AND p.price &lt;= #{priceMax}
+        </if>
         <if test="keyword != null and keyword != ''">
             AND (p.title LIKE CONCAT('%', #{keyword}, '%')
                  OR p.`desc` LIKE CONCAT('%', #{keyword}, '%'))
