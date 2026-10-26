@@ -27,6 +27,7 @@ import '../../domain/listing_category_style.dart';
 import '../../router/app_router.dart';
 import '../location/location_center.dart';
 import 'condition_band.dart';
+import 'condition_editor.dart';
 import 'discovery_filter.dart';
 import 'discovery_providers.dart';
 import 'discovery_query.dart';
@@ -80,6 +81,11 @@ class ListScreen extends ConsumerWidget {
             ),
             child: ConditionBand(
               countLabel: pageAsync.asData == null ? null : '${pageAsync.asData!.value.total} 条',
+              onEditChip: (chip) => showConditionEditor(context, ref, chip),
+              onAddCondition: () => showAddConditionSheet(context, ref),
+              onRetry: () => ref.read(searchConditionsProvider.notifier).submit(
+                    text: ref.read(searchConditionsProvider).queryText,
+                  ),
             ),
           ),
           _SortBar(),

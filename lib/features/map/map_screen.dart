@@ -38,12 +38,14 @@ import '../../router/app_router.dart';
 import '../city/city_selector_sheet.dart';
 import '../detail/post_detail_provider.dart';
 import '../discovery/condition_band.dart';
+import '../discovery/condition_editor.dart';
 import '../discovery/discovery_filter.dart';
 import '../discovery/discovery_providers.dart';
 import '../discovery/discovery_query.dart';
 import '../discovery/effective_filter_provider.dart';
 import '../discovery/filter_panel.dart';
 import '../discovery/map_dto.dart';
+import '../discovery/search_conditions.dart';
 import '../discovery/search_intent.dart';
 import '../discovery/voice_search_sheet.dart';
 import '../location/location_center.dart';
@@ -419,6 +421,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                         anchorLat: _centerLat,
                         anchorLng: _centerLng,
                       ),
+                      onEditChip: (chip) => showConditionEditor(context, ref, chip),
+                      onAddCondition: () => showAddConditionSheet(context, ref),
+                      onRetry: () => ref.read(searchConditionsProvider.notifier).submit(
+                            text: ref.read(searchConditionsProvider).queryText,
+                          ),
                     ),
                     // 探索数据态（[126]）：加载中/失败必须可见 —— 否则「附近没有信息」
                     // 与「数据没回来」在用户眼里完全同形，而两者的处置方式相反。
