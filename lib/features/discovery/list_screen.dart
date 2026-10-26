@@ -1,11 +1,11 @@
 /// 列表页（PRD §6.4.3 / §10.1）。
 ///
-/// **与地图页共享筛选态**：两页读同一个 `discoveryFilterProvider`，在列表页改了
-/// 范围或分类，切回地图立刻生效。PRD §10.1 明确要求，否则会出现「地图 3 个 Pin、
-/// 列表 12 条」这种用户一眼看得见的不一致。
+/// **与地图页共享当前条件**：两页都读 `effectiveFilterProvider`（生效条件投影），
+/// 在列表页改了范围或分类，切回地图立刻生效。PRD §10.1 明确要求，否则会出现
+/// 「地图 3 个 Pin、列表 12 条」这种用户一眼看得见的不一致。
 ///
-/// **筛选面板在本页不做收起**（PRD §6.4.1 末条）：地图页收起是为了不遮挡底图，
-/// 列表页没有底图可遮，收起只会多一次点击。
+/// **筛选面板改为按需展开**（右上 ⋮）：地图页的浮层与列表页的常驻面板原本是
+/// 两套形状不同的筛选体系，观感上像两个产品；本轮统一为同一条条件带。
 ///
 /// **本期不做的四项**（说明文档 M4-3 已记录范围与原因）：收藏星标（依赖账号）、
 /// 实名/资质小标（依赖 §6.9 信任体系）、「联系 TA」按钮（联系中转页尚未实现，
@@ -26,12 +26,15 @@ import '../../domain/listing_category.dart';
 import '../../domain/listing_category_style.dart';
 import '../../router/app_router.dart';
 import '../location/location_center.dart';
+import 'condition_band.dart';
 import 'discovery_filter.dart';
 import 'discovery_providers.dart';
 import 'discovery_query.dart';
+import 'effective_filter_provider.dart';
 import 'filter_panel.dart';
 import 'listing_sort.dart';
 import 'map_dto.dart';
+import 'search_conditions.dart';
 
 class ListScreen extends ConsumerWidget {
   const ListScreen({super.key});
@@ -39,23 +42,25 @@ class ListScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // 探索数据源：真后端 `/posts/search`（[126] 前端段；此前读本地 mock 样例）。
-    // 筛选与排序**都是接口入参**：分类/供需/半径/关键词下推服务端，排序由服务端
-    // 承担（2026-10-08 契约 sort 扩为六值），故本页不再做本地 filter/sort。
-    final filter = ref.watch(discoveryFilterProvider);
+    // 请求参数全部来自生效条件投影 —— 与地图页同一份，本页不再自己回落。
+    final effective = ref.watch(effectiveFilterProvider);
     final sort = ref.watch(listingSortProvider);
     final center = ref.watch(locationCenterProvider);
+    // 搜索锚点优先：与地图用同一中心，否则同条件两页会圈出不同网格。
+    final double lat = effective.anchorLat ?? center.lat;
+    final double lng = effective.anchorLng ?? center.lng;
     final query = SearchQuery(
-      leafCategoryIds: leafCategoryIdsFor(filter.categories),
-      postTypes: postTypesFor(filter.supplyDemand),
-      radius: toApiRadius(filter.radius),
+      leafCategoryIds: effective.leafCategoryIds,
+      postTypes: postTypesFor(effective.supplyDemand),
+      radius: toApiRadius(effective.radius),
       // 列表页没有视口，网格取参考中心 —— 与服务端「按网格 + 半径扩邻域」的
       // 过滤方式一致（半径决定往外扩几圈）。
-      gridId: gridIdOf(center.lng, center.lat),
+      gridId: gridIdOf(lng, lat),
       categoryVersion: categoryTreeVersion,
-      lng: center.lng,
-      lat: center.lat,
-      priceMin: filter.priceMin,
-      priceMax: filter.priceMax,
+      lng: lng,
+      lat: lat,
+      priceMin: effective.priceMin,
+      priceMax: effective.priceMax,
       sort: sort.apiValue,
     );
     final pageAsync = ref.watch(searchPagerProvider(query));
@@ -65,10 +70,19 @@ class ListScreen extends ConsumerWidget {
       appBar: _buildAppBar(context),
       body: Column(
         children: [
-          // 面板与排序条固定在顶部，不随列表滚动：它们是当前结果集的控制器，
-          // 滚到第 50 条时想换个排序还得先滚回顶部，是很常见的体验缺陷。
-          const FilterPanel(elevated: false),
-          _SortBar(count: pageAsync.asData?.value.total),
+          // 条件带与地图同款：搜索行 + chip 行，切页后这次搜索继续有效（R19）。
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.md,
+              AppSpacing.sm,
+              AppSpacing.md,
+              AppSpacing.xs,
+            ),
+            child: ConditionBand(
+              countLabel: pageAsync.asData == null ? null : '${pageAsync.asData!.value.total} 条',
+            ),
+          ),
+          _SortBar(),
           const Divider(height: 1),
           Expanded(child: _buildBody(ref, pageAsync, query)),
         ],
@@ -125,6 +139,21 @@ class ListScreen extends ConsumerWidget {
         ),
       ),
       actions: [
+        IconButton(
+          tooltip: '筛选',
+          icon: Icon(
+            Icons.tune,
+            size: 20,
+            color: Color(AppColors.textPrimary),
+          ),
+          // 面板改为按需展开：常驻面板与地图浮层不同形，是「两套筛选体系」
+          // 观感的来源（KTD7）。
+          onPressed: () => showModalBottomSheet<void>(
+            context: context,
+            isScrollControlled: true,
+            builder: (_) => const SafeArea(child: FilterPanel(elevated: false)),
+          ),
+        ),
         TextButton.icon(
           // go 而非 push：地图与列表是同一层级的两个视图，push 会让返回栈
           // 累积成「地图→列表→地图→列表」，用户连按返回要按很多次才退出。
@@ -148,12 +177,12 @@ class ListScreen extends ConsumerWidget {
   }
 }
 
-/// 排序条 + 结果计数（PRD §6.4.3 排序五档）。
+/// 排序条（PRD §6.4.3 排序五档）。
+///
+/// 不再显示命中数：条件带右端已有计数，同屏两个数字必然出现「一个 0 一个是 …」
+/// 这类互相打脸的时刻。
 class _SortBar extends ConsumerWidget {
-  const _SortBar({required this.count});
-
-  /// 命中总数（由列表页从 `searchProvider` 传入）；加载中为 null。
-  final int? count;
+  const _SortBar();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -168,13 +197,6 @@ class _SortBar extends ConsumerWidget {
       ),
       child: Row(
         children: [
-          Text(
-            count == null ? '…' : '$count 条',
-            style: TextStyle(
-              fontSize: AppTypeScale.small.size,
-              color: Color(AppColors.textSecondary),
-            ),
-          ),
           const SizedBox(width: AppSpacing.md),
           Expanded(
             child: SingleChildScrollView(
@@ -544,7 +566,8 @@ class _EmptyState extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final filter = ref.watch(discoveryFilterProvider);
+    final effective = ref.watch(effectiveFilterProvider);
+    final String summary = effective.chips.map((c) => c.label).join(' · ');
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.xl),
@@ -568,7 +591,7 @@ class _EmptyState extends ConsumerWidget {
             Text(
               // 回显当前条件：空结果最常见的原因是筛窄了，而用户往往
               // 不记得自己选了什么。只说「没有信息」会让人以为平台没内容。
-              '当前筛选：${filter.summaryLabel}',
+              '当前筛选：$summary',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: AppTypeScale.caption.size,
@@ -576,10 +599,10 @@ class _EmptyState extends ConsumerWidget {
               ),
             ),
             const SizedBox(height: AppSpacing.lg),
-            if (filter.radius != SearchRadius.city)
+            if (effective.radius != SearchRadius.city)
               TextButton(
                 onPressed: () => ref
-                    .read(discoveryFilterProvider.notifier)
+                    .read(searchConditionsProvider.notifier)
                     .setRadius(SearchRadius.city),
                 child: const Text('扩大到全城看看'),
               ),
