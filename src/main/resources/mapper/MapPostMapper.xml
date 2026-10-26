@@ -136,6 +136,9 @@
         <if test="priceMax != null">
             AND p.price &lt;= #{priceMax}
         </if>
+        <if test="communityId != null">
+            AND p.community_id = #{communityId}
+        </if>
         <if test="keyword != null and keyword != ''">
             AND (p.title LIKE CONCAT('%', #{keyword}, '%')
                  OR p.`desc` LIKE CONCAT('%', #{keyword}, '%'))

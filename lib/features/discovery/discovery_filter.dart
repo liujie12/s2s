@@ -116,27 +116,6 @@ class DiscoveryFilter {
   /// 是否为全部分类。
   bool get isAllCategories => categories.isEmpty;
 
-  /// 摘要回显文案（PRD §6.4.1：须回显当前筛的是什么）。
-  ///
-  /// 价格段只在设置了任一侧时出现，避免默认状态下多出一段无信息文本。
-  String get summaryLabel {
-    final String supplyDemandPart = switch (supplyDemand.length) {
-      0 => '未选',
-      2 => '资源+需求',
-      _ => supplyDemand.first.label,
-    };
-    final String categoryPart = isAllCategories
-        ? '全部分类'
-        : categories.map((c) => c.label).join('/');
-    final List<String> parts = [
-      radius.label,
-      supplyDemandPart,
-      categoryPart,
-      if (hasPrice) priceLabel,
-    ];
-    return parts.join(' · ');
-  }
-
   /// 价格的显示文案：区间 / 单侧上限 / 单侧下限。
   String get priceLabel => switch ((priceMin, priceMax)) {
     (final int min, final int max) => '$min–$max 元',

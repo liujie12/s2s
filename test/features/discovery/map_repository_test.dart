@@ -138,6 +138,7 @@ void main() {
         lat: 30.2741,
         priceMin: 500,
         priceMax: 2000,
+        communityId: 'B0FFG12345',
         sort: 'distance',
         page: 2,
         pageSize: 20,
@@ -147,8 +148,9 @@ void main() {
       expect(query['category_ids'], '10101');
       expect(query['post_type'], 'resource');
       expect(query['radius'], 'city');
-      expect(query['price_min'], '500');
-      expect(query['price_max'], '2000');
+      expect(query['price_min'], '500.0');
+      expect(query['price_max'], '2000.0');
+      expect(query['community_id'], 'B0FFG12345');
       expect(query['sort'], 'distance');
       expect(query['page'], '2');
       expect(query['page_size'], '20');

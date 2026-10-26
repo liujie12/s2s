@@ -62,6 +62,7 @@ class ListScreen extends ConsumerWidget {
       lat: lat,
       priceMin: effective.priceMin,
       priceMax: effective.priceMax,
+      communityId: effective.communityId,
       sort: sort.apiValue,
     );
     final pageAsync = ref.watch(searchPagerProvider(query));
@@ -85,6 +86,7 @@ class ListScreen extends ConsumerWidget {
               onAddCondition: () => showAddConditionSheet(context, ref),
               onRetry: () => ref.read(searchConditionsProvider.notifier).submit(
                     text: ref.read(searchConditionsProvider).queryText,
+                    retry: true,
                   ),
             ),
           ),

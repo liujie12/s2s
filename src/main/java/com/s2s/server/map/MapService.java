@@ -216,7 +216,7 @@ public class MapService {
             String keyword, String sort, Integer page, Integer pageSize, Long userId,
             boolean personalizedRecommendEnabled) {
         return searchPosts(categoryIds, postTypes, radius, gridId, categoryVersion, lng, lat,
-                null, null, keyword, sort, page, pageSize, userId, personalizedRecommendEnabled);
+                null, null, null, keyword, sort, page, pageSize, userId, personalizedRecommendEnabled);
     }
 
     /**
@@ -228,11 +228,12 @@ public class MapService {
      *
      * @param priceMin 价格下限（元，可空）
      * @param priceMax 价格上限（元，可空）
+     * @param communityId 小区实体 ID（可空；与 `/map/pins` 同口径）
      */
     public SearchPostsResponse searchPosts(List<Integer> categoryIds, List<String> postTypes,
             String radius,
             String gridId, String categoryVersion, Double lng, Double lat,
-            BigDecimal priceMin, BigDecimal priceMax,
+            BigDecimal priceMin, BigDecimal priceMax, String communityId,
             String keyword, String sort, Integer page, Integer pageSize, Long userId,
             boolean personalizedRecommendEnabled) {
         validateSearchParams(categoryIds, postTypes, radius, gridId, categoryVersion, lng, lat, sort);
@@ -250,7 +251,8 @@ public class MapService {
         int resolvedPageSize = pageSize == null ? NfrApi.PAGE_SIZE_DEFAULT : pageSize;
 
         List<Map<String, Object>> rows = mapPostMapper.selectSearchPosts(
-                gridIds, categoryIds, postTypes, priceMin, priceMax, normalizedKeyword);
+                gridIds, categoryIds, postTypes, priceMin, priceMax, communityId,
+                normalizedKeyword);
         // 用可变 ArrayList 承载，sortCards 需原地排序（Stream.toList() 返回不可变列表）。
         List<PostCard> cards = new ArrayList<>(
                 rows.stream().map(row -> toCard(row, lng, lat)).toList());

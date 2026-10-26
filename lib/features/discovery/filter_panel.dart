@@ -196,6 +196,18 @@ class _PriceRowState extends ConsumerState<_PriceRow> {
 
   @override
   Widget build(BuildContext context) {
+    // 价格可能从别处改（chip 改值层、撤销）：面板开着时也要跟上，
+    // 否则输入框会一直显示旧数字，用户以为没改成功。
+    ref.listen(
+      effectiveFilterProvider.select((e) => (e.priceMin, e.priceMax)),
+      (_, next) {
+        if (_minFocus.hasFocus || _maxFocus.hasFocus) return;
+        final String minText = next.$1?.toString() ?? '';
+        final String maxText = next.$2?.toString() ?? '';
+        if (_min.text != minText) _min.text = minText;
+        if (_max.text != maxText) _max.text = maxText;
+      },
+    );
     final bool hasPrice = ref.watch(effectiveFilterProvider).hasPrice;
     return Row(
       children: [

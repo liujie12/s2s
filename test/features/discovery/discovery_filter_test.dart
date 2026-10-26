@@ -9,26 +9,26 @@ import 'package:zhaoyazhao/features/discovery/discovery_filter.dart';
 /// 面板上的价格输入交互由 widget 测试另行覆盖。
 void main() {
   group('价格文案', () {
-    test('只设下限时摘要出现「≥500 元」', () {
+    test('只设下限时文案出现「≥500 元」', () {
       const filter = DiscoveryFilter(priceMin: 500);
-      expect(filter.summaryLabel, contains('≥500 元'));
+      expect(filter.priceLabel, '≥500 元');
       expect(filter.hasPrice, isTrue);
     });
 
-    test('只设上限时摘要出现「≤2000 元」', () {
+    test('只设上限时文案出现「≤2000 元」', () {
       const filter = DiscoveryFilter(priceMax: 2000);
-      expect(filter.summaryLabel, contains('≤2000 元'));
+      expect(filter.priceLabel, '≤2000 元');
     });
 
-    test('两侧都设时摘要出现区间', () {
+    test('两侧都设时文案是区间', () {
       const filter = DiscoveryFilter(priceMin: 500, priceMax: 2000);
-      expect(filter.summaryLabel, contains('500–2000 元'));
+      expect(filter.priceLabel, '500–2000 元');
     });
 
-    test('未设价格时摘要不含价格段', () {
+    test('未设价格时无价格段', () {
       const filter = DiscoveryFilter();
       expect(filter.hasPrice, isFalse);
-      expect(filter.summaryLabel.contains('元'), isFalse);
+      expect(filter.priceLabel, isEmpty);
     });
   });
 
@@ -45,7 +45,7 @@ void main() {
       final next = filter.copyWith(priceMax: null);
       expect(next.priceMax, isNull);
       expect(next.priceMin, 500);
-      expect(next.summaryLabel, contains('≥500 元'));
+      expect(next.priceLabel, '≥500 元');
     });
 
     test('两侧都显式置空即回到不限', () {

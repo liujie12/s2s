@@ -95,10 +95,15 @@ class SearchConditionsNotifier extends Notifier<SearchConditionsState> {
 
   /// 设置供需集合。
   ///
+  /// 任何态下都不接受空集：空集在契约里等于「都不看」，结果恒为空；而投影对
+  /// 「显式清空」的语义是「回到都选」。两者冲突时忽略这次写入——供需维度
+  /// 至少保留一个方向，比静默变成「都选」或静默变成「什么都搜不到」都更可预期。
+  ///
   /// 参数：[selected] 目标集合；返回：无。
   void setSupplyDemand(Set<SupplyDemand> selected) {
-    _recordSnapshot();
+    if (selected.isEmpty) return;
     final SearchIntent? intent = _intent;
+    _recordSnapshot();
     if (intent == null) {
       ref.read(discoveryFilterProvider.notifier).setSupplyDemand(selected);
       return;

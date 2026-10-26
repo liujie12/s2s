@@ -539,7 +539,9 @@ class SearchIntent {
     priceExcludesNegotiable,
     Object.hashAll([
       ...unresolvedFields,
-      for (final ConditionSlot slot in clearedSlots) slot.name,
+      // 排序后再入 hash：== 用 setEquals（顺序无关），hash 若依赖 Set 迭代顺序
+      // 会让两个相等的实例算出不同 hash，违反 Object 契约。
+      ...(clearedSlots.map((slot) => slot.name).toList()..sort()),
     ]),
     Object.hashAll(sources.entries.map((e) => '${e.key}=${e.value}')),
     Object.hash(aiUsed, degraded),

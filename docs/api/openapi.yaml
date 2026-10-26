@@ -1496,8 +1496,9 @@ paths:
         ### 口径
 
         用户用一句话（文字或语音）表达需求，服务端解析成**槽位卡**：供需方向、
-        叶子类目集合、半径档、地点锚点、价格上下限。前端把槽位卡作为一次性临时
-        搜索态（不写持久筛选），据此收窄地图并画搜索圈。
+        叶子类目集合、半径档、地点锚点、价格上下限。前端据此维护「生效条件」：
+        范围/供需/分类/价格为持久条件，地点与小区随本次搜索存在；解析出的价格
+        会镜像进持久条件（见 PRD §6.4.1）。
 
         ### 两层解析（确定性优先）
 
@@ -1669,8 +1670,8 @@ paths:
           in: query
           required: false
           description: |
-            价格上限（元，可空）。设置上限时 `price IS NULL`（面议）默认被排除，
-            回执会说明「面议未计入」；负数或与 `price_min` 倒置回 40001。
+            价格上限（元，可空）。设置上限时 `price IS NULL`（面议）因比较不成立
+            而被排除；负数或与 `price_min` 倒置回 40001。
           schema: { type: number, format: double, minimum: 0, example: 2000 }
         - name: community_id
           in: query
@@ -1778,6 +1779,14 @@ paths:
             价格上限（元，可空）。设置上限时 `price IS NULL`（面议）因比较不成立
             而被排除，与 `/map/pins` 同一口径；负数或与 `price_min` 倒置回 40001。
           schema: { type: number, format: double, minimum: 0, example: 2000 }
+        - name: community_id
+          in: query
+          required: false
+          description: |
+            小区实体 ID（可空）。与 `/map/pins` 同口径：来自 `/search/resolve` 的
+            `community_id` 或用户点选的 `community_candidates[].id`；缺省表示不做
+            小区等值过滤。带上它时列表与地图必须收窄到同一批帖子。
+          schema: { type: string, example: B0FFG12345 }
         - name: keyword
           in: query
           required: false

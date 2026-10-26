@@ -364,6 +364,7 @@ class SearchQuery {
     required this.lat,
     this.priceMin,
     this.priceMax,
+    this.communityId,
     this.sort,
     this.pageSize,
   });
@@ -393,6 +394,12 @@ class SearchQuery {
   /// 价格上限（元，可空；设置时排除面议）。
   final int? priceMax;
 
+  /// 小区实体 ID（可空；口语地址精确过滤）。
+  ///
+  /// 与 `/map/pins` 同参：缺了它，带小区的搜索会在地图收窄、列表不收窄，
+  /// 两页结果直接对不上。
+  final String? communityId;
+
   /// 排序（契约六值之一，见 `ListingSort.apiValue`）。
   final String? sort;
 
@@ -411,6 +418,7 @@ class SearchQuery {
       other.lat == lat &&
       other.priceMin == priceMin &&
       other.priceMax == priceMax &&
+      other.communityId == communityId &&
       other.sort == sort &&
       other.pageSize == pageSize;
 
@@ -425,6 +433,7 @@ class SearchQuery {
         lat,
         priceMin,
         priceMax,
+        communityId,
         sort,
         pageSize,
       );
@@ -610,8 +619,9 @@ class SearchPager extends AsyncNotifier<SearchPageState> {
       categoryVersion: query.categoryVersion,
       lng: query.lng,
       lat: query.lat,
-      priceMin: query.priceMin,
-      priceMax: query.priceMax,
+      priceMin: query.priceMin?.toDouble(),
+      priceMax: query.priceMax?.toDouble(),
+      communityId: query.communityId,
       sort: query.sort,
       page: page,
       pageSize: query.pageSize,

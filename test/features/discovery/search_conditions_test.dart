@@ -79,6 +79,26 @@ void main() {
       expect(container.read(searchIntentProvider).intent?.priceMin, isNull);
     });
 
+    test('搜索态取消最后一个供需方向被忽略（不允许空集）', () {
+      final intent = SearchIntent(queryText: '合租', postType: 'resource');
+      final container = containerWith(intent: intent);
+
+      container.read(searchConditionsProvider.notifier).setSupplyDemand({});
+
+      expect(container.read(searchIntentProvider).intent?.postType, 'resource');
+    });
+
+    test('无搜索态取消最后一个供需方向同样被忽略', () {
+      final container = containerWith();
+
+      container.read(searchConditionsProvider.notifier).setSupplyDemand({});
+
+      expect(
+        container.read(discoveryFilterProvider).supplyDemand,
+        {SupplyDemand.supply, SupplyDemand.demand},
+      );
+    });
+
     test('搜索态切换供需写当前槽位卡，持久筛选不变', () {
       final intent = SearchIntent(queryText: '合租', postType: 'resource');
       final container = containerWith(intent: intent);

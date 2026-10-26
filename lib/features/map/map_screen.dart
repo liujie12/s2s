@@ -421,10 +421,23 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                         anchorLat: _centerLat,
                         anchorLng: _centerLng,
                       ),
+                      // 坐标必须给：后端据它逆地理解析城市 adcode，再按城市约束小区
+                      // 检索。GPS 未就绪时回退到当前视野中心，否则会变成全国检索，
+                      // 把「北城新徽苑」匹到香港的同名「新辉苑」（2026-10-25 真机实测）。
+                      onSubmit: (text) {
+                        final fix = ref.read(locationFixProvider);
+                        ref.read(searchConditionsProvider.notifier).submit(
+                          text: text,
+                          currentLat: fix?.lat ?? _centerLat,
+                          currentLng: fix?.lng ?? _centerLng,
+                        );
+                      },
                       onEditChip: (chip) => showConditionEditor(context, ref, chip),
                       onAddCondition: () => showAddConditionSheet(context, ref),
+                      // 重试是同一次搜索的修正：复用交互标识，日志才能成对检索。
                       onRetry: () => ref.read(searchConditionsProvider.notifier).submit(
                             text: ref.read(searchConditionsProvider).queryText,
+                            retry: true,
                           ),
                     ),
                     // 探索数据态（[126]）：加载中/失败必须可见 —— 否则「附近没有信息」

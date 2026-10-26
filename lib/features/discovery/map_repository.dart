@@ -87,6 +87,7 @@ class MapRepository {
   /// 参数同 [fetchPins]，另加：
   ///   [priceMin] 价格下限（元，可空）；
   ///   [priceMax] 价格上限（元，可空；设置时排除面议）；
+  ///   [communityId] 小区实体 ID（可空；与 `/map/pins` 同口径）；
   ///   [sort]     排序（`distance`/`publish_time`/`completeness`，缺省 distance）；
   ///   [page]     页码（从 1 起）；
   ///   [pageSize] 每页条数（契约默认 20、上限 50）。
@@ -100,8 +101,10 @@ class MapRepository {
     required String categoryVersion,
     required double lng,
     required double lat,
-    int? priceMin,
-    int? priceMax,
+    // 与 /map/pins 及契约一致用 double：本地状态用 int 元，边界处转一次。
+    double? priceMin,
+    double? priceMax,
+    String? communityId,
     String? sort,
     int? page,
     int? pageSize,
@@ -120,6 +123,7 @@ class MapRepository {
       // 可选项缺省即不传：传空值会被服务端判非法值。
       'price_min': ?priceMin,
       'price_max': ?priceMax,
+      'community_id': ?communityId,
       'sort': ?sort,
       'page': ?page,
       'page_size': ?pageSize,
