@@ -4078,37 +4078,68 @@ function fabButton(name, child, fillRole) {
 }
 
 /**
- * 构造收起态的「已选条件摘要胶囊」——折叠方案的关键补偿件。
+ * 构造「已生效条件带」——常驻第二行的可改条件 chip 行（2026-10-26 定稿）。
  *
- * 为什么必须有它：用户要求「选择完成之后可以收起」，但一旦控件收起，
- * 用户就失去了「我现在到底在筛什么」的反馈，会反复展开确认，反而更费操作。
- * 故收起态不是把控件藏干净，而是压缩成一行只读摘要：
- * 范围 + 供需 + 分类路径三项，点它即重新展开。这是「收起」与「可用」的唯一交点。
+ * 为什么取代摘要胶囊：摘要胶囊与 chip 行展示的是同一组条件，「一行只读文字」
+ * 与「一排可点可改的 chip」同时存在，就是把同一件事写了两遍。合并后
+ * 无搜索态显示持久筛选、搜索态显示本次生效条件，两种情形共用同一个组件；
+ * 高度由 44 降到约 36，且条件从「只能看」变成「可删可改」。
+ * 右端的计数胶囊是回执的唯一出口：只报数量，不报「听懂 N 项」。
  *
- * @param {string} summary 摘要文案，如「5km · 资源+需求 · 全部分类」
- * @returns {FrameNode} 摘要胶囊节点
+ * @param {string} summary 条件文案，以「 · 」分隔，如「5km · 资源+需求 · 全部分类」
+ * @param {object} opt 可选；count 传值即在右端渲染命中数胶囊
+ * @returns {FrameNode} 条件带节点
  */
-function filterSummaryChip(summary) {
+function conditionBand(summary, opt) {
+  opt = opt || {};
   // 2026-09-01 条目 [77]：本节点是 TAG_SPECS.notTag（D 族）的实处 —— 名字带
   // Chip、圆角为 full，但它是「点开重新展开筛选」的入口，语义是按钮 + 容器，
   // 不是一排里选一个的胶囊，故取值不由 TAG_SPECS 定义（内边距 sm/md 也与 A 族不同）。
-  var chip = box('_filter-summary', 'HORIZONTAL', {
-    padTop: SPACING.sm, padBottom: SPACING.sm,
-    padLeft: SPACING.md, padRight: SPACING.md,
-    gap: SPACING.sm, radius: RADIUS.full, fill: 'color/surface', align: 'CENTER'
+  var band = box('_condition-band', 'HORIZONTAL', {
+    w: CANVAS.w - SPACING.lg * 2,
+    padTop: SPACING.xs, padBottom: SPACING.xs,
+    padLeft: SPACING.sm, padRight: SPACING.sm,
+    gap: SPACING.xs, radius: RADIUS.lg, fill: 'color/surface', align: 'CENTER'
   });
-  chip.effects = [{
+  band.effects = [{
     type: 'DROP_SHADOW', color: { r: 0, g: 0, b: 0, a: 0.14 },
     offset: { x: 0, y: 2 }, radius: 8, spread: 0, visible: true, blendMode: 'NORMAL'
   }];
-  chip.appendChild(box('_summary-dot', 'HORIZONTAL', {
-    // 2026-09-01 条目 [77]：字面 8 改为读 DOT_SIZES.unread（值不变）
-    w: DOT_SIZES.unread.size, h: DOT_SIZES.unread.size, radius: RADIUS.full, fill: 'color/primary'
-  }));
-  chip.appendChild(text(summary, 'caption', 'color/primary-dark'));
-  // 下箭头用两条斜矩形拼不出，用字符即可（此处仅为方向提示，非语义图标）
-  chip.appendChild(text('展开', 'caption', 'color/primary'));
-  return chip;
+  // 条件 chip：一段文案一枚，尾随「×」表达可删；主色描边表达可点开改值。
+  // 文案按「 · 」切分而不是由调用方传数组：mapCanvas 的 8 处调用都已有 summary，
+  // 就近解析可以零改动地让全部地图屏一起升级。
+  var parts = summary.split(' · ');
+  for (var i = 0; i < parts.length; i++) {
+    var chip = box('_condition-chip', 'HORIZONTAL', {
+      padTop: SPACING.xs, padBottom: SPACING.xs,
+      padLeft: SPACING.sm, padRight: SPACING.xs,
+      gap: SPACING.xs, radius: RADIUS.full,
+      fill: 'color/background', stroke: 'color/primary', strokeWeight: 1, align: 'CENTER'
+    });
+    chip.appendChild(text(parts[i], 'caption', 'color/text-primary'));
+    chip.appendChild(text('×', 'caption', 'color/text-secondary'));
+    band.appendChild(chip);
+  }
+  // 追加入口：虚线描边区别于已生效的实线 chip，表示「这里还能加」
+  var add = box('_condition-add', 'HORIZONTAL', {
+    padTop: SPACING.xs, padBottom: SPACING.xs,
+    padLeft: SPACING.sm, padRight: SPACING.sm,
+    radius: RADIUS.full, stroke: 'color/border', strokeWeight: 1, align: 'CENTER'
+  });
+  add.dashPattern = [4, 4];
+  add.appendChild(text('＋ 条件', 'caption', 'color/text-secondary'));
+  band.appendChild(add);
+  // 计数胶囊：回执只报数量。未理解时由调用方改传文案（如「没听懂」），不混进 chip。
+  if (opt.count !== undefined) {
+    var cnt = box('_condition-count', 'HORIZONTAL', {
+      padTop: SPACING.xs, padBottom: SPACING.xs,
+      padLeft: SPACING.sm, padRight: SPACING.sm,
+      radius: RADIUS.full, fill: 'color/primary-light', align: 'CENTER'
+    });
+    cnt.appendChild(text(opt.count, 'caption', 'color/primary-dark'));
+    band.appendChild(cnt);
+  }
+  return band;
 }
 
 /**
@@ -4946,10 +4977,12 @@ function mapCanvas(label, bare, note, opt) {
 
   var lastY;
   if (collapsed) {
-    // ---- 收起态：只留一行只读摘要胶囊，常驻占用约 44px ----
-    // opt.summary 可覆写摘要文案：搜索过滤后若仍显示「全部分类」，
-    // 摘要就与导航栏搜索框自相矛盾，用户无从判断当前到底在筛什么
-    var chip = filterSummaryChip(opt.summary || '5km · 资源+需求 · 全部分类');
+    // ---- 收起态：只留一条条件带（第二行），常驻占用约 36px ----
+    // opt.summary 可覆写条件文案：搜索过滤后若仍显示「全部分类」，
+    // 条件带就与导航栏搜索框自相矛盾，用户无从判断当前到底在筛什么。
+    // opt.count 传值即在右端给出命中数（回执唯一出口，不报「听懂 N 项」）。
+    var chip = conditionBand(opt.summary || '5km · 资源+需求 · 全部分类',
+      { count: opt.count });
     m.appendChild(chip);
     chip.x = SPACING.lg;
     chip.y = SPACING.md;
@@ -5023,13 +5056,13 @@ function mapCanvas(label, bare, note, opt) {
 }
 
 /**
- * 构造列表页顶部的实体筛选栏（列表页无地图，控件无处可浮，只能占布局流）。
+ * 构造列表页顶部的条件带（列表页无地图，控件无处可浮，只能占布局流）。
  *
- * 直接复用地图的两组悬浮件本体：它们本身是 Auto Layout 容器，
- * 套一层带内边距的外壳即可当实体行用，从而与地图页共享同一套筛选视觉，
- * 不必再维护第二套样式。
+ * 与地图页共用同一个 conditionBand（2026-10-26 定稿）：条件在两页是同一条带子，
+ * 点击、改值、撤销也走同一份状态。改前这里铺的是「范围 + 供需 + 五大类」全展开态，
+ * 与地图收起态的形状不同，两页并排评审时会读成两套筛选体系。
  *
- * @returns {FrameNode} 列表页筛选栏节点
+ * @returns {FrameNode} 列表页条件带容器节点
  */
 function listFilterBar() {
   var bar = box('_list-filter', 'VERTICAL', {
@@ -5037,8 +5070,7 @@ function listFilterBar() {
     padLeft: SPACING.lg, padRight: SPACING.lg, gap: SPACING.sm,
     fill: 'color/surface', stroke: 'color/border'
   });
-  bar.appendChild(mapOverlayTop());
-  bar.appendChild(mapOverlayCats());
+  bar.appendChild(conditionBand('5km · 资源+需求 · 全部分类'));
   return bar;
 }
 
@@ -5084,9 +5116,9 @@ async function batchMap() {
   home.appendChild(statusBar());
   home.appendChild(navBar('丫圈', HOME_NAV));
   home.appendChild(mapCanvas('地图画布（高德 SDK 承载区）', false, [
-    annotation('主态 = 筛选收起', [
-      '常驻件仅三竖点入口 44px + 摘要胶囊 44px，其余全收起',
-      '摘要胶囊回显当前条件，点它或三点入口即展开',
+    annotation('主态 = 条件带常驻', [
+      '常驻件仅三竖点入口 44px + 条件带（第二行 chip 行），其余全收起',
+      '条件带回显当前生效条件，每枚 chip 可删、可点开改值，行末可追加',
       '图例改为「?」按需唤起，不再常驻占位'
     ]),
     // 条目 [52] 取证真缺口 #5：外部先例（Apple MapKit / Material）普遍显式
@@ -5113,7 +5145,7 @@ async function batchMap() {
   expanded.appendChild(mapCanvas('筛选展开：范围 + 供需 + 五大类', false, [
     annotation('展开态', [
       '展开时占用约 200px，故不作为默认态',
-      '选择完成后收起，回到主态的 44px 摘要胶囊',
+      '选择完成后收起，回到常驻的条件带（第二行 chip 行）',
       // 原为手抄「底部上滑 240ms spring（PRD §1.4.8）」。改从 MOTION 现算：
       // 这是三处手抄里唯一会渲染到画布的一处，也就是唯一会被评审当成判据读的一处
       '展开/收起动效：' + motionLine('sheet') + '（' + MOTION.sheet.prd + '）'
@@ -5175,8 +5207,9 @@ async function batchMap() {
       '「租房」经同义词映射命中 房屋›租房 整个子树（PRD §2.9）',
       '同义词表由运营后台配置：「租房」↔「出租」↔「合租」（PRD §2.10）',
       '过滤结果与范围/供需筛选是「与」关系，不互相覆盖',
-      '摘要胶囊同步回显关键词，避免收起后忘了自己在搜什么',
-      '点搜索框右侧叉号清空关键词，地图恢复全类目'
+      '条件带同步回显关键词 chip，避免收起后忘了自己在搜什么',
+      '回执只报命中数（右端「3 条」），不报「听懂 N 项」',
+      '点搜索框右侧叉号只清文字，条件 chip 保留；「清除」才结束整次搜索'
     ]),
     {
       // 只留房屋类：两条已有的房屋 Pin + 一条补位，坐标沿用原图的不规则分布
@@ -5185,7 +5218,10 @@ async function batchMap() {
         ['cat-house', 'resource', 'green',  true,  300, 448],
         ['cat-house', 'resource', 'green',  false,  88, 336]
       ],
-      summary: '5km · 资源+需求 · 关键词「租房」'
+      // 条件带用短文案：chip + 「＋ 条件」+ 计数胶囊需在 358 宽内排完，
+      // 「关键词「租房」」带书名号会多占约 40px，把计数挤出行外
+      summary: '5km · 资源+需求 · 租房',
+      count: '3 条'
     }));
   searched.appendChild(bottomTab('丫圈'));
   frames.push(searched);
@@ -5479,7 +5515,8 @@ async function batchMap() {
   }
   listBody.appendChild(annotation('列表页口径', [
     '不占底部 Tab，由首页右上视图切换进入（PRD §10.1）',
-    '与地图共享同一套筛选与范围状态',
+    '与地图共享同一套筛选与范围状态：顶部条件带就是同一条',
+    '搜索结果跨视图存活：切到列表不重置条件，撤销栈也共用',
     '5 大类 + 二级筛选 + 三种排序'
   ]));
   // motion/fade 钉在列表体上（2026-08-27，I5）：这一档规定的是「骨架屏与内容

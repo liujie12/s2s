@@ -491,8 +491,161 @@ footer {
 </div>
 </section>
 
+<section id="round2">
+<h2>续篇（2026-10-25）：关键字栏与语义回执要不要合并</h2>
+<p>触发问题：地图页顶部同时存在三层——关键词搜索框、筛选摘要 chip（「5km · 资源+需求 · 全部分类」）、语义回执条（「听懂 6 项 · 命中 0 条」+ 条件 chip）。用户认为前两者与回执重复冗余，提出四问：① 是否冗余 ② 关键字栏是否还有必要 ③ 这些栏是给关键字还是给语义输入用的 ④ 怎么合并。</p>
+<p><strong>本轮只做「入口与已生效条件」这一层</strong>，不碰整站信息架构；PRD 已定口径与 2026-10-25 裁定作为硬约束：搜索框在导航栏（PRD:1144）、关键词与三组筛选是「与」关系互不覆盖（PRD:1151）、摘要须回显关键词（PRD:1152）、不新增独立搜索页（PRD:1154）、不画搜索圈、回执条紧贴搜索栏两行、零结果不自动改条件。</p>
+
+<h3>Codebase Context（本轮新增证据）</h3>
+<ul>
+  <li>同一个搜索框承担两种身份：<code>onChanged</code> 每敲一字写持久筛选（<code>map_screen.dart:653-655</code>），<code>onSubmitted</code> 才走一次性语义解析（<code>:656-665</code>）；程序化回填 <code>controller.text</code> 不触发 <code>onChanged</code>（<code>:231-237</code>）。界面上没有任何东西告诉用户这条分界存在。</li>
+  <li>关键词写进 filter，但 <code>/map/pins</code> 的 <code>PinsQuery</code> 没有 keyword 字段（<code>:276-296</code>）；列表页却真的按它过滤（<code>list_screen.dart:56</code>）。于是打第一个字时摘要已宣称「关键词『租』」，地图一动不动、列表已经变了。</li>
+  <li>摘要 chip 只读 filter（<code>:1544/1567</code>），回执 chip 只读 intent（<code>:2092</code>）。说「1km 租房」时同屏会出现「5km · 资源+需求 · 全部分类」与「1km / 房源」两套「当前筛选」。</li>
+  <li>搜索态下改筛选被逐槽静默忽略：面板只写 filter（<code>filter_panel.dart:17/95/123/184</code>），查询按槽位优先 intent、缺失才回落 filter（<code>:277-293</code>），价格无回落；全仓没有 filter→intent 的同步监听。</li>
+  <li>回执的「听懂 N 项」用 <code>chips.length</code>（<code>:2166-2172</code>），而灰态「没敢用」chip（<code>:2133-2144</code>）与零结果动作 chip（<code>:2149-2164</code>）都在这条数组里——数字把失败与动作算成了成功。</li>
+  <li>条件 chip 只有 <code>onDeleted</code>，不能点开改（<code>:2248-2260</code>）；底层 <code>without*</code>/<code>widenRadius</code>/<code>selectCommunity</code> 已就绪（<code>search_intent.dart:252-325</code>），但没有「设定具体价格/类目值」的接口。</li>
+  <li><code>clear()</code> 只重置搜索态（<code>:569-572</code>），搜索框文本与 <code>filter.keyword</code> 都留着；PRD 要求的右侧叉号在实现里不存在。</li>
+  <li>列表页 0 引用 <code>searchIntentProvider</code>，空态只用 <code>filter.summaryLabel</code>（<code>list_screen.dart:570</code>）；切视图也不清 intent。PRD §10.1（<code>:2138</code>）要求两页共享同一套筛选与范围状态。</li>
+  <li>没有任何回执条/chip 的 widget 断言；<code>search_intent_test</code> 只锁状态语义。</li>
+</ul>
+
+<h3>Topic Axes</h3>
+<ul>
+  <li><strong>A1 入口身份</strong>：一个框还是两个；关键词与自然语言如何区分共存</li>
+  <li><strong>A2 条件真源</strong>：持久筛选 vs 一次性搜索态谁说了算，同屏两处条件如何收敛</li>
+  <li><strong>A3 回执形态</strong>：摘要句 / chip 行 / 可编辑条件；「听懂 N 项」与计数去留</li>
+  <li><strong>A4 生命周期与跨视图</strong>：清除 / 撤销 / 切列表后什么保留什么丢弃</li>
+</ul>
+
+<div class="callout">
+  <strong>上一轮 I1「可见的一次性搜索圈」作废。</strong>2026-10-25 真机验收后裁定：不画范围圈，只按半径过滤 Pin，地址命中直接移动相机。原文保留于本页仅作历史记录。
+</div>
+
+<h3>Ranked Ideas</h3>
+
+<article class="idea" id="s1">
+  <h3><span class="id">S1.</span>一份生效条件：所有读点只读同一个投影</h3>
+  <p class="axis"><span class="tag">Axis</span>A2 条件真源</p>
+  <p class="field"><span class="field-label">Description</span>把「持久筛选打底 + 搜索态逐槽覆盖」从四段内联三元表达式抽成一个派生的「当前生效条件」，请求、摘要句、chip 行、筛选面板、列表页全部只读它。面板在搜索态下改的是这层生效条件（并进撤销栈），而不是那个改完不生效的持久层。两栏要不要合并，先由这份投影回答「谁代表现在」，UI 再决定谁该显示什么。</p>
+  <p class="field"><span class="tag">direct</span>同屏四处各读各的：查询块逐字段三元（<code>map_screen.dart:276-295</code>）、摘要只读 filter（<code>:1544/1567</code>）、回执只读 intent（<code>:2092</code>）、列表只读 filter（<code>list_screen.dart:44/57</code>）。PRD:1148 与 §10.1（<code>:2138</code>）要求两页共享同一套筛选与范围状态。</p>
+  <p class="field"><span class="field-label">Rationale</span>今天所有「重复」「没反应」「地图 3 条、列表 20 条」都能追到同一件事：没有一处代码可以被称为「当前条件」。先合并状态，UI 的重复问题会自动缩小成一个显示选择；以后新增槽位（朝向、押付、楼层）只改投影一处，而不是四处补三元。</p>
+  <p class="field-label">Downsides</p>
+  <ul>
+    <li>要重排 <code>PinsQuery</code> 的构造与若干 <code>ref.watch</code>，属于一次小型重构，回归面覆盖地图、列表、筛选面板三处。</li>
+    <li>投影若把「来源」丢掉，会退化成另一种黑箱；必须带 source 标记（哪个槽来自 intent、哪个来自 filter）。</li>
+  </ul>
+  <dl class="score"><div><dt>Confidence</dt><dd>88%</dd></div><div><dt>Complexity</dt><dd>Medium</dd></div></dl>
+</article>
+
+<article class="idea" id="s2">
+  <h3><span class="id">S2.</span>一条条件带：句子行在上、可改 chip 行在下</h3>
+  <p class="axis"><span class="tag">Axis</span>A1 入口身份 / A3 回执形态</p>
+  <p class="field"><span class="field-label">Description</span>把搜索框、摘要 chip、回执条合成一个视觉单元：第一行是「这句话被理解成什么」——可直接编辑的句子（或搜索框本身），第二行是它的展开——可删<em>也可点开改</em>的条件 chip，右侧只留一个出口（撤销 / 清除）。摘要 chip 从独立浮层降级为这条带子的收起态。保留 2026-10-25「紧贴搜索栏两行」的几何，但把「两行」定义为同一个对象的两段，而不是两个控件。</p>
+  <p class="field"><span class="tag">direct</span>现在三条同时存在且各自有独立写路径：搜索框带文本（<code>:652</code>）、摘要 chip 读 filter（<code>:1544/1567</code>）、回执条读 intent（<code>:2092</code>），叠放还要靠实测高度互相避让（<code>:177-183</code>、<code>:467-484</code>）。</p>
+  <p class="field"><span class="field-label">Rationale</span>用户的问题是「重复」，而重复的本质是「当前条件」被写了三遍。合成一条带之后，屏幕顶部只剩一处陈述，且它同时是入口与收据——省掉一次视线跳转，也让「我改的是哪一层」不再需要解释。</p>
+  <p class="field-label">Downsides</p>
+  <ul>
+    <li>「点开改」中的价格与类目需要新增设置接口（现有 API 只支持删除与逐档放宽）。</li>
+    <li>句子态与可编辑文本之间切换存在焦点/光标风险：程序化回填不触发 <code>onChanged</code>，状态同步链更短也更脆。</li>
+    <li>摘要 chip 的收起态若去掉，PRD:1152 的「摘要回显关键词」需由句子行承担，需同步改 PRD 措辞。</li>
+  </ul>
+  <dl class="score"><div><dt>Confidence</dt><dd>72%</dd></div><div><dt>Complexity</dt><dd>Medium</dd></div></dl>
+</article>
+
+<article class="idea" id="s3">
+  <h3><span class="id">S3.</span>回执只说没听懂的和结果，不报「听懂 N 项」</h3>
+  <p class="axis"><span class="tag">Axis</span>A3 回执形态</p>
+  <p class="field"><span class="field-label">Description</span>把首行从「听懂 6 项 · 命中 0 条」换成结果句加失败项：「锦绣小区 1km 内、2000 元以下，找到 3 条」；没解析出来的只在句尾用一个可点入口「2 项没听懂」提示，展开才显示字段名。灰态 chip 与零结果动作 chip 不再计入「听懂」的分子。</p>
+  <p class="field"><span class="tag">direct</span>计数取 <code>chips.length</code>（<code>map_screen.dart:2166-2172</code>），而灰态「没敢用」（<code>:2133-2144</code>）与「扩大范围/放宽价格」动作 chip（<code>:2149-2164</code>）都在这条数组里——系统最不确定时，报了一个偏大的成功数。</p>
+  <p class="field"><span class="field-label">Rationale</span>回执第一读者是「我说的话被理解了吗」的人，不是调试者。把失败算成成功会让整条回执打折；改成只播报失败项，回执就从成绩单变成待办清单，下一步动作自然浮现。这是本轮最便宜的一处信任修复。</p>
+  <p class="field-label">Downsides</p>
+  <ul>
+    <li>「听懂 N 项」对运营排查有用，去掉后需在日志侧保留同等信息。</li>
+    <li>结果句要在零结果/多结果/降级三种态下各写一版文案，且必须与 PRD 摘要口径对齐。</li>
+  </ul>
+  <dl class="score"><div><dt>Confidence</dt><dd>90%</dd></div><div><dt>Complexity</dt><dd>Low</dd></div></dl>
+</article>
+
+<article class="idea" id="s4">
+  <h3><span class="id">S4.</span>写入路由：面板在搜索态下要么生效，要么明说被盖住</h3>
+  <p class="axis"><span class="tag">Axis</span>A2 条件真源 / A4 生命周期</p>
+  <p class="field"><span class="field-label">Description</span>给「改条件」定一条唯一路由：存在搜索态时，面板的改动直接写进当前搜索（并刷新回执、进撤销栈）；不存在搜索态时写持久筛选。若产品选择禁止在搜索态下改面板，就必须显式禁用并写明「本次搜索已覆盖这组条件」——不能继续「看起来能点、结果不变」。</p>
+  <p class="field"><span class="tag">direct</span>面板只 import 持久筛选（<code>filter_panel.dart:17</code>），只写 filter（<code>:95/123/184</code>），而查询逐槽优先 intent（<code>map_screen.dart:277-293</code>）；搜索态下入口仍可点开（<code>:1546</code>），全仓无同步监听。</p>
+  <p class="field"><span class="field-label">Rationale</span>死控件是最贵的债：用户改了没反应，会先怀疑自己、再怀疑产品，最后改用重说一遍绕过去——一次改条件变成一次重新输入。而且每新增一个筛选槽都会复制同一个 bug，除非路由先被定下来。</p>
+  <p class="field-label">Downsides</p>
+  <ul>
+    <li>「写进当前搜索」意味着一次面板操作会污染一次性搜索态，需与 KTD4「不写持久筛选」的原始意图重新对齐措辞。</li>
+    <li>价格槽没有回落逻辑，路由统一后要单独决定价格的合并规则。</li>
+  </ul>
+  <dl class="score"><div><dt>Confidence</dt><dd>74%</dd></div><div><dt>Complexity</dt><dd>Medium</dd></div></dl>
+</article>
+
+<article class="idea" id="s5">
+  <h3><span class="id">S5.</span>跨视图同一份条件：列表读同一投影，顶栏给一行压缩回执</h3>
+  <p class="axis"><span class="tag">Axis</span>A4 生命周期与跨视图</p>
+  <p class="field"><span class="field-label">Description</span>让「一次搜索」跨视图存活：列表页渲染同一份生效条件的投影，顶部给一行压缩回执（条件可删、可撤销），空态也用搜索态解释；若决定不跨视图，切到列表时必须显式结束搜索并提示「已回到默认筛选」。两种都可接受，唯一不可接受的是现在这样：既不清，也不读。</p>
+  <p class="field"><span class="tag">direct</span>列表页全文 0 引用 <code>searchIntentProvider</code>，只读 filter（<code>list_screen.dart:44/57</code>），空态文案用 <code>filter.summaryLabel</code>（<code>:570</code>）；切视图 <code>context.go</code> 不清 intent（<code>map_screen.dart:1618-1621</code>、<code>list_screen.dart:130</code>）。PRD:1148 与 §10.1（<code>:2138</code>）要求共享同一套筛选与范围状态。</p>
+  <p class="field"><span class="field-label">Rationale</span>切视图是为了换个看法，不是为了换一批数据。地图 3 条、列表 20 条会让用户以为自己改错了条件；而「已生效条件」只活在有地图的那一页，等于把真相限定在局部。</p>
+  <p class="field-label">Downsides</p>
+  <ul>
+    <li>必须建立在 S1 的投影之上，否则会变成第三份条件副本。</li>
+    <li>列表页顶部空间已被排序/计数占用，压缩回执需要新的排布方案。</li>
+  </ul>
+  <dl class="score"><div><dt>Confidence</dt><dd>70%</dd></div><div><dt>Complexity</dt><dd>Medium</dd></div></dl>
+</article>
+
+<article class="idea" id="s6">
+  <h3><span class="id">S6.</span>清除即结束会话：文本、关键词、条件一起走</h3>
+  <p class="axis"><span class="tag">Axis</span>A4 生命周期与跨视图</p>
+  <p class="field"><span class="field-label">Description</span>把「清除」定义成一次搜索的终点：搜索框文本、<code>filter.keyword</code>、条件 chip、撤销栈同时清空，屏幕回到默认筛选态；同时补上 PRD 要求的搜索框右侧叉号（仅有词时出现），让「清掉这几个字」和「结束这次搜索」成为两个可分辨的动作。</p>
+  <p class="field"><span class="tag">direct</span><code>clear()</code> 只重置搜索态（<code>search_intent.dart:569-572</code>）；<code>ref.listen</code> 在 <code>intent == null</code> 时直接 return，回写与清空都不做（<code>map_screen.dart:231-233</code>）；PRD:1153 的叉号在 <code>InputDecoration</code> 里不存在。</p>
+  <p class="field"><span class="field-label">Rationale</span>清不干净的残影恰好出现在误触、重进页面、跨视图这些高频时刻，而它摧毁的正是「现在到底有没有搜索」这一基本判断。把两个动作分开之后，「清除」才配得上它现在的强语气。</p>
+  <p class="field-label">Downsides</p>
+  <ul>
+    <li>关键词同时是列表页的搜索条件，一起清掉会让列表页结果集变化，需确认这是否符合共享筛选的预期。</li>
+    <li>叉号与「清除」并存可能产生新的歧义，需要文案分级。</li>
+  </ul>
+  <dl class="score"><div><dt>Confidence</dt><dd>78%</dd></div><div><dt>Complexity</dt><dd>Low</dd></div></dl>
+</article>
+
+<article class="idea" id="s7">
+  <h3><span class="id">S7.</span>先锁展示契约：条件报告值对象 + 断言</h3>
+  <p class="axis"><span class="tag">Axis</span>A3 回执形态</p>
+  <p class="field"><span class="field-label">Description</span>把「生效条件 + 未解析字段 + 命中/已滤掉计数」抽成一个条件报告值对象，句子行与 chip 行都由它生成，并为它补上断言（例如：未解析项不得计入已听懂数；动作入口不得出现在条件数组中）。形态怎么合并是后一步，先让「回执说了什么」变成可测的。</p>
+  <p class="field"><span class="tag">direct</span>回执首行是 widget 内联字符串拼接（<code>map_screen.dart:2166-2172</code>），计数直接取数组长度；<code>test/</code> 下没有任何回执条/chip 的 widget 断言，<code>search_intent_test</code> 只覆盖状态语义。</p>
+  <p class="field"><span class="field-label">Rationale</span>合并两栏、换成结果句、加减 chip，全都要动这套文案与集合。契约先可测，后续任何形态重排都变成低成本重构；否则每次改文案只能靠真机肉眼验收，也正是这几天反复返工的来源。</p>
+  <p class="field-label">Downsides</p>
+  <ul>
+    <li>「不得两处重复展示」这类断言与现状直接冲突，只能在 S1/S2 落地后启用，不能先锁死。</li>
+    <li>值对象会成为新的公共契约，改动需同步前后端与文档。</li>
+  </ul>
+  <dl class="score"><div><dt>Confidence</dt><dd>82%</dd></div><div><dt>Complexity</dt><dd>Low</dd></div></dl>
+</article>
+
+<h3>Rejection Summary（本轮）</h3>
+<table>
+  <thead><tr><th>#</th><th>Idea</th><th>Reason Rejected</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>删掉「打字即写持久筛选」旁路</td><td>依据被反驳：该写入不是死路径，而是关键词到达列表页搜索（<code>list_screen.dart:56</code>）与摘要回显（<code>discovery_filter.dart:119-124</code>）的唯一通道；删掉会同时打断 PRD:1151/1152。关键词的身份问题并入 S1 由投影统一裁决。</td></tr>
+    <tr><td>2</td><td>零输入框 / 键盘藏进展开态</td><td>外部先例被反向使用：高德与 Google 都是「保留可见输入框、把语音收进同一个框」，恰恰支持合并入口而非隐藏键盘；PRD:1144/1153 也假定搜索框常驻且有清除叉号。</td></tr>
+    <tr><td>3</td><td>分诊台：关键词作为语义起手句模板</td><td>类比缺机制：该模式依赖「输入即出即时结果」，而 <code>PinsQuery</code> 无 keyword（<code>map_screen.dart:276-296</code>），关键词在地图上不产生任何即时结果。</td></tr>
+    <tr><td>4</td><td>反事实诊断（零结果时逐项试算「若不算它会有几条」）</td><td>依据不足且成本高：现有只有圈内/圈外两个计数（<code>:344-358</code>），无法反推逐项贡献，需要 N 次查询或服务端聚合的新契约。值得单独讨论，但不是本轮收敛项。</td></tr>
+    <tr><td>5</td><td>回执改差分表达（只写「相比持久筛选改了什么」）</td><td>推理前提不成立：摘要读 filter、回执读 intent，二者并非复述同一组绝对条件；在存在回落槽位时，差分反而会隐藏真正生效的条件。</td></tr>
+    <tr><td>6</td><td>回执第二行按图让位（拖图后自动折叠）</td><td>假设未验证：用户平移缩放往往正是为了核对结果后微调，自动折叠会在最需要控件时把它们藏起来；且与 2026-10-25「两行紧贴」裁定存在张力。</td></tr>
+    <tr><td>7</td><td>多档撤销时间线（把每次改动画成可回跳的帧）</td><td>依据只覆盖一半：<code>undo</code> 只有单档 <code>previous</code>（<code>search_intent.dart:474-499/564-566</code>），多档没有代码基础；外部 Google Maps 先例只证明「搜索框 + AI 入口并存」，不证明时间线。清除语义已收进 S6。</td></tr>
+    <tr><td>8</td><td>chip 只升级为「点开就改」（独立成篇）</td><td>并入 S2：它是条件带第二行的交互细节，单独成篇会与入口合并重复。</td></tr>
+    <tr><td>9</td><td>快门键：入口与回执是同一次手势的两段</td><td>并入 S2：结构洞见成立（按压深度承载参数），但形态上是同一个「一条条件带」的近亲，保留其一即可。</td></tr>
+    <tr><td>10</td><td>登机牌重打 / 公式栏 + 单元格 / Git 三棵树</td><td>并入 S1 与 S2：三者分别论证了「单一权威输入」「变更标记」「未应用层」，结论已在 S1/S2 中体现，保留原案会重复。</td></tr>
+  </tbody>
+</table>
+
+<div class="callout">
+  <strong>本轮验证推翻的两条主张。</strong>① 「打字即写持久筛选是旁路，可删」不成立——它同时是列表页搜索与摘要回显的唯一来源，删除会直接违反 PRD:1151/1152。② 「零输入框、键盘藏进展开态」所引先例反向支持了相反结论。另需纠正一处事实：<code>PinsQuery</code> 并非「全被 intent 覆盖」，而是逐槽位混合覆盖与回落，价格槽无回落——这直接影响 S4 的合并规则。
+</div>
+</section>
+
 <footer class="composition-signal">
-  Composed 2026-10-23 by ce-ideate from <code>d:\developer\code\aicoding\s2s</code> 的仓库现状（地图 / 搜索 / AI / 语音 / 隐私链路）与外部先例研究。
+  Composed 2026-10-23 by ce-ideate from <code>d:\developer\code\aicoding\s2s</code> 的仓库现状（地图 / 搜索 / AI / 语音 / 隐私链路）与外部先例研究；2026-10-25 续写「入口与回执的合并」一节，新增 S1-S7 与本轮否决清单。
 </footer>
 
 </div>
