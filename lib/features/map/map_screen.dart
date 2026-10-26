@@ -37,9 +37,11 @@ import '../../nfr_constants.dart';
 import '../../router/app_router.dart';
 import '../city/city_selector_sheet.dart';
 import '../detail/post_detail_provider.dart';
+import '../discovery/condition_band.dart';
 import '../discovery/discovery_filter.dart';
 import '../discovery/discovery_providers.dart';
 import '../discovery/discovery_query.dart';
+import '../discovery/effective_filter_provider.dart';
 import '../discovery/filter_panel.dart';
 import '../discovery/map_dto.dart';
 import '../discovery/search_intent.dart';
@@ -174,22 +176,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   /// 是否已排过「FAB 避让筛选面板」的帧后校正（防重复调度）。
   bool _fabAvoidScheduled = false;
 
-  /// 语义回执条 key 与实测高度。
+  /// 条件带 key 与实测高度。
   ///
-  /// 用途：回执条出现时把右上角按钮列整体下移避让，撤销后自动归位
-  /// （2026-10-25 用户裁定）。高度取实测值而非写死，跟随字号/换行变化。
-  final GlobalKey _intentBarKey = GlobalKey();
-  double _intentBarHeight = 0;
-  bool _intentBarMeasureScheduled = false;
-
-  /// 搜索框控制器（语义搜索把转写文本/原句回显到这里，保持可编辑）。
-  final TextEditingController _searchController = TextEditingController();
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
+  /// 用途：条件带常驻，右上角按钮列必须始终让开它；高度取实测值而非写死，
+  /// 跟随字号/换行变化（KTD11）。
+  final GlobalKey _conditionBandKey = GlobalKey();
+  double _conditionBandHeight = 0;
+  bool _conditionBandMeasureScheduled = false;
 
   @override
   void initState() {
@@ -225,16 +218,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       // 与后续 onCameraMoveEnd 重复同步无副作用：`PinsQuery` 值相等 → 同键 → 不发请求。
       _syncFetchViewport();
     });
-    // 语义搜索结果变化 → 搜索框回显原句/转写文本；有地点锚点时把相机移过去。
+    // 语义搜索结果变化 → 有地点锚点时把相机移过去（文本回显由条件带自己读门面）。
     // 与 locationCenter 监听分开：搜索锚点是**一次性**的，不能写回共享参考中心，
     // 否则撤销搜索后地图仍停在被搜索出来的地名上。
     ref.listen(searchIntentProvider, (previous, next) {
       final intent = next.intent;
       if (intent == null) return;
-      final echo = intent.queryText;
-      if (echo.isNotEmpty && _searchController.text != echo) {
-        _searchController.text = echo;
-      }
       final lat = intent.anchorLat;
       final lng = intent.anchorLng;
       if (lat != null && lng != null && (lat != _centerLat || lng != _centerLng)) {
@@ -267,20 +256,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     // 探索数据源：真后端 `/map/pins`（[126] 前端段切入；此前读的是本地 mock 样例，
     // 而详情页读真后端 —— 两者 ID 空间不通，正是「详情看不了」的根因）。
     // 五要素随筛选态与视口变化；`PinsQuery` 实现值相等，故同一组合只发一次。
-    final filter = ref.watch(discoveryFilterProvider);
-    // 语义搜索是**一次性收窄**（KTD4）：命中项覆盖持久筛选，未命中项沿用持久筛选。
-    // 不写回 DiscoveryFilter —— 撤销时才能干净回到原筛选。
-    final intent = ref.watch(searchIntentProvider).intent;
-    final double queryLat = intent?.anchorLat ?? _fetchLat;
-    final double queryLng = intent?.anchorLng ?? _fetchLng;
+    // 当前生效条件：唯一来源是投影，页面不再自己逐槽位回落。
+    final effective = ref.watch(effectiveFilterProvider);
+    final double queryLat = effective.anchorLat ?? _fetchLat;
+    final double queryLng = effective.anchorLng ?? _fetchLng;
     final pinsQuery = PinsQuery(
-      leafCategoryIds: intent != null && intent.leafCategoryIds.isNotEmpty
-          ? intent.leafCategoryIds
-          : leafCategoryIdsFor(filter.categories),
-      postTypes: intent?.postType != null
-          ? <String>[intent!.postType!]
-          : postTypesFor(filter.supplyDemand),
-      radius: intent?.radius ?? toApiRadius(filter.radius),
+      leafCategoryIds: effective.leafCategoryIds,
+      postTypes: postTypesFor(effective.supplyDemand),
+      radius: toApiRadius(effective.radius),
       gridId: gridIdOf(queryLng, queryLat),
       // 分类树版本号取本地常量真源（随包发布，与服务端不一致时契约只回 stale 标记、
       // 不报错，故落后是降级而非故障）。
@@ -289,10 +272,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       lng: queryLng,
       lat: queryLat,
       zoom: MapProjection.zoomForMetersPerPixel(queryLat, _fetchMetersPerPixel),
-      priceMin: intent?.priceMin,
-      priceMax: intent?.priceMax,
+      // 契约的价格参数是 double；本地筛选用 int 元。
+      priceMin: effective.priceMin?.toDouble(),
+      priceMax: effective.priceMax?.toDouble(),
       // 口语地址命中的小区：等值过滤「只看这个小区」，与价格/半径叠加。
-      communityId: intent?.communityId,
+      communityId: effective.communityId,
     );
     final pinsAsync = ref.watch(pinsProvider(pinsQuery));
 
@@ -341,10 +325,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           final rawPins = merged?.pins ?? const <MapPinDto>[];
           // 搜索圈内精裁（R10）：服务端按网格档位扩圈，边缘会多出圈外点；
           // 客户端按**真实米数**再过一遍，保证「圈内只显示圈内」。
-          final int? searchRadiusMeters = intent?.radiusMeters;
-          final double circleLat = intent?.anchorLat ?? queryLat;
-          final double circleLng = intent?.anchorLng ?? queryLng;
-          final bool cropByCircle = searchRadiusMeters != null;
+          final int? searchRadiusMeters = effective.radiusMeters;
+          final double circleLat = effective.anchorLat ?? queryLat;
+          final double circleLng = effective.anchorLng ?? queryLng;
+          final bool cropByCircle = searchRadiusMeters != null &&
+              effective.radius != SearchRadius.city;
           final pinList = cropByCircle
               ? rawPins
                     .where(
@@ -354,8 +339,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     )
                     .toList()
               : rawPins;
-          // 圈外命中数：同一次服务端结果里被精裁掉的条数（回执「排除多少」）。
-          final int outsideCount = rawPins.length - pinList.length;
           final clusterList = merged?.clusters ?? const <MapClusterDto>[];
           // pins/簇派生量按**引用**记忆化，避免随每一帧重算（见 [_PinsDerived]）。
           final derived = _derivedFor(pinList, clusterList);
@@ -392,8 +375,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           final bool panelExpanded = ref.watch(filterPanelExpandedProvider);
           // 面板展开时排一次帧后避让，让 FAB 抬到面板上方（入口保持可见）。
           if (panelExpanded) _avoidFilterPanel();
-          // 回执条出现后测一次高度，用于把右上角按钮列整体下移避让。
-          if (intent != null) _measureIntentBar();
+          // 条件带高度随字号/换行变化，实测后驱动右上角按钮列下移。
+          _measureConditionBand();
 
           return Stack(
             key: _mapStackKey,
@@ -420,25 +403,23 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   bottom: AppSpacing.md,
                   child: _LocateFailedBanner(onManualCity: _showManualCity),
                 ),
-              // 顶部浮层纵向栈：语义回执条紧贴搜索栏下方，筛选摘要与状态角标顺次下移，
-              // 撤销回执后整体自动归位（2026-10-25 用户裁定：不吃固定高度硬叠）。
+              // 顶部浮层：两行条件带 + 其下的数据态角标。
               Positioned(
                 left: AppSpacing.lg,
                 right: AppSpacing.lg,
                 top: AppSpacing.md,
                 child: Column(
+                  key: _conditionBandKey,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (intent != null) ...[
-                      _SearchIntentBar(
-                        key: _intentBarKey,
-                        intent: intent,
-                        insideCount: pinList.length,
-                        outsideCount: outsideCount,
+                    ConditionBand(
+                      countLabel: pinsAsync.asData == null ? null : '$pinsTotal 条',
+                      onVoice: () => showVoiceSearchSheet(
+                        context,
+                        anchorLat: _centerLat,
+                        anchorLng: _centerLng,
                       ),
-                      const SizedBox(height: AppSpacing.sm),
-                    ],
-                    const _FilterSummaryChip(),
+                    ),
                     // 探索数据态（[126]）：加载中/失败必须可见 —— 否则「附近没有信息」
                     // 与「数据没回来」在用户眼里完全同形，而两者的处置方式相反。
                     if (pinsAsync.isLoading || pinsAsync.hasError) ...[
@@ -463,11 +444,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   ],
                 ),
               ),
-              // 右上角按钮列：回执条出现时整体下移让位，撤销后归位。
+              // 右上角按钮列：始终让开条件带（条件带常驻，不再按有无回执判断）。
               Positioned(
                 right: AppSpacing.lg,
-                top: AppSpacing.md +
-                    (intent == null ? 0 : _intentBarHeight + AppSpacing.sm),
+                top: AppSpacing.md + _conditionBandHeight,
                 child: const _FilterEntryButton(),
               ),
               // 列表视图入口（PRD §10.1：地图与列表是同层级的两个视图）。
@@ -475,11 +455,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               // 三者叠在一起会互相遮挡。
               Positioned(
                 right: AppSpacing.lg,
-                top:
-                    AppSpacing.md +
-                    44 +
-                    AppSpacing.sm +
-                    (intent == null ? 0 : _intentBarHeight + AppSpacing.sm),
+                top: AppSpacing.md + _conditionBandHeight + 44 + AppSpacing.sm,
                 child: const _ListViewEntryButton(),
               ),
               // 「回到当前位置」：相机被拖离定位点后出现，点击把视口移回用户位置。
@@ -617,91 +593,42 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     });
   }
 
-  /// 测量语义回执条高度，供右上角按钮列下移避让。
+  /// 测量条件带高度，供右上角按钮列下移避让。
   ///
   /// 参数：无。
   /// 返回：void（实际测量在帧后回调完成；同帧只调度一次）。
-  void _measureIntentBar() {
-    if (_intentBarMeasureScheduled) return;
-    _intentBarMeasureScheduled = true;
+  void _measureConditionBand() {
+    if (_conditionBandMeasureScheduled) return;
+    _conditionBandMeasureScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _intentBarMeasureScheduled = false;
+      _conditionBandMeasureScheduled = false;
       if (!mounted) return;
-      final box = _intentBarKey.currentContext?.findRenderObject() as RenderBox?;
+      final box = _conditionBandKey.currentContext?.findRenderObject() as RenderBox?;
       if (box == null) return;
       // 条与按钮之间留一个最小间距，避免贴死。
-      final double measured = box.size.height + AppSpacing.xs;
-      if ((measured - _intentBarHeight).abs() < 0.5) return;
-      setState(() => _intentBarHeight = measured);
+      final double measured = box.size.height + AppSpacing.sm;
+      if ((measured - _conditionBandHeight).abs() < 0.5) return;
+      setState(() => _conditionBandHeight = measured);
     });
   }
 
-  /// 导航栏（PRD §6.4.1：实体 48px，含搜索框与通知铃）。
+  /// 导航栏（PRD §6.4.1）。
+  ///
+  /// 搜索输入已移入条件带第一行：两处都放输入框会出现两个 controller、
+  /// 两份文本，正是本轮要消灭的双源问题。
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
       toolbarHeight: 48,
       backgroundColor: Color(AppColors.surface),
       elevation: 0,
       titleSpacing: AppSpacing.md,
-      title: Row(
-        children: [
-          Expanded(
-            child: SizedBox(
-              height: 32,
-              child: TextField(
-                controller: _searchController,
-                // 文字只作语义解析输入，不再写持久筛选：字面匹配收益低，且会让
-                // 「打字已改变列表、地图却没动」两页分叉（R17）。
-                onSubmitted: (value) {
-                  final fix = ref.read(locationFixProvider);
-                  // 坐标必须给：后端据它逆地理解析城市 adcode，再按城市约束小区检索。
-                  // GPS 未就绪时回退到当前视野中心，否则会变成全国检索，
-                  // 把「北城新徽苑」匹到香港的同名「新辉苑」（2026-10-25 真机实测）。
-                  ref.read(searchIntentProvider.notifier).resolve(
-                    text: value,
-                    currentLat: fix?.lat ?? _centerLat,
-                    currentLng: fix?.lng ?? _centerLng,
-                  );
-                },
-                style: TextStyle(fontSize: AppTypeScale.body.size),
-                decoration: InputDecoration(
-                  hintText: '搜索保洁/拼车/租房',
-                  hintStyle: TextStyle(
-                    fontSize: AppTypeScale.body.size,
-                    color: Color(AppColors.textPlaceholder),
-                  ),
-                  prefixIcon: Icon(
-                    Icons.search,
-                    size: 18,
-                    color: Color(AppColors.textPlaceholder),
-                  ),
-                  // 输入框内高仅 32px，默认的 prefixIcon 约束会把它撑高。
-                  prefixIconConstraints: const BoxConstraints(minWidth: 32),
-                  filled: true,
-                  fillColor: Color(AppColors.background),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.sm,
-                  ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(AppRadius.full),
-                    borderSide: BorderSide.none,
-                  ),
-                ),
-              ),
-            ),
-          ),
-          // 语音搜索入口（核心亮点）：面板内按住说话，地点锚点默认当前视野中心。
-          IconButton(
-            tooltip: '语音搜索',
-            icon: const Icon(Icons.mic_none, size: 20),
-            color: Color(AppColors.primary),
-            onPressed: () => showVoiceSearchSheet(
-              context,
-              anchorLat: _centerLat,
-              anchorLng: _centerLng,
-            ),
-          ),
-        ],
+      title: Text(
+        '丫圈',
+        style: TextStyle(
+          fontSize: AppTypeScale.h2.size,
+          fontWeight: FontWeight.w600,
+          color: Color(AppColors.textPrimary),
+        ),
       ),
     );
   }
@@ -1140,7 +1067,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     required double viewportHeight,
     required List<MapPinDto> pins,
   }) {
-    final SearchRadius radius = ref.read(discoveryFilterProvider).radius;
+    final SearchRadius radius = ref.read(effectiveFilterProvider).radius;
     double targetLat = _centerLat;
     double targetLng = _centerLng;
     double targetMetersPerPixel;
@@ -1534,48 +1461,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 }
 
-/// 收起态摘要胶囊（PRD §6.4.1：收起 ≠ 隐藏）。
-class _FilterSummaryChip extends ConsumerWidget {
-  const _FilterSummaryChip();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final filter = ref.watch(discoveryFilterProvider);
-    return GestureDetector(
-      onTap: () => ref.read(filterPanelExpandedProvider.notifier).open(),
-      child: Container(
-        height: 44,
-        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-        decoration: BoxDecoration(
-          color: Color(AppColors.surface),
-          borderRadius: BorderRadius.circular(AppRadius.full),
-          // 阴影是必需项：浅色底图上无阴影则卡片边界不可辨（PRD §6.4.1）。
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x1F000000),
-              blurRadius: 8,
-              offset: Offset(0, 2),
-            ),
-          ],
-        ),
-        // widthFactor=1：按内容收窄。若用 Container.alignment 会撑满整行，
-        // 在顶部纵向栈里会变成一条横贯屏幕的白条（2026-10-25 真机实测）。
-        child: Center(
-          widthFactor: 1,
-          child: Text(
-            filter.summaryLabel,
-            style: TextStyle(
-              fontSize: AppTypeScale.small.size,
-              color: Color(AppColors.textPrimary),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// 右上角三竖点入口（PRD §6.4.1：44×44，遮挡最小的载体）。
 class _FilterEntryButton extends ConsumerWidget {
   const _FilterEntryButton();
 
@@ -2014,261 +1899,3 @@ double _distanceMeters(double lat1, double lng1, double lat2, double lng2) {
   return 2 * earthRadiusMeters * math.asin(math.min(1, math.sqrt(a)));
 }
 
-/// 语义搜索回执条：听懂什么 + 圈内/圈外计数 + 逐项可删 + 撤销。
-///
-/// R12/R13：每个解析出的条件渲染成可删 chip；越界/未解析字段灰态「没敢用」；
-/// 收窄完成后给一行回执，避免「地图莫名其妙变空」。
-class _SearchIntentBar extends ConsumerWidget {
-  /// 构造回执条。
-  ///
-  /// 参数：
-  /// - [intent] 当前槽位卡；
-  /// - [insideCount] 圈内命中数；
-  /// - [outsideCount] 圈外被精裁掉的命中数。
-  const _SearchIntentBar({
-    super.key,
-    required this.intent,
-    required this.insideCount,
-    required this.outsideCount,
-  });
-
-  /// 当前槽位卡。
-  final SearchIntent intent;
-
-  /// 圈内命中数。
-  final int insideCount;
-
-  /// 圈外命中数。
-  final int outsideCount;
-
-  /// 低置信小区点选：不猜，让用户从高德候选里选一个。
-  ///
-  /// 参数：
-  /// - [context] 页面上下文；
-  /// - [notifier] 语义搜索状态；
-  /// - [intent] 当前槽位卡（携带候选）。
-  void _showCommunityPicker(
-    BuildContext context,
-    SearchIntentNotifier notifier,
-    SearchIntent intent,
-  ) {
-    showModalBottomSheet<void>(
-      context: context,
-      builder: (sheetContext) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
-              padding: EdgeInsets.all(AppSpacing.md),
-              child: Text(
-                '「${intent.queryText}」是指哪个小区？',
-                style: TextStyle(
-                  fontSize: AppTypeScale.body.size,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-            for (final candidate in intent.communityCandidates)
-              ListTile(
-                title: Text(candidate.name),
-                subtitle: Text(
-                  candidate.district.isEmpty ? '小区' : candidate.district,
-                ),
-                onTap: () {
-                  Navigator.pop(sheetContext);
-                  notifier.update(intent.selectCommunity(candidate));
-                },
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final notifier = ref.read(searchIntentProvider.notifier);
-    final state = ref.watch(searchIntentProvider);
-    final chips = <Widget>[
-      for (var i = 0; i < intent.categoryLabels.length; i++)
-        _intentChip(
-          label: intent.categoryLabels[i],
-          onDeleted: () => notifier.update(intent.withoutCategoryAt(i)),
-        ),
-      if (intent.postType != null)
-        _intentChip(
-          label: postTypeLabel(intent.postType),
-          onDeleted: () => notifier.update(intent.withoutPostType()),
-        ),
-      if (intent.radius != null)
-        _intentChip(
-          label: radiusTierLabel(intent.radius),
-          onDeleted: () => notifier.update(intent.withoutRadius()),
-        ),
-      if (intent.communityId != null)
-        _intentChip(
-          label: intent.communityLabel.isEmpty ? '小区' : intent.communityLabel,
-          onDeleted: () => notifier.update(intent.withoutCommunity()),
-        )
-      else if (intent.communityCandidates.isNotEmpty)
-        ActionChip(
-          label: Text('选小区（${intent.communityCandidates.length}）'),
-          visualDensity: VisualDensity.compact,
-          onPressed: () => _showCommunityPicker(context, notifier, intent),
-        ),
-      if (intent.priceLabel.isNotEmpty)
-        _intentChip(
-          label: intent.priceLabel,
-          onDeleted: () => notifier.update(intent.withoutPrice()),
-        ),
-      // 小区已作为独立 chip 回显时不再重复显示锚点 chip。
-      if (intent.communityId == null &&
-          intent.anchorLat != null &&
-          intent.anchorLng != null)
-        _intentChip(
-          label: intent.anchorName ?? '地图选点',
-          onDeleted: () => notifier.update(intent.withoutAnchor()),
-        ),
-      // 未解析字段灰态：不给删除按钮（本来就没生效），只提示「没敢用」。
-      for (final field in intent.unresolvedFields)
-        Chip(
-          label: Text('${_unresolvedLabel(field)} · 没敢用'),
-          visualDensity: VisualDensity.compact,
-          backgroundColor: const Color(AppColors.background),
-          labelStyle: TextStyle(
-            fontSize: AppTypeScale.small.size,
-            color: Color(AppColors.textPlaceholder),
-          ),
-          side: BorderSide(color: Color(AppColors.border)),
-        ),
-    ];
-
-    // 零结果改写入口（R11）：只给显式动作，绝不自动改用户范围。
-    // 作为普通 chip 并入同一横滑行，不额外占一行高度。
-    if (insideCount == 0) {
-      chips.add(
-        ActionChip(
-          label: const Text('扩大范围'),
-          visualDensity: VisualDensity.compact,
-          onPressed: () => notifier.update(intent.widenRadius()),
-        ),
-      );
-      chips.add(
-        ActionChip(
-          label: const Text('放宽价格'),
-          visualDensity: VisualDensity.compact,
-          onPressed: () => notifier.update(intent.withoutPrice()),
-        ),
-      );
-    }
-
-    final summary =
-        intent.hasNoSlot
-            ? '没听懂具体条件，换个说法试试'
-            : '听懂 ${chips.length} 项 · 命中 $insideCount 条'
-                  '${outsideCount > 0 ? ' · 已滤掉 $outsideCount 条' : ''}'
-                  '${insideCount == 0 && intent.communityId != null ? ' · 该小区暂无信息' : ''}'
-                  '${intent.degraded ? ' · AI 降级为关键词' : ''}';
-
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.xs,
-        vertical: 2,
-      ),
-      decoration: BoxDecoration(
-        color: const Color(AppColors.surface).withValues(alpha: 0.92),
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x14000000),
-            blurRadius: 6,
-            offset: Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  summary,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: AppTypeScale.small.size,
-                    color: const Color(AppColors.textSecondary),
-                  ),
-                ),
-              ),
-              if (state.canUndo) _barTextButton('撤销', notifier.undo),
-              _barTextButton('清除', notifier.clear),
-            ],
-          ),
-          // 单行横滑：chip 再多也不撑高卡片，避免遮挡地图。
-          if (chips.isNotEmpty)
-            SizedBox(
-              height: 36,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: chips.length,
-                separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.xs),
-                itemBuilder: (_, index) => Center(child: chips[index]),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  /// 回执条上的紧凑文字按钮（压缩内边距与点击区，换取更矮的条高）。
-  ///
-  /// 参数：[label] 文案；[onTap] 点击回调。
-  /// 返回：紧凑 TextButton。
-  Widget _barTextButton(String label, VoidCallback onTap) {
-    return TextButton(
-      onPressed: onTap,
-      style: TextButton.styleFrom(
-        minimumSize: const Size(0, 28),
-        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        visualDensity: VisualDensity.compact,
-      ),
-      child: Text(label, style: TextStyle(fontSize: AppTypeScale.small.size)),
-    );
-  }
-
-  /// 构造可删除的条件 chip。
-  ///
-  /// 参数：[label] 文案；[onDeleted] 删除回调。
-  /// 返回：条件 chip 控件。
-  Widget _intentChip({required String label, required VoidCallback onDeleted}) {
-    return InputChip(
-      label: Text(label),
-      visualDensity: VisualDensity.compact,
-      onDeleted: onDeleted,
-      deleteIconColor: const Color(AppColors.textSecondary),
-      backgroundColor: const Color(AppColors.background),
-      labelStyle: TextStyle(
-        fontSize: AppTypeScale.small.size,
-        color: const Color(AppColors.textPrimary),
-      ),
-      side: BorderSide(color: Color(AppColors.border)),
-    );
-  }
-
-  /// 未解析字段的显示名。
-  ///
-  /// 参数：[field] 契约字段名。
-  /// 返回：中文文案。
-  String _unresolvedLabel(String field) => switch (field) {
-    'location' => '地点',
-    'price' => '价格',
-    'radius' => '范围',
-    'category' => '分类',
-    'post_type' => '供需',
-    _ => field,
-  };
-}
