@@ -140,4 +140,36 @@ void main() {
       reason: '面板没有确认按钮，改完直接点地图收面板时不能丢价格',
     );
   });
+
+  testWidgets('拖动价格滑杆：输入框同步显示区间（焦点在输入框时也不落空）', (tester) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: FilterPanel())),
+      ),
+    );
+
+    await tester.ensureVisible(find.byType(RangeSlider));
+    await tester.pumpAndSettle();
+
+    // 复现真机场景：键盘还开着、焦点停在输入框里，再拖滑杆。
+    await tester.tap(find.byType(TextField).first);
+    await tester.pump();
+
+    final RangeSlider slider = tester.widget<RangeSlider>(
+      find.byType(RangeSlider),
+    );
+    slider.onChanged!(const RangeValues(300, 800));
+    await tester.pump();
+
+    final List<TextField> fields = tester
+        .widgetList<TextField>(find.byType(TextField))
+        .toList();
+    expect(fields.first.controller?.text, '300', reason: '下限输入框要跟着滑杆走');
+    expect(fields.last.controller?.text, '800', reason: '上限输入框要跟着滑杆走');
+    expect(container.read(effectiveFilterProvider).priceMin, 300);
+    expect(container.read(effectiveFilterProvider).priceMax, 800);
+  });
 }

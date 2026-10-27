@@ -329,17 +329,30 @@ class _PriceSectionState extends ConsumerState<_PriceSection> {
     return RangeValues(start, end);
   }
 
+  /// 把价格写回两侧输入框。
+  ///
+  /// 滑杆拖动时直接调用（绕开 [build] 里「输入中不覆盖」的保护）：用户拖动
+  /// 时键盘可能还开着、焦点停在输入框里，若只依赖那层监听，输入框会一直显示
+  /// 旧值，用户无法从输入框辨认当前价格范围（2026-10-27 用户反馈）。
+  ///
+  /// 参数：[min] 下限（null 表示不限）；[max] 上限（null 表示不限）。
+  /// 返回：无。
+  void _syncFields({int? min, int? max}) {
+    final String minText = min?.toString() ?? '';
+    final String maxText = max?.toString() ?? '';
+    if (_min.text != minText) _min.text = minText;
+    if (_max.text != maxText) _max.text = maxText;
+  }
+
   @override
   Widget build(BuildContext context) {
     // 价格可能从别处改（chip 删除、撤销）：面板开着时也要跟上。
+    // 输入框有焦点时跳过，避免打字过程中被回写打断光标。
     ref.listen(
       effectiveFilterProvider.select((e) => (e.priceMin, e.priceMax)),
       (_, next) {
         if (_minFocus.hasFocus || _maxFocus.hasFocus) return;
-        final String minText = next.$1?.toString() ?? '';
-        final String maxText = next.$2?.toString() ?? '';
-        if (_min.text != minText) _min.text = minText;
-        if (_max.text != maxText) _max.text = maxText;
+        _syncFields(min: next.$1, max: next.$2);
       },
     );
     final EffectiveFilter effective = ref.watch(effectiveFilterProvider);
@@ -407,6 +420,9 @@ class _PriceSectionState extends ConsumerState<_PriceSection> {
                 ref
                     .read(searchConditionsProvider.notifier)
                     .setPrice(min: min, max: max);
+                // 立刻回写输入框：拖动时焦点可能还在输入框里，
+                // 上面那层 listener 会因「输入中」被跳过。
+                _syncFields(min: min, max: max);
               },
             ),
           ),

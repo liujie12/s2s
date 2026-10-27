@@ -133,11 +133,15 @@ class _TabItem extends StatelessWidget {
 /// 「发布」中键。
 ///
 /// 鸭子微缩图标 + 文字（PRD §10.2「胶囊大按钮 + 鸭子微缩图标」）。
-/// **配色用次要文字色而非品牌主色**（2026-10-27 用户裁定）：它是一次性入口、
-/// 不是持久 Tab，没有「选中态」；用主色会与真正选中的 Tab 混淆，看起来像
-/// 「发布」被选中。PRD §10.2 的「品牌主色」口径据此修订。
+/// **图标放大到 32dp（Tab 图标为 24dp），配色回品牌主色**（2026-10-27 用户
+/// 裁定）：发布要醒目，但曾因与选中 Tab 同色同尺寸被误读为「选中」；改过
+/// 次要色又不够醒目。最终靠**尺寸差**（32 vs 24）区分「操作入口」与
+/// 「选中 Tab」，颜色仍守品牌主色。PRD §10.2 口径据此修订。
 class _PublishTab extends StatelessWidget {
   const _PublishTab({required this.onTap});
+
+  /// 鸭子盘尺寸：比 Tab 图标大一档，作为「操作入口」的视觉信号。
+  static const double _duckSize = 32;
 
   final VoidCallback onTap;
 
@@ -150,15 +154,15 @@ class _PublishTab extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             const _DuckMiniIcon(
-              size: 24,
-              block: Color(AppColors.textSecondary),
+              size: _duckSize,
+              block: Color(AppColors.primary),
             ),
             const SizedBox(height: AppSpacing.xs),
             Text(
               '发布',
               style: TextStyle(
                 fontSize: AppTypeScale.caption.size,
-                color: const Color(AppColors.textSecondary),
+                color: const Color(AppColors.primary),
               ),
             ),
           ],
@@ -168,12 +172,12 @@ class _PublishTab extends StatelessWidget {
   }
 }
 
-/// 鸭子微缩图标（PRD §1.4.1.2 mini 档，24px）。
+/// 鸭子微缩图标（PRD §1.4.1.2 mini 档，矢量）。
 ///
 /// 渲染成「色块圆盘铺满画板 + 白色实体鸭头 + 色块眼点」的反相结构 ——
 /// 24px 下白盘直径仅约 10px，镂空鸭头会先丢喙尖，故 mini 档把鸭头反相为
 /// 白色实体（prototype-figma/code.js `DUCK_HEAD_MINI` 上方的说明）。
-/// 圆盘/眼点颜色由 [block] 传入，不再写死主色（见 [_PublishTab] 的配色说明）。
+/// 圆盘/眼点颜色由 [block] 传入，尺寸由 [size] 决定（发布入口用 32dp）。
 class _DuckMiniIcon extends StatelessWidget {
   const _DuckMiniIcon({required this.size, required this.block});
 
