@@ -119,33 +119,25 @@ void main() {
     expect(container.read(discoveryFilterProvider).leafCategoryIds, {50102});
   });
 
-  testWidgets('价格输入后直接点「查看结果」：先失焦提交，不丢价格', (tester) async {
+  testWidgets('价格输入即生效：不依赖失焦，点面板外收起也不丢', (tester) async {
     final container = ProviderContainer();
     addTearDown(container.dispose);
     await tester.pumpWidget(
       UncontrolledProviderScope(
         container: container,
-        child: MaterialApp(
-          home: Scaffold(
-            body: FilterPanel(countLabel: '3 条结果', onClose: () {}),
-          ),
-        ),
+        child: const MaterialApp(home: Scaffold(body: FilterPanel())),
       ),
     );
 
-    // 价格只在「两侧都失焦」时提交，点底部按钮必须补一次失焦。
     await tester.ensureVisible(find.byType(TextField).first);
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).first, '100');
     await tester.pump();
 
-    await tester.tap(find.text('查看 3 条结果'));
-    await tester.pumpAndSettle();
-
     expect(
       container.read(effectiveFilterProvider).priceMin,
       100,
-      reason: '输入价格后直接点「查看结果」不应丢条件',
+      reason: '面板没有确认按钮，改完直接点地图收面板时不能丢价格',
     );
   });
 }

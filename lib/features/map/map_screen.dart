@@ -97,6 +97,13 @@ const double _kMetersPerDegreeLat = 111320;
 /// 需要重校；0.05° ≈ 5.5km，日常城区内拖动不会触发。
 const double _kRecalibrateLatDelta = 0.05;
 
+/// 「回到当前位置」按钮的显隐阈值：相机中心偏离定位点超过**视口短边**的这个比例才出现。
+///
+/// 相机就在当前位置时按钮没有意义（点了也不动），还会让人以为定位没生效
+/// （2026-10-27 用户反馈）。0.2 沿用 2026-10-18 的旧口径：小幅度拖动不算
+/// 「离开」，避免按钮随每次手势闪烁。
+const double _kRecenterShowDistanceRatio = 0.2;
+
 class MapScreen extends ConsumerStatefulWidget {
   const MapScreen({super.key});
 
@@ -356,6 +363,16 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               !hasVisibleMarker;
 
           final bool panelExpanded = ref.watch(filterPanelExpandedProvider);
+          // 定位按钮只在相机确实离开当前位置时出现：相机就在定位点时它点了也不会动，
+          // 反而让人误以为「定位没生效」（2026-10-27 用户反馈）。
+          final LocationFix? fix = ref.watch(locationFixProvider);
+          final double viewportShortSideMeters =
+              math.min(constraints.maxWidth, constraints.maxHeight) *
+              _metersPerPixel;
+          final bool showRecenter =
+              fix != null &&
+              _distanceMeters(_centerLat, _centerLng, fix.lat, fix.lng) >
+                  viewportShortSideMeters * _kRecenterShowDistanceRatio;
           // 面板展开时排一次帧后避让，让 FAB 抬到面板上方（入口保持可见）；
           // 面板关闭后还原到抬起前的位置。
           if (panelExpanded) {
@@ -375,6 +392,17 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 frame.offset,
                 frame.layerSize,
               ),
+              // 面板展开时：点击面板外的地图即收起面板。遮罩吃掉这次点击，
+              // 避免落到 Pin 上弹详情；条件每次改动已写入 Provider，
+              // 收起后面板外自然按最新条件展示结果。
+              if (panelExpanded)
+                Positioned.fill(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () =>
+                        ref.read(filterPanelExpandedProvider.notifier).close(),
+                  ),
+                ),
               // 定位前骨架屏（PRD §6.7 `:1305`）：已授权但尚未取到点 → 遮罩 + 提示。
               if (phase == LocationPermissionPhase.granted &&
                   !_located &&
@@ -452,16 +480,17 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   ],
                 ),
               ),
-              // 右侧浮钮列：列表/地图切换 + 定位。搜索栏下方固定起点，
-              // chip 行已预留 56px，不会与按钮重叠。
+              // 右侧浮钮列：列表/地图切换 + 定位（仅在相机离开当前位置时出现）。
               Positioned(
                 right: AppSpacing.lg,
                 top: safeTop + AppSpacing.sm + 48 + AppSpacing.sm,
                 child: Column(
                   children: [
                     const _ListViewEntryButton(),
-                    const SizedBox(height: AppSpacing.sm),
-                    _RecenterButton(onTap: _recenterToCurrentLocation),
+                    if (showRecenter) ...[
+                      const SizedBox(height: AppSpacing.sm),
+                      _RecenterButton(onTap: _recenterToCurrentLocation),
+                    ],
                   ],
                 ),
               ),
@@ -485,11 +514,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   child: FilterPanel(
                     key: _filterPanelKey,
                     measureLayerSwitch: true,
-                    countLabel: pinsAsync.asData == null
-                        ? null
-                        : '$pinsTotal 条结果',
-                    onClose: () =>
-                        ref.read(filterPanelExpandedProvider.notifier).close(),
                   ),
                 ),
               if (_selectedListingId != null)
@@ -1502,8 +1526,9 @@ class _ListViewEntryButton extends StatelessWidget {
 
 /// 「回到当前位置」按钮。
 ///
-/// 常驻右侧浮钮列第二枚，与列表/地图入口同一套 44×44 白色圆形 + 阴影；
-/// 不再按「相机是否离开定位点」显隐，避免用户找不到定位入口。
+/// 与列表/地图入口同一套 44×44 白色圆形 + 阴影；**仅在相机离开当前位置超过
+/// 视口短边 `_kRecenterShowDistanceRatio` 比例时渲染** —— 相机就在定位点时
+/// 它没有可做的事，常驻反而让人误判定位状态（2026-10-27 用户反馈）。
 class _RecenterButton extends StatelessWidget {
   const _RecenterButton({required this.onTap});
 

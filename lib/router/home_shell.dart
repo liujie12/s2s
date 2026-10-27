@@ -132,8 +132,10 @@ class _TabItem extends StatelessWidget {
 
 /// 「发布」中键。
 ///
-/// 品牌主色 + 鸭子微缩图标（PRD §10.2「胶囊大按钮 + 品牌主色 + 鸭子微缩图标」）。
-/// 图标本身即「主色圆盘 + 白色实体鸭头 + 主色眼点」的胶囊形，故不另套圆角容器。
+/// 鸭子微缩图标 + 文字（PRD §10.2「胶囊大按钮 + 鸭子微缩图标」）。
+/// **配色用次要文字色而非品牌主色**（2026-10-27 用户裁定）：它是一次性入口、
+/// 不是持久 Tab，没有「选中态」；用主色会与真正选中的 Tab 混淆，看起来像
+/// 「发布」被选中。PRD §10.2 的「品牌主色」口径据此修订。
 class _PublishTab extends StatelessWidget {
   const _PublishTab({required this.onTap});
 
@@ -147,13 +149,16 @@ class _PublishTab extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const _DuckMiniIcon(size: 24),
+            const _DuckMiniIcon(
+              size: 24,
+              block: Color(AppColors.textSecondary),
+            ),
             const SizedBox(height: AppSpacing.xs),
             Text(
               '发布',
               style: TextStyle(
                 fontSize: AppTypeScale.caption.size,
-                color: const Color(AppColors.primary),
+                color: const Color(AppColors.textSecondary),
               ),
             ),
           ],
@@ -165,20 +170,22 @@ class _PublishTab extends StatelessWidget {
 
 /// 鸭子微缩图标（PRD §1.4.1.2 mini 档，24px）。
 ///
-/// 渲染成「主色圆盘铺满画板 + 白色实体鸭头 + 主色眼点」的反相结构 ——
+/// 渲染成「色块圆盘铺满画板 + 白色实体鸭头 + 色块眼点」的反相结构 ——
 /// 24px 下白盘直径仅约 10px，镂空鸭头会先丢喙尖，故 mini 档把鸭头反相为
 /// 白色实体（prototype-figma/code.js `DUCK_HEAD_MINI` 上方的说明）。
+/// 圆盘/眼点颜色由 [block] 传入，不再写死主色（见 [_PublishTab] 的配色说明）。
 class _DuckMiniIcon extends StatelessWidget {
-  const _DuckMiniIcon({required this.size});
+  const _DuckMiniIcon({required this.size, required this.block});
 
   final double size;
+  final Color block;
 
   @override
   Widget build(BuildContext context) {
     return CustomPaint(
       size: Size.square(size),
       painter: _DuckMiniPainter(
-        block: const Color(AppColors.primary),
+        block: block,
         negative: const Color(AppColors.surface),
       ),
     );
@@ -197,7 +204,7 @@ class _DuckMiniIcon extends StatelessWidget {
 class _DuckMiniPainter extends CustomPainter {
   const _DuckMiniPainter({required this.block, required this.negative});
 
-  /// 色块色（圆盘 + 眼点），此处恒主色。
+  /// 色块色（圆盘 + 眼点），由 [_DuckMiniIcon.block] 传入。
   final Color block;
 
   /// 负形色（鸭头本体），恒 surface（白）。

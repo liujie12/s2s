@@ -36,8 +36,6 @@ class FilterPanel extends ConsumerStatefulWidget {
     super.key,
     this.elevated = true,
     this.measureLayerSwitch = false,
-    this.countLabel,
-    this.onClose,
   });
 
   /// 是否自带阴影。
@@ -50,12 +48,6 @@ class FilterPanel extends ConsumerStatefulWidget {
   /// **只有地图页为 true**：轴② 量的是分类 Pin 在地图上完成首屏绘制的
   /// 端到端耗时；列表页没有 Pin 渲染终点，计时会永远收不了尾。
   final bool measureLayerSwitch;
-
-  /// 底部按钮要展示的命中数文案（如 `8 条结果`）；null 表示取数未完成。
-  final String? countLabel;
-
-  /// 底部按钮关闭面板；null 时不渲染底部按钮（测试/嵌入式场景）。
-  final VoidCallback? onClose;
 
   @override
   ConsumerState<FilterPanel> createState() => _FilterPanelState();
@@ -72,17 +64,6 @@ class _FilterPanelState extends ConsumerState<FilterPanel> {
     FocusScope.of(context).unfocus();
     ref.read(searchConditionsProvider.notifier).resetFilters();
     setState(() => _resetEpoch++);
-  }
-
-  /// 关闭面板：先让价格输入失焦，再交给外部关闭。
-  ///
-  /// 为什么必须先失焦：价格是「两侧都失焦才提交」（见 `_PriceSectionState._onFocusChange`），
-  /// 用户输入后直接点底部「查看结果」时焦点仍在输入框，不先失焦就会**丢掉刚输入的价格**。
-  ///
-  /// 参数：无；返回：无。
-  void _handleClose() {
-    FocusScope.of(context).unfocus();
-    widget.onClose?.call();
   }
 
   @override
@@ -138,11 +119,6 @@ class _FilterPanelState extends ConsumerState<FilterPanel> {
                 ),
               ),
             ),
-            if (widget.onClose != null)
-              _PanelFooter(
-                countLabel: widget.countLabel,
-                onClose: _handleClose,
-              ),
           ],
         ),
       ),
@@ -205,56 +181,6 @@ class _PanelHeader extends StatelessWidget {
             ),
             child: Text(
               '重置',
-              style: TextStyle(fontSize: AppTypeScale.small.size),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// 底部结果按钮。
-class _PanelFooter extends StatelessWidget {
-  const _PanelFooter({required this.countLabel, required this.onClose});
-
-  final String? countLabel;
-  final VoidCallback onClose;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.lg,
-        AppSpacing.md,
-        AppSpacing.lg,
-        AppSpacing.md,
-      ),
-      decoration: BoxDecoration(
-        border: Border(top: BorderSide(color: Color(AppColors.border))),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              '当前 ${countLabel ?? '—'}',
-              style: TextStyle(
-                fontSize: AppTypeScale.caption.size,
-                color: Color(AppColors.textSecondary),
-              ),
-            ),
-          ),
-          FilledButton(
-            onPressed: onClose,
-            style: FilledButton.styleFrom(
-              backgroundColor: Color(AppColors.primary),
-              foregroundColor: Color(AppColors.surface),
-              shape: const StadiumBorder(),
-              minimumSize: const Size(0, 40),
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-            ),
-            child: Text(
-              countLabel == null ? '查看结果' : '查看 $countLabel',
               style: TextStyle(fontSize: AppTypeScale.small.size),
             ),
           ),
@@ -347,15 +273,8 @@ class _PriceSectionState extends ConsumerState<_PriceSection> {
     final EffectiveFilter effective = ref.read(effectiveFilterProvider);
     _min = TextEditingController(text: effective.priceMin?.toString() ?? '');
     _max = TextEditingController(text: effective.priceMax?.toString() ?? '');
-    _minFocus = FocusNode()..addListener(_onFocusChange);
-    _maxFocus = FocusNode()..addListener(_onFocusChange);
-  }
-
-  /// 两个输入都失焦时才提交，避免在两侧之间切换时反复写入。
-  ///
-  /// 参数：无；返回：无。
-  void _onFocusChange() {
-    if (!_minFocus.hasFocus && !_maxFocus.hasFocus) _commit();
+    _minFocus = FocusNode();
+    _maxFocus = FocusNode();
   }
 
   @override
@@ -369,7 +288,9 @@ class _PriceSectionState extends ConsumerState<_PriceSection> {
 
   /// 提交两侧输入。
   ///
-  /// `digitsOnly` 已挡住非数字，故解析失败只可能是空串（= 不限该侧）。
+  /// 每次输入即写入（不再等失焦）：面板没有「确定」按钮，用户改完价格直接点
+  /// 面板外的地图收起，失焦时机不可靠，等失焦会丢掉刚输入的值。
+  /// `digitsOnly` 已挡住非数字，故解析失败只可能是空串（= 不限该侧）；
   /// 区间倒置时不写入：静默交换会让用户输入的数字出现在错的一侧。
   ///
   /// 参数：无；返回：无。
@@ -506,7 +427,7 @@ class _PriceSectionState extends ConsumerState<_PriceSection> {
                 controller: _min,
                 focusNode: _minFocus,
                 hint: '不限',
-                onSubmitted: _commit,
+                onCommit: _commit,
               ),
             ),
             Padding(
@@ -532,7 +453,7 @@ class _PriceSectionState extends ConsumerState<_PriceSection> {
                 controller: _max,
                 focusNode: _maxFocus,
                 hint: '不限',
-                onSubmitted: _commit,
+                onCommit: _commit,
               ),
             ),
             const SizedBox(width: AppSpacing.xs),
@@ -556,13 +477,13 @@ class _PriceField extends StatelessWidget {
     required this.controller,
     required this.focusNode,
     required this.hint,
-    required this.onSubmitted,
+    required this.onCommit,
   });
 
   final TextEditingController controller;
   final FocusNode focusNode;
   final String hint;
-  final VoidCallback onSubmitted;
+  final VoidCallback onCommit;
 
   @override
   Widget build(BuildContext context) {
@@ -575,7 +496,9 @@ class _PriceField extends StatelessWidget {
         inputFormatters: [FilteringTextInputFormatter.digitsOnly],
         textAlign: TextAlign.center,
         textInputAction: TextInputAction.done,
-        onSubmitted: (_) => onSubmitted(),
+        // 输入即提交：面板靠「点地图外部」收起，失焦提交会丢值。
+        onChanged: (_) => onCommit(),
+        onSubmitted: (_) => onCommit(),
         style: TextStyle(
           fontSize: AppTypeScale.small.size,
           color: Color(AppColors.textPrimary),
@@ -1172,8 +1095,13 @@ class _LeafChip extends StatelessWidget {
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Container(
-        height: 32,
-        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+        // 不用固定高度 + alignment：Wrap 给的是有界宽/无界高，Container 带
+        // alignment 会横向撑满整行。用上下等距 padding 让文字天然垂直居中，
+        // 宽度仍由内容决定。
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.md,
+          vertical: 7,
+        ),
         decoration: BoxDecoration(
           color: selected ? color : const Color(0xFFF2F4F1),
           borderRadius: BorderRadius.circular(AppRadius.full),
@@ -1182,6 +1110,7 @@ class _LeafChip extends StatelessWidget {
           label,
           style: TextStyle(
             fontSize: 11.5,
+            height: 1.2,
             fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
             color: selected
                 ? Color(AppColors.surface)

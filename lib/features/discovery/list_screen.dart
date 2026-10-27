@@ -77,16 +77,8 @@ class ListScreen extends ConsumerWidget {
         backgroundColor: Colors.transparent,
         // 与地图页浮层一致：不压暗背后内容，用户仍能看见当前结果。
         barrierColor: Colors.transparent,
-        builder: (sheetContext) => SafeArea(
-          top: false,
-          child: FilterPanel(
-            elevated: false,
-            countLabel: pageAsync.asData == null
-                ? null
-                : '${pageAsync.asData!.value.total} 条结果',
-            onClose: () => Navigator.of(sheetContext).pop(),
-          ),
-        ),
+        builder: (_) =>
+            SafeArea(top: false, child: FilterPanel(elevated: false)),
       );
     }
 
