@@ -17,13 +17,10 @@ import '../../domain/listing_category.dart';
 // 色与图标已迁至 style 扩展（详细设计 §10.4.1）。
 import '../../domain/listing_category_style.dart';
 import '../perf/layer_switch_recorder.dart';
-import 'condition_slots.dart';
 import 'discovery_filter.dart';
-import 'discovery_query.dart';
 import 'effective_filter.dart';
 import 'effective_filter_provider.dart';
 import 'search_conditions.dart';
-import 'search_intent.dart';
 
 /// 面板最大高度（逻辑像素）。
 ///
@@ -578,37 +575,17 @@ class _CategorySectionState extends ConsumerState<_CategorySection> {
       ? null
       : _top?.children.where((n) => n.id == _midId).firstOrNull;
 
-  /// 当前显式选中的叶子集合。
-  ///
-  /// **不能直接用 `EffectiveFilter.leafCategoryIds`**：投影在「全部分类」时会
-  /// 把它展开成全部 48 个叶子供请求使用，直接拿来当选中态会让面板一打开就
-  /// 显示所有分类选中。这里按来源还原：
-  /// 意图类目（未显式清空）→ 持久叶子 → 持久一级展开 → 空集（全部分类）。
-  ///
-  /// 参数：[intent] 当前搜索槽位；[filter] 持久筛选。
-  /// 返回：显式选中的叶子 ID 集合。
-  Set<int> _explicitSelected(SearchIntent? intent, DiscoveryFilter filter) {
-    if (intent != null &&
-        !intent.isCleared(ConditionSlot.category) &&
-        intent.leafCategoryIds.isNotEmpty) {
-      return intent.leafCategoryIds.toSet();
-    }
-    if (filter.leafCategoryIds.isNotEmpty) {
-      return filter.leafCategoryIds.toSet();
-    }
-    if (filter.categories.isNotEmpty) {
-      return leafCategoryIdsFor(filter.categories).toSet();
-    }
-    return <int>{};
-  }
-
   /// 读取当前显式选中集（动作回调用）。
   ///
-  /// 参数：无；返回：显式选中的叶子 ID 集合。
-  Set<int> _currentSelected() => _explicitSelected(
-    ref.read(searchIntentProvider).intent,
-    ref.read(discoveryFilterProvider),
-  );
+  /// **不能直接用 `EffectiveFilter.leafCategoryIds`**：投影在「全部分类」时会
+  /// 展开成全部 48 个叶子供请求使用，拿来当选中态会让面板一打开就显示全选。
+  /// 一律走 `explicitCategorySelectionProvider`（按「意图叶子 → 持久叶子 →
+  /// 持久整类展开 → 空集」还原）；面板自己读两个源会成为第二读写点，
+  /// 同源门禁 `single_source_test.dart` 会 FAIL。
+  ///
+  /// 参数：无；返回：显式选中的叶子 ID 集合（可安全修改的副本）。
+  Set<int> _currentSelected() =>
+      ref.read(explicitCategorySelectionProvider).leafIds.toSet();
 
   /// 记一次图层切换的起点。
   ///
@@ -642,12 +619,11 @@ class _CategorySectionState extends ConsumerState<_CategorySection> {
   void _selectWholeTop(CategoryNode top) {
     final ListingCategory? category = top.topCategory;
     if (category == null) return;
-    final DiscoveryFilter filter = ref.read(discoveryFilterProvider);
-    final bool already =
-        filter.categories.length == 1 &&
-        filter.categories.contains(category) &&
-        filter.leafCategoryIds.isEmpty;
-    if (already) return;
+    // 「已经整类选中」由投影判定（含持久叶子为空），面板不自行读源。
+    if (ref.read(explicitCategorySelectionProvider).wholeTopCategory ==
+        category) {
+      return;
+    }
     _markSwitchStart();
     ref.read(searchConditionsProvider.notifier).setCategories({category});
   }
@@ -713,9 +689,9 @@ class _CategorySectionState extends ConsumerState<_CategorySection> {
 
   @override
   Widget build(BuildContext context) {
-    final SearchIntent? intent = ref.watch(searchIntentProvider).intent;
-    final DiscoveryFilter filter = ref.watch(discoveryFilterProvider);
-    final Set<int> selected = _explicitSelected(intent, filter);
+    final Set<int> selected = ref
+        .watch(explicitCategorySelectionProvider)
+        .leafIds;
     final CategoryNode? top = _top;
     final CategoryNode? mid = _mid;
 
