@@ -50,11 +50,16 @@ source "${GATE_LIB}" || { echo "[ERROR] 门禁外壳加载失败：${GATE_LIB}" 
 # 覆盖安装，故此处是「一经写死不再改」的锚点；确需更换须同步 P7 备案材料。
 readonly EXPECTED_CERT_SHA256="4EFB8B219F897D42B51B7D8FB4F7C76116C8DCF3C5D0654757FD02E3CD205CFA"
 
-# rel/* tag 的环境段：内测包 baseUrl 指向 prod 后端（https://zhaoyazhaoapp.com）。
+# rel/* tag 的环境段：内测包 baseUrl 指向 prod 后端。
 readonly RELEASE_ENV="prod"
 
 # release 构建注入的编译期常量（全工程唯一真源见 api_client.dart / amap_init_guard.dart）
-readonly DEFINE_BASE_URL="S2S_API_BASE_URL=https://zhaoyazhaoapp.com"
+#
+# 域名口径（2026-10-27 核实）：
+#   `zhaoyazhaoapp.com` 尚未备案下号，阿里云拦截（80 返回 `Non-compliance ICP Filing`、
+#   443 直接 reset），内测包指向它会全量接口失败；`s2s.build110.com` 是当前实际在服务的
+#   prod 域名（存量备案 皖ICP备18025259号-3）。备案下号并切换 `SITE_DOMAIN` 后再改回。
+readonly DEFINE_BASE_URL="S2S_API_BASE_URL=https://s2s.build110.com"
 readonly DEFINE_IS_RELEASE="S2S_IS_RELEASE=true"
 readonly DEFINE_AMAP_KEY_NAME="AMAP_ANDROID_KEY"
 readonly DEFINE_AMAP_WEB_KEY_NAME="AMAP_WEBSERVICE_KEY"
