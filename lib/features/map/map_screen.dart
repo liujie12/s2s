@@ -38,7 +38,6 @@ import '../../router/app_router.dart';
 import '../city/city_selector_sheet.dart';
 import '../detail/post_detail_provider.dart';
 import '../discovery/condition_band.dart';
-import '../discovery/condition_editor.dart';
 import '../discovery/discovery_filter.dart';
 import '../discovery/discovery_providers.dart';
 import '../discovery/discovery_query.dart';
@@ -97,20 +96,6 @@ const double _kMetersPerDegreeLat = 111320;
 /// 高德实际比例与公式的系数随纬度近似按 1/cos² 变化，跨城市或长距离拖动后
 /// 需要重校；0.05° ≈ 5.5km，日常城区内拖动不会触发。
 const double _kRecalibrateLatDelta = 0.05;
-
-/// 相机中心离开「我的位置」超过视口短边的多少比例后，显示回位按钮。
-///
-/// 取 0.2：拖动几像素不会让按钮闪烁，而用户明显移开视野（城区内约一两百米）
-/// 时能及时出现。用比例而非固定像素，平板/小屏的手感一致。
-const double _kRecenterShowDistanceRatio = 0.2;
-
-/// 「回到当前位置」按钮距地图底边的距离。
-///
-/// 排在 AI FAB（默认 bottom = md + 56）正上方，留出一个按钮高度与间距，
-/// 两个圆形入口不会叠在一起。筛选面板展开或信息卡出现时该按钮不渲染
-/// （见 build 中的显隐条件），故无需再避让。
-const double _kRecenterButtonBottom =
-    AppSpacing.md + 56 + 44 + AppSpacing.md;
 
 class MapScreen extends ConsumerStatefulWidget {
   const MapScreen({super.key});
@@ -177,13 +162,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   /// 是否已排过「FAB 避让筛选面板」的帧后校正（防重复调度）。
   bool _fabAvoidScheduled = false;
 
-  /// 条件带 key 与实测高度。
+  /// FAB 是否被筛选面板自动抬起，以及抬起前的位置。
   ///
-  /// 用途：条件带常驻，右上角按钮列必须始终让开它；高度取实测值而非写死，
-  /// 跟随字号/换行变化（KTD11）。
-  final GlobalKey _conditionBandKey = GlobalKey();
-  double _conditionBandHeight = 0;
-  bool _conditionBandMeasureScheduled = false;
+  /// 面板关闭后要还原，否则 FAB 会停在半空（2026-10-26 真机验收发现）。
+  bool _fabLiftedForPanel = false;
+  Offset? _fabPositionBeforePanel;
+  bool _fabRestoreScheduled = false;
 
   @override
   void initState() {
@@ -223,7 +207,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     // 与 locationCenter 监听分开：搜索锚点是**一次性**的，不能写回共享参考中心，
     // 否则撤销搜索后地图仍停在被搜索出来的地名上。
     ref.listen(
-      effectiveFilterProvider.select((e) => (e.anchorLat, e.anchorLng, e.radiusMeters)),
+      effectiveFilterProvider.select(
+        (e) => (e.anchorLat, e.anchorLng, e.radiusMeters),
+      ),
       (previous, next) {
         final double? lat = next.$1;
         final double? lng = next.$2;
@@ -293,9 +279,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       return const LocationGuide();
     }
 
+    final double safeTop = MediaQuery.paddingOf(context).top;
     return Scaffold(
       backgroundColor: Color(AppColors.background),
-      appBar: _buildAppBar(),
       body: LayoutBuilder(
         builder: (context, constraints) {
           final projection = MapProjection(
@@ -307,19 +293,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               height: constraints.maxHeight,
             ),
           );
-          // 「回到当前位置」显隐：以本次会话最优定位点为准（不是冻结的共享中心），
-          // 相机中心偏离它超过视口短边的 [_kRecenterShowDistanceRatio] 才显示。
-          final LocationFix? currentFix = ref.watch(locationFixProvider);
-          final bool showRecenter = currentFix != null &&
-              projection.isAwayFromCenter(
-                currentFix.lat,
-                currentFix.lng,
-                thresholdPx: math.min(
-                      constraints.maxWidth,
-                      constraints.maxHeight,
-                    ) *
-                    _kRecenterShowDistanceRatio,
-              );
           // 数据态：加载中/失败时 pinList/clusterList 为空，底图照常渲染（不阻塞），
           // 状态另行以角标提示（见下方 _PinsStatusChip）。
           final merged = pinsAsync.asData?.value;
@@ -330,13 +303,19 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           final int? searchRadiusMeters = effective.radiusMeters;
           final double circleLat = effective.anchorLat ?? queryLat;
           final double circleLng = effective.anchorLng ?? queryLng;
-          final bool cropByCircle = searchRadiusMeters != null &&
+          final bool cropByCircle =
+              searchRadiusMeters != null &&
               effective.radius != SearchRadius.city;
           final pinList = cropByCircle
               ? rawPins
                     .where(
                       (pin) =>
-                          _distanceMeters(circleLat, circleLng, pin.lat, pin.lng) <=
+                          _distanceMeters(
+                            circleLat,
+                            circleLng,
+                            pin.lat,
+                            pin.lng,
+                          ) <=
                           searchRadiusMeters,
                     )
                     .toList()
@@ -372,13 +351,18 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 m.y + frame.offset.dy <= constraints.maxHeight,
           );
           final bool allOffScreen =
-              pinsAsync.asData != null && pinList.isNotEmpty && !hasVisibleMarker;
+              pinsAsync.asData != null &&
+              pinList.isNotEmpty &&
+              !hasVisibleMarker;
 
           final bool panelExpanded = ref.watch(filterPanelExpandedProvider);
-          // 面板展开时排一次帧后避让，让 FAB 抬到面板上方（入口保持可见）。
-          if (panelExpanded) _avoidFilterPanel();
-          // 条件带高度随字号/换行变化，实测后驱动右上角按钮列下移。
-          _measureConditionBand();
+          // 面板展开时排一次帧后避让，让 FAB 抬到面板上方（入口保持可见）；
+          // 面板关闭后还原到抬起前的位置。
+          if (panelExpanded) {
+            _avoidFilterPanel();
+          } else if (_fabLiftedForPanel) {
+            _restoreFabAfterPanel();
+          }
 
           return Stack(
             key: _mapStackKey,
@@ -405,17 +389,19 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   bottom: AppSpacing.md,
                   child: _LocateFailedBanner(onManualCity: _showManualCity),
                 ),
-              // 顶部浮层：两行条件带 + 其下的数据态角标。
+              // 顶部固定搜索栏 + 动态 chip 栏 + 其下的数据态角标。
               Positioned(
                 left: AppSpacing.lg,
                 right: AppSpacing.lg,
-                top: AppSpacing.md,
+                top: safeTop + AppSpacing.sm,
                 child: Column(
-                  key: _conditionBandKey,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     ConditionBand(
-                      countLabel: pinsAsync.asData == null ? null : '$pinsTotal 条',
+                      onFilter: () =>
+                          ref.read(filterPanelExpandedProvider.notifier).open(),
+                      // 右侧浮钮列宽 50dp + 右侧留白，chip 行视口扣掉这段，避免被盖住。
+                      trailingInset: 72,
                       onVoice: () => showVoiceSearchSheet(
                         context,
                         anchorLat: _centerLat,
@@ -426,16 +412,18 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                       // 把「北城新徽苑」匹到香港的同名「新辉苑」（2026-10-25 真机实测）。
                       onSubmit: (text) {
                         final fix = ref.read(locationFixProvider);
-                        ref.read(searchConditionsProvider.notifier).submit(
-                          text: text,
-                          currentLat: fix?.lat ?? _centerLat,
-                          currentLng: fix?.lng ?? _centerLng,
-                        );
+                        ref
+                            .read(searchConditionsProvider.notifier)
+                            .submit(
+                              text: text,
+                              currentLat: fix?.lat ?? _centerLat,
+                              currentLng: fix?.lng ?? _centerLng,
+                            );
                       },
-                      onEditChip: (chip) => showConditionEditor(context, ref, chip),
-                      onAddCondition: () => showAddConditionSheet(context, ref),
                       // 重试是同一次搜索的修正：复用交互标识，日志才能成对检索。
-                      onRetry: () => ref.read(searchConditionsProvider.notifier).submit(
+                      onRetry: () => ref
+                          .read(searchConditionsProvider.notifier)
+                          .submit(
                             text: ref.read(searchConditionsProvider).queryText,
                             retry: true,
                           ),
@@ -464,38 +452,44 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   ],
                 ),
               ),
-              // 右上角按钮列：始终让开条件带（条件带常驻，不再按有无回执判断）。
+              // 右侧浮钮列：列表/地图切换 + 定位。搜索栏下方固定起点，
+              // chip 行已预留 56px，不会与按钮重叠。
               Positioned(
                 right: AppSpacing.lg,
-                top: AppSpacing.md + _conditionBandHeight,
-                child: const _FilterEntryButton(),
+                top: safeTop + AppSpacing.sm + 48 + AppSpacing.sm,
+                child: Column(
+                  children: [
+                    const _ListViewEntryButton(),
+                    const SizedBox(height: AppSpacing.sm),
+                    _RecenterButton(onTap: _recenterToCurrentLocation),
+                  ],
+                ),
               ),
-              // 列表视图入口（PRD §10.1：地图与列表是同层级的两个视图）。
-              // 放在筛选入口正下方而非底部中央：底部要留给筛选面板与信息卡，
-              // 三者叠在一起会互相遮挡。
-              Positioned(
-                right: AppSpacing.lg,
-                top: AppSpacing.md + _conditionBandHeight + 44 + AppSpacing.sm,
-                child: const _ListViewEntryButton(),
-              ),
-              // 「回到当前位置」：相机被拖离定位点后出现，点击把视口移回用户位置。
-              // 底部有筛选面板或信息卡时不渲染，避免三者叠在一起互相遮挡。
-              if (showRecenter && !panelExpanded && _selectedListingId == null)
+              // 当前命中数：左下角常驻，信息卡/面板/定位失败态让位。
+              if (pinsAsync.hasValue &&
+                  _locateFailCount < NfrLocation.locateFailThreshold &&
+                  _selectedListingId == null &&
+                  !panelExpanded)
                 Positioned(
-                  right: AppSpacing.lg,
-                  bottom: _kRecenterButtonBottom,
-                  child: _RecenterButton(onTap: _recenterToCurrentLocation),
+                  left: AppSpacing.md,
+                  bottom: AppSpacing.md,
+                  child: _PinsCountBadge(count: pinsTotal),
                 ),
               if (panelExpanded)
                 Positioned(
-                  left: AppSpacing.md,
-                  right: AppSpacing.md,
-                  bottom: AppSpacing.md,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
                   // 只有地图页把分类切换计为图层切换耗时（[140]）：列表页复用同一
                   // 控件但没有 Pin 渲染终点，量不出这条链路（见 FilterPanel 的注释）。
                   child: FilterPanel(
                     key: _filterPanelKey,
                     measureLayerSwitch: true,
+                    countLabel: pinsAsync.asData == null
+                        ? null
+                        : '$pinsTotal 条结果',
+                    onClose: () =>
+                        ref.read(filterPanelExpandedProvider.notifier).close(),
                   ),
                 ),
               if (_selectedListingId != null)
@@ -514,11 +508,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 ),
               // POC-B 性能面板（PRD §6.10.1）。放右下而非顶部：顶部已被筛选
               // 入口占据，且压测时要频繁点它，靠近拇指自然位置。
-              const Positioned(
-                right: AppSpacing.md,
-                bottom: AppSpacing.md,
-                child: PerfPanel(),
-              ),
+              // 筛选面板展开时隐藏：它固定在右下，会盖住面板底部的「查看结果」。
+              if (!panelExpanded)
+                const Positioned(
+                  right: AppSpacing.md,
+                  bottom: AppSpacing.md,
+                  child: PerfPanel(),
+                ),
               // 「AI 帮我发」FAB（PRD §6.13 T6-①）：悬浮于首页右下，唤起四模式。
               // 可拖动；筛选面板展开时自动抬到面板上方（不隐藏，保证入口始终可见）。
               _buildAiFab(constraints),
@@ -602,55 +598,38 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       final panelBox =
           _filterPanelKey.currentContext?.findRenderObject() as RenderBox?;
       if (fabBox == null || stackBox == null || panelBox == null) return;
-      final panelTop =
-          panelBox.localToGlobal(Offset.zero, ancestor: stackBox).dy;
+      final panelTop = panelBox
+          .localToGlobal(Offset.zero, ancestor: stackBox)
+          .dy;
       final fabTopLeft = fabBox.localToGlobal(Offset.zero, ancestor: stackBox);
       final gap = AppSpacing.md.toDouble();
       // 已经在面板上方（含安全间距）就不动，避免每帧抖动。
       if (fabTopLeft.dy + fabBox.size.height + gap <= panelTop) return;
+      // 只记录第一次自动抬起前的位置；面板展开期间重复校正不覆盖。
+      if (!_fabLiftedForPanel) {
+        _fabPositionBeforePanel = _aiFabPosition;
+        _fabLiftedForPanel = true;
+      }
       final nextTop = math.max(0.0, panelTop - fabBox.size.height - gap);
       setState(() => _aiFabPosition = Offset(fabTopLeft.dx, nextTop));
     });
   }
 
-  /// 测量条件带高度，供右上角按钮列下移避让。
+  /// 筛选面板关闭后，把 FAB 还原到自动抬起前的位置。
   ///
-  /// 参数：无。
-  /// 返回：void（实际测量在帧后回调完成；同帧只调度一次）。
-  void _measureConditionBand() {
-    if (_conditionBandMeasureScheduled) return;
-    _conditionBandMeasureScheduled = true;
+  /// 参数：无；返回：void（实际移动在帧后回调完成）。
+  void _restoreFabAfterPanel() {
+    if (_fabRestoreScheduled) return;
+    _fabRestoreScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _conditionBandMeasureScheduled = false;
+      _fabRestoreScheduled = false;
       if (!mounted) return;
-      final box = _conditionBandKey.currentContext?.findRenderObject() as RenderBox?;
-      if (box == null) return;
-      // 条与按钮之间留一个最小间距，避免贴死。
-      final double measured = box.size.height + AppSpacing.sm;
-      if ((measured - _conditionBandHeight).abs() < 0.5) return;
-      setState(() => _conditionBandHeight = measured);
+      setState(() {
+        _aiFabPosition = _fabPositionBeforePanel;
+        _fabPositionBeforePanel = null;
+        _fabLiftedForPanel = false;
+      });
     });
-  }
-
-  /// 导航栏（PRD §6.4.1）。
-  ///
-  /// 搜索输入已移入条件带第一行：两处都放输入框会出现两个 controller、
-  /// 两份文本，正是本轮要消灭的双源问题。
-  PreferredSizeWidget _buildAppBar() {
-    return AppBar(
-      toolbarHeight: 48,
-      backgroundColor: Color(AppColors.surface),
-      elevation: 0,
-      titleSpacing: AppSpacing.md,
-      title: Text(
-        '丫圈',
-        style: TextStyle(
-          fontSize: AppTypeScale.h2.size,
-          fontWeight: FontWeight.w600,
-          color: Color(AppColors.textPrimary),
-        ),
-      ),
-    );
   }
 
   /// 地图主体：按合规守卫结果二选一。
@@ -770,7 +749,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     // 只有已授权才启用定位（蓝点 + 取点回调）。A/B 态被引导页取代、手动选城市
     // 跳过时权限仍非 granted，此时不启蓝点也不听取点回调，避免无权限时白等。
     final locationGranted =
-        ref.watch(locationPermissionProvider) == LocationPermissionPhase.granted;
+        ref.watch(locationPermissionProvider) ==
+        LocationPermissionPhase.granted;
 
     return AMapWidget(
       // 只在创建平台视图时生效（插件的 `didUpdateWidget` 只更 options，不重设相机），
@@ -846,7 +826,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     }
     // 记录本次会话「最优定位点」：发布取点用它（首点常是粗定位）。
     // 不写共享中心 —— 那会触发相机跟随，违背「仅首点居中一次」。
-    ref.read(locationFixProvider.notifier).update(
+    ref
+        .read(locationFixProvider.notifier)
+        .update(
           lat: location.latLng.latitude,
           lng: location.latLng.longitude,
           accuracy: location.accuracy,
@@ -862,10 +844,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     });
     ref.read(locationPermissionProvider.notifier).markGrantedOnce();
     if (isFirstFix) {
-      ref.read(locationCenterProvider.notifier).moveTo(
-            location.latLng.latitude,
-            location.latLng.longitude,
-          );
+      ref
+          .read(locationCenterProvider.notifier)
+          .moveTo(location.latLng.latitude, location.latLng.longitude);
     }
   }
 
@@ -895,10 +876,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       // 乘 [_amapScaleFactor]：高德实际渲染比例与 Web 墨卡托公式存在恒定偏差
       // （真机实测 1.36–1.39，随纬度约等于 1/cos²），偏差由启动时
       // [_calibrateAmapScale] 用原生投影实测得出，不写死常数。
-      _metersPerPixel = MapProjection.metersPerPixelForZoom(
-        _centerLat,
-        camera.zoom,
-      ) * _amapScaleFactor;
+      _metersPerPixel =
+          MapProjection.metersPerPixelForZoom(_centerLat, camera.zoom) *
+          _amapScaleFactor;
     });
   }
 
@@ -936,10 +916,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       setState(() {
         _centerLat = camera.target.latitude;
         _centerLng = camera.target.longitude;
-        _metersPerPixel = MapProjection.metersPerPixelForZoom(
-          _centerLat,
-          camera.zoom,
-        ) * _amapScaleFactor;
+        _metersPerPixel =
+            MapProjection.metersPerPixelForZoom(_centerLat, camera.zoom) *
+            _amapScaleFactor;
         // 初始请求尚未发出时一并校正，避免用旧尺度算出与实际视野不符的 zoom。
         _fetchLat = _centerLat;
         _fetchLng = _centerLng;
@@ -968,18 +947,22 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final double dpr = MediaQuery.devicePixelRatioOf(context);
     final double lat0 = camera.target.latitude;
     final double lng0 = camera.target.longitude;
-    final double formulaMpp = MapProjection.metersPerPixelForZoom(lat0, camera.zoom);
+    final double formulaMpp = MapProjection.metersPerPixelForZoom(
+      lat0,
+      camera.zoom,
+    );
     if (formulaMpp <= 0) return;
     // 偏移量按「约 100 逻辑像素」取，保证在任意缩放下都落在视野附近且像素差足够大。
     final double dLat = formulaMpp * 100 / _kMetersPerDegreeLat;
-    final double dLng =
-        dLat / math.cos(lat0 * math.pi / 180);
+    final double dLng = dLat / math.cos(lat0 * math.pi / 180);
     try {
       final p0 = await controller.toScreenCoordinate(LatLng(lat0, lng0));
-      final pLat =
-          await controller.toScreenCoordinate(LatLng(lat0 + dLat, lng0));
-      final pLng =
-          await controller.toScreenCoordinate(LatLng(lat0, lng0 + dLng));
+      final pLat = await controller.toScreenCoordinate(
+        LatLng(lat0 + dLat, lng0),
+      );
+      final pLng = await controller.toScreenCoordinate(
+        LatLng(lat0, lng0 + dLng),
+      );
       if (!mounted) return;
       final double dy = (pLat.y - p0.y).abs().toDouble();
       final double dx = (pLng.x - p0.x).abs().toDouble();
@@ -987,7 +970,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       // 原生坐标是物理像素，换算成「米/逻辑像素」需乘 dpr。
       final double mppLat = dLat * _kMetersPerDegreeLat / dy * dpr;
       final double mppLng =
-          dLng * _kMetersPerDegreeLat * math.cos(lat0 * math.pi / 180) / dx * dpr;
+          dLng *
+          _kMetersPerDegreeLat *
+          math.cos(lat0 * math.pi / 180) /
+          dx *
+          dpr;
       final double actualMpp = (mppLat + mppLng) / 2;
       final double factor = actualMpp / formulaMpp;
       if (!factor.isFinite || factor <= 0) return;
@@ -1009,16 +996,16 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     setState(() {
       _fetchLat = camera.target.latitude;
       _fetchLng = camera.target.longitude;
-      _fetchMetersPerPixel = MapProjection.metersPerPixelForZoom(
-        _fetchLat,
-        camera.zoom,
-      ) * _amapScaleFactor;
+      _fetchMetersPerPixel =
+          MapProjection.metersPerPixelForZoom(_fetchLat, camera.zoom) *
+          _amapScaleFactor;
     });
     // 纬度变化超过阈值（跨城市/长距离拖动）时重校比例系数：
     // 该系数随纬度约按 1/cos² 变化，旧值会让 Pin 在新纬度上重新出现拖偏。
     final double? calibratedLat = _calibratedLat;
     if (calibratedLat == null ||
-        (camera.target.latitude - calibratedLat).abs() > _kRecalibrateLatDelta) {
+        (camera.target.latitude - calibratedLat).abs() >
+            _kRecalibrateLatDelta) {
       _calibrateAmapScale(camera);
     }
   }
@@ -1128,7 +1115,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     double viewportHeight,
   ) {
     if (pins.isEmpty) {
-      return (lat: _centerLat, lng: _centerLng, metersPerPixel: _metersPerPixel);
+      return (
+        lat: _centerLat,
+        lng: _centerLng,
+        metersPerPixel: _metersPerPixel,
+      );
     }
     double minLat = pins.first.lat;
     double maxLat = pins.first.lat;
@@ -1144,12 +1135,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final double centerLng = (minLng + maxLng) / 2;
     // 纬向跨度（米）与经向跨度（米，乘 cos 纬度）。经向漏乘 cos 会在高纬被高估。
     final double latMeters = (maxLat - minLat) * _kMetersPerDegreeLat;
-    final double lngMeters = (maxLng - minLng) *
+    final double lngMeters =
+        (maxLng - minLng) *
         _kMetersPerDegreeLat *
         math.cos(centerLat * math.pi / 180);
     final double mppByWidth = viewportWidth > 0 ? lngMeters / viewportWidth : 0;
-    final double mppByHeight =
-        viewportHeight > 0 ? latMeters / viewportHeight : 0;
+    final double mppByHeight = viewportHeight > 0
+        ? latMeters / viewportHeight
+        : 0;
     return (
       lat: centerLat,
       lng: centerLng,
@@ -1284,10 +1277,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
     if (pinsAsync.hasError) {
       // 数据没回来：本次切换未走完。不记渲染段（没有可绘制的 Pin）。
-      recorder.finish(
-        sessionId: sessionId,
-        outcome: LayerSwitchOutcome.failed,
-      );
+      recorder.finish(sessionId: sessionId, outcome: LayerSwitchOutcome.failed);
       return;
     }
     // 仍在加载：等数据到达的那一帧。
@@ -1319,10 +1309,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   /// 注释），故 `pinsProvider` 不重发请求、`pinsAsync` 的数据在整段拖动里是**同一个
   /// List 实例** —— 引用相同即「数据没变」，缓存全程命中。相机停稳后
   /// `_syncFetchViewport` 换视口，引用随之改变，此时重建一次是应当付的成本。
-  _PinsDerived _derivedFor(
-    List<MapPinDto> pins,
-    List<MapClusterDto> clusters,
-  ) {
+  _PinsDerived _derivedFor(List<MapPinDto> pins, List<MapClusterDto> clusters) {
     final cached = _derivedCache;
     if (cached != null &&
         identical(_derivedPins, pins) &&
@@ -1398,7 +1385,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       // 大类为 null（分类树查不到）时取最保守的阈值 3：宁可多聚也不要在
       // 密集区散成一片点。阈值该取几由产品决定，故留在调用方而非算法层。
       thresholdOf: (topCategory) =>
-          topCategory?.clusterThreshold ?? ListingCategory.work.clusterThreshold,
+          topCategory?.clusterThreshold ??
+          ListingCategory.work.clusterThreshold,
     );
   }
 
@@ -1481,37 +1469,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 }
 
-class _FilterEntryButton extends ConsumerWidget {
-  const _FilterEntryButton();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final expanded = ref.watch(filterPanelExpandedProvider);
-    return GestureDetector(
-      onTap: () => ref.read(filterPanelExpandedProvider.notifier).toggle(),
-      child: Container(
-        width: 44,
-        height: 44,
-        decoration: BoxDecoration(
-          color: Color(AppColors.surface),
-          shape: BoxShape.circle,
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x1F000000),
-              blurRadius: 8,
-              offset: Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Icon(
-          expanded ? Icons.close : Icons.more_vert,
-          color: Color(AppColors.textPrimary),
-        ),
-      ),
-    );
-  }
-}
-
 /// 列表视图入口。
 ///
 /// 用 `go` 而非 `push`：两个视图同层级，push 会让返回栈累积成
@@ -1543,10 +1500,10 @@ class _ListViewEntryButton extends StatelessWidget {
   }
 }
 
-/// 「回到当前位置」按钮（相机离开定位点后出现）。
+/// 「回到当前位置」按钮。
 ///
-/// 尺寸与样式对齐右上角的筛选/列表入口：44×44 白色圆形 + 阴影，
-/// 保证地图上三个悬浮入口看起来是同一套控件。
+/// 常驻右侧浮钮列第二枚，与列表/地图入口同一套 44×44 白色圆形 + 阴影；
+/// 不再按「相机是否离开定位点」显隐，避免用户找不到定位入口。
 class _RecenterButton extends StatelessWidget {
   const _RecenterButton({required this.onTap});
 
@@ -1571,10 +1528,7 @@ class _RecenterButton extends StatelessWidget {
             ),
           ],
         ),
-        child: Icon(
-          Icons.my_location,
-          color: Color(AppColors.primary),
-        ),
+        child: Icon(Icons.my_location, color: Color(AppColors.primary)),
       ),
     );
   }
@@ -1606,7 +1560,8 @@ class _ListingInfoCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final detailAsync = ref.watch(postDetailProvider(listingId));
-    final ListingCategory? category = detailAsync.asData?.value.listing.category;
+    final ListingCategory? category =
+        detailAsync.asData?.value.listing.category;
 
     return GestureDetector(
       // 整卡可点进详情（PRD §7.5 旅程第 1 步）。整卡而非只给一个小按钮：
@@ -1782,12 +1737,70 @@ class _PinsStatusChip extends StatelessWidget {
   }
 }
 
+/// 当前命中数（地图左下角）。
+///
+/// 只显示数字，不再塞进条件带：用户扫一眼地图就知道「这组条件有多少结果」，
+/// 同时条件带可以彻底交给搜索与 chip。
+class _PinsCountBadge extends StatelessWidget {
+  const _PinsCountBadge({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: '当前 $count 条结果',
+      child: Container(
+        height: 32,
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+        decoration: BoxDecoration(
+          color: Color(AppColors.surface),
+          borderRadius: BorderRadius.circular(AppRadius.full),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x1F000000),
+              blurRadius: 8,
+              offset: Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 6,
+              height: 6,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Color(AppColors.primary),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              '$count 条',
+              style: TextStyle(
+                fontSize: AppTypeScale.small.size,
+                fontWeight: FontWeight.w600,
+                color: Color(AppColors.textPrimary),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// 一帧的 Marker 层装配结果（见 [_MapScreenState._markerLayerFrame]）。
 ///
 /// - [markers]：要画的 Marker；
 /// - [offset]：Marker 坐标 → 屏幕坐标的平移量（含余量偏移与拖动位移）；
 /// - [layerSize]：Marker 坐标系的画布尺寸（即精算视口尺寸）。
-typedef _MarkerFrame = ({List<MapMarker> markers, Offset offset, Size layerSize});
+typedef _MarkerFrame = ({
+  List<MapMarker> markers,
+  Offset offset,
+  Size layerSize,
+});
 
 /// 一帧内反复用到的 pins 派生量（按 `pinList` 引用记忆化）。
 ///
@@ -1890,10 +1903,7 @@ class _LocateFailedBanner extends StatelessWidget {
               ),
             ),
           ),
-          TextButton(
-            onPressed: onManualCity,
-            child: const Text('手动选城市'),
-          ),
+          TextButton(onPressed: onManualCity, child: const Text('手动选城市')),
         ],
       ),
     );
@@ -1918,4 +1928,3 @@ double _distanceMeters(double lat1, double lng1, double lat2, double lng2) {
           math.sin(dLng / 2);
   return 2 * earthRadiusMeters * math.asin(math.min(1, math.sqrt(a)));
 }
-

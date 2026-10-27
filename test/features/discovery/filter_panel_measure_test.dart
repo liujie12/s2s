@@ -8,6 +8,8 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zhaoyazhao/features/discovery/discovery_filter.dart';
+import 'package:zhaoyazhao/features/discovery/effective_filter_provider.dart';
 import 'package:zhaoyazhao/features/discovery/filter_panel.dart';
 import 'package:zhaoyazhao/features/perf/layer_switch_recorder.dart';
 
@@ -29,9 +31,7 @@ void main() {
       UncontrolledProviderScope(
         container: container,
         child: MaterialApp(
-          home: Scaffold(
-            body: FilterPanel(measureLayerSwitch: measure),
-          ),
+          home: Scaffold(body: FilterPanel(measureLayerSwitch: measure)),
         ),
       ),
     );
@@ -41,6 +41,8 @@ void main() {
   testWidgets('地图页：点分类胶囊开一次切换会话', (tester) async {
     final container = await pumpPanel(tester, measure: true);
 
+    await tester.ensureVisible(find.text('房屋'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('房屋'));
     await tester.pump();
 
@@ -54,6 +56,8 @@ void main() {
   testWidgets('列表页：同样的点击不开会话（无 Pin 渲染终点）', (tester) async {
     final container = await pumpPanel(tester, measure: false);
 
+    await tester.ensureVisible(find.text('房屋'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('房屋'));
     await tester.pump();
 
@@ -67,6 +71,8 @@ void main() {
   testWidgets('已是「全部」时再点：不开新会话（防零耗时假样本拉低 P95）', (tester) async {
     final container = await pumpPanel(tester, measure: true);
 
+    await tester.ensureVisible(find.text('全部'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('全部'));
     await tester.pump();
 
@@ -74,6 +80,72 @@ void main() {
       container.read(layerSwitchRecorderProvider).hasActiveSession,
       isFalse,
       reason: '筛选态未改变不构成一次切换',
+    );
+  });
+
+  testWidgets('三级下钻：服务 → 家政/保洁 → 叶子多选写入持久筛选', (tester) async {
+    final container = await pumpPanel(tester, measure: true);
+
+    // 一级「服务」右侧箭头（「全部」没有箭头，故它是第 5 个）。
+    await tester.ensureVisible(find.byIcon(Icons.chevron_right).at(4));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.chevron_right).at(4));
+    await tester.pumpAndSettle();
+    expect(find.text('选择子类'), findsOneWidget);
+    expect(find.text('家政/保洁'), findsOneWidget);
+
+    // 二级「家政/保洁」右侧箭头进入三级。
+    await tester.ensureVisible(find.byIcon(Icons.chevron_right).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.chevron_right).first);
+    await tester.pumpAndSettle();
+    expect(find.text('日常保洁'), findsOneWidget);
+    expect(find.text('深度清洁'), findsOneWidget);
+
+    await tester.tap(find.text('日常保洁'));
+    await tester.pump();
+    expect(container.read(discoveryFilterProvider).leafCategoryIds, {50101});
+
+    await tester.tap(find.text('深度清洁'));
+    await tester.pump();
+    expect(container.read(discoveryFilterProvider).leafCategoryIds, {
+      50101,
+      50102,
+    });
+
+    // 再点一次取消，叶子集合精确回退。
+    await tester.tap(find.text('日常保洁'));
+    await tester.pump();
+    expect(container.read(discoveryFilterProvider).leafCategoryIds, {50102});
+  });
+
+  testWidgets('价格输入后直接点「查看结果」：先失焦提交，不丢价格', (tester) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          home: Scaffold(
+            body: FilterPanel(countLabel: '3 条结果', onClose: () {}),
+          ),
+        ),
+      ),
+    );
+
+    // 价格只在「两侧都失焦」时提交，点底部按钮必须补一次失焦。
+    await tester.ensureVisible(find.byType(TextField).first);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, '100');
+    await tester.pump();
+
+    await tester.tap(find.text('查看 3 条结果'));
+    await tester.pumpAndSettle();
+
+    expect(
+      container.read(effectiveFilterProvider).priceMin,
+      100,
+      reason: '输入价格后直接点「查看结果」不应丢条件',
     );
   });
 }

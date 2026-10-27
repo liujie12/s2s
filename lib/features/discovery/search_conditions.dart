@@ -8,6 +8,7 @@ library;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../domain/category_tree.dart';
 import '../../domain/listing_category.dart';
 import 'condition_slots.dart';
 import 'discovery_filter.dart';
@@ -25,7 +26,11 @@ typedef ConditionsSnapshot = ({DiscoveryFilter filter, SearchIntent? intent});
 /// 无法跨页共享；切视图后会出现「输入框空着但 chip 在过滤」。
 class SearchConditionsState {
   /// 构造状态。
-  const SearchConditionsState({this.queryText = '', this.snapshot, this.interactionId});
+  const SearchConditionsState({
+    this.queryText = '',
+    this.snapshot,
+    this.interactionId,
+  });
 
   /// 当前搜索输入文本（只用于回显，不参与过滤）。
   final String queryText;
@@ -53,7 +58,9 @@ class SearchConditionsState {
     return SearchConditionsState(
       queryText: queryText ?? this.queryText,
       snapshot: clearSnapshot ? null : (snapshot ?? this.snapshot),
-      interactionId: clearInteractionId ? null : (interactionId ?? this.interactionId),
+      interactionId: clearInteractionId
+          ? null
+          : (interactionId ?? this.interactionId),
     );
   }
 }
@@ -115,7 +122,9 @@ class SearchConditionsNotifier extends Notifier<SearchConditionsState> {
   ///
   /// 参数：[value] 被切换的方向；返回：无。
   void toggleSupplyDemand(SupplyDemand value) {
-    final Set<SupplyDemand> current = ref.read(effectiveFilterProvider).supplyDemand;
+    final Set<SupplyDemand> current = ref
+        .read(effectiveFilterProvider)
+        .supplyDemand;
     final Set<SupplyDemand> next = {...current};
     next.contains(value) ? next.remove(value) : next.add(value);
     setSupplyDemand(next);
@@ -165,6 +174,54 @@ class SearchConditionsNotifier extends Notifier<SearchConditionsState> {
   /// 回到「全部分类」。
   void clearCategories() => setCategories(const <ListingCategory>{});
 
+  /// 设置三级叶子集合（分类面板的三级选择用）。
+  ///
+  /// 有搜索态时写当前槽位卡，无搜索态时写持久筛选；与一级分类互斥。
+  ///
+  /// 参数：[leafIds] 叶子类目 ID 集合；空集 = 全部分类。
+  /// 返回：无。
+  void setLeafCategories(Set<int> leafIds) {
+    _recordSnapshot();
+    final List<int> sorted = leafIds.toList()..sort();
+    final List<String> labels = [
+      for (final int id in sorted) leafCategoryById(id)?.name ?? '分类',
+    ];
+    final SearchIntent? intent = _intent;
+    if (intent == null) {
+      ref
+          .read(discoveryFilterProvider.notifier)
+          .setLeafCategoryIds(sorted.toSet());
+      return;
+    }
+    _writeIntent(
+      intent.copyWith(leafCategoryIds: sorted, categoryLabels: labels),
+    );
+  }
+
+  /// 切换单个叶子类目（三级叶子多选）。
+  ///
+  /// 以当前生效叶子集合为基准增删；删到空集时等价于「全部分类」。
+  ///
+  /// 参数：[leafId] 叶子类目 ID；返回：无。
+  void toggleLeafCategory(int leafId) {
+    final Set<int> current = ref
+        .read(effectiveFilterProvider)
+        .leafCategoryIds
+        .toSet();
+    current.contains(leafId) ? current.remove(leafId) : current.add(leafId);
+    setLeafCategories(current);
+  }
+
+  /// 重置筛选条件（面板「重置」）。
+  ///
+  /// 清空持久筛选与本次搜索槽位，但保留搜索输入文本 —— 文本不是筛选条件，
+  /// 用户点重置通常是想「重新选一遍」，不是想连输入的话也删掉。
+  void resetFilters() {
+    _recordSnapshot();
+    ref.read(discoveryFilterProvider.notifier).replace(const DiscoveryFilter());
+    ref.read(searchIntentProvider.notifier).clear();
+  }
+
   /// 设置价格区间；任一侧传 null 即取消该侧（R23）。
   ///
   /// 价格无论有无搜索态都写持久筛选 —— 它是持久条件，不随一次搜索结束而消失。
@@ -172,7 +229,9 @@ class SearchConditionsNotifier extends Notifier<SearchConditionsState> {
   /// 参数：[min]/[max] 价格上下限（元）；返回：无。
   void setPrice({int? min, int? max}) {
     _recordSnapshot();
-    ref.read(discoveryFilterProvider.notifier).setPriceRange(min: min, max: max);
+    ref
+        .read(discoveryFilterProvider.notifier)
+        .setPriceRange(min: min, max: max);
   }
 
   /// 删除一枚条件 chip。
@@ -187,24 +246,39 @@ class SearchConditionsNotifier extends Notifier<SearchConditionsState> {
     switch (chip.slot) {
       case ConditionSlot.radius:
         if (intent == null) {
-          ref.read(discoveryFilterProvider.notifier).setRadius(SearchRadius.city);
+          ref
+              .read(discoveryFilterProvider.notifier)
+              .setRadius(SearchRadius.city);
         } else {
           _writeIntent(intent.withoutRadius());
         }
       case ConditionSlot.supplyDemand:
         if (intent == null) {
-          ref.read(discoveryFilterProvider.notifier)
-              .setSupplyDemand(const {SupplyDemand.supply, SupplyDemand.demand});
+          ref.read(discoveryFilterProvider.notifier).setSupplyDemand(const {
+            SupplyDemand.supply,
+            SupplyDemand.demand,
+          });
         } else {
           _writeIntent(intent.withoutPostType());
         }
       case ConditionSlot.category:
-        if (intent == null) {
+        if (chip.leafCategoryId != null) {
+          // 持久叶子：只回退这一枚。搜索态没有类目时，chip 来自持久回落，
+          // 这里改持久集合即可；若意图自己也有类目，产生的是 index chip，
+          // 不会走到本分支。
+          final Set<int> next = {
+            ...ref.read(discoveryFilterProvider).leafCategoryIds,
+          }..remove(chip.leafCategoryId);
+          ref.read(discoveryFilterProvider.notifier).setLeafCategoryIds(next);
+        } else if (intent == null) {
           ref.read(discoveryFilterProvider.notifier).clearCategories();
         } else {
           _writeIntent(
             chip.index == null
-                ? intent.copyWith(leafCategoryIds: const <int>[], categoryLabels: const <String>[])
+                ? intent.copyWith(
+                    leafCategoryIds: const <int>[],
+                    categoryLabels: const <String>[],
+                  )
                 : intent.withoutCategoryAt(chip.index!),
           );
         }
@@ -262,24 +336,28 @@ class SearchConditionsNotifier extends Notifier<SearchConditionsState> {
         : const Uuid().v4();
     state = state.copyWith(interactionId: interactionId);
     _recordSnapshot();
-    await ref.read(searchIntentProvider.notifier).resolve(
-      text: text,
-      voiceMediaId: voiceMediaId,
-      voiceBase64: voiceBase64,
-      voiceContentType: voiceContentType,
-      anchorLat: anchorLat,
-      anchorLng: anchorLng,
-      currentLat: currentLat,
-      currentLng: currentLng,
-      interactionId: interactionId,
-    );
+    await ref
+        .read(searchIntentProvider.notifier)
+        .resolve(
+          text: text,
+          voiceMediaId: voiceMediaId,
+          voiceBase64: voiceBase64,
+          voiceContentType: voiceContentType,
+          anchorLat: anchorLat,
+          anchorLng: anchorLng,
+          currentLat: currentLat,
+          currentLng: currentLng,
+          interactionId: interactionId,
+        );
     final SearchIntent? intent = _intent;
     if (intent == null) return;
     if (intent.priceMin != null || intent.priceMax != null) {
-      ref.read(discoveryFilterProvider.notifier).setPriceRange(
-        min: intent.priceMin?.round(),
-        max: intent.priceMax?.round(),
-      );
+      ref
+          .read(discoveryFilterProvider.notifier)
+          .setPriceRange(
+            min: intent.priceMin?.round(),
+            max: intent.priceMax?.round(),
+          );
     }
   }
 
@@ -288,7 +366,9 @@ class SearchConditionsNotifier extends Notifier<SearchConditionsState> {
     final ConditionsSnapshot? snapshot = state.snapshot;
     if (snapshot == null) return;
     ref.read(discoveryFilterProvider.notifier).replace(snapshot.filter);
-    final SearchIntentNotifier intents = ref.read(searchIntentProvider.notifier);
+    final SearchIntentNotifier intents = ref.read(
+      searchIntentProvider.notifier,
+    );
     if (snapshot.intent == null) {
       intents.clear();
     } else {
@@ -312,10 +392,7 @@ class SearchConditionsNotifier extends Notifier<SearchConditionsState> {
   void _recordSnapshot() {
     if (state.snapshot != null) return;
     state = state.copyWith(
-      snapshot: (
-        filter: ref.read(discoveryFilterProvider),
-        intent: _intent,
-      ),
+      snapshot: (filter: ref.read(discoveryFilterProvider), intent: _intent),
     );
   }
 

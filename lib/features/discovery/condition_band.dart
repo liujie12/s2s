@@ -1,11 +1,13 @@
-/// 地图与列表共用的两行条件带。
+/// 地图与列表共用的固定搜索栏 + 动态筛选栏。
 ///
-/// 第一行是搜索输入（文字 / 语音 / 提交 / 叉号），第二行是当前生效条件的
-/// chip 行。两页渲染的是**同一份投影**，不各自维护「当前筛的是什么」。
-///
-/// 为什么两行常驻而不折叠：条件默认可见比省那点高度重要 —— 折叠后用户
-/// 又要靠记忆判断「现在到底筛了什么」，正是本轮要修的缺陷。
+/// 设计口径（2026-10-26 用户确认的 V1.5）：
+/// - 搜索栏常驻，左上角不再有「丫圈」标题；
+/// - 默认不显示任何筛选项，只有搜索/面板真正设置了条件才长出 chip；
+/// - 点搜索栏的漏斗或任意 chip 主体，打开底部筛选面板；
+/// - 「没听懂」不再占 chip 行，改为搜索栏下方的深色提示，8 秒自动消失。
 library;
+
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -15,40 +17,44 @@ import 'effective_filter.dart';
 import 'effective_filter_provider.dart';
 import 'search_conditions.dart';
 
-/// 两行条件带。
+/// 「没听懂」提示的自动消失时长。
+///
+/// 取值与设计稿一致（8s）；放成命名常量，避免在 widget 里散落魔法数字。
+const Duration _noUnderstandToastDuration = Duration(seconds: 8);
+
+/// 固定搜索栏 + 动态 chip 栏。
 class ConditionBand extends ConsumerStatefulWidget {
   /// 构造条件带。
   ///
-  /// 参数：[countLabel] 命中数文案（`3 条` / `0 条`），加载中传 null；
-  /// [onVoice] 语音入口；[onSubmit] 文本提交（不传则用门面 submit）；
-  /// [onEditChip] 点开改值；[onAddCondition] 追加条件；[onRetry] 没听懂后的重试。
+  /// 参数：
+  /// - [onFilter]：点漏斗或 chip 主体时打开筛选面板；
+  /// - [onVoice]：语音入口（无语音能力时不传）；
+  /// - [onSubmit]：文本提交；不传则直接走门面 `submit`；
+  /// - [onRetry]：「没听懂」提示上的重试；
+  /// - [trailingInset]：chip 行右侧预留宽度（地图页给右侧浮钮让位）。
   const ConditionBand({
     super.key,
-    required this.countLabel,
+    this.onFilter,
     this.onVoice,
     this.onSubmit,
-    this.onEditChip,
-    this.onAddCondition,
     this.onRetry,
+    this.trailingInset = 0,
   });
 
-  /// 命中数文案；null 表示取数未完成。
-  final String? countLabel;
+  /// 打开筛选面板。
+  final VoidCallback? onFilter;
 
-  /// 语音入口回调。
+  /// 语音入口。
   final VoidCallback? onVoice;
 
   /// 文本提交回调；null 时直接走门面 `submit`。
   final ValueChanged<String>? onSubmit;
 
-  /// chip 改值回调。
-  final ValueChanged<ConditionChip>? onEditChip;
-
-  /// 追加条件回调。
-  final VoidCallback? onAddCondition;
-
   /// 「没听懂」后的重试回调。
   final VoidCallback? onRetry;
+
+  /// chip 行右侧预留宽度（逻辑像素）——从**可视区域**里扣掉，不给滚动内容。
+  final double trailingInset;
 
   @override
   ConsumerState<ConditionBand> createState() => _ConditionBandState();
@@ -58,6 +64,12 @@ class _ConditionBandState extends ConsumerState<ConditionBand> {
   late final TextEditingController _controller;
   late final FocusNode _focus;
 
+  /// 「没听懂」提示是否已被用户关掉/超时关掉。
+  bool _noUnderstandDismissed = false;
+
+  /// 自动消失定时器。
+  Timer? _noUnderstandTimer;
+
   @override
   void initState() {
     super.initState();
@@ -65,18 +77,33 @@ class _ConditionBandState extends ConsumerState<ConditionBand> {
       text: ref.read(searchConditionsProvider).queryText,
     );
     _focus = FocusNode();
+    if (ref.read(searchStatusProvider).noUnderstand) {
+      _scheduleNoUnderstandDismiss();
+    }
   }
 
   @override
   void dispose() {
+    _noUnderstandTimer?.cancel();
     _controller.dispose();
     _focus.dispose();
     super.dispose();
   }
 
+  /// 安排「没听懂」提示自动消失。
+  ///
+  /// 参数：无；返回：无。
+  void _scheduleNoUnderstandDismiss() {
+    _noUnderstandTimer?.cancel();
+    _noUnderstandTimer = Timer(_noUnderstandToastDuration, () {
+      if (!mounted) return;
+      setState(() => _noUnderstandDismissed = true);
+    });
+  }
+
   /// 提交当前文本。
   ///
-  /// 回填与提交分离：程序化改写 controller 不触发解析，只有这里显式提交。
+  /// 参数：无；返回：无。
   void _submit() {
     final String text = _controller.text.trim();
     if (text.isEmpty) return;
@@ -100,176 +127,250 @@ class _ConditionBandState extends ConsumerState<ConditionBand> {
       }
     });
 
-    final SearchConditionsState conditions = ref.watch(searchConditionsProvider);
+    // 新一次「没听懂」重新计时；恢复正常态时清掉计时器。
+    ref.listen(searchStatusProvider, (previous, next) {
+      if (next.noUnderstand && !(previous?.noUnderstand ?? false)) {
+        setState(() => _noUnderstandDismissed = false);
+        _scheduleNoUnderstandDismiss();
+      } else if (!next.noUnderstand) {
+        _noUnderstandTimer?.cancel();
+        if (_noUnderstandDismissed) {
+          setState(() => _noUnderstandDismissed = false);
+        }
+      }
+    });
+
+    final SearchConditionsState conditions = ref.watch(
+      searchConditionsProvider,
+    );
     final EffectiveFilter effective = ref.watch(effectiveFilterProvider);
     final SearchStatus status = ref.watch(searchStatusProvider);
-    final bool busy = status.busy;
-    final bool noUnderstand = status.noUnderstand;
+    final bool hasChips =
+        effective.chips.isNotEmpty || effective.unresolvedLabels.isNotEmpty;
+    final bool showNoUnderstand =
+        status.noUnderstand &&
+        !_noUnderstandDismissed &&
+        widget.onRetry != null;
 
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.sm),
-      decoration: BoxDecoration(
-        color: Color(AppColors.surface),
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-        boxShadow: const [
-          BoxShadow(color: Color(0x1F000000), blurRadius: 12, offset: Offset(0, 2)),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSearchBar(conditions, status.busy),
+        if (hasChips) ...[
+          const SizedBox(height: AppSpacing.sm),
+          _buildChipRow(effective),
         ],
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _searchRow(conditions, busy),
-          const SizedBox(height: AppSpacing.xs),
-          _chipRow(effective, conditions, noUnderstand, busy),
+        if (showNoUnderstand) ...[
+          const SizedBox(height: AppSpacing.sm),
+          _NoUnderstandToast(
+            onTap: () {
+              _noUnderstandTimer?.cancel();
+              setState(() => _noUnderstandDismissed = true);
+              widget.onRetry?.call();
+            },
+          ),
         ],
-      ),
+      ],
     );
   }
 
-  /// 第一行：输入框 + 提交 + 叉号 + 语音。
-  Widget _searchRow(SearchConditionsState conditions, bool busy) {
-    final bool hasText = _controller.text.trim().isNotEmpty;
-    return Row(
-      children: [
-        Expanded(
-          child: SizedBox(
-            height: 32,
+  /// 固定搜索栏：放大镜 + 输入 + 漏斗 + 语音/发送。
+  ///
+  /// 参数：[conditions] 当前门面状态（取文本判断发送键）；[busy] 是否正在解析。
+  /// 返回：搜索栏控件。
+  Widget _buildSearchBar(SearchConditionsState conditions, bool busy) {
+    final bool hasText = conditions.queryText.trim().isNotEmpty;
+    return Container(
+      height: 48,
+      padding: const EdgeInsets.only(left: AppSpacing.md, right: 6),
+      decoration: BoxDecoration(
+        color: Color(AppColors.surface),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: const Color(0xFFE2E5DE)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x1A000000),
+            blurRadius: 10,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.search, size: 18, color: Color(AppColors.textSecondary)),
+          const SizedBox(width: 6),
+          Expanded(
             child: TextField(
               controller: _controller,
               focusNode: _focus,
               textInputAction: TextInputAction.search,
               onChanged: (value) {
                 ref.read(searchConditionsProvider.notifier).setQueryText(value);
-                setState(() {}); // 提交/叉号的显隐跟随文本
               },
               onSubmitted: (_) => _submit(),
               onTapOutside: (_) => _focus.unfocus(),
-              style: TextStyle(fontSize: AppTypeScale.body.size),
+              style: TextStyle(
+                fontSize: AppTypeScale.body.size,
+                color: Color(AppColors.textPrimary),
+              ),
               decoration: InputDecoration(
-                hintText: '搜索保洁/拼车/租房',
+                hintText: '搜索保洁 / 拼车 / 租房',
                 hintStyle: TextStyle(
                   fontSize: AppTypeScale.body.size,
                   color: Color(AppColors.textPlaceholder),
                 ),
                 isDense: true,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.md,
-                  vertical: AppSpacing.sm,
-                ),
-                filled: true,
-                fillColor: Color(AppColors.background),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(AppRadius.full),
-                  borderSide: BorderSide.none,
-                ),
-                suffixIcon: hasText
-                    ? IconButton(
-                        tooltip: '清除文字',
-                        icon: Icon(Icons.close, size: 16, color: Color(AppColors.textSecondary)),
-                        onPressed: () {
-                          _controller.clear();
-                          ref.read(searchConditionsProvider.notifier).clearText();
-                          setState(() {});
-                        },
-                      )
-                    : null,
+                contentPadding: EdgeInsets.zero,
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
               ),
             ),
           ),
-        ),
-        const SizedBox(width: AppSpacing.sm),
-        if (hasText)
-          _BandAction(
-            label: '搜索',
-            filled: true,
-            enabled: !busy,
-            onTap: busy ? null : _submit,
-          )
-        else if (widget.onVoice != null)
-          _BandAction(label: '语音', onTap: widget.onVoice),
-      ],
+          _RoundIconButton(
+            icon: Icons.filter_alt_outlined,
+            tooltip: '筛选',
+            onTap: widget.onFilter,
+            size: 32,
+            iconSize: 18,
+          ),
+          const SizedBox(width: 4),
+          if (busy)
+            const SizedBox(
+              width: 36,
+              height: 36,
+              child: Center(
+                child: SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            )
+          else if (hasText)
+            _RoundIconButton(
+              icon: Icons.arrow_upward_rounded,
+              tooltip: '搜索',
+              onTap: _submit,
+              size: 36,
+              iconSize: 18,
+              filled: true,
+            )
+          else if (widget.onVoice != null)
+            _RoundIconButton(
+              icon: Icons.mic_none,
+              tooltip: '语音搜索',
+              onTap: widget.onVoice,
+              size: 36,
+              iconSize: 19,
+              tinted: true,
+            ),
+          const SizedBox(width: 2),
+        ],
+      ),
     );
   }
 
-  /// 第二行：chip 横滑 + 追加 + 命中数 + 撤销 / 清除。
-  Widget _chipRow(
-    EffectiveFilter effective,
-    SearchConditionsState conditions,
-    bool noUnderstand,
-    bool busy,
-  ) {
+  /// 动态 chip 栏：没有条件时整行不渲染。
+  ///
+  /// 参数：[effective] 当前生效条件；返回：chip 行控件。
+  Widget _buildChipRow(EffectiveFilter effective) {
     final List<Widget> chips = [
       for (final ConditionChip chip in effective.chips)
-        _ConditionChipView(
+        _FilterChip(
           chip: chip,
-          onTap: chip.editable && widget.onEditChip != null
-              ? () => widget.onEditChip!(chip)
-              : null,
+          onTap: widget.onFilter,
           onDelete: chip.deletable
-              ? () => ref.read(searchConditionsProvider.notifier).removeSlot(chip)
+              ? () =>
+                    ref.read(searchConditionsProvider.notifier).removeSlot(chip)
               : null,
         ),
-      // 未敢用字段：灰态、无删除、不参与计数（R16）。
+      // 未敢用字段：灰态、无删除、不参与计数。
       for (final String label in effective.unresolvedLabels)
         _UnresolvedChip(label: label),
     ];
 
-    return Row(
-      children: [
-        Expanded(
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                ...chips,
-                Padding(
-                  padding: const EdgeInsets.only(left: AppSpacing.xs),
-                  child: _BandAction(
-                    label: '＋ 条件',
-                    dashed: true,
-                    onTap: widget.onAddCondition,
-                  ),
-                ),
-              ],
+    return GestureDetector(
+      onTap: widget.onFilter,
+      behavior: HitTestBehavior.opaque,
+      child: SizedBox(
+        height: 36,
+        // 预留宽度必须落在**视口外**：写在滚动内容里时，chip 仍会先画到浮钮底下，
+        // 只有滚到末尾才让位；放在视口上才能保证任何滚动位置都不被浮钮遮住。
+        child: Padding(
+          padding: EdgeInsets.only(right: widget.trailingInset),
+          child: ShaderMask(
+            // 右侧渐隐：让用户知道这行可以横滑，而不是「chip 被裁掉了」。
+            shaderCallback: (Rect rect) => const LinearGradient(
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+              colors: [Colors.black, Colors.black, Colors.transparent],
+              stops: [0, 0.92, 1],
+            ).createShader(rect),
+            blendMode: BlendMode.dstIn,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(children: chips),
             ),
           ),
         ),
-        const SizedBox(width: AppSpacing.xs),
-        if (noUnderstand)
-          _BandAction(label: '没听懂', onTap: widget.onRetry)
-        else
-          Padding(
-            padding: const EdgeInsets.only(right: AppSpacing.xs),
-            child: Text(
-              busy ? '—' : (widget.countLabel ?? '—'),
-              semanticsLabel: busy ? '正在取数' : '命中 ${widget.countLabel ?? '未知'}',
-              style: TextStyle(
-                fontSize: AppTypeScale.small.size,
-                fontWeight: FontWeight.w600,
-                color: Color(AppColors.textPrimary),
-              ),
-            ),
-          ),
-        if (conditions.canUndo)
-          _BandAction(
-            label: '撤销',
-            onTap: () => ref.read(searchConditionsProvider.notifier).undo(),
-          ),
-        // 清除只在搜索态出现：无搜索态时它等于「重置持久筛选」，语义不同。
-        if (effective.active)
-          _BandAction(
-            label: '清除',
-            onTap: () => ref.read(searchConditionsProvider.notifier).clearAll(),
-          ),
-      ],
+      ),
     );
   }
 }
 
-/// 一枚条件 chip。
-class _ConditionChipView extends StatelessWidget {
-  const _ConditionChipView({
+/// 搜索栏里的圆形图标键。
+class _RoundIconButton extends StatelessWidget {
+  const _RoundIconButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+    required this.size,
+    required this.iconSize,
+    this.filled = false,
+    this.tinted = false,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onTap;
+  final double size;
+  final double iconSize;
+
+  /// 主色实心（发送键）。
+  final bool filled;
+
+  /// 主色浅底（语音键）。
+  final bool tinted;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color foreground = filled
+        ? Color(AppColors.surface)
+        : (tinted ? Color(AppColors.primary) : Color(AppColors.textSecondary));
+    final Color? background = filled
+        ? Color(AppColors.primary)
+        : (tinted ? Color(AppColors.primaryLight) : null);
+    return Tooltip(
+      message: tooltip,
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(color: background, shape: BoxShape.circle),
+          child: Icon(icon, size: iconSize, color: foreground),
+        ),
+      ),
+    );
+  }
+}
+
+/// 一枚动态筛选 chip。
+class _FilterChip extends StatelessWidget {
+  const _FilterChip({
     required this.chip,
     required this.onTap,
     required this.onDelete,
@@ -283,31 +384,73 @@ class _ConditionChipView extends StatelessWidget {
   Widget build(BuildContext context) {
     final bool fromIntent = chip.source == ConditionSource.intent;
     return Padding(
-      padding: const EdgeInsets.only(right: AppSpacing.xs),
-      child: InputChip(
-        label: Text(chip.label),
-        onPressed: onTap,
-        onDeleted: onDelete,
-        // × 的触控区单独撑到 32：图标只有 14，直接拿图标当热区时
-        // 真机上一次点中率极低，误触反而落到 chip 主体打开改值面板。
-        deleteIcon: onDelete == null
-            ? null
-            : const SizedBox(
-                width: 32,
-                height: 32,
-                child: Icon(Icons.close, size: 14),
+      padding: const EdgeInsets.only(right: AppSpacing.sm),
+      child: Tooltip(
+        message: fromIntent ? '${chip.label}（本次搜索）' : '${chip.label}（筛选）',
+        child: GestureDetector(
+          onTap: onTap,
+          behavior: HitTestBehavior.opaque,
+          child: Container(
+            height: 32,
+            padding: EdgeInsets.only(
+              left: 10,
+              right: onDelete == null ? 12 : 2,
+            ),
+            decoration: BoxDecoration(
+              color: Color(AppColors.surface),
+              borderRadius: BorderRadius.circular(AppRadius.full),
+              border: Border.all(
+                color: fromIntent
+                    ? Color(AppColors.primary)
+                    : Color(AppColors.border),
               ),
-        visualDensity: VisualDensity.compact,
-        // 来源可辨：本次搜索用品牌色描边，持久筛选用中性描边。
-        side: BorderSide(
-          color: fromIntent ? Color(AppColors.primary) : Color(AppColors.border),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x14000000),
+                  blurRadius: 6,
+                  offset: Offset(0, 1),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: fromIntent
+                        ? Color(AppColors.primary)
+                        : Color(AppColors.textPlaceholder),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  chip.label,
+                  style: TextStyle(
+                    fontSize: AppTypeScale.small.size,
+                    color: Color(AppColors.textPrimary),
+                  ),
+                ),
+                if (onDelete != null)
+                  GestureDetector(
+                    onTap: onDelete,
+                    behavior: HitTestBehavior.opaque,
+                    child: SizedBox(
+                      width: 28,
+                      height: 32,
+                      child: Icon(
+                        Icons.close,
+                        size: 14,
+                        color: Color(AppColors.textPlaceholder),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
         ),
-        backgroundColor: Color(AppColors.surface),
-        labelStyle: TextStyle(
-          fontSize: AppTypeScale.small.size,
-          color: Color(AppColors.textPrimary),
-        ),
-        tooltip: fromIntent ? '${chip.label}（本次搜索）' : '${chip.label}（筛选）',
       ),
     );
   }
@@ -322,67 +465,72 @@ class _UnresolvedChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(right: AppSpacing.xs),
-      child: Chip(
-        label: Text('$label · 没敢用'),
-        visualDensity: VisualDensity.compact,
-        backgroundColor: Color(AppColors.background),
-        labelStyle: TextStyle(
-          fontSize: AppTypeScale.small.size,
-          color: Color(AppColors.textPlaceholder),
+      padding: const EdgeInsets.only(right: AppSpacing.sm),
+      child: Container(
+        height: 32,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        decoration: BoxDecoration(
+          color: Color(AppColors.background),
+          borderRadius: BorderRadius.circular(AppRadius.full),
+          border: Border.all(color: Color(AppColors.border)),
         ),
-        side: BorderSide(color: Color(AppColors.border)),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 6,
+              height: 6,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Color(AppColors.textPlaceholder),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              '$label · 没敢用',
+              style: TextStyle(
+                fontSize: AppTypeScale.small.size,
+                color: Color(AppColors.textPlaceholder),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
-/// 条件带内的小动作（提交 / 语音 / 追加 / 没听懂）。
-class _BandAction extends StatelessWidget {
-  const _BandAction({
-    required this.label,
-    this.onTap,
-    this.filled = false,
-    this.dashed = false,
-    this.enabled = true,
-  });
+/// 搜索栏下方的「没听懂」提示。
+class _NoUnderstandToast extends StatelessWidget {
+  const _NoUnderstandToast({required this.onTap});
 
-  final String label;
-  final VoidCallback? onTap;
-  final bool filled;
-  final bool dashed;
-  final bool enabled;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final Color fg = filled ? Color(AppColors.surface) : Color(AppColors.textPrimary);
     return GestureDetector(
-      onTap: enabled ? onTap : null,
+      onTap: onTap,
       behavior: HitTestBehavior.opaque,
-      // 命中区补到 44：胶囊视觉高 28，直接用视觉高度当热区会频繁点空。
       child: Container(
-        height: 44,
-        alignment: Alignment.center,
-        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
-        child: Container(
-          height: 28,
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-          decoration: BoxDecoration(
-            color: filled ? Color(AppColors.primary) : Colors.transparent,
-            borderRadius: BorderRadius.circular(AppRadius.full),
-            border: dashed
-                ? Border.all(color: Color(AppColors.border))
-                : null,
-          ),
-          child: Center(
-            child: Text(
-              label,
+        height: 32,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: const Color(0xFF16232E),
+          borderRadius: BorderRadius.circular(AppRadius.full),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.refresh, size: 15, color: Colors.white),
+            const SizedBox(width: 6),
+            Text(
+              '没听懂 · 重试',
               style: TextStyle(
                 fontSize: AppTypeScale.small.size,
-                color: enabled ? fg : Color(AppColors.textPlaceholder),
+                color: Colors.white,
               ),
             ),
-          ),
+          ],
         ),
       ),
     );

@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>找丫找 · 分类三级选择设计</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --primary:#0B7C8C;--primary-dark:#075E6B;--primary-light:#E6F6F8;
+  --text:#1F2937;--text-2:#6B7280;--text-3:#9CA3AF;--border:#E5E7EB;
+  --work:#326FD1;--house:#8055E2;--vehicle:#B85510;--life:#0B825A;--service:#C63C81;
+  --mono:"JetBrains Mono",Consolas,monospace;
+}
+body{
+  font-family:"HarmonyOS Sans SC","PingFang SC","Noto Sans SC","Microsoft YaHei",sans-serif;
+  color:var(--text);padding:38px 32px 34px;
+  background:
+    radial-gradient(900px 500px at 8% -10%,#E2EEE7 0%,rgba(226,238,231,0) 62%),
+    radial-gradient(800px 460px at 98% 0%,#F2E7DA 0%,rgba(242,231,218,0) 58%),
+    #F4F5F1;
+}
+body::before{
+  content:"";position:fixed;inset:0;pointer-events:none;
+  background-image:linear-gradient(rgba(31,41,55,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(31,41,55,.04) 1px,transparent 1px);
+  background-size:34px 34px;
+  -webkit-mask-image:radial-gradient(circle at 50% 25%,#000 24%,transparent 84%);
+  mask-image:radial-gradient(circle at 50% 25%,#000 24%,transparent 84%);
+}
+.header{position:relative;max-width:1280px;margin:0 auto 26px}
+.kicker{font-family:var(--mono);font-size:11px;letter-spacing:.18em;color:var(--primary);margin-bottom:10px}
+h1{font-size:32px;font-weight:700;letter-spacing:-.02em;color:#16232E;line-height:1.2}
+.lede{margin-top:10px;font-size:13.5px;line-height:1.75;color:#4B5563;max-width:900px}
+.meta{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.tag{font-size:11px;line-height:1;padding:6px 10px;border-radius:999px;background:#fff;border:1px solid #E2E5DE;color:#4B5563}
+.tag.primary{background:var(--primary);border-color:var(--primary);color:#fff}
+.flow{position:relative;display:flex;gap:24px;justify-content:center;align-items:flex-start;max-width:1280px;margin:0 auto}
+.stage-card{
+  width:390px;background:#fff;border:1px solid #E7EAE3;border-radius:16px;padding:18px;
+  box-shadow:0 18px 40px -30px rgba(15,23,42,.45);
+}
+.stage-head{display:flex;align-items:center;gap:8px}
+.step{
+  width:26px;height:26px;border-radius:50%;background:var(--primary-light);color:var(--primary-dark);
+  font-family:var(--mono);font-size:11px;font-weight:700;display:grid;place-items:center;flex:0 0 auto;
+}
+.stage-head b{font-size:14px;font-weight:600;letter-spacing:.01em}
+.stage-head em{font-style:normal;font-size:10.5px;color:var(--text-2);margin-left:auto;white-space:nowrap}
+.panel{background:#FAFBF8;border:1px solid #EEF1EC;border-radius:12px;padding:13px 12px 12px;margin-top:14px}
+.cat-label{font-size:12px;color:var(--text-2);margin-bottom:9px}
+.crumb{display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--text-2);margin-bottom:9px;min-width:0}
+.crumb .seg{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:112px}
+.crumb .seg.strong{color:var(--text);font-weight:600}
+.crumb .sep{color:var(--text-3)}
+.crumb .back{margin-left:auto;font-size:11px;color:var(--primary);white-space:nowrap}
+.cat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.cat-grid.two{grid-template-columns:repeat(2,1fr)}
+.cat{
+  height:36px;border-radius:18px;background:#F2F4F1;display:inline-flex;align-items:center;
+  justify-content:center;gap:5px;font-size:11.5px;color:#374151;white-space:nowrap;padding:0 6px;
+}
+.dot{width:6px;height:6px;border-radius:50%;background:#94A3B8;flex:0 0 auto}
+.dot.work{background:var(--work)}.dot.house{background:var(--house)}.dot.vehicle{background:var(--vehicle)}
+.dot.life{background:var(--life)}.dot.service{background:var(--service)}
+.chev{font-size:12px;line-height:1;opacity:.45;margin-left:1px}
+.cat.on{background:var(--service);color:#fff;font-weight:600}
+.cat.on .dot{background:#fff;opacity:.9}
+.cat.on .chev{opacity:.8}
+.leaves{display:flex;flex-wrap:wrap;gap:6px}
+.leaf{
+  height:32px;padding:0 12px;border-radius:16px;background:#F2F4F1;display:inline-flex;align-items:center;
+  font-size:11.5px;color:#374151;white-space:nowrap;
+}
+.leaf.on{background:var(--service);color:#fff;font-weight:600}
+.result{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px dashed #E5E7EB}
+.result-label{font-size:10.5px;color:var(--text-3);white-space:nowrap}
+.chip{
+  height:30px;display:inline-flex;align-items:center;gap:6px;padding:0 10px;border-radius:999px;
+  background:#fff;border:1px solid var(--border);font-size:11.5px;color:var(--text);
+  box-shadow:0 2px 8px -3px rgba(15,23,42,.16);
+}
+.chip .x{width:13px;height:13px;display:grid;place-items:center;color:#A3AAB5;font-size:12px;line-height:1}
+.note{margin-top:12px;font-size:11px;line-height:1.7;color:#6B7280}
+.note b{color:#374151;font-weight:600}
+.footer{max-width:1280px;margin:24px auto 0;padding-top:14px;border-top:1px solid rgba(31,41,55,.10);font-size:11px;line-height:1.8;color:#7A8390}
+.footer b{color:#4B5563}
+</style>
+</head>
+<body>
+
+<header class="header">
+  <div class="kicker">S2S · CATEGORY PICKER · 3 LEVELS</div>
+  <h1>分类三级选择</h1>
+  <p class="lede">
+    一级大类 → 二级子类 → 三级叶子。点 chip 主体选整级，点右侧 › 进入下一级；
+    面包屑可逐级回退；三级叶子支持多选，勾选即写入筛选栏。
+  </p>
+  <div class="meta">
+    <span class="tag primary">5 一级 / 21 二级 / 48 叶子</span>
+    <span class="tag">请求只传 leafCategoryIds</span>
+    <span class="tag">颜色 / 圆角取 design_tokens</span>
+  </div>
+</header>
+
+<main class="flow">
+
+  <section class="stage-card">
+    <div class="stage-head"><span class="step">01</span><b>一级 · 大类</b><em>全部 + 5 类</em></div>
+    <div class="panel">
+      <div class="cat-label">分类</div>
+      <div class="cat-grid">
+        <span class="cat">全部</span>
+        <span class="cat"><i class="dot work"></i>工作<span class="chev">›</span></span>
+        <span class="cat"><i class="dot house"></i>房屋<span class="chev">›</span></span>
+        <span class="cat"><i class="dot vehicle"></i>车辆<span class="chev">›</span></span>
+        <span class="cat"><i class="dot life"></i>生活<span class="chev">›</span></span>
+        <span class="cat on"><i class="dot"></i>服务<span class="chev">›</span></span>
+      </div>
+      <div class="result">
+        <span class="result-label">筛选栏</span>
+        <span class="chip"><i class="dot"></i>服务<span class="x">×</span></span>
+      </div>
+    </div>
+    <p class="note"><b>点 chip 主体</b> = 筛整个大类；<b>点右侧 ›</b> 进入二级。已选大类用分类 deep 色填充。</p>
+  </section>
+
+  <section class="stage-card">
+    <div class="stage-head"><span class="step">02</span><b>二级 · 子类</b><em>服务下 5 个子类</em></div>
+    <div class="panel">
+      <div class="crumb">
+        <span class="seg">服务</span><span class="sep">›</span><span class="seg strong">选择子类</span>
+        <span class="back">‹ 返回</span>
+      </div>
+      <div class="cat-grid two">
+        <span class="cat">全部服务</span>
+        <span class="cat on"><i class="dot"></i>家政/保洁<span class="chev">›</span></span>
+        <span class="cat"><i class="dot service"></i>维修/安装<span class="chev">›</span></span>
+        <span class="cat"><i class="dot service"></i>教学/培训<span class="chev">›</span></span>
+        <span class="cat"><i class="dot service"></i>美容/美发/按摩<span class="chev">›</span></span>
+        <span class="cat"><i class="dot service"></i>代办/跑腿<span class="chev">›</span></span>
+      </div>
+      <div class="result">
+        <span class="result-label">筛选栏</span>
+        <span class="chip"><i class="dot"></i>家政/保洁<span class="x">×</span></span>
+      </div>
+    </div>
+    <p class="note"><b>「全部服务」</b> = 该大类全部叶子；选中二级后点 › 进入三级，或直接确认二级范围。</p>
+  </section>
+
+  <section class="stage-card">
+    <div class="stage-head"><span class="step">03</span><b>三级 · 叶子</b><em>叶子多选</em></div>
+    <div class="panel">
+      <div class="crumb">
+        <span class="seg">服务</span><span class="sep">›</span><span class="seg strong">家政/保洁</span>
+        <span class="back">‹ 返回</span>
+      </div>
+      <div class="leaves">
+        <span class="leaf">全部</span>
+        <span class="leaf on">日常保洁</span>
+        <span class="leaf on">深度清洁</span>
+        <span class="leaf">开荒保洁</span>
+      </div>
+      <div class="result">
+        <span class="result-label">筛选栏</span>
+        <span class="chip"><i class="dot"></i>日常保洁<span class="x">×</span></span>
+        <span class="chip"><i class="dot"></i>深度清洁<span class="x">×</span></span>
+      </div>
+    </div>
+    <p class="note"><b>叶子可多选</b>：每次勾选 / 取消实时追加或移除同名 chip；「全部」= 该二级下所有叶子。</p>
+  </section>
+</main>
+
+<p class="footer">
+  <b>数据口径：</b>一级 = 该大类全部叶子 ID；二级 = 该二级全部叶子；三级 = 单个叶子 ID。请求仍走 <code>leafCategoryIds</code>，不新增参数。
+  <br><b>状态提示：</b>跨大类切换时保留已选叶子；已选分支用圆点或计数标记，避免用户忘记之前选过什么。
+</p>
+
+</body>
+</html>

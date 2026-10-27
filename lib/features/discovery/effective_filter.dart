@@ -8,6 +8,7 @@
 /// 也让「投影之外还有没有第二处回落」变成可被门禁扫描的判断题。
 library;
 
+import '../../domain/category_tree.dart';
 import '../../domain/listing_category.dart';
 import 'condition_slots.dart';
 import 'discovery_filter.dart';
@@ -33,6 +34,7 @@ class ConditionChip {
     this.editable = false,
     this.deletable = true,
     this.index,
+    this.leafCategoryId,
   });
 
   /// 所属槽位。
@@ -54,6 +56,12 @@ class ConditionChip {
 
   /// 类目槽位在意图类目列表中的下标；其他槽位为 null。
   final int? index;
+
+  /// 持久叶子类目 chip 对应的叶子 ID；非叶子 chip 为 null。
+  ///
+  /// 与 [index] 分开：`index` 指向「意图里的第几个」，而这里指向
+  /// 「持久筛选里的哪个叶子」，删除时一个删意图、一个删持久集合。
+  final int? leafCategoryId;
 }
 
 /// 当前生效条件的完整快照。
@@ -150,7 +158,8 @@ class EffectiveFilter {
 
   /// 是否等于「全部分类」。
   bool get isAllCategories =>
-      leafCategoryIds.length >= leafCategoryIdsFor(const <ListingCategory>{}).length;
+      leafCategoryIds.length >=
+      leafCategoryIdsFor(const <ListingCategory>{}).length;
 
   /// 是否没有任何收窄（用于零结果改写入口的判断）。
   bool get hasNoSlot =>
@@ -189,11 +198,15 @@ String unresolvedFieldLabel(String field) => switch (field) {
 ///
 /// 参数：[filter] 持久筛选；[intent] 本次搜索槽位（null 表示无搜索态）。
 /// 返回：当前生效条件。
-EffectiveFilter effectiveFilterOf(DiscoveryFilter filter, SearchIntent? intent) {
+EffectiveFilter effectiveFilterOf(
+  DiscoveryFilter filter,
+  SearchIntent? intent,
+) {
   final bool active = intent != null;
   final List<ConditionChip> chips = <ConditionChip>[];
 
-  // 半径
+  // 半径：只显示「显式设置」的条件。默认 5km 不再常驻 chip —— 否则一进页面
+  // 就有一条 5km，用户会以为自己设过范围（本轮 UI 重设计的核心诉求）。
   final bool radiusCleared = _isCleared(intent, ConditionSlot.radius);
   final SearchRadius radius;
   final ConditionSource radiusSource;
@@ -208,16 +221,21 @@ EffectiveFilter effectiveFilterOf(DiscoveryFilter filter, SearchIntent? intent) 
     radius = filter.radius;
     radiusSource = ConditionSource.persistent;
   }
-  chips.add(
-    ConditionChip(
-      slot: ConditionSlot.radius,
-      label: radius.label,
-      source: radiusSource,
-      editable: true,
-    ),
-  );
+  final bool radiusExplicit =
+      !radiusCleared &&
+      (intent?.radius != null || filter.radius != SearchRadius.km5);
+  if (radiusExplicit) {
+    chips.add(
+      ConditionChip(
+        slot: ConditionSlot.radius,
+        label: radius.label,
+        source: radiusSource,
+        editable: true,
+      ),
+    );
+  }
 
-  // 供需
+  // 供需：默认「资源+需求」同样不常驻；只有用户/解析收窄到单一方向时才出现。
   final bool supplyCleared = _isCleared(intent, ConditionSlot.supplyDemand);
   final Set<SupplyDemand> supplyDemand;
   final ConditionSource supplySource;
@@ -236,28 +254,47 @@ EffectiveFilter effectiveFilterOf(DiscoveryFilter filter, SearchIntent? intent) 
     supplyDemand = filter.supplyDemand;
     supplySource = ConditionSource.persistent;
   }
-  chips.add(
-    ConditionChip(
-      slot: ConditionSlot.supplyDemand,
-      label: _supplyLabel(supplyDemand),
-      source: supplySource,
-      editable: true,
-    ),
-  );
+  final bool supplyIsDefault =
+      supplyDemand.length == 2 &&
+      supplyDemand.contains(SupplyDemand.supply) &&
+      supplyDemand.contains(SupplyDemand.demand);
+  final bool supplyExplicit =
+      !supplyCleared && (intentPostType != null || !supplyIsDefault);
+  if (supplyExplicit) {
+    chips.add(
+      ConditionChip(
+        slot: ConditionSlot.supplyDemand,
+        label: _supplyLabel(supplyDemand),
+        source: supplySource,
+        editable: true,
+      ),
+    );
+  }
 
-  // 类目
+  // 类目：意图优先 → 持久叶子 → 持久一级。空集不产出 chip。
   final bool categoryCleared = _isCleared(intent, ConditionSlot.category);
   final List<int> leafCategoryIds;
   final List<String> categoryLabels;
   final ConditionSource categorySource;
+  final List<int> persistentLeafIds = filter.leafCategoryIds.toList()..sort();
   if (categoryCleared) {
-    leafCategoryIds = const <int>[];
+    // 显式清空 = 不按分类收窄 = 全部分类。这里必须展开成全部叶子：
+    // 契约 `category_ids` 是 `minItems: 1` 且没有「全部」语义，传空数组会被
+    // 服务端判 40001（真机实测：删掉最后一枚语义分类 chip 后整页「加载失败」）。
+    leafCategoryIds = leafCategoryIdsFor(const <ListingCategory>{});
     categoryLabels = const <String>[];
     categorySource = ConditionSource.intent;
   } else if (intent != null && intent.leafCategoryIds.isNotEmpty) {
     leafCategoryIds = intent.leafCategoryIds;
     categoryLabels = intent.categoryLabels;
     categorySource = ConditionSource.intent;
+  } else if (persistentLeafIds.isNotEmpty) {
+    leafCategoryIds = persistentLeafIds;
+    categoryLabels = [
+      for (final int id in persistentLeafIds)
+        leafCategoryById(id)?.name ?? '分类',
+    ];
+    categorySource = ConditionSource.persistent;
   } else {
     leafCategoryIds = leafCategoryIdsFor(filter.categories);
     categoryLabels = [
@@ -266,7 +303,7 @@ EffectiveFilter effectiveFilterOf(DiscoveryFilter filter, SearchIntent? intent) 
     ];
     categorySource = ConditionSource.persistent;
   }
-  if (categorySource == ConditionSource.intent) {
+  if (!categoryCleared && categorySource == ConditionSource.intent) {
     for (int i = 0; i < categoryLabels.length; i++) {
       chips.add(
         ConditionChip(
@@ -278,14 +315,26 @@ EffectiveFilter effectiveFilterOf(DiscoveryFilter filter, SearchIntent? intent) 
         ),
       );
     }
-  } else {
+  } else if (categorySource == ConditionSource.persistent &&
+      persistentLeafIds.isNotEmpty) {
+    // 持久叶子逐枚成 chip：删一枚只回退这一枚，不把整组清空。
+    for (final int id in persistentLeafIds) {
+      chips.add(
+        ConditionChip(
+          slot: ConditionSlot.category,
+          label: leafCategoryById(id)?.name ?? '分类',
+          source: ConditionSource.persistent,
+          editable: true,
+          leafCategoryId: id,
+        ),
+      );
+    }
+  } else if (!categoryCleared && filter.categories.isNotEmpty) {
     chips.add(
       ConditionChip(
         slot: ConditionSlot.category,
-        label: filter.isAllCategories
-            ? '全部分类'
-            : categoryLabels.join('/'),
-        source: categorySource,
+        label: categoryLabels.join('/'),
+        source: ConditionSource.persistent,
         editable: true,
       ),
     );

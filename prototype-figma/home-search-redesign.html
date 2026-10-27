@@ -1,0 +1,1432 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>找丫找 · 首页搜索与筛选重构 v1</title>
+<style>
+/* ============================================================
+   首页搜索/筛选重构设计稿
+   基准：390 × 844（逻辑像素），全部取自 design_tokens.dart
+   primary #0B7C8C / accent #B4531A / surface #FFFFFF
+   ============================================================ */
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --primary:#0B7C8C;
+  --primary-dark:#075E6B;
+  --primary-light:#E6F6F8;
+  --accent:#B4531A;
+  --text:#1F2937;
+  --text-2:#6B7280;
+  --text-3:#9CA3AF;
+  --border:#E5E7EB;
+  --bg:#F8FAFC;
+  --surface:#FFFFFF;
+  --work:#326FD1;
+  --house:#8055E2;
+  --vehicle:#B85510;
+  --life:#0B825A;
+  --service:#C63C81;
+  --mono:"JetBrains Mono","SFMono-Regular",Consolas,"Liberation Mono",monospace;
+}
+html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+body{
+  font-family:"HarmonyOS Sans SC","PingFang SC","Noto Sans SC","Microsoft YaHei",sans-serif;
+  color:var(--text);
+  padding:44px 32px 72px;
+  background:
+    radial-gradient(1100px 620px at 8% -8%, #E2EEE7 0%, rgba(226,238,231,0) 62%),
+    radial-gradient(900px 520px at 98% 2%, #F2E7DA 0%, rgba(242,231,218,0) 58%),
+    #F4F5F1;
+}
+body::before{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+  background-image:
+    linear-gradient(rgba(31,41,55,.04) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(31,41,55,.04) 1px,transparent 1px);
+  background-size:34px 34px;
+  -webkit-mask-image:radial-gradient(circle at 50% 24%,#000 22%,transparent 82%);
+  mask-image:radial-gradient(circle at 50% 24%,#000 22%,transparent 82%);
+}
+.doc-head{position:relative;z-index:1;max-width:1180px;margin:0 auto 40px}
+.kicker{font-family:var(--mono);font-size:11px;letter-spacing:.18em;color:var(--primary);margin-bottom:12px}
+.doc-head h1{font-size:34px;line-height:1.22;letter-spacing:-.02em;font-weight:700;color:#16232E;max-width:900px}
+.lede{margin-top:14px;max-width:800px;font-size:14px;line-height:1.8;color:#4B5563}
+.meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+.tag{font-size:11px;line-height:1;padding:7px 11px;border-radius:999px;background:#fff;border:1px solid #E2E5DE;color:#4B5563}
+.tag.primary{background:var(--primary);border-color:var(--primary);color:#fff}
+.tag.warn{background:#FDF3E7;border-color:#F0D9BF;color:#8A4A17}
+
+/* ---------- 画框 ---------- */
+.stage{position:relative;z-index:1;max-width:884px;margin:0 auto;display:flex;flex-wrap:wrap;gap:34px 40px;align-items:flex-start}
+.frame-wrap{width:408px}
+.frame-cap{display:flex;align-items:baseline;gap:8px;margin-bottom:10px;padding:0 4px}
+.idx{font-family:var(--mono);font-size:11px;color:var(--primary);letter-spacing:.06em}
+.frame-cap b{font-size:13.5px;font-weight:600;color:#1F2937}
+.frame-cap em{font-style:normal;font-size:11px;color:var(--text-2);margin-left:auto}
+.phone{
+  width:408px;height:862px;padding:9px;border-radius:46px;background:#101820;
+  box-shadow:0 28px 64px -20px rgba(15,23,42,.48),0 0 0 1px rgba(15,23,42,.10),inset 0 0 0 1px rgba(255,255,255,.08);
+}
+.screen{position:relative;width:390px;height:844px;border-radius:38px;overflow:hidden;background:#EFF2EA}
+.map{position:absolute;inset:0;z-index:0}
+.map svg{display:block;width:100%;height:100%}
+
+/* ---------- 状态栏 ---------- */
+.statusbar{position:absolute;top:0;left:0;right:0;height:44px;z-index:6;display:flex;align-items:center;justify-content:space-between;padding:10px 24px 0;color:#1F2937}
+.statusbar .time{font-size:13px;font-weight:600;letter-spacing:.02em;font-variant-numeric:tabular-nums}
+.sysicons{display:flex;align-items:center;gap:5px}
+.top-scrim{position:absolute;top:0;left:0;right:0;height:178px;z-index:2;pointer-events:none;
+  background:linear-gradient(180deg,rgba(244,246,240,.94) 0%,rgba(244,246,240,.62) 48%,rgba(244,246,240,0) 100%)}
+
+/* ---------- 固定搜索栏 ---------- */
+.searchbar{
+  position:absolute;top:52px;left:16px;right:16px;height:48px;z-index:7;
+  display:flex;align-items:center;padding:0 6px 0 15px;border-radius:24px;background:#fff;
+  box-shadow:0 10px 26px -10px rgba(15,23,42,.22),0 2px 6px rgba(15,23,42,.06);
+}
+.icon-search{width:18px;height:18px;flex:0 0 auto;stroke:#6B7280;stroke-width:1.9;fill:none;stroke-linecap:round}
+.search-hint{flex:1;min-width:0;margin-left:10px;font-size:14px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.01em}
+.search-hint.typed{color:var(--text)}
+.filter-entry{
+  width:32px;height:32px;flex:0 0 auto;margin-right:2px;border-radius:16px;background:#F3F5F1;
+  display:grid;place-items:center;
+}
+.filter-entry svg{width:16px;height:16px;stroke:#4B5563;stroke-width:1.9;fill:none;stroke-linecap:round}
+.mic{
+  width:36px;height:36px;flex:0 0 auto;border:0;border-radius:18px;background:var(--primary-light);
+  display:grid;place-items:center;
+}
+.mic svg{width:18px;height:18px;stroke:var(--primary);stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.mic.send{background:var(--primary);box-shadow:0 6px 14px -6px rgba(11,124,140,.7)}
+.mic.send svg{stroke:#fff}
+
+/* ---------- 语义筛选栏 ---------- */
+.chipbar{position:absolute;top:108px;left:16px;right:16px;height:32px;z-index:7;display:flex;align-items:center;gap:8px}
+.chips{
+  flex:1;min-width:0;display:flex;align-items:center;gap:6px;overflow:hidden;
+  -webkit-mask-image:linear-gradient(90deg,#000 0,#000 91%,transparent 100%);
+  mask-image:linear-gradient(90deg,#000 0,#000 91%,transparent 100%);
+}
+.chip{
+  height:32px;flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;
+  padding:0 10px;border-radius:999px;background:rgba(255,255,255,.97);
+  border:1px solid var(--border);font-size:12.5px;color:var(--text);
+  box-shadow:0 2px 8px -2px rgba(15,23,42,.12);
+  white-space:nowrap;
+}
+.chip .dot{width:6px;height:6px;border-radius:50%;background:#94A3B8;flex:0 0 auto}
+.chip.intent{border-color:rgba(11,124,140,.42)}
+.chip.intent .dot{background:var(--primary)}
+.chip .x{width:14px;height:14px;display:grid;place-items:center;color:#A3AAB5;font-size:13px;line-height:1;margin-left:1px}
+.chip.empty{background:rgba(255,255,255,.72);border:1.5px dashed #C7D0DB;color:#5F6B7A;box-shadow:none;padding:0 12px;font-size:12px}
+.chip.empty .plus{font-size:14px;color:#8492A3;line-height:1;margin-top:-1px}
+.map-count{
+  position:absolute;left:16px;bottom:98px;z-index:6;height:32px;padding:0 12px;border-radius:999px;
+  display:inline-flex;align-items:center;gap:7px;
+  background:rgba(255,255,255,.95);box-shadow:0 8px 20px -8px rgba(15,23,42,.26),0 1px 3px rgba(15,23,42,.06);
+  font-size:11.5px;color:#4B5563;letter-spacing:.01em;
+}
+.map-count i{width:6px;height:6px;border-radius:50%;background:var(--primary);box-shadow:0 0 0 3px rgba(11,124,140,.12)}
+.map-count b{font-family:var(--mono);font-weight:600;color:var(--primary);margin:0 2px}
+.toast{
+  position:absolute;top:150px;left:50%;transform:translateX(-50%);z-index:9;
+  height:30px;display:inline-flex;align-items:center;gap:6px;padding:0 13px;border-radius:999px;
+  background:rgba(7,94,107,.95);color:#fff;font-size:11.5px;white-space:nowrap;
+  box-shadow:0 8px 20px -8px rgba(7,94,107,.55);
+}
+.toast svg{width:13px;height:13px;stroke:#9FE3EA;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}
+
+/* ---------- 右侧浮钮 ---------- */
+.rail{position:absolute;right:16px;top:112px;z-index:6;display:flex;flex-direction:column;gap:10px;transition:top .18s ease-out}
+.rail.has-bar{top:152px}
+.rail-btn{
+  width:40px;height:40px;border-radius:20px;background:#fff;display:grid;place-items:center;
+  box-shadow:0 8px 20px -8px rgba(15,23,42,.28),0 1px 3px rgba(15,23,42,.06);
+}
+.rail-btn svg{width:19px;height:19px;stroke:#374151;stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.rail.bottom{top:auto;bottom:152px}
+
+/* ---------- AI 帮我发 ---------- */
+.fab{
+  position:absolute;right:16px;bottom:92px;z-index:6;height:44px;padding:0 16px 0 13px;border-radius:22px;
+  display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:#fff;letter-spacing:.01em;
+  background:linear-gradient(135deg,#C96C2B 0%,#B4531A 78%);
+  box-shadow:0 14px 26px -10px rgba(180,83,26,.62),inset 0 1px 0 rgba(255,255,255,.20);
+}
+.fab svg{width:16px;height:16px;fill:#fff;opacity:.95}
+.fab.lifted{bottom:516px;z-index:11;box-shadow:0 16px 30px -12px rgba(180,83,26,.55)}
+
+/* ---------- 底部 Tab ---------- */
+.tabbar{
+  position:absolute;left:0;right:0;bottom:0;height:76px;z-index:8;
+  display:flex;align-items:flex-start;padding:9px 0 0;
+  background:rgba(255,255,255,.97);border-top:1px solid rgba(31,41,55,.07);
+  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+}
+.tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:10.5px;color:#9CA3AF}
+.tab svg{width:21px;height:21px;stroke:currentColor;stroke-width:1.7;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.tab.active{color:var(--primary);font-weight:600}
+
+/* ---------- 底部筛选面板 ---------- */
+.sheet{
+  position:absolute;left:0;right:0;bottom:0;height:500px;z-index:10;
+  display:flex;flex-direction:column;padding:0 16px;
+  background:#fff;border-radius:24px 24px 0 0;
+  box-shadow:0 -18px 46px -12px rgba(15,23,42,.28),0 -1px 0 rgba(15,23,42,.05);
+}
+.handle{width:36px;height:4px;border-radius:2px;background:#D5DAE0;margin:8px auto 6px;flex:0 0 auto}
+.sheet-head{display:flex;align-items:center;justify-content:space-between;padding:6px 0 0}
+.sheet-title{font-size:16px;font-weight:600;letter-spacing:.01em}
+.reset{font-size:12px;color:var(--text-2);display:inline-flex;align-items:center;gap:4px}
+.reset svg{width:12px;height:12px;stroke:currentColor;stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.sheet-sub{margin-top:4px;font-size:11px;color:var(--text-3)}
+.sheet-sub b{color:var(--primary);font-weight:600}
+.sheet-body{flex:1;display:flex;flex-direction:column;gap:13px;padding-top:15px;overflow:hidden}
+.row{display:flex;align-items:center;gap:8px}
+.row.top{align-items:flex-start}
+.row.top .row-label{padding-top:9px}
+.row-label{flex:0 0 34px;width:34px;font-size:12px;color:var(--text-2)}
+.seg{flex:1;display:flex;gap:5px}
+.seg .pill{flex:1;height:34px;border-radius:17px;background:#F2F4F1;display:grid;place-items:center;font-size:12px;color:#374151}
+.seg .pill.on{background:var(--primary);color:#fff;font-weight:600;box-shadow:0 8px 16px -8px rgba(11,124,140,.8)}
+.pill-lg{height:36px;min-width:92px;justify-content:center;padding:0 15px;border-radius:18px;background:#F2F4F1;display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:#374151}
+.pill-lg.on{background:var(--primary);color:#fff;font-weight:600;box-shadow:0 8px 16px -8px rgba(11,124,140,.8)}
+.legend-mark{width:10px;height:10px;border-radius:50%;border:1.6px solid currentColor}
+.legend-mark.solid{background:currentColor}
+.price-control{flex:1;min-width:0;display:flex;flex-direction:column;gap:8px}
+.price-head{display:flex;align-items:center;gap:6px}
+.price-input{
+  width:74px;height:32px;border:1px solid var(--border);border-radius:9px;background:#fff;
+  display:flex;align-items:center;justify-content:center;gap:2px;
+  font-family:var(--mono);font-size:12.5px;font-weight:600;color:var(--text);
+}
+.price-input i{font-style:normal;font-size:10.5px;font-weight:500;color:var(--text-3)}
+.price-sep{font-size:11px;color:var(--text-3)}
+.price-clear{margin-left:auto;font-size:11px;color:var(--primary);white-space:nowrap}
+.range{position:relative;height:24px;margin:0 9px;display:flex;align-items:center}
+.range .track{width:100%;height:4px;border-radius:2px;background:#E7EBE5}
+.range .fill{position:absolute;left:16.7%;width:16.6%;height:4px;border-radius:2px;background:var(--primary)}
+.range .thumb{position:absolute;top:50%;width:18px;height:18px;border-radius:50%;background:#fff;border:2px solid var(--primary);box-shadow:0 2px 6px rgba(15,23,42,.18);transform:translate(-50%,-50%)}
+.cat-grid{flex:1;min-width:0;display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:36px;gap:6px}
+.cat{height:36px;padding:0 6px;border-radius:18px;background:#F2F4F1;display:inline-flex;align-items:center;justify-content:center;gap:5px;font-size:12px;color:#374151;white-space:nowrap}
+.cat .cdot{width:6px;height:6px;border-radius:50%;background:var(--cat)}
+.cat .cat-chevron{margin-left:1px;font-size:12px;line-height:1;opacity:.45}
+.cat.on{background:var(--cat);color:#fff;font-weight:600}
+.cat.on .cdot{background:#fff;opacity:.9}
+.cat-drill{flex:1;min-width:0;display:flex;flex-direction:column;gap:8px}
+.cat-crumb{display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--text-2);min-width:0}
+.crumb-seg{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:96px}
+.crumb-seg.strong{color:var(--text);font-weight:600}
+.crumb-sep{color:var(--text-3)}
+.crumb-back{margin-left:auto;font-size:11px;color:var(--primary);white-space:nowrap}
+.cat-leaves{display:flex;flex-wrap:wrap;gap:6px}
+.leaf{height:32px;padding:0 12px;border-radius:16px;background:#F2F4F1;display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:#374151;white-space:nowrap}
+.leaf.on{background:var(--service);color:#fff;font-weight:600}
+.legend-row{display:flex;align-items:center;gap:14px;font-size:11px;color:var(--text-2);padding-top:1px}
+.legend-item{display:inline-flex;align-items:center;gap:5px}
+.perf{
+  margin-left:auto;height:26px;padding:0 9px;border-radius:7px;display:inline-flex;align-items:center;gap:5px;
+  background:#0E3B42;color:#D8F3F7;font-family:var(--mono);font-size:10.5px;letter-spacing:.02em;
+}
+.perf i{width:4px;height:4px;border-radius:50%;background:#5BC0CE;display:block}
+.sheet-foot{flex:0 0 auto;border-top:1px solid #F0F2EE;padding:12px 0 20px;margin-top:4px;background:#fff}
+.sheet-foot .primary{
+  width:100%;height:48px;border:0;border-radius:24px;display:flex;align-items:center;justify-content:center;gap:8px;
+  background:var(--primary);color:#fff;font-size:14px;font-weight:600;letter-spacing:.01em;
+  box-shadow:0 12px 24px -12px rgba(11,124,140,.85);
+}
+.sheet-foot .primary .num{font-family:var(--mono);font-weight:600;font-size:14px}
+.sheet-foot .primary svg{width:16px;height:16px;stroke:#fff;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}
+
+/* ---------- 列表页（与地图页共用搜索栏 / 筛选栏） ---------- */
+.list-screen{background:#F8FAFC}
+.list-topbg{position:absolute;top:0;left:0;right:0;height:44px;background:#fff;z-index:5}
+.list-appbar{
+  position:absolute;top:44px;left:0;right:0;height:48px;z-index:7;
+  display:flex;align-items:center;padding:0 12px;background:#fff;
+  border-bottom:1px solid #EEF1EC;
+}
+.back-btn{width:36px;height:36px;display:grid;place-items:center;color:#1F2937;flex:0 0 auto}
+.back-btn svg{width:20px;height:20px;stroke:currentColor;stroke-width:1.9;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.list-title{font-size:16px;font-weight:600;margin-left:2px;flex:1;letter-spacing:.01em}
+.map-action{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--primary);padding:6px 4px;flex:0 0 auto}
+.map-action svg{width:16px;height:16px;stroke:currentColor;stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.list-search{top:100px}
+.list-chipbar{top:156px}
+.resultbar{
+  position:absolute;left:0;right:0;height:40px;z-index:6;
+  display:flex;align-items:center;gap:8px;padding:0 16px;
+}
+.resultbar.no-chips{top:196px}
+.resultbar.with-chips{top:236px}
+.result-count{font-size:11.5px;color:var(--text-2);white-space:nowrap}
+.result-count b{font-family:var(--mono);font-weight:600;color:var(--primary);margin-right:2px}
+.sorts{display:flex;align-items:center;gap:14px;margin-left:auto;overflow:hidden}
+.sort-item{font-size:11.5px;color:var(--text-2);white-space:nowrap}
+.sort-item.on{color:var(--primary);font-weight:600}
+.list-cards{
+  position:absolute;left:0;right:0;bottom:0;z-index:5;overflow:hidden;
+  display:flex;flex-direction:column;gap:8px;padding:4px 12px 20px;background:#F8FAFC;
+}
+.list-cards.no-chips{top:236px}
+.list-cards.with-chips{top:276px}
+.card-item{
+  background:#fff;border-radius:12px;padding:12px;display:flex;gap:12px;flex:0 0 auto;
+  box-shadow:0 2px 10px -8px rgba(15,23,42,.35);
+}
+.item-badge{width:44px;height:44px;border-radius:8px;display:grid;place-items:center;flex:0 0 auto}
+.item-badge svg{width:22px;height:22px;stroke:currentColor;stroke-width:1.7;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.item-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.item-title{
+  font-size:14px;font-weight:600;color:var(--text);line-height:1.35;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+}
+.item-price{font-size:13.5px;font-weight:600;color:var(--accent)}
+.item-meta{font-size:10.5px;color:var(--text-2)}
+.item-crumb{font-size:10px;color:var(--text-3)}
+.list-section{position:relative;z-index:1;max-width:884px;margin:64px auto 0}
+.list-note{max-width:884px;margin:13px auto 0;font-size:11px;line-height:1.7;color:#7A8390}
+.drill-section{position:relative;z-index:1;max-width:884px;margin:64px auto 0}
+.stage.single{justify-content:center}
+
+/* ---------- 规格说明 ---------- */
+.specs{position:relative;z-index:1;max-width:1180px;margin:64px auto 0}
+.section-head{display:flex;align-items:flex-end;gap:14px;border-top:1px solid rgba(31,41,55,.12);padding-top:22px;margin-bottom:20px}
+.section-head .no{font-family:var(--mono);font-size:11px;color:var(--primary);letter-spacing:.12em}
+.section-head h2{font-size:20px;font-weight:700;letter-spacing:-.01em}
+.section-head p{margin-left:auto;font-size:12px;color:var(--text-2)}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+.card{background:#fff;border:1px solid #E7EAE3;border-radius:16px;padding:20px 22px;box-shadow:0 10px 30px -24px rgba(15,23,42,.4)}
+.card h3{font-size:13px;font-weight:700;letter-spacing:.02em;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.card h3::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--primary)}
+.card p{font-size:12.5px;line-height:1.75;color:#4B5563}
+.card p + p{margin-top:8px}
+.card ul{list-style:none;display:flex;flex-direction:column;gap:9px}
+.card li{position:relative;padding-left:14px;font-size:12.5px;line-height:1.65;color:#4B5563}
+.card li::before{content:"";position:absolute;left:0;top:8px;width:4px;height:4px;border-radius:50%;background:#B9C2CC}
+.card li b{color:#1F2937;font-weight:600}
+.card em{font-style:normal;color:var(--primary);font-weight:600}
+code{font-family:var(--mono);font-size:11.5px;background:#F3F5F1;border:1px solid #E7EAE3;border-radius:5px;padding:1px 5px;color:#334155}
+.table{width:100%;border-collapse:collapse;font-size:12px}
+.table th{text-align:left;font-weight:600;color:var(--text-2);padding:0 0 8px;border-bottom:1px solid #EDEFEA;font-size:11px;letter-spacing:.04em}
+.table td{padding:9px 0;border-bottom:1px solid #F1F3EE;color:#4B5563;line-height:1.55;vertical-align:top}
+.table tr:last-child td{border-bottom:0}
+.table td:first-child{white-space:nowrap;color:#1F2937;font-weight:600;padding-right:14px}
+.table th:not(:last-child),.table td:not(:last-child){padding-right:16px}
+.swatches{display:flex;flex-wrap:wrap;gap:10px}
+.swatch{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--text-2)}
+.swatch i{width:18px;height:18px;border-radius:6px;display:block;border:1px solid rgba(31,41,55,.06)}
+.note{max-width:1180px;margin:26px auto 0;font-size:11.5px;line-height:1.8;color:#7A8390}
+.note b{color:#4B5563}
+.export-mode{overflow:hidden}
+.export-mode::before{display:none}
+@media (max-width:920px){
+  body{padding:28px 16px 52px}
+  .doc-head h1{font-size:26px}
+  .stage{justify-content:center;gap:28px}
+  .grid{grid-template-columns:1fr}
+  .section-head p{display:none}
+}
+</style>
+</head>
+<body>
+
+<header class="doc-head">
+  <div class="kicker">S2S · HOME / SEARCH &amp; FILTER · REDESIGN V1.5</div>
+  <h1>首页地图与列表：固定搜索栏、语义筛选栏与底部筛选面板</h1>
+  <p class="lede">
+    去掉左上角「丫圈」，地图全屏沉浸；搜索栏固定在安全区下方，语音收成话筒图标；
+    筛选栏默认不渲染，只在语音或文字解析出条件后动态出现在搜索栏下方；
+    点击筛选栏任意位置唤起底部面板，面板内的每次改动实时回写到筛选栏。
+    面板支持分类一级 → 二级 → 三级叶子下钻；列表页复用同一套搜索栏、筛选栏与面板。
+  </p>
+  <div class="meta">
+    <span class="tag primary">390 × 844</span>
+    <span class="tag">主色 #0B7C8C</span>
+    <span class="tag">间距 / 圆角取 design_tokens</span>
+    <span class="tag">筛选栏：解析出条件后才出现</span>
+    <span class="tag">默认入口：搜索栏内漏斗</span>
+    <span class="tag">分类三级下钻</span>
+    <span class="tag">列表页同步</span>
+    <span class="tag warn">本稿只做设计，未改代码</span>
+  </div>
+</header>
+
+<section class="stage">
+
+  <!-- ============ 01 默认态 ============ -->
+  <figure class="frame-wrap">
+    <figcaption class="frame-cap"><span class="idx">01</span><b>默认态</b><em>筛选栏不出现</em></figcaption>
+    <div class="phone">
+      <div class="screen">
+        <div class="map" data-map></div>
+        <div class="top-scrim"></div>
+        <div class="statusbar" data-status></div>
+
+        <div class="searchbar">
+          <svg class="icon-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.2 4.2"/></svg>
+          <span class="search-hint">搜索保洁 / 拼车 / 租房</span>
+          <span class="filter-entry">
+            <svg viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
+          </span>
+          <span class="mic">
+            <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0"/><path d="M12 18v3"/><path d="M9 21h6"/></svg>
+          </span>
+        </div>
+
+        <div class="map-count"><i></i>附近<b>171</b>条</div>
+
+        <div class="rail">
+          <span class="rail-btn">
+            <svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1.2"/><circle cx="3.5" cy="12" r="1.2"/><circle cx="3.5" cy="18" r="1.2"/></svg>
+          </span>
+        </div>
+        <div class="rail bottom">
+          <span class="rail-btn">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+          </span>
+        </div>
+
+        <div class="fab">
+          <svg viewBox="0 0 24 24"><path d="M12 2.5l1.9 5.3 5.3 1.9-5.3 1.9L12 17l-1.9-5.4L4.8 9.7l5.3-1.9L12 2.5zM19 15l.9 2.4 2.4.9-2.4.9L19 21.6l-.9-2.4-2.4-.9 2.4-.9L19 15z"/></svg>
+          AI 帮我发
+        </div>
+
+        <nav class="tabbar" data-tabbar></nav>
+      </div>
+    </div>
+  </figure>
+
+  <!-- ============ 02 语义解析后 ============ -->
+  <figure class="frame-wrap">
+    <figcaption class="frame-cap"><span class="idx">02</span><b>语义解析后 · 筛选栏滑入</b><em>只显示解析出的条件</em></figcaption>
+    <div class="phone">
+      <div class="screen">
+        <div class="map" data-map></div>
+        <div class="top-scrim"></div>
+        <div class="statusbar" data-status></div>
+
+        <div class="searchbar">
+          <svg class="icon-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.2 4.2"/></svg>
+          <span class="search-hint typed">北城新区 找个保洁</span>
+          <span class="filter-entry">
+            <svg viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
+          </span>
+          <span class="mic send">
+            <svg viewBox="0 0 24 24"><path d="M5 12h13"/><path d="M12.5 6.5L18 12l-5.5 5.5"/></svg>
+          </span>
+        </div>
+
+        <div class="chipbar">
+          <div class="chips">
+            <span class="chip intent"><i class="dot"></i>保洁<span class="x">×</span></span>
+            <span class="chip intent"><i class="dot"></i>北城新徽苑<span class="x">×</span></span>
+          </div>
+        </div>
+
+        <div class="map-count"><i></i>附近<b>42</b>条</div>
+
+        <div class="rail has-bar">
+          <span class="rail-btn">
+            <svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1.2"/><circle cx="3.5" cy="12" r="1.2"/><circle cx="3.5" cy="18" r="1.2"/></svg>
+          </span>
+        </div>
+        <div class="rail bottom">
+          <span class="rail-btn">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+          </span>
+        </div>
+
+        <div class="fab">
+          <svg viewBox="0 0 24 24"><path d="M12 2.5l1.9 5.3 5.3 1.9-5.3 1.9L12 17l-1.9-5.4L4.8 9.7l5.3-1.9L12 2.5zM19 15l.9 2.4 2.4.9-2.4.9L19 21.6l-.9-2.4-2.4-.9 2.4-.9L19 15z"/></svg>
+          AI 帮我发
+        </div>
+
+        <nav class="tabbar" data-tabbar></nav>
+      </div>
+    </div>
+  </figure>
+
+  <!-- ============ 03 筛选面板展开 ============ -->
+  <figure class="frame-wrap">
+    <figcaption class="frame-cap"><span class="idx">03</span><b>点击筛选栏 · 面板展开</b><em>改动实时追加到筛选栏</em></figcaption>
+    <div class="phone">
+      <div class="screen">
+        <div class="map" data-map></div>
+        <div class="top-scrim"></div>
+        <div class="statusbar" data-status></div>
+
+        <div class="searchbar">
+          <svg class="icon-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.2 4.2"/></svg>
+          <span class="search-hint typed">北城新区 找个保洁</span>
+          <span class="filter-entry">
+            <svg viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
+          </span>
+          <span class="mic send">
+            <svg viewBox="0 0 24 24"><path d="M5 12h13"/><path d="M12.5 6.5L18 12l-5.5 5.5"/></svg>
+          </span>
+        </div>
+
+        <div class="chipbar">
+          <div class="chips">
+            <span class="chip"><i class="dot"></i>3km<span class="x">×</span></span>
+            <span class="chip"><i class="dot"></i>需求<span class="x">×</span></span>
+            <span class="chip intent"><i class="dot"></i>保洁<span class="x">×</span></span>
+            <span class="chip"><i class="dot"></i>500–1000 元<span class="x">×</span></span>
+            <span class="chip intent"><i class="dot"></i>北城新徽苑<span class="x">×</span></span>
+          </div>
+        </div>
+
+        <div class="rail has-bar">
+          <span class="rail-btn">
+            <svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1.2"/><circle cx="3.5" cy="12" r="1.2"/><circle cx="3.5" cy="18" r="1.2"/></svg>
+          </span>
+        </div>
+
+        <div class="fab lifted">
+          <svg viewBox="0 0 24 24"><path d="M12 2.5l1.9 5.3 5.3 1.9-5.3 1.9L12 17l-1.9-5.4L4.8 9.7l5.3-1.9L12 2.5zM19 15l.9 2.4 2.4.9-2.4.9L19 21.6l-.9-2.4-2.4-.9 2.4-.9L19 15z"/></svg>
+          AI 帮我发
+        </div>
+
+        <div class="sheet">
+          <div class="handle"></div>
+          <div class="sheet-head">
+            <span class="sheet-title">筛选条件</span>
+            <span class="reset">
+              <svg viewBox="0 0 24 24"><path d="M4 4v6h6"/><path d="M4.5 13a8 8 0 1 0 2.2-6.6L4 10"/></svg>
+              重置
+            </span>
+          </div>
+          <div class="sheet-sub">改动<b>即时生效</b>，关闭后保留在筛选栏</div>
+
+          <div class="sheet-body">
+            <div class="row">
+              <span class="row-label">范围</span>
+              <div class="seg">
+                <span class="pill">1km</span>
+                <span class="pill on">3km</span>
+                <span class="pill">5km</span>
+                <span class="pill">10km</span>
+                <span class="pill">全城</span>
+              </div>
+            </div>
+
+            <div class="row">
+              <span class="row-label">供需</span>
+              <span class="pill-lg"><i class="legend-mark solid"></i>资源</span>
+              <span class="pill-lg on"><i class="legend-mark"></i>需求</span>
+            </div>
+
+            <div class="row top">
+              <span class="row-label">价格</span>
+              <div class="price-control">
+                <div class="price-head">
+                  <span class="price-input"><i>¥</i>500</span>
+                  <span class="price-sep">—</span>
+                  <span class="price-input"><i>¥</i>1,000</span>
+                  <span class="price-clear">不限</span>
+                </div>
+                <div class="range">
+                  <span class="track"></span>
+                  <span class="fill"></span>
+                  <span class="thumb" style="left:16.7%"></span>
+                  <span class="thumb" style="left:33.3%"></span>
+                </div>
+              </div>
+            </div>
+
+            <div class="row top">
+              <span class="row-label">分类</span>
+              <div class="cat-grid">
+                <span class="cat">全部</span>
+                <span class="cat" style="--cat:var(--work)"><i class="cdot"></i>工作<span class="cat-chevron">›</span></span>
+                <span class="cat" style="--cat:var(--house)"><i class="cdot"></i>房屋<span class="cat-chevron">›</span></span>
+                <span class="cat" style="--cat:var(--vehicle)"><i class="cdot"></i>车辆<span class="cat-chevron">›</span></span>
+                <span class="cat" style="--cat:var(--life)"><i class="cdot"></i>生活<span class="cat-chevron">›</span></span>
+                <span class="cat on" style="--cat:var(--service)"><i class="cdot"></i>服务<span class="cat-chevron">›</span></span>
+              </div>
+            </div>
+
+            <div class="legend-row">
+              <span class="legend-item"><i class="legend-mark solid" style="color:#6B7280"></i>实心 = 资源</span>
+              <span class="legend-item"><i class="legend-mark" style="color:#6B7280"></i>空心 = 需求</span>
+              <span class="perf"><i></i>P95 78.9 ms</span>
+            </div>
+          </div>
+
+          <div class="sheet-foot">
+            <button class="primary">
+              查看 <span class="num">8</span> 条结果
+              <svg viewBox="0 0 24 24"><path d="M5 12h13"/><path d="M12.5 6.5L18 12l-5.5 5.5"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </figure>
+
+  <!-- ============ 04 面板关闭后 ============ -->
+  <figure class="frame-wrap">
+    <figcaption class="frame-cap"><span class="idx">04</span><b>面板关闭 · 新增项已追加</b><em>3km / 需求 进入筛选栏</em></figcaption>
+    <div class="phone">
+      <div class="screen">
+        <div class="map" data-map></div>
+        <div class="top-scrim"></div>
+        <div class="statusbar" data-status></div>
+
+        <div class="searchbar">
+          <svg class="icon-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.2 4.2"/></svg>
+          <span class="search-hint typed">北城新区 找个保洁</span>
+          <span class="filter-entry">
+            <svg viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
+          </span>
+          <span class="mic send">
+            <svg viewBox="0 0 24 24"><path d="M5 12h13"/><path d="M12.5 6.5L18 12l-5.5 5.5"/></svg>
+          </span>
+        </div>
+
+        <div class="chipbar">
+          <div class="chips">
+            <span class="chip"><i class="dot"></i>3km<span class="x">×</span></span>
+            <span class="chip"><i class="dot"></i>需求<span class="x">×</span></span>
+            <span class="chip intent"><i class="dot"></i>保洁<span class="x">×</span></span>
+            <span class="chip"><i class="dot"></i>500–1000 元<span class="x">×</span></span>
+            <span class="chip intent"><i class="dot"></i>北城新徽苑<span class="x">×</span></span>
+          </div>
+        </div>
+
+        <div class="map-count"><i></i>附近<b>8</b>条</div>
+
+        <div class="toast">
+          <svg viewBox="0 0 24 24"><path d="M4 12.5l5 5L20 6.5"/></svg>
+          已添加 3 个条件 · 实时生效
+        </div>
+
+        <div class="rail has-bar">
+          <span class="rail-btn">
+            <svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1.2"/><circle cx="3.5" cy="12" r="1.2"/><circle cx="3.5" cy="18" r="1.2"/></svg>
+          </span>
+        </div>
+        <div class="rail bottom">
+          <span class="rail-btn">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+          </span>
+        </div>
+
+        <div class="fab">
+          <svg viewBox="0 0 24 24"><path d="M12 2.5l1.9 5.3 5.3 1.9-5.3 1.9L12 17l-1.9-5.4L4.8 9.7l5.3-1.9L12 2.5zM19 15l.9 2.4 2.4.9-2.4.9L19 21.6l-.9-2.4-2.4-.9 2.4-.9L19 15z"/></svg>
+          AI 帮我发
+        </div>
+
+        <nav class="tabbar" data-tabbar></nav>
+      </div>
+    </div>
+  </figure>
+</section>
+
+<!-- ============================================================
+     分类三级下钻
+     ============================================================ -->
+<section class="drill-section">
+  <div class="section-head">
+    <span class="no">SCREEN 05</span>
+    <h2>分类三级下钻</h2>
+    <p>面板内切换，叶子多选</p>
+  </div>
+  <div class="stage single">
+    <figure class="frame-wrap">
+      <figcaption class="frame-cap"><span class="idx">05</span><b>三级叶子多选</b><em>服务 › 家政/保洁</em></figcaption>
+      <div class="phone">
+        <div class="screen">
+          <div class="map" data-map></div>
+          <div class="top-scrim"></div>
+          <div class="statusbar" data-status></div>
+
+          <div class="searchbar">
+            <svg class="icon-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.2 4.2"/></svg>
+            <span class="search-hint">搜索保洁 / 拼车 / 租房</span>
+            <span class="filter-entry">
+              <svg viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
+            </span>
+            <span class="mic">
+              <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0"/><path d="M12 18v3"/><path d="M9 21h6"/></svg>
+            </span>
+          </div>
+
+          <div class="chipbar">
+            <div class="chips">
+              <span class="chip"><i class="dot"></i>3km<span class="x">×</span></span>
+              <span class="chip"><i class="dot"></i>需求<span class="x">×</span></span>
+              <span class="chip"><i class="dot"></i>日常保洁<span class="x">×</span></span>
+              <span class="chip"><i class="dot"></i>深度清洁<span class="x">×</span></span>
+              <span class="chip"><i class="dot"></i>500–1000 元<span class="x">×</span></span>
+            </div>
+          </div>
+
+          <div class="map-count"><i></i>附近<b>6</b>条</div>
+
+          <div class="rail has-bar">
+            <span class="rail-btn">
+              <svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1.2"/><circle cx="3.5" cy="12" r="1.2"/><circle cx="3.5" cy="18" r="1.2"/></svg>
+            </span>
+          </div>
+
+          <div class="fab lifted">
+            <svg viewBox="0 0 24 24"><path d="M12 2.5l1.9 5.3 5.3 1.9-5.3 1.9L12 17l-1.9-5.4L4.8 9.7l5.3-1.9L12 2.5zM19 15l.9 2.4 2.4.9-2.4.9L19 21.6l-.9-2.4-2.4-.9 2.4-.9L19 15z"/></svg>
+            AI 帮我发
+          </div>
+
+          <div class="sheet">
+            <div class="handle"></div>
+            <div class="sheet-head">
+              <span class="sheet-title">筛选条件</span>
+              <span class="reset">
+                <svg viewBox="0 0 24 24"><path d="M4 4v6h6"/><path d="M4.5 13a8 8 0 1 0 2.2-6.6L4 10"/></svg>
+                重置
+              </span>
+            </div>
+            <div class="sheet-sub">改动<b>即时生效</b>，关闭后保留在筛选栏</div>
+
+            <div class="sheet-body">
+              <div class="row">
+                <span class="row-label">范围</span>
+                <div class="seg">
+                  <span class="pill">1km</span>
+                  <span class="pill on">3km</span>
+                  <span class="pill">5km</span>
+                  <span class="pill">10km</span>
+                  <span class="pill">全城</span>
+                </div>
+              </div>
+
+              <div class="row">
+                <span class="row-label">供需</span>
+                <span class="pill-lg"><i class="legend-mark solid"></i>资源</span>
+                <span class="pill-lg on"><i class="legend-mark"></i>需求</span>
+              </div>
+
+              <div class="row top">
+                <span class="row-label">价格</span>
+                <div class="price-control">
+                  <div class="price-head">
+                    <span class="price-input"><i>¥</i>500</span>
+                    <span class="price-sep">—</span>
+                    <span class="price-input"><i>¥</i>1,000</span>
+                    <span class="price-clear">不限</span>
+                  </div>
+                  <div class="range">
+                    <span class="track"></span>
+                    <span class="fill"></span>
+                    <span class="thumb" style="left:16.7%"></span>
+                    <span class="thumb" style="left:33.3%"></span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="row top">
+                <span class="row-label">分类</span>
+                <div class="cat-drill">
+                  <div class="cat-crumb">
+                    <span class="crumb-seg">服务</span>
+                    <span class="crumb-sep">›</span>
+                    <span class="crumb-seg strong">家政/保洁</span>
+                    <span class="crumb-back">‹ 返回</span>
+                  </div>
+                  <div class="cat-leaves">
+                    <span class="leaf">全部</span>
+                    <span class="leaf on">日常保洁</span>
+                    <span class="leaf on">深度清洁</span>
+                    <span class="leaf">开荒保洁</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="legend-row">
+                <span class="legend-item"><i class="legend-mark solid" style="color:#6B7280"></i>实心 = 资源</span>
+                <span class="legend-item"><i class="legend-mark" style="color:#6B7280"></i>空心 = 需求</span>
+                <span class="perf"><i></i>P95 78.9 ms</span>
+              </div>
+            </div>
+
+            <div class="sheet-foot">
+              <button class="primary">
+                查看 <span class="num">6</span> 条结果
+                <svg viewBox="0 0 24 24"><path d="M5 12h13"/><path d="M12.5 6.5L18 12l-5.5 5.5"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </figure>
+  </div>
+  <p class="list-note">
+    一级大类点选 = 整个大类；点 chip 右侧 › 进入二级，再进入三级叶子。面包屑可逐级回退，
+    叶子支持多选，选中项实时追加为同名 chip。
+    <a href="category-3level.html" style="color:#0B7C8C">查看三级选择细节板 →</a>
+  </p>
+</section>
+
+<!-- ============================================================
+     列表页：搜索栏同步
+     ============================================================ -->
+<section class="list-section">
+  <div class="section-head">
+    <span class="no">SCREENS 06–07</span>
+    <h2>列表页：搜索栏同步</h2>
+    <p>同一组件、同一份筛选态</p>
+  </div>
+  <div class="stage">
+
+    <!-- 05 列表页默认 -->
+    <figure class="frame-wrap">
+      <figcaption class="frame-cap"><span class="idx">06</span><b>列表页 · 默认</b><em>筛选栏不出现</em></figcaption>
+      <div class="phone">
+        <div class="screen list-screen">
+          <div class="list-topbg"></div>
+          <div class="statusbar" data-status></div>
+          <div class="list-appbar">
+            <span class="back-btn">
+              <svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>
+            </span>
+            <span class="list-title">附近信息</span>
+            <span class="map-action">
+              <svg viewBox="0 0 24 24"><path d="M9 4l-5 2v14l5-2 6 2 5-2V4l-5 2-6-2z"/><path d="M9 4v14M15 6v14"/></svg>
+              地图
+            </span>
+          </div>
+
+          <div class="searchbar list-search">
+            <svg class="icon-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.2 4.2"/></svg>
+            <span class="search-hint">搜索保洁 / 拼车 / 租房</span>
+            <span class="filter-entry">
+              <svg viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
+            </span>
+            <span class="mic">
+              <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0"/><path d="M12 18v3"/><path d="M9 21h6"/></svg>
+            </span>
+          </div>
+
+          <div class="resultbar no-chips">
+            <span class="result-count"><b>171</b>条结果</span>
+            <div class="sorts">
+              <span class="sort-item">综合</span>
+              <span class="sort-item on">距离</span>
+              <span class="sort-item">最新</span>
+              <span class="sort-item">价格 ↑</span>
+              <span class="sort-item">价格 ↓</span>
+            </div>
+          </div>
+
+          <div class="list-cards no-chips">
+            <div class="card-item">
+              <span class="item-badge" style="background:#C63C81;color:#fff">
+                <svg viewBox="0 0 24 24"><path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3z"/></svg>
+              </span>
+              <div class="item-main">
+                <div class="item-title">北城新区 日常保洁 2 小时</div>
+                <div class="item-price">¥80</div>
+                <div class="item-meta">368m · 2 小时前</div>
+                <div class="item-crumb">服务 · 资源</div>
+              </div>
+            </div>
+            <div class="card-item">
+              <span class="item-badge" style="background:#FAEDF5;border:1.5px solid #E8B9D0;color:#C63C81">
+                <svg viewBox="0 0 24 24"><path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3z"/></svg>
+              </span>
+              <div class="item-main">
+                <div class="item-title">求推荐 周末保洁阿姨，长期</div>
+                <div class="item-price">面议</div>
+                <div class="item-meta">800m · 5 小时前</div>
+                <div class="item-crumb">服务 · 需求</div>
+              </div>
+            </div>
+            <div class="card-item">
+              <span class="item-badge" style="background:#326FD1;color:#fff">
+                <svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 12h18"/></svg>
+              </span>
+              <div class="item-main">
+                <div class="item-title">北城世纪城 招兼职理货员</div>
+                <div class="item-price">¥150/天</div>
+                <div class="item-meta">1.2km · 昨天</div>
+                <div class="item-crumb">工作 · 资源</div>
+              </div>
+            </div>
+            <div class="card-item">
+              <span class="item-badge" style="background:#F4EEFC;border:1.5px solid #DCCBF7;color:#8055E2">
+                <svg viewBox="0 0 24 24"><path d="M4 11l8-7 8 7"/><path d="M6 10v9h12v-9"/><path d="M10 19v-5h4v5"/></svg>
+              </span>
+              <div class="item-main">
+                <div class="item-title">求租 北城新区 一室一厅</div>
+                <div class="item-price">¥1500/月</div>
+                <div class="item-meta">2.1km · 2 天前</div>
+                <div class="item-crumb">房屋 · 需求</div>
+              </div>
+            </div>
+            <div class="card-item">
+              <span class="item-badge" style="background:#B85510;color:#fff">
+                <svg viewBox="0 0 24 24"><path d="M5 16l1.5-5h11L19 16"/><rect x="3" y="15" width="18" height="4" rx="2"/><circle cx="7" cy="19" r="1.5"/><circle cx="17" cy="19" r="1.5"/></svg>
+              </span>
+              <div class="item-main">
+                <div class="item-title">个人车 周末可带人往返市区</div>
+                <div class="item-price">¥30</div>
+                <div class="item-meta">2.8km · 3 天前</div>
+                <div class="item-crumb">车辆 · 资源</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </figure>
+
+    <!-- 06 列表页有语义条件 -->
+    <figure class="frame-wrap">
+      <figcaption class="frame-cap"><span class="idx">07</span><b>列表页 · 解析后</b><em>筛选栏同步出现</em></figcaption>
+      <div class="phone">
+        <div class="screen list-screen">
+          <div class="list-topbg"></div>
+          <div class="statusbar" data-status></div>
+          <div class="list-appbar">
+            <span class="back-btn">
+              <svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>
+            </span>
+            <span class="list-title">附近信息</span>
+            <span class="map-action">
+              <svg viewBox="0 0 24 24"><path d="M9 4l-5 2v14l5-2 6 2 5-2V4l-5 2-6-2z"/><path d="M9 4v14M15 6v14"/></svg>
+              地图
+            </span>
+          </div>
+
+          <div class="searchbar list-search">
+            <svg class="icon-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.2 4.2"/></svg>
+            <span class="search-hint typed">北城新区 找个保洁</span>
+            <span class="filter-entry">
+              <svg viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
+            </span>
+            <span class="mic send">
+              <svg viewBox="0 0 24 24"><path d="M5 12h13"/><path d="M12.5 6.5L18 12l-5.5 5.5"/></svg>
+            </span>
+          </div>
+
+          <div class="chipbar list-chipbar">
+            <div class="chips">
+              <span class="chip intent"><i class="dot"></i>保洁<span class="x">×</span></span>
+              <span class="chip intent"><i class="dot"></i>北城新徽苑<span class="x">×</span></span>
+            </div>
+          </div>
+
+          <div class="resultbar with-chips">
+            <span class="result-count"><b>42</b>条结果</span>
+            <div class="sorts">
+              <span class="sort-item">综合</span>
+              <span class="sort-item on">距离</span>
+              <span class="sort-item">最新</span>
+              <span class="sort-item">价格 ↑</span>
+              <span class="sort-item">价格 ↓</span>
+            </div>
+          </div>
+
+          <div class="list-cards with-chips">
+            <div class="card-item">
+              <span class="item-badge" style="background:#C63C81;color:#fff">
+                <svg viewBox="0 0 24 24"><path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3z"/></svg>
+              </span>
+              <div class="item-main">
+                <div class="item-title">北城新区 日常保洁 2 小时</div>
+                <div class="item-price">¥80</div>
+                <div class="item-meta">368m · 2 小时前</div>
+                <div class="item-crumb">服务 · 资源</div>
+              </div>
+            </div>
+            <div class="card-item">
+              <span class="item-badge" style="background:#FAEDF5;border:1.5px solid #E8B9D0;color:#C63C81">
+                <svg viewBox="0 0 24 24"><path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3z"/></svg>
+              </span>
+              <div class="item-main">
+                <div class="item-title">求推荐 周末保洁阿姨，长期</div>
+                <div class="item-price">面议</div>
+                <div class="item-meta">800m · 5 小时前</div>
+                <div class="item-crumb">服务 · 需求</div>
+              </div>
+            </div>
+            <div class="card-item">
+              <span class="item-badge" style="background:#C63C81;color:#fff">
+                <svg viewBox="0 0 24 24"><path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3z"/></svg>
+              </span>
+              <div class="item-main">
+                <div class="item-title">北城新区 开荒保洁，含玻璃</div>
+                <div class="item-price">¥220</div>
+                <div class="item-meta">1.1km · 昨天</div>
+                <div class="item-crumb">服务 · 资源</div>
+              </div>
+            </div>
+            <div class="card-item">
+              <span class="item-badge" style="background:#FAEDF5;border:1.5px solid #E8B9D0;color:#C63C81">
+                <svg viewBox="0 0 24 24"><path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3z"/></svg>
+              </span>
+              <div class="item-main">
+                <div class="item-title">求 每周一次 家庭保洁</div>
+                <div class="item-price">面议</div>
+                <div class="item-meta">1.6km · 2 天前</div>
+                <div class="item-crumb">服务 · 需求</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </figure>
+  </div>
+  <p class="list-note">
+    列表页保留返回、标题与「地图」跳转；搜索栏、漏斗、动态筛选栏与底部面板与地图页完全同源。
+    命中数移到结果行左侧，与排序同排。
+  </p>
+</section>
+
+<!-- ============================================================
+     规格
+     ============================================================ -->
+<section class="specs">
+  <div class="section-head">
+    <span class="no">SPEC 01</span>
+    <h2>结构变化</h2>
+    <p>与当前实现对照</p>
+  </div>
+  <div class="grid">
+    <div class="card">
+      <h3>顶部：从 48px AppBar 到沉浸式浮层</h3>
+      <ul>
+        <li><b>删除 AppBar</b>：左上角「丫圈」标题整条移除，地图延伸到状态栏下方。</li>
+        <li><b>搜索栏固定</b>：距安全区 8、左右 16，358 × 48，圆角 24，不随地图拖动或页面滚动。</li>
+        <li><b>语音入口</b>：文字「语音」改为 36 × 36 话筒圆钮（底 <code>#E6F6F8</code>，图标 <code>#0B7C8C</code>）。</li>
+        <li><b>筛选入口</b>：话筒左侧加 32 × 32 漏斗圆钮，点击打开底部面板；点文字区域仍只聚焦键盘。</li>
+        <li><b>输入态</b>：有文字时话筒变为同尺寸「提交」箭头（实心主色），清空后恢复话筒；漏斗常驻。</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>筛选栏：解析出条件后才出现</h3>
+      <ul>
+        <li><b>默认不渲染</b>：没有任何条件时，搜索栏下方不占位、不显示空态入口。</li>
+        <li><b>出现时机</b>：语音或文字解析出 ≥ 1 个条件后，180ms 从搜索栏下方滑入；条件全部删除后 150ms 淡出。</li>
+        <li><b>来源唯一</b>：只装解析出的条件 + 面板中用户主动新增的条件，不再预置 5km / 资源+需求 / 全部分类。</li>
+        <li><b>默认态入口</b>：搜索栏内 32 × 32 漏斗圆钮打开面板；筛选栏出现后，点栏内任意位置同样是入口。</li>
+        <li><b>命中数</b>：移到左下角「附近 N 条」状态胶囊，筛选栏只装条件，不混入计数。</li>
+        <li><b>溢出</b>：单行横滑，右侧渐隐提示还有更多，不做换行吃掉地图。</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>底部面板：浮层卡片改为 Bottom Sheet</h3>
+      <ul>
+        <li><b>唤起</b>：搜索栏内漏斗圆钮，或筛选栏内任意位置（含 chip 主体），均打开同一个面板。</li>
+        <li><b>尺寸</b>：高 500（约 59% 屏高），顶部圆角 24，拖拽把手 36 × 4。</li>
+        <li><b>价格</b>：双端滑杆 + 两端数值框；拖动滑杆选区间，点数值可精确输入，键盘只在点数值时出现；右侧「不限」一键清空。</li>
+        <li><b>价格映射</b>：左端 = 下限，右端 = 上限；清空某一端 = 该侧不限；手动输入可超出滑杆量程，滑杆置顶但数值以输入为准。</li>
+        <li><b>分类</b>：3 × 2 网格，六项全部可见；选中态用分类 deep 色填充，避免横滑藏项。</li>
+        <li><b>无遮罩</b>：不压暗地图，让用户直接看到条件变化后的 Pin 结果（与现有交互一致）。</li>
+        <li><b>关闭</b>：下拉、点地图空白、或点底部「查看 N 条结果」。</li>
+        <li><b>AI FAB</b>：面板展开时自动上移到面板顶边之上，入口不消失。</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>条件回写：面板操作即追加</h3>
+      <ul>
+        <li><b>实时</b>：面板里切换范围 / 供需 / 价格 / 分类，筛选栏同步出现或移除对应 chip。</li>
+        <li><b>追加不覆盖</b>：面板新增项直接插入已有 chip 序列（按范围 → 供需 → 分类 → 价格 → 地点排序）。</li>
+        <li><b>关闭保留</b>：关闭面板不清空；只有 chip 上的 × 或面板「重置」才会移除。</li>
+        <li><b>首次新增</b>：从搜索栏漏斗打开面板并选中第一个条件时，筛选栏随之滑入。</li>
+        <li><b>来源可辨</b>：语义解析出的 chip 用主色描边 + 主色圆点；面板新增用中性描边 + 灰点。</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>列表页：同一套搜索栏与筛选栏</h3>
+      <ul>
+        <li><b>保留 AppBar</b>：返回 + 「附近信息」+ 「地图」跳转；去掉右侧 tune 图标，筛选入口收进搜索栏漏斗。</li>
+        <li><b>同一搜索栏</b>：放大镜、占位文案、漏斗、话筒/提交与地图页完全一致。</li>
+        <li><b>动态筛选栏</b>：解析出条件后同样滑入；chip 样式、排序与点击行为不变。</li>
+        <li><b>命中数</b>：移到结果行左侧「N 条结果」，与五个排序档位同排，不再塞进筛选栏。</li>
+        <li><b>同一面板</b>：漏斗打开同一个底部面板（价格滑杆、3 × 2 分类、图例全部同源）。</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>跨页一致性：条件只有一份</h3>
+      <ul>
+        <li><b>条件同源</b>：两页都读 <code>effectiveFilterProvider</code>，切页不重置搜索或筛选。</li>
+        <li><b>搜索栏同源</b>：同一个控件、同一份文本，不出现「地图 3 个 Pin、列表 12 条」。</li>
+        <li><b>排序独立</b>：列表排序不写回筛选态，改排序不会触发地图重绘。</li>
+        <li><b>空态一致</b>：列表空态回显当前 chip 摘要，并保留「扩大到全城」入口。</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>分类：一级 → 二级 → 三级叶子</h3>
+      <ul>
+        <li><b>一级</b>：全部 + 5 大类，3 × 2 网格；点选 = 该大类下全部叶子。</li>
+        <li><b>二级</b>：点 chip 右侧 › 进入；面包屑「服务 › 家政/保洁」可逐级回退。</li>
+        <li><b>三级</b>：叶子多选；选中用分类 deep 色填充，实时追加同名 chip。</li>
+        <li><b>跨大类</b>：切换一级时保留已选叶子；已选分支用圆点或计数标记。</li>
+        <li><b>全部</b>：二级/三级的「全部」= 该层下所有叶子，不额外造筛选维度。</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>分类与请求：仍然只传叶子 ID</h3>
+      <ul>
+        <li><b>映射</b>：一级 = 该大类全部叶子 ID；二级 = 该二级全部叶子；三级 = 单个叶子 ID。</li>
+        <li><b>契约不变</b>：请求仍走 <code>leafCategoryIds</code>，不新增参数、不改分类树版本口径。</li>
+        <li><b>状态扩展</b>：现有 <code>categories</code> 是 Top 大类集合，需补叶子 ID 集合（或复用搜索槽位），否则三级选择落不到请求。</li>
+        <li><b>chip 文案</b>：用叶子或二级名；多个叶子各占一枚 chip，顺序按分类树遍历。</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="section-head" style="margin-top:44px">
+    <span class="no">SPEC 02</span>
+    <h2>交互规则</h2>
+    <p>11 条，可直接作为验收项</p>
+  </div>
+  <div class="grid">
+    <div class="card" style="grid-column:1 / -1">
+      <table class="table">
+        <thead><tr><th style="width:44px">#</th><th style="width:180px">触发</th><th>行为</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>进入首页</td><td>只渲染固定搜索栏（内含漏斗入口）、右侧列表浮钮、左下角「附近 N 条」；筛选栏整体不出现。</td></tr>
+          <tr><td>2</td><td>点击话筒</td><td>唤起现有语音面板；解析出条件后，筛选栏从搜索栏下方滑入，chip 逐条淡入，右上按钮列同步下移 40。</td></tr>
+          <tr><td>3</td><td>输入文字并提交</td><td>解析结果同上；话筒在输入态变为提交箭头，避免多一个「搜索」按钮撑宽搜索栏。</td></tr>
+          <tr><td>4</td><td>点击搜索栏内漏斗 / 筛选栏任意位置</td><td>打开底部面板；点 chip 主体时，面板滚动并高亮该 chip 对应分组。</td></tr>
+          <tr><td>5</td><td>面板内切换任一条件</td><td>立即写入筛选态，筛选栏同步追加 / 移除 chip；地图 Pin 与左下角命中数同步刷新。</td></tr>
+          <tr><td>6</td><td>点击 chip 上的 ×</td><td>只删除这一条条件，面板不弹出；若该维度回到默认值，chip 消失而不是变成「5km」。</td></tr>
+          <tr><td>7</td><td>关闭面板</td><td>下拉 / 点地图空白 / 点「查看 N 条结果」，三种方式等价；条件与 chip 全部保留。</td></tr>
+          <tr><td>8</td><td>取数中 / 取数失败</td><td>左下角命中数显示「—」；失败时变为「加载失败 · 重试」，点击重取，不阻塞底图与筛选栏。</td></tr>
+          <tr><td>9</td><td>解析失败 / 没听懂</td><td>筛选栏保持隐藏；搜索栏下方浮出深色提示「没听懂 · 重试」，点击重试，8s 自动消失。</td></tr>
+          <tr><td>10</td><td>切到列表页</td><td>同一搜索栏与筛选栏直接复用；地图上解析出的条件在列表页继续生效，结果行显示「N 条结果」，排序不写回筛选态。</td></tr>
+          <tr><td>11</td><td>分类继续下钻</td><td>点一级大类 = 整个大类；点 chip 右侧 › 进入二级，再进入三级叶子；面包屑逐级回退；叶子多选并实时追加同名 chip，请求仍只传叶子 ID。</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="section-head" style="margin-top:44px">
+    <span class="no">SPEC 03</span>
+    <h2>组件规格</h2>
+    <p>全部来自现有 Token</p>
+  </div>
+  <div class="grid">
+    <div class="card">
+      <h3>尺寸与层级</h3>
+      <table class="table">
+        <tbody>
+          <tr><td>搜索栏</td><td>358 × 48，圆角 24，左右 16，距安全区 8</td></tr>
+          <tr><td>漏斗 / 话筒</td><td>漏斗 32 × 32，话筒 36 × 36；话筒距栏右 6，漏斗在话筒左侧</td></tr>
+          <tr><td>筛选栏</td><td>仅条件 ≥ 1 时渲染；高 32，左右 16，整行透明热区</td></tr>
+          <tr><td>chip</td><td>高 32，圆角 999，左内边距 10，chip 间距 6</td></tr>
+          <tr><td>命中数</td><td>地图：左下角状态胶囊（高 32，距左 16、距底 98）；列表：结果行左侧「N 条结果」</td></tr>
+          <tr><td>列表浮钮</td><td>40 × 40，距右 16；无栏 top 112，有栏 top 152</td></tr>
+          <tr><td>面板</td><td>高 500，圆角 24 24 0 0，内边距 16</td></tr>
+          <tr><td>价格滑杆</td><td>轨道高 4，双端拇指 18，两端各留 9</td></tr>
+          <tr><td>价格数值框</td><td>74 × 32，圆角 9，等宽数字；点开才唤起键盘</td></tr>
+          <tr><td>分类胶囊</td><td>3 × 2 网格，高 36，间距 6</td></tr>
+          <tr><td>分类面包屑</td><td>11.5px，分段可点；返回 11px；叶子胶囊高 32，圆角 16</td></tr>
+          <tr><td>列表页 AppBar</td><td>高 48；返回 36，标题 16 / 600，「地图」入口 12</td></tr>
+          <tr><td>列表结果行</td><td>高 40；左侧「N 条结果」，右侧五个排序档</td></tr>
+          <tr><td>列表卡片</td><td>圆角 12，内边距 12，分类徽标 44</td></tr>
+          <tr><td>主按钮</td><td>高 48，圆角 24，字号 14 / 600</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="card">
+      <h3>颜色 · 阴影 · 字阶</h3>
+      <div class="swatches" style="margin-bottom:14px">
+        <span class="swatch"><i style="background:#0B7C8C"></i>primary</span>
+        <span class="swatch"><i style="background:#E6F6F8"></i>primary-light</span>
+        <span class="swatch"><i style="background:#B4531A"></i>accent</span>
+        <span class="swatch"><i style="background:#1F2937"></i>text</span>
+        <span class="swatch"><i style="background:#9CA3AF"></i>placeholder</span>
+        <span class="swatch"><i style="background:#E5E7EB"></i>border</span>
+      </div>
+      <ul>
+        <li>搜索栏阴影：<code>0 10 26 -10 rgba(15,23,42,.22)</code> + <code>0 2 6 rgba(15,23,42,.06)</code></li>
+        <li>chip 阴影：<code>0 2 8 -2 rgba(15,23,42,.12)</code>；语义 chip 描边 <code>rgba(11,124,140,.42)</code></li>
+        <li>面板阴影：<code>0 -18 46 -12 rgba(15,23,42,.28)</code></li>
+        <li>字号：搜索 14 / 输入 14；chip 12.5；分区标签 12；面板标题 16 / 600；说明 11</li>
+        <li>分类选中底色用 deep 色（如服务 <code>#C63C81</code>），保证白字对比度</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="section-head" style="margin-top:44px">
+    <span class="no">SPEC 04</span>
+    <h2>状态矩阵</h2>
+    <p>设计稿未画出的边界态</p>
+  </div>
+  <div class="grid">
+    <div class="card" style="grid-column:1 / -1">
+      <table class="table">
+        <thead><tr><th style="width:140px">状态</th><th style="width:230px">筛选栏</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td>默认（无输入）</td><td>不渲染</td><td>只有搜索栏（含漏斗入口）、右侧列表浮钮、左下角「附近 N 条」；无任何条件 chip。</td></tr>
+          <tr><td>解析中</td><td>保持当前状态，不提前出现空栏</td><td>搜索栏话筒位置显示 16px 环形进度，不锁输入。</td></tr>
+          <tr><td>解析成功（无条件）</td><td>仍隐藏</td><td>搜索栏下方浮出「没听懂 · 重试」提示，沿用现有 noUnderstand 文案，不新增错误码。</td></tr>
+          <tr><td>解析成功（有条件）</td><td>180ms 滑入，按槽位排序</td><td>「没敢用」字段继续以灰态 chip 呈现，不参与过滤。</td></tr>
+          <tr><td>无结果</td><td>chip 保留，命中数变「0 条」</td><td>地图中央显示现有空态提示，不自动清空条件。</td></tr>
+          <tr><td>面板展开且有新条件</td><td>chip 实时追加；原无栏则此时滑入</td><td>面板不遮挡筛选栏，用户能同时看到「操作 → 结果」。</td></tr>
+          <tr><td>条件全部删除</td><td>150ms 淡出，回到默认态</td><td>搜索栏漏斗仍在，可重新打开面板加入条件。</td></tr>
+          <tr><td>列表页 · 默认</td><td>不渲染</td><td>AppBar + 同一搜索栏 + 结果行（N 条结果 + 五个排序档）；无任何条件 chip。</td></tr>
+          <tr><td>列表页 · 解析后</td><td>滑入，chip 与地图页一致</td><td>结果行与卡片整体下移 40；切回地图时条件保持，不重新解析。</td></tr>
+          <tr><td>分类下钻</td><td>分类区切换为二级 / 三级列表</td><td>面包屑可逐级回退；叶子多选并实时追加 chip；跨大类已选叶子保留。</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="section-head" style="margin-top:44px">
+    <span class="no">SPEC 05</span>
+    <h2>落地映射</h2>
+    <p>确认设计后再改代码</p>
+  </div>
+  <div class="grid">
+    <div class="card">
+      <h3>前端文件</h3>
+      <ul>
+        <li><code>features/map/map_screen.dart</code>：删除 <code>_buildAppBar()</code>；搜索栏拆成「放大镜 + 输入 + 漏斗 + 话筒/提交」，筛选栏条件非空才出现；右侧按钮列只保留列表与定位。</li>
+        <li><code>features/discovery/condition_band.dart</code>：拆成 <code>SearchField</code>（含话筒 / 提交态）与 <code>ChipBar</code>；<code>ChipBar</code> 仅在条件非空时渲染，命中数移出为左下角状态胶囊。</li>
+        <li><code>features/discovery/filter_panel.dart</code>：保留四行控件与图例，增加把手、标题行、底部主按钮；价格行改为 <code>RangeSlider</code> + 两端数值框（点开才唤起键盘），去掉预设档位；分类补齐二级/三级下钻与面包屑；选中态直接写 provider。</li>
+        <li><code>features/discovery/list_screen.dart</code>：用同一 <code>SearchField</code> + <code>ChipBar</code> 替换 <code>ConditionBand</code>；删除 AppBar 的 tune 图标；命中数并入结果行，与排序同排；漏斗复用同一面板。</li>
+        <li><code>features/discovery/effective_filter.dart</code>：投影层需要补「是否被用户显式设置」标记，UI 只渲染显式项；否则默认 5km / 资源+需求 / 全部分类会再次出现。</li>
+        <li><code>features/discovery/discovery_filter.dart</code>：除 Top 大类集合外补叶子 ID 集合与下钻层级；分类 chip 文案取叶子/二级名；<code>filterPanelExpandedProvider</code> 可保留用于 FAB 避让。</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>本轮已确认的前提</h3>
+      <ul>
+        <li><b>筛选栏动态出现</b>：默认不渲染，只在解析出条件后出现在搜索栏下方。</li>
+        <li><b>默认态入口</b>：搜索栏内漏斗打开面板，避免默认栏占位。</li>
+        <li><b>输入态</b>：话筒在输入文字后切换为提交箭头。</li>
+        <li><b>面板</b>：不压暗地图，实时看 Pin 变化。</li>
+        <li><b>命中数</b>：从筛选栏移到左下角「附近 N 条」。</li>
+        <li><b>价格</b>：双端滑杆 + 两端数值框，滑杆不顺手时点数值精确输入。</li>
+        <li><b>列表页</b>：同一搜索栏、筛选栏与面板；命中数并入结果行，排序不写回筛选态。</li>
+        <li><b>分类</b>：支持一级 → 二级 → 三级叶子下钻；叶子多选，请求仍只传叶子 ID。</li>
+      </ul>
+    </div>
+  </div>
+
+  <p class="note">
+    <b>说明：</b>本页是设计稿，不是运行时 UI；尺寸按 390 × 844 逻辑像素绘制，颜色与圆角取自
+    <code>lib/design_tokens.dart</code>。地图为示意底图，仅用于表达浮层与底图的关系，不代表真实地理数据。
+  </p>
+</section>
+
+<script>
+/* ---------- 地图示意底图（四个画框共用同一份） ---------- */
+const MAP_SVG = `
+<svg viewBox="0 0 390 844" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+  <rect width="390" height="844" fill="#EFF2EA"/>
+
+  <!-- 街区 -->
+  <g fill="#E5E9DF">
+    <rect x="46" y="132" width="92" height="104" rx="7"/>
+    <rect x="160" y="130" width="76" height="106" rx="7"/>
+    <rect x="262" y="138" width="70" height="96" rx="7" transform="rotate(2 297 186)"/>
+    <rect x="48" y="262" width="88" height="96" rx="7" transform="rotate(-2 92 310)"/>
+    <rect x="160" y="262" width="76" height="96" rx="7"/>
+    <rect x="286" y="268" width="88" height="112" rx="8" transform="rotate(3 330 324)"/>
+    <rect x="44" y="382" width="96" height="104" rx="7"/>
+    <rect x="162" y="382" width="74" height="104" rx="7"/>
+    <rect x="286" y="418" width="90" height="120" rx="8"/>
+    <rect x="46" y="522" width="94" height="84" rx="7" transform="rotate(1.5 93 564)"/>
+    <rect x="160" y="522" width="76" height="84" rx="7"/>
+    <rect x="44" y="634" width="96" height="86" rx="7"/>
+    <rect x="162" y="634" width="76" height="86" rx="7"/>
+    <rect x="286" y="642" width="92" height="92" rx="8" transform="rotate(-2 332 688)"/>
+  </g>
+  <g fill="#EAEEE5">
+    <rect x="52" y="138" width="40" height="42" rx="5"/>
+    <rect x="100" y="138" width="32" height="42" rx="5"/>
+    <rect x="52" y="188" width="40" height="42" rx="5"/>
+    <rect x="100" y="188" width="32" height="42" rx="5"/>
+    <rect x="166" y="136" width="30" height="44" rx="5"/>
+    <rect x="200" y="136" width="30" height="44" rx="5"/>
+    <rect x="166" y="186" width="30" height="44" rx="5"/>
+    <rect x="200" y="186" width="30" height="44" rx="5"/>
+    <rect x="50" y="388" width="38" height="44" rx="5"/>
+    <rect x="50" y="436" width="38" height="44" rx="5"/>
+    <rect x="168" y="388" width="28" height="44" rx="5"/>
+    <rect x="200" y="388" width="28" height="44" rx="5"/>
+    <rect x="168" y="436" width="28" height="44" rx="5"/>
+    <rect x="200" y="436" width="28" height="44" rx="5"/>
+  </g>
+  <g fill="#DEE4D8">
+    <rect x="52" y="528" width="36" height="34" rx="4"/>
+    <rect x="96" y="528" width="36" height="34" rx="4"/>
+    <rect x="168" y="528" width="28" height="34" rx="4"/>
+    <rect x="202" y="528" width="28" height="34" rx="4"/>
+    <rect x="52" y="640" width="38" height="36" rx="4"/>
+    <rect x="96" y="640" width="38" height="36" rx="4"/>
+    <rect x="168" y="640" width="30" height="36" rx="4"/>
+    <rect x="204" y="640" width="28" height="36" rx="4"/>
+  </g>
+
+  <!-- 水系 -->
+  <path d="M-14 246 C52 262 40 322 92 342 C58 376 4 372 -14 384 Z" fill="#D3E5EF"/>
+  <path d="M300 476 C334 462 372 470 396 492 L396 542 C356 536 320 522 296 500 Z" fill="#D3E5EF"/>
+
+  <!-- 绿地 -->
+  <path d="M292 214 L390 190 L390 268 L312 292 Z" fill="#D6E8D2"/>
+  <path d="M286 742 L390 724 L390 800 L318 812 Z" fill="#D6E8D2"/>
+  <g fill="#B9D6B4" opacity=".9">
+    <circle cx="314" cy="236" r="5"/><circle cx="334" cy="228" r="4"/><circle cx="360" cy="218" r="6"/>
+    <circle cx="342" cy="252" r="4.5"/><circle cx="373" cy="243" r="4"/>
+    <circle cx="310" cy="768" r="5"/><circle cx="336" cy="758" r="4.5"/><circle cx="366" cy="748" r="5.5"/>
+  </g>
+
+  <!-- 道路：先描边后路面 -->
+  <g stroke="#E0E4D9" stroke-linecap="round" fill="none">
+    <path d="M40 -20V864" stroke-width="13"/>
+    <path d="M150 -20V864" stroke-width="13"/>
+    <path d="M330 -20V864" stroke-width="13"/>
+    <path d="M-20 120H410" stroke-width="12"/>
+    <path d="M-20 372H410" stroke-width="12"/>
+    <path d="M-20 620H410" stroke-width="12"/>
+    <path d="M-20 730H410" stroke-width="12"/>
+    <path d="M250 -20V864" stroke-width="17"/>
+    <path d="M-20 500H410" stroke-width="15"/>
+    <path d="M-30 706L420 548" stroke-width="19"/>
+  </g>
+  <g stroke="#FFFFFF" stroke-linecap="round" fill="none">
+    <path d="M40 -20V864" stroke-width="9"/>
+    <path d="M150 -20V864" stroke-width="9"/>
+    <path d="M330 -20V864" stroke-width="9"/>
+    <path d="M-20 120H410" stroke-width="8"/>
+    <path d="M-20 372H410" stroke-width="8"/>
+    <path d="M-20 620H410" stroke-width="8"/>
+    <path d="M-20 730H410" stroke-width="8"/>
+  </g>
+  <g stroke="#FBF3E0" stroke-linecap="round" fill="none">
+    <path d="M250 -20V864" stroke-width="12"/>
+    <path d="M-20 500H410" stroke-width="10"/>
+  </g>
+  <path d="M-30 706L420 548" stroke="#F8DFB2" stroke-width="13" fill="none" stroke-linecap="round"/>
+  <path d="M250 -20V864" stroke="#EBD9B5" stroke-width="1.2" fill="none" stroke-dasharray="10 12" opacity=".55"/>
+  <path d="M-20 500H410" stroke="#EBD9B5" stroke-width="1.2" fill="none" stroke-dasharray="10 12" opacity=".55"/>
+
+  <!-- 路名 / POI -->
+  <g fill="#8B9289" font-family="HarmonyOS Sans SC, PingFang SC, Microsoft YaHei, sans-serif" font-size="10.5" letter-spacing=".08em">
+    <text x="238" y="470" transform="rotate(-90 238 470)">阜阳北路</text>
+    <text x="138" y="340" transform="rotate(-90 138 340)">蒙城北路</text>
+    <text x="318" y="612" transform="rotate(-90 318 612)">兴旺路</text>
+    <text x="58" y="494" letter-spacing=".14em">北城大道</text>
+    <text x="52" y="806" letter-spacing=".14em">双凤路</text>
+    <text x="336" y="290" font-size="9.5">双凤湖</text>
+    <text x="308" y="258" font-size="9.5">北城运动公园</text>
+    <text x="64" y="232" font-size="9.5">北城世纪城</text>
+    <text x="182" y="358" font-size="9.5">瑞辰大酒店</text>
+    <text x="164" y="590" font-size="9.5">金地自在城</text>
+  </g>
+
+  <!-- Pin -->
+  <g>
+    <!-- 供需实心：资源 -->
+    <g>
+      <circle cx="205" cy="300" r="9" fill="#0B7C8C" stroke="#FFFFFF" stroke-width="2.6"/>
+      <circle cx="205" cy="300" r="2.2" fill="#FFFFFF" opacity=".9"/>
+    </g>
+    <g>
+      <circle cx="300" cy="452" r="9" fill="#0B7C8C" stroke="#FFFFFF" stroke-width="2.6"/>
+      <circle cx="300" cy="452" r="2.2" fill="#FFFFFF" opacity=".9"/>
+    </g>
+    <g>
+      <circle cx="170" cy="548" r="8.5" fill="#0B7C8C" stroke="#FFFFFF" stroke-width="2.6"/>
+      <circle cx="170" cy="548" r="2" fill="#FFFFFF" opacity=".9"/>
+    </g>
+    <g>
+      <circle cx="246" cy="664" r="8.5" fill="#0B7C8C" stroke="#FFFFFF" stroke-width="2.6"/>
+      <circle cx="246" cy="664" r="2" fill="#FFFFFF" opacity=".9"/>
+    </g>
+    <!-- 供需空心：需求 -->
+    <g>
+      <circle cx="122" cy="322" r="8" fill="#FFFFFF" stroke="#0B7C8C" stroke-width="2.6"/>
+      <text x="122" y="326" text-anchor="middle" fill="#0B7C8C" font-size="9" font-weight="700" font-family="HarmonyOS Sans SC, sans-serif">?</text>
+    </g>
+    <g>
+      <circle cx="318" cy="620" r="8" fill="#FFFFFF" stroke="#0B7C8C" stroke-width="2.6"/>
+      <text x="318" y="624" text-anchor="middle" fill="#0B7C8C" font-size="9" font-weight="700" font-family="HarmonyOS Sans SC, sans-serif">?</text>
+    </g>
+    <!-- 分类色 Pin -->
+    <circle cx="272" cy="574" r="7.5" fill="#326FD1" stroke="#FFFFFF" stroke-width="2.4"/>
+    <circle cx="86" cy="700" r="7.5" fill="#B85510" stroke="#FFFFFF" stroke-width="2.4"/>
+    <circle cx="344" cy="352" r="7.5" fill="#C63C81" stroke="#FFFFFF" stroke-width="2.4"/>
+    <circle cx="66" cy="452" r="7" fill="#0B825A" stroke="#FFFFFF" stroke-width="2.4"/>
+    <!-- 聚合簇 -->
+    <g>
+      <circle cx="96" cy="596" r="20" fill="#FFFFFF" stroke="#0B7C8C" stroke-width="2"/>
+      <text x="96" y="601" text-anchor="middle" fill="#0B7C8C" font-size="11" font-weight="700" font-family="JetBrains Mono, Consolas, monospace">12</text>
+    </g>
+    <!-- 我的位置 -->
+    <g>
+      <circle cx="196" cy="500" r="26" fill="#3B82F6" opacity=".12"/>
+      <circle cx="196" cy="500" r="7" fill="#2563EB" stroke="#FFFFFF" stroke-width="2.6"/>
+    </g>
+  </g>
+</svg>`;
+
+const STATUS_BAR = `
+<span class="time">9:41</span>
+<span class="sysicons">
+  <svg width="17" height="11" viewBox="0 0 17 11" fill="none" aria-hidden="true">
+    <rect x="0" y="7" width="3" height="4" rx="1" fill="#1F2937"/>
+    <rect x="4.5" y="5" width="3" height="6" rx="1" fill="#1F2937"/>
+    <rect x="9" y="2.5" width="3" height="8.5" rx="1" fill="#1F2937"/>
+    <rect x="13.5" y="0" width="3" height="11" rx="1" fill="#1F2937"/>
+  </svg>
+  <svg width="16" height="12" viewBox="0 0 16 12" fill="none" aria-hidden="true">
+    <path d="M1 4.2C3 2.4 5.4 1.5 8 1.5s5 .9 7 2.7" stroke="#1F2937" stroke-width="1.6" stroke-linecap="round"/>
+    <path d="M3.6 7c1.3-1.1 2.8-1.7 4.4-1.7s3.1.6 4.4 1.7" stroke="#1F2937" stroke-width="1.6" stroke-linecap="round"/>
+    <circle cx="8" cy="10.2" r="1.3" fill="#1F2937"/>
+  </svg>
+  <svg width="25" height="12" viewBox="0 0 25 12" fill="none" aria-hidden="true">
+    <rect x="0.5" y="0.5" width="21" height="11" rx="3.2" stroke="#1F2937" opacity=".45"/>
+    <rect x="2" y="2" width="16.5" height="8" rx="2" fill="#1F2937"/>
+    <path d="M23 4v4" stroke="#1F2937" stroke-width="1.4" stroke-linecap="round" opacity=".5"/>
+  </svg>
+</span>`;
+
+const TAB_BAR = `
+<div class="tab active">
+  <svg viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg>
+  <span>丫圈</span>
+</div>
+<div class="tab">
+  <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 8v8M8 12h8"/></svg>
+  <span>发布</span>
+</div>
+<div class="tab">
+  <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20c.7-3.7 3.7-5.8 7.5-5.8s6.8 2.1 7.5 5.8"/></svg>
+  <span>我的</span>
+</div>`;
+
+document.querySelectorAll('[data-map]').forEach((el) => { el.innerHTML = MAP_SVG; });
+document.querySelectorAll('[data-status]').forEach((el) => { el.innerHTML = STATUS_BAR; });
+document.querySelectorAll('[data-tabbar]').forEach((el) => { el.innerHTML = TAB_BAR; });
+
+/* ?only=N：导出单帧效果图（headless 截图用），不影响正常浏览 */
+const only = new URLSearchParams(location.search).get('only');
+if (only) {
+  const target = Number(only) - 1;
+  document.querySelectorAll('.frame-wrap').forEach((el, i) => {
+    if (i !== target) el.remove();
+  });
+  document.querySelectorAll('.doc-head, .section-head, .list-note, .specs').forEach((el) => el.remove());
+  document.querySelectorAll('.stage').forEach((el) => {
+    el.style.maxWidth = 'none';
+    el.style.margin = '0';
+    el.style.display = 'block';
+  });
+  document.querySelectorAll('section').forEach((el) => { el.style.margin = '0'; });
+  document.querySelectorAll('.frame-cap').forEach((el) => el.remove());
+  document.body.classList.add('export-mode');
+  document.body.style.padding = '0';
+  document.body.style.margin = '0';
+  document.body.style.overflow = 'hidden';
+  const phone = document.querySelector('.phone');
+  if (phone) { phone.style.margin = '0'; phone.style.boxShadow = 'none'; }
+}
+</script>
+</body>
+</html>

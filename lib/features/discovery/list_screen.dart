@@ -27,7 +27,6 @@ import '../../domain/listing_category_style.dart';
 import '../../router/app_router.dart';
 import '../location/location_center.dart';
 import 'condition_band.dart';
-import 'condition_editor.dart';
 import 'discovery_filter.dart';
 import 'discovery_providers.dart';
 import 'discovery_query.dart';
@@ -36,6 +35,7 @@ import 'filter_panel.dart';
 import 'listing_sort.dart';
 import 'map_dto.dart';
 import 'search_conditions.dart';
+import 'voice_search_sheet.dart';
 
 class ListScreen extends ConsumerWidget {
   const ListScreen({super.key});
@@ -67,12 +67,35 @@ class ListScreen extends ConsumerWidget {
     );
     final pageAsync = ref.watch(searchPagerProvider(query));
 
+    /// 打开底部筛选面板（与地图页同一份 [FilterPanel]）。
+    ///
+    /// 参数：无；返回：无（面板由底部弹层承载）。
+    void openFilter() {
+      showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        // 与地图页浮层一致：不压暗背后内容，用户仍能看见当前结果。
+        barrierColor: Colors.transparent,
+        builder: (sheetContext) => SafeArea(
+          top: false,
+          child: FilterPanel(
+            elevated: false,
+            countLabel: pageAsync.asData == null
+                ? null
+                : '${pageAsync.asData!.value.total} 条结果',
+            onClose: () => Navigator.of(sheetContext).pop(),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: Color(AppColors.background),
       appBar: _buildAppBar(context),
       body: Column(
         children: [
-          // 条件带与地图同款：搜索行 + chip 行，切页后这次搜索继续有效（R19）。
+          // 固定搜索栏 + 动态 chip 栏：与地图页同款，切页后这次搜索继续有效（R19）。
           Padding(
             padding: const EdgeInsets.fromLTRB(
               AppSpacing.md,
@@ -81,16 +104,21 @@ class ListScreen extends ConsumerWidget {
               AppSpacing.xs,
             ),
             child: ConditionBand(
-              countLabel: pageAsync.asData == null ? null : '${pageAsync.asData!.value.total} 条',
-              onEditChip: (chip) => showConditionEditor(context, ref, chip),
-              onAddCondition: () => showAddConditionSheet(context, ref),
-              onRetry: () => ref.read(searchConditionsProvider.notifier).submit(
+              onFilter: openFilter,
+              onVoice: () =>
+                  showVoiceSearchSheet(context, anchorLat: lat, anchorLng: lng),
+              onSubmit: (text) => ref
+                  .read(searchConditionsProvider.notifier)
+                  .submit(text: text, currentLat: lat, currentLng: lng),
+              onRetry: () => ref
+                  .read(searchConditionsProvider.notifier)
+                  .submit(
                     text: ref.read(searchConditionsProvider).queryText,
                     retry: true,
                   ),
             ),
           ),
-          _SortBar(),
+          _SortBar(count: pageAsync.asData?.value.total),
           const Divider(height: 1),
           Expanded(child: _buildBody(ref, pageAsync, query)),
         ],
@@ -128,11 +156,10 @@ class ListScreen extends ConsumerWidget {
     );
   }
 
-  /// 顶部栏（PRD §6.4.3：返回 + 标题 + 地图视图跳转）。
+  /// 顶部栏（PRD §6.4.3：标题 + 地图视图跳转）。
   ///
-  /// 搜索图标未放：搜索框已在地图页顶部常驻，且关键词属共享筛选态 ——
-  /// 本页再放一个入口，两处输入框要同步光标与内容，收益不抵复杂度。
-  /// 当前关键词由摘要行回显（见 [_SortBar] 上方的结果计数行）。
+  /// 搜索栏与筛选入口都在下方常驻（[ConditionBand]），这里不再放搜索/漏斗
+  /// 图标 —— 两处入口会让用户以为有两个搜索框。
   PreferredSizeWidget _buildAppBar(BuildContext context) {
     return AppBar(
       toolbarHeight: 48,
@@ -147,21 +174,6 @@ class ListScreen extends ConsumerWidget {
         ),
       ),
       actions: [
-        IconButton(
-          tooltip: '筛选',
-          icon: Icon(
-            Icons.tune,
-            size: 20,
-            color: Color(AppColors.textPrimary),
-          ),
-          // 面板改为按需展开：常驻面板与地图浮层不同形，是「两套筛选体系」
-          // 观感的来源（KTD7）。
-          onPressed: () => showModalBottomSheet<void>(
-            context: context,
-            isScrollControlled: true,
-            builder: (_) => const SafeArea(child: FilterPanel(elevated: false)),
-          ),
-        ),
         TextButton.icon(
           // go 而非 push：地图与列表是同一层级的两个视图，push 会让返回栈
           // 累积成「地图→列表→地图→列表」，用户连按返回要按很多次才退出。
@@ -185,12 +197,15 @@ class ListScreen extends ConsumerWidget {
   }
 }
 
-/// 排序条（PRD §6.4.3 排序五档）。
+/// 结果行：命中数 + 排序五档。
 ///
-/// 不再显示命中数：条件带右端已有计数，同屏两个数字必然出现「一个 0 一个是 …」
-/// 这类互相打脸的时刻。
+/// 命中数从条件带移到本行：搜索栏/筛选栏只负责条件，结果数字归结果区，
+/// 两处职责不再混在一起。
 class _SortBar extends ConsumerWidget {
-  const _SortBar();
+  const _SortBar({this.count});
+
+  /// 命中数；null 表示取数未完成。
+  final int? count;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -205,7 +220,18 @@ class _SortBar extends ConsumerWidget {
       ),
       child: Row(
         children: [
-          const SizedBox(width: AppSpacing.md),
+          ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 64),
+            child: Text(
+              count == null ? '—' : '$count 条结果',
+              style: TextStyle(
+                fontSize: AppTypeScale.small.size,
+                fontWeight: FontWeight.w600,
+                color: Color(AppColors.textPrimary),
+              ),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.sm),
           Expanded(
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
@@ -546,10 +572,7 @@ class _CategoryBadge extends StatelessWidget {
         borderRadius: BorderRadius.circular(AppRadius.md),
         border: isSupply && accent != null
             ? null
-            : Border.all(
-                color: accent ?? Color(AppColors.border),
-                width: 1.5,
-              ),
+            : Border.all(color: accent ?? Color(AppColors.border), width: 1.5),
       ),
       child: Icon(
         category?.icon ?? Icons.place,

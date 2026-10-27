@@ -80,6 +80,7 @@ class DiscoveryFilter {
     this.radius = SearchRadius.km5,
     this.supplyDemand = const {SupplyDemand.supply, SupplyDemand.demand},
     this.categories = const {},
+    this.leafCategoryIds = const {},
     this.priceMin,
     this.priceMax,
   });
@@ -99,6 +100,13 @@ class DiscoveryFilter {
   /// 用空集表示它是最直接的映射；而供需只有两个胶囊，没有「全部」这一档。
   final Set<ListingCategory> categories;
 
+  /// 精确到三级叶子的分类筛选（三级选择器写入）。
+  ///
+  /// 与 [categories] 互斥：写叶子时清空一级集合，写一级时清空叶子集合。
+  /// 保留两份而不是合并成一份，是因为两类值的语义不同 —— 一级集合的下标
+  /// 不是契约 ID，而叶子集合的每个值都要原样发给 `/map/pins`。
+  final Set<int> leafCategoryIds;
+
   /// 价格下限（元）；null 表示不限下界。
   ///
   /// 价格是**持久条件**：与半径、供需、分类同源，默认不过滤，可被手动设置，
@@ -114,7 +122,7 @@ class DiscoveryFilter {
   bool get hasPrice => priceMin != null || priceMax != null;
 
   /// 是否为全部分类。
-  bool get isAllCategories => categories.isEmpty;
+  bool get isAllCategories => categories.isEmpty && leafCategoryIds.isEmpty;
 
   /// 价格的显示文案：区间 / 单侧上限 / 单侧下限。
   String get priceLabel => switch ((priceMin, priceMax)) {
@@ -132,6 +140,7 @@ class DiscoveryFilter {
     SearchRadius? radius,
     Set<SupplyDemand>? supplyDemand,
     Set<ListingCategory>? categories,
+    Set<int>? leafCategoryIds,
     Object? priceMin = _unset,
     Object? priceMax = _unset,
   }) {
@@ -139,6 +148,7 @@ class DiscoveryFilter {
       radius: radius ?? this.radius,
       supplyDemand: supplyDemand ?? this.supplyDemand,
       categories: categories ?? this.categories,
+      leafCategoryIds: leafCategoryIds ?? this.leafCategoryIds,
       priceMin: identical(priceMin, _unset) ? this.priceMin : priceMin as int?,
       priceMax: identical(priceMax, _unset) ? this.priceMax : priceMax as int?,
     );
@@ -150,6 +160,7 @@ class DiscoveryFilter {
       other.radius == radius &&
       _sameSet(other.supplyDemand, supplyDemand) &&
       _sameSet(other.categories, categories) &&
+      _sameSet(other.leafCategoryIds, leafCategoryIds) &&
       other.priceMin == priceMin &&
       other.priceMax == priceMax;
 
@@ -158,6 +169,7 @@ class DiscoveryFilter {
     radius,
     Object.hashAllUnordered(supplyDemand),
     Object.hashAllUnordered(categories),
+    Object.hashAllUnordered(leafCategoryIds),
     priceMin,
     priceMax,
   );
@@ -190,16 +202,30 @@ class DiscoveryFilterNotifier extends Notifier<DiscoveryFilter> {
     state = state.copyWith(supplyDemand: next);
   }
 
-  /// 切换某个分类的选中状态。
+  /// 切换某个一级分类的选中状态。
   void toggleCategory(ListingCategory value) {
     final next = Set<ListingCategory>.from(state.categories);
     next.contains(value) ? next.remove(value) : next.add(value);
-    state = state.copyWith(categories: next);
+    // 一级集合与叶子集合互斥：写一级即放弃叶子精确选择。
+    state = state.copyWith(categories: next, leafCategoryIds: const {});
   }
 
   /// 回到「全部分类」。
   void clearCategories() {
-    state = state.copyWith(categories: const {});
+    state = state.copyWith(categories: const {}, leafCategoryIds: const {});
+  }
+
+  /// 设置三级叶子集合（三级选择器用）。
+  ///
+  /// 参数：[value] 目标叶子 ID 集合；空集 = 回到全部分类。
+  /// 返回：无。
+  void setLeafCategoryIds(Set<int> value) {
+    state = state.copyWith(
+      leafCategoryIds: {...value},
+      // 叶子与一级互斥；空集时同样把一级清掉，避免删掉最后一枚叶子
+      // 后旧的一级筛选又冒出来。
+      categories: const {},
+    );
   }
 
   /// 设置价格区间；任一侧传 null 即取消该侧过滤。
@@ -221,7 +247,7 @@ class DiscoveryFilterNotifier extends Notifier<DiscoveryFilter> {
   ///
   /// 参数：[value] 目标集合；返回：无。
   void setCategories(Set<ListingCategory> value) {
-    state = state.copyWith(categories: {...value});
+    state = state.copyWith(categories: {...value}, leafCategoryIds: const {});
   }
 
   /// 整体替换（撤销回滚用）。

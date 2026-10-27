@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:zhaoyazhao/domain/listing_category.dart';
 import 'package:zhaoyazhao/features/discovery/condition_slots.dart';
 import 'package:zhaoyazhao/features/discovery/discovery_filter.dart';
+import 'package:zhaoyazhao/features/discovery/discovery_query.dart';
 import 'package:zhaoyazhao/features/discovery/effective_filter.dart';
 import 'package:zhaoyazhao/features/discovery/search_intent.dart';
 
@@ -37,20 +38,47 @@ void main() {
     expect(result.active, isFalse);
     expect(result.radius, SearchRadius.km5);
     expect(result.leafCategoryIds, isNotEmpty);
-    expect(result.chips.map((c) => c.source).toSet(), {ConditionSource.persistent});
+    expect(result.chips.map((c) => c.source).toSet(), {
+      ConditionSource.persistent,
+    });
   });
 
   test('意图覆盖半径与类目，供需回落持久并标为持久', () {
+    final withSupply = persistent.copyWith(
+      supplyDemand: const {SupplyDemand.supply},
+    );
     final result = effectiveFilterOf(
-      persistent,
-      intentOf(radius: '1', leafCategoryIds: const [10101], categoryLabels: const ['房屋']),
+      withSupply,
+      intentOf(
+        radius: '1',
+        leafCategoryIds: const [10101],
+        categoryLabels: const ['房屋'],
+      ),
     );
     expect(result.radius, SearchRadius.km1);
     expect(result.leafCategoryIds, const [10101]);
-    expect(result.supplyDemand, persistent.supplyDemand);
+    expect(result.supplyDemand, withSupply.supplyDemand);
 
-    final supplyChip = result.chips.firstWhere((c) => c.slot == ConditionSlot.supplyDemand);
+    final supplyChip = result.chips.firstWhere(
+      (c) => c.slot == ConditionSlot.supplyDemand,
+    );
     expect(supplyChip.source, ConditionSource.persistent);
+  });
+
+  test('默认条件不产生任何 chip', () {
+    final result = effectiveFilterOf(const DiscoveryFilter(), null);
+    expect(result.chips, isEmpty);
+  });
+
+  test('持久叶子逐枚成 chip，删除时可定位到具体叶子', () {
+    const filter = DiscoveryFilter(leafCategoryIds: {50102, 50101});
+    final result = effectiveFilterOf(filter, null);
+    final chips = result.chips
+        .where((c) => c.slot == ConditionSlot.category)
+        .toList();
+    expect(chips.map((c) => c.label), ['日常保洁', '深度清洁']);
+    expect(chips.map((c) => c.leafCategoryId), [50101, 50102]);
+    expect(result.categoryLabels, ['日常保洁', '深度清洁']);
   });
 
   test('显式清空类目后不再回落持久类目', () {
@@ -58,7 +86,18 @@ void main() {
       persistent,
       intentOf(cleared: const {ConditionSlot.category}),
     );
-    expect(result.leafCategoryIds, isEmpty);
+    // 请求侧必须表达「不限分类」= 全量叶子；空数组会被服务端判 40001
+    // （真机实测：删掉最后一枚语义分类 chip 后整页「加载失败」）。
+    expect(
+      result.leafCategoryIds,
+      leafCategoryIdsFor(const <ListingCategory>{}),
+    );
+    // 同时不能再回落持久筛选里的房屋，也不能长出分类 chip。
+    expect(result.categoryLabels, isEmpty);
+    expect(
+      result.chips.where((c) => c.slot == ConditionSlot.category),
+      isEmpty,
+    );
   });
 
   test('显式清空半径即全城', () {
@@ -71,7 +110,10 @@ void main() {
   });
 
   test('未解析字段只进 unresolved，不产生过滤 chip', () {
-    final intent = SearchIntent(queryText: '那个离地铁近的', unresolvedFields: const ['location']);
+    final intent = SearchIntent(
+      queryText: '那个离地铁近的',
+      unresolvedFields: const ['location'],
+    );
     final result = effectiveFilterOf(persistent, intent);
     expect(result.unresolvedLabels, const ['地点']);
     expect(result.chips.map((c) => c.label), isNot(contains('地点')));

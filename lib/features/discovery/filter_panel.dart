@@ -1,79 +1,263 @@
-/// 筛选面板（PRD §6.4.1 展开态：范围条 + 供需胶囊 + 五大类栏）。
+/// 筛选面板（PRD §6.4.1 展开态 + 2026-10-26 V1.5 三级分类重设计）。
 ///
-/// **为什么放在 `features/discovery/` 而不是 `features/map/`**：PRD §10.1 要求
-/// 列表页复用同一套控件本体（列表页只是外层套白底容器、不做收起）。它先在地图页
-/// 用上，但「谁先用」不是归属依据 —— 放在 map 下会逼着列表页 import 地图模块，
-/// 那是反向依赖；而复制一份则会让两页筛选样式各自漂移。
+/// 面板同时被地图页（底部浮层）与列表页（底部弹层）复用，因此放在
+/// `features/discovery/` 而不是 `features/map/`。两页只共用这一份控件，
+/// 避免「地图一套筛选、列表另一套」的观感分裂。
 library;
+
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../design_tokens.dart';
+import '../../domain/category_tree.dart';
 import '../../domain/listing_category.dart';
 // 色与图标已迁至 style 扩展（详细设计 §10.4.1）。
 import '../../domain/listing_category_style.dart';
 import '../perf/layer_switch_recorder.dart';
+import 'condition_slots.dart';
 import 'discovery_filter.dart';
+import 'discovery_query.dart';
 import 'effective_filter.dart';
 import 'effective_filter_provider.dart';
 import 'search_conditions.dart';
+import 'search_intent.dart';
+
+/// 面板最大高度（逻辑像素）。
+///
+/// 设计稿在 390×844 上是 500；小屏用屏高 72% 兜底，避免底部按钮被顶出屏幕。
+const double _kPanelMaxHeight = 500;
 
 /// 筛选面板本体。
-class FilterPanel extends ConsumerWidget {
+class FilterPanel extends ConsumerStatefulWidget {
   const FilterPanel({
     super.key,
     this.elevated = true,
     this.measureLayerSwitch = false,
+    this.countLabel,
+    this.onClose,
   });
 
-  /// 是否自带白底与阴影。
+  /// 是否自带阴影。
   ///
-  /// 地图页把它浮在底图上，须有底与影才看得清；列表页把它嵌在已是白底的
-  /// 顶部区域内，再叠一层白底加阴影会出现「卡中卡」的视觉断层。
+  /// 地图页浮在底图上需要阴影；列表页放在弹层里，阴影由弹层环境承担。
   final bool elevated;
 
   /// 是否把分类切换计为一次「图层切换」耗时（[140]）。
   ///
-  /// **只有地图页为 true**：轴② 量的是「该分类的 Pin 在地图上完成首屏绘制」的
-  /// 端到端耗时（PRD §6.10），而列表页既没有地图也没有 Pin 渲染，同样的点击
-  /// 在那里等不到渲染终点 —— 会话会永远收不了尾，只能等下一次切换把它记成
-  /// `cancelled`，白占一条假样本。
+  /// **只有地图页为 true**：轴② 量的是分类 Pin 在地图上完成首屏绘制的
+  /// 端到端耗时；列表页没有 Pin 渲染终点，计时会永远收不了尾。
   final bool measureLayerSwitch;
 
+  /// 底部按钮要展示的命中数文案（如 `8 条结果`）；null 表示取数未完成。
+  final String? countLabel;
+
+  /// 底部按钮关闭面板；null 时不渲染底部按钮（测试/嵌入式场景）。
+  final VoidCallback? onClose;
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: Color(AppColors.surface),
-        borderRadius: elevated
-            ? BorderRadius.circular(AppRadius.lg)
-            : BorderRadius.zero,
-        boxShadow: elevated
-            ? const [
-                BoxShadow(
-                  color: Color(0x1F000000),
-                  blurRadius: 12,
-                  offset: Offset(0, 2),
+  ConsumerState<FilterPanel> createState() => _FilterPanelState();
+}
+
+class _FilterPanelState extends ConsumerState<FilterPanel> {
+  /// 重置计数：变化时用新 Key 重建分类区，把三级下钻退回一级。
+  int _resetEpoch = 0;
+
+  /// 重置筛选条件并把分类区退回一级。
+  ///
+  /// 参数：无；返回：无。
+  void _reset() {
+    FocusScope.of(context).unfocus();
+    ref.read(searchConditionsProvider.notifier).resetFilters();
+    setState(() => _resetEpoch++);
+  }
+
+  /// 关闭面板：先让价格输入失焦，再交给外部关闭。
+  ///
+  /// 为什么必须先失焦：价格是「两侧都失焦才提交」（见 `_PriceSectionState._onFocusChange`），
+  /// 用户输入后直接点底部「查看结果」时焦点仍在输入框，不先失焦就会**丢掉刚输入的价格**。
+  ///
+  /// 参数：无；返回：无。
+  void _handleClose() {
+    FocusScope.of(context).unfocus();
+    widget.onClose?.call();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final double height = math.min(
+      _kPanelMaxHeight,
+      MediaQuery.sizeOf(context).height * 0.72,
+    );
+    return SizedBox(
+      height: height,
+      child: Container(
+        decoration: BoxDecoration(
+          color: Color(AppColors.surface),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          boxShadow: widget.elevated
+              ? const [
+                  BoxShadow(
+                    color: Color(0x2A000000),
+                    blurRadius: 20,
+                    offset: Offset(0, -4),
+                  ),
+                ]
+              : null,
+        ),
+        child: Column(
+          children: [
+            const _SheetHandle(),
+            _PanelHeader(onReset: _reset),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg,
+                  AppSpacing.xs,
+                  AppSpacing.lg,
+                  AppSpacing.md,
                 ),
-              ]
-            : null,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const _RadiusRow(),
+                    const SizedBox(height: AppSpacing.md),
+                    const _SupplyDemandRow(),
+                    const SizedBox(height: AppSpacing.lg),
+                    const _PriceSection(),
+                    const SizedBox(height: AppSpacing.lg),
+                    _CategorySection(
+                      key: ValueKey<int>(_resetEpoch),
+                      measureLayerSwitch: widget.measureLayerSwitch,
+                    ),
+                    const SizedBox(height: AppSpacing.lg),
+                    const _LegendRow(),
+                  ],
+                ),
+              ),
+            ),
+            if (widget.onClose != null)
+              _PanelFooter(
+                countLabel: widget.countLabel,
+                onClose: _handleClose,
+              ),
+          ],
+        ),
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
+    );
+  }
+}
+
+/// 顶部拖拽条（视觉提示，不承载手势）。
+class _SheetHandle extends StatelessWidget {
+  const _SheetHandle();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8, bottom: 2),
+      child: Container(
+        width: 36,
+        height: 4,
+        decoration: BoxDecoration(
+          color: const Color(0xFFD1D5DB),
+          borderRadius: BorderRadius.circular(2),
+        ),
+      ),
+    );
+  }
+}
+
+/// 面板标题行：标题 + 重置。
+class _PanelHeader extends StatelessWidget {
+  const _PanelHeader({required this.onReset});
+
+  final VoidCallback onReset;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.xs,
+        AppSpacing.md,
+        AppSpacing.xs,
+      ),
+      child: Row(
         children: [
-          const _RadiusRow(),
-          const SizedBox(height: AppSpacing.md),
-          const _SupplyDemandRow(),
-          const SizedBox(height: AppSpacing.md),
-          const _PriceRow(),
-          const SizedBox(height: AppSpacing.md),
-          _CategoryRow(measureLayerSwitch: measureLayerSwitch),
-          const SizedBox(height: AppSpacing.md),
-          const _LegendRow(),
+          Text(
+            '筛选条件',
+            style: TextStyle(
+              fontSize: AppTypeScale.h3.size,
+              fontWeight: FontWeight.w600,
+              color: Color(AppColors.textPrimary),
+            ),
+          ),
+          const Spacer(),
+          TextButton(
+            onPressed: onReset,
+            style: TextButton.styleFrom(
+              foregroundColor: Color(AppColors.primaryDark),
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+              minimumSize: const Size(44, 44),
+            ),
+            child: Text(
+              '重置',
+              style: TextStyle(fontSize: AppTypeScale.small.size),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 底部结果按钮。
+class _PanelFooter extends StatelessWidget {
+  const _PanelFooter({required this.countLabel, required this.onClose});
+
+  final String? countLabel;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.md,
+        AppSpacing.lg,
+        AppSpacing.md,
+      ),
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(color: Color(AppColors.border))),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              '当前 ${countLabel ?? '—'}',
+              style: TextStyle(
+                fontSize: AppTypeScale.caption.size,
+                color: Color(AppColors.textSecondary),
+              ),
+            ),
+          ),
+          FilledButton(
+            onPressed: onClose,
+            style: FilledButton.styleFrom(
+              backgroundColor: Color(AppColors.primary),
+              foregroundColor: Color(AppColors.surface),
+              shape: const StadiumBorder(),
+              minimumSize: const Size(0, 40),
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+            ),
+            child: Text(
+              countLabel == null ? '查看结果' : '查看 $countLabel',
+              style: TextStyle(fontSize: AppTypeScale.small.size),
+            ),
+          ),
         ],
       ),
     );
@@ -89,7 +273,7 @@ class _RadiusRow extends ConsumerWidget {
     final SearchRadius current = ref.watch(effectiveFilterProvider).radius;
     return Row(
       children: [
-        _RowLabel('范围'),
+        const _RowLabel('范围'),
         Expanded(
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -114,10 +298,12 @@ class _SupplyDemandRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final Set<SupplyDemand> selected = ref.watch(effectiveFilterProvider).supplyDemand;
+    final Set<SupplyDemand> selected = ref
+        .watch(effectiveFilterProvider)
+        .supplyDemand;
     return Row(
       children: [
-        _RowLabel('供需'),
+        const _RowLabel('供需'),
         ...SupplyDemand.values.map((sd) {
           return Padding(
             padding: const EdgeInsets.only(right: AppSpacing.sm),
@@ -135,18 +321,21 @@ class _SupplyDemandRow extends ConsumerWidget {
   }
 }
 
-/// 价格行（R23：持久条件，默认不过滤；上下限可分别设置与清空）。
-///
-/// 为什么放在供需下方：价格与供需同属「这笔交易怎么算」，且都不依赖分类树；
-/// 放在分类下方会让用户在选完分类后还要再回到上半区输入价格。
-class _PriceRow extends ConsumerStatefulWidget {
-  const _PriceRow();
+/// 价格区（R23：持久条件，默认不过滤；滑杆 + 可编辑数值框）。
+class _PriceSection extends ConsumerStatefulWidget {
+  const _PriceSection();
 
   @override
-  ConsumerState<_PriceRow> createState() => _PriceRowState();
+  ConsumerState<_PriceSection> createState() => _PriceSectionState();
 }
 
-class _PriceRowState extends ConsumerState<_PriceRow> {
+class _PriceSectionState extends ConsumerState<_PriceSection> {
+  /// 滑杆上限（元）。超过此值的输入仍可写入，滑杆只显示到上限。
+  static const double _sliderMax = 3000;
+
+  /// 滑杆步数：3000 / 100 = 30 档。
+  static const int _sliderDivisions = 30;
+
   late final TextEditingController _min;
   late final TextEditingController _max;
   late final FocusNode _minFocus;
@@ -163,6 +352,8 @@ class _PriceRowState extends ConsumerState<_PriceRow> {
   }
 
   /// 两个输入都失焦时才提交，避免在两侧之间切换时反复写入。
+  ///
+  /// 参数：无；返回：无。
   void _onFocusChange() {
     if (!_minFocus.hasFocus && !_maxFocus.hasFocus) _commit();
   }
@@ -180,6 +371,8 @@ class _PriceRowState extends ConsumerState<_PriceRow> {
   ///
   /// `digitsOnly` 已挡住非数字，故解析失败只可能是空串（= 不限该侧）。
   /// 区间倒置时不写入：静默交换会让用户输入的数字出现在错的一侧。
+  ///
+  /// 参数：无；返回：无。
   void _commit() {
     final int? min = int.tryParse(_min.text);
     final int? max = int.tryParse(_max.text);
@@ -188,16 +381,36 @@ class _PriceRowState extends ConsumerState<_PriceRow> {
   }
 
   /// 清空两侧，回到「不限」。
+  ///
+  /// 参数：无；返回：无。
   void _clear() {
     _min.clear();
     _max.clear();
     ref.read(searchConditionsProvider.notifier).setPrice();
   }
 
+  /// 把持久价格换算成滑杆值。
+  ///
+  /// 参数：[effective] 当前生效条件；返回：滑杆的起止值（0 与 3000 表示不限）。
+  RangeValues _sliderValues(EffectiveFilter effective) {
+    double start = (effective.priceMin ?? 0)
+        .toDouble()
+        .clamp(0, _sliderMax)
+        .toDouble();
+    double end = (effective.priceMax ?? _sliderMax.toInt())
+        .toDouble()
+        .clamp(0, _sliderMax)
+        .toDouble();
+    if (start > end) {
+      start = 0;
+      end = _sliderMax;
+    }
+    return RangeValues(start, end);
+  }
+
   @override
   Widget build(BuildContext context) {
-    // 价格可能从别处改（chip 改值层、撤销）：面板开着时也要跟上，
-    // 否则输入框会一直显示旧数字，用户以为没改成功。
+    // 价格可能从别处改（chip 删除、撤销）：面板开着时也要跟上。
     ref.listen(
       effectiveFilterProvider.select((e) => (e.priceMin, e.priceMax)),
       (_, next) {
@@ -208,30 +421,136 @@ class _PriceRowState extends ConsumerState<_PriceRow> {
         if (_max.text != maxText) _max.text = maxText;
       },
     );
-    final bool hasPrice = ref.watch(effectiveFilterProvider).hasPrice;
-    return Row(
+    final EffectiveFilter effective = ref.watch(effectiveFilterProvider);
+    final bool hasPrice = effective.hasPrice;
+    final RangeValues values = _sliderValues(effective);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const _RowLabel('价格'),
-        _PriceField(controller: _min, focusNode: _minFocus, hint: '下限', onSubmitted: _commit),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
-          child: Text(
-            '–',
-            style: TextStyle(
-              fontSize: AppTypeScale.small.size,
-              color: Color(AppColors.textSecondary),
+        Row(
+          children: [
+            const _RowLabel('价格'),
+            const Spacer(),
+            GestureDetector(
+              onTap: hasPrice ? _clear : null,
+              behavior: HitTestBehavior.opaque,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.sm,
+                  vertical: AppSpacing.xs,
+                ),
+                child: Text(
+                  '不限',
+                  style: TextStyle(
+                    fontSize: AppTypeScale.small.size,
+                    color: hasPrice
+                        ? Color(AppColors.primary)
+                        : Color(AppColors.textPlaceholder),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        SizedBox(
+          height: 36,
+          child: SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              trackHeight: 3,
+              overlayShape: SliderComponentShape.noOverlay,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
+              rangeThumbShape: const RoundRangeSliderThumbShape(
+                enabledThumbRadius: 8,
+              ),
+            ),
+            child: RangeSlider(
+              values: values,
+              min: 0,
+              max: _sliderMax,
+              divisions: _sliderDivisions,
+              labels: RangeLabels(
+                values.start <= 0 ? '不限' : '¥${values.start.round()}',
+                values.end >= _sliderMax ? '不限' : '¥${values.end.round()}',
+              ),
+              activeColor: hasPrice
+                  ? Color(AppColors.primary)
+                  : Color(AppColors.border),
+              inactiveColor: Color(AppColors.border),
+              onChanged: (next) {
+                final int? min = next.start.round() <= 0
+                    ? null
+                    : next.start.round();
+                final int? max = next.end.round() >= _sliderMax
+                    ? null
+                    : next.end.round();
+                ref
+                    .read(searchConditionsProvider.notifier)
+                    .setPrice(min: min, max: max);
+              },
             ),
           ),
         ),
-        _PriceField(controller: _max, focusNode: _maxFocus, hint: '上限', onSubmitted: _commit),
-        const SizedBox(width: AppSpacing.sm),
-        _PillButton(label: '不限', selected: !hasPrice, onTap: _clear),
+        const SizedBox(height: AppSpacing.xs),
+        Row(
+          children: [
+            Text(
+              '¥',
+              style: TextStyle(
+                fontSize: AppTypeScale.small.size,
+                color: Color(AppColors.textSecondary),
+              ),
+            ),
+            const SizedBox(width: AppSpacing.xs),
+            Expanded(
+              child: _PriceField(
+                controller: _min,
+                focusNode: _minFocus,
+                hint: '不限',
+                onSubmitted: _commit,
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+              child: Text(
+                '—',
+                style: TextStyle(
+                  fontSize: AppTypeScale.small.size,
+                  color: Color(AppColors.textSecondary),
+                ),
+              ),
+            ),
+            Text(
+              '¥',
+              style: TextStyle(
+                fontSize: AppTypeScale.small.size,
+                color: Color(AppColors.textSecondary),
+              ),
+            ),
+            const SizedBox(width: AppSpacing.xs),
+            Expanded(
+              child: _PriceField(
+                controller: _max,
+                focusNode: _maxFocus,
+                hint: '不限',
+                onSubmitted: _commit,
+              ),
+            ),
+            const SizedBox(width: AppSpacing.xs),
+            Text(
+              '元',
+              style: TextStyle(
+                fontSize: AppTypeScale.small.size,
+                color: Color(AppColors.textSecondary),
+              ),
+            ),
+          ],
+        ),
       ],
     );
   }
 }
 
-/// 单侧价格输入框：视觉高度 32 与胶囊对齐，命中区由外层 padding 补足。
+/// 单侧价格输入框：视觉高度 32，命中区由外层 padding 补足。
 class _PriceField extends StatelessWidget {
   const _PriceField({
     required this.controller,
@@ -248,7 +567,6 @@ class _PriceField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 56,
       height: 32,
       child: TextField(
         controller: controller,
@@ -267,9 +585,14 @@ class _PriceField extends StatelessWidget {
           hintText: hint,
           hintStyle: TextStyle(
             fontSize: AppTypeScale.small.size,
-            color: Color(AppColors.textSecondary),
+            color: Color(AppColors.textPlaceholder),
           ),
-          contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+          filled: true,
+          fillColor: Color(AppColors.surface),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.sm,
+            vertical: AppSpacing.sm,
+          ),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(AppRadius.md),
             borderSide: BorderSide(color: Color(AppColors.border)),
@@ -278,82 +601,599 @@ class _PriceField extends StatelessWidget {
             borderRadius: BorderRadius.circular(AppRadius.md),
             borderSide: BorderSide(color: Color(AppColors.border)),
           ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(AppRadius.md),
+            borderSide: BorderSide(color: Color(AppColors.primary)),
+          ),
         ),
       ),
     );
   }
 }
 
-/// 分类行（PRD §6.4.1：全部 工作 房屋 车辆 生活 服务）。
-class _CategoryRow extends ConsumerWidget {
-  const _CategoryRow({required this.measureLayerSwitch});
+/// 分类区：一级大类 → 二级子类 → 三级叶子。
+class _CategorySection extends ConsumerStatefulWidget {
+  const _CategorySection({super.key, required this.measureLayerSwitch});
 
-  /// 是否把本行的点击计为一次图层切换（见 [FilterPanel.measureLayerSwitch]）。
+  /// 是否把本次分类切换计为一次图层切换（见 [FilterPanel.measureLayerSwitch]）。
   final bool measureLayerSwitch;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final EffectiveFilter effective = ref.watch(effectiveFilterProvider);
-    final notifier = ref.read(searchConditionsProvider.notifier);
+  ConsumerState<_CategorySection> createState() => _CategorySectionState();
+}
 
-    /// 记一次图层切换的**起点**（[140] / PRD §6.10）：胶囊 `onTap` 即「手指离开
-    /// 分类 Tab」的那一刻，与口径起点一致。
-    void markSwitchStart() {
-      if (measureLayerSwitch) ref.read(layerSwitchRecorderProvider).start();
+class _CategorySectionState extends ConsumerState<_CategorySection> {
+  /// 当前下钻的一级 ID；null 表示停在一级。
+  int? _topId;
+
+  /// 当前下钻的二级 ID；null 表示停在二级列表（或一级）。
+  int? _midId;
+
+  /// 当前一级节点。
+  CategoryNode? get _top => _topId == null
+      ? null
+      : categoryTree.where((n) => n.id == _topId).firstOrNull;
+
+  /// 当前二级节点。
+  CategoryNode? get _mid => _midId == null
+      ? null
+      : _top?.children.where((n) => n.id == _midId).firstOrNull;
+
+  /// 当前显式选中的叶子集合。
+  ///
+  /// **不能直接用 `EffectiveFilter.leafCategoryIds`**：投影在「全部分类」时会
+  /// 把它展开成全部 48 个叶子供请求使用，直接拿来当选中态会让面板一打开就
+  /// 显示所有分类选中。这里按来源还原：
+  /// 意图类目（未显式清空）→ 持久叶子 → 持久一级展开 → 空集（全部分类）。
+  ///
+  /// 参数：[intent] 当前搜索槽位；[filter] 持久筛选。
+  /// 返回：显式选中的叶子 ID 集合。
+  Set<int> _explicitSelected(SearchIntent? intent, DiscoveryFilter filter) {
+    if (intent != null &&
+        !intent.isCleared(ConditionSlot.category) &&
+        intent.leafCategoryIds.isNotEmpty) {
+      return intent.leafCategoryIds.toSet();
     }
+    if (filter.leafCategoryIds.isNotEmpty) {
+      return filter.leafCategoryIds.toSet();
+    }
+    if (filter.categories.isNotEmpty) {
+      return leafCategoryIdsFor(filter.categories).toSet();
+    }
+    return <int>{};
+  }
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
+  /// 读取当前显式选中集（动作回调用）。
+  ///
+  /// 参数：无；返回：显式选中的叶子 ID 集合。
+  Set<int> _currentSelected() => _explicitSelected(
+    ref.read(searchIntentProvider).intent,
+    ref.read(discoveryFilterProvider),
+  );
+
+  /// 记一次图层切换的起点。
+  ///
+  /// 参数：无；返回：无。
+  void _markSwitchStart() {
+    if (widget.measureLayerSwitch) {
+      ref.read(layerSwitchRecorderProvider).start();
+    }
+  }
+
+  /// 一级大类点选（整类 / 取消整类）。
+  ///
+  /// 参数：[category] 目标一级大类；返回：无。
+  void _selectTop(ListingCategory category) {
+    _markSwitchStart();
+    ref.read(searchConditionsProvider.notifier).toggleCategory(category);
+  }
+
+  /// 回到全部分类。
+  ///
+  /// 参数：无；返回：无。
+  void _selectAll() {
+    if (_currentSelected().isEmpty) return;
+    _markSwitchStart();
+    ref.read(searchConditionsProvider.notifier).clearCategories();
+  }
+
+  /// 选中某个一级下的全部叶子（二级的「全部服务」）。
+  ///
+  /// 参数：[top] 一级节点；返回：无。
+  void _selectWholeTop(CategoryNode top) {
+    final ListingCategory? category = top.topCategory;
+    if (category == null) return;
+    final DiscoveryFilter filter = ref.read(discoveryFilterProvider);
+    final bool already =
+        filter.categories.length == 1 &&
+        filter.categories.contains(category) &&
+        filter.leafCategoryIds.isEmpty;
+    if (already) return;
+    _markSwitchStart();
+    ref.read(searchConditionsProvider.notifier).setCategories({category});
+  }
+
+  /// 切换一组叶子的选中状态（二级 chip / 三级「全部」）。
+  ///
+  /// 参数：[ids] 目标叶子 ID 集合；返回：无。
+  void _toggleGroup(Iterable<int> ids) {
+    final Set<int> target = ids.toSet();
+    if (target.isEmpty) return;
+    final Set<int> current = _currentSelected();
+    final bool allSelected = target.every(current.contains);
+    final Set<int> next = {...current};
+    if (allSelected) {
+      next.removeAll(target);
+    } else {
+      next.addAll(target);
+    }
+    if (_sameSet(next, current)) return;
+    _markSwitchStart();
+    ref.read(searchConditionsProvider.notifier).setLeafCategories(next);
+  }
+
+  /// 切换单个叶子的选中状态。
+  ///
+  /// 参数：[leafId] 叶子 ID；返回：无。
+  void _toggleLeaf(int leafId) {
+    final Set<int> current = _currentSelected();
+    current.contains(leafId) ? current.remove(leafId) : current.add(leafId);
+    _markSwitchStart();
+    ref.read(searchConditionsProvider.notifier).setLeafCategories(current);
+  }
+
+  /// 进入某个一级的二级列表。
+  ///
+  /// 参数：[top] 一级节点；返回：无。
+  void _drillTop(CategoryNode top) {
+    setState(() {
+      _topId = top.id;
+      _midId = null;
+    });
+  }
+
+  /// 进入某个二级的三级叶子列表。
+  ///
+  /// 参数：[mid] 二级节点；返回：无。
+  void _drillMid(CategoryNode mid) {
+    setState(() => _midId = mid.id);
+  }
+
+  /// 返回上一级。
+  ///
+  /// 参数：无；返回：无。
+  void _back() {
+    setState(() {
+      if (_midId != null) {
+        _midId = null;
+      } else {
+        _topId = null;
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final SearchIntent? intent = ref.watch(searchIntentProvider).intent;
+    final DiscoveryFilter filter = ref.watch(discoveryFilterProvider);
+    final Set<int> selected = _explicitSelected(intent, filter);
+    final CategoryNode? top = _top;
+    final CategoryNode? mid = _mid;
+
+    if (top == null) {
+      return _buildLevelOne(selected);
+    }
+    if (mid == null) {
+      return _buildLevelTwo(top, selected);
+    }
+    return _buildLevelThree(top, mid, selected);
+  }
+
+  /// 一级：全部 + 五大类。
+  ///
+  /// 参数：[selected] 显式选中的叶子集合；返回：一级分类区。
+  Widget _buildLevelOne(Set<int> selected) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _RowLabel('分类'),
+        Text(
+          '分类',
+          style: TextStyle(
+            fontSize: AppTypeScale.small.size,
+            color: Color(AppColors.textSecondary),
+          ),
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        _grid([
+          _CategoryChip(
+            label: '全部',
+            selected: selected.isEmpty,
+            color: Color(AppColors.primary),
+            onTap: _selectAll,
+          ),
+          for (final ListingCategory category in ListingCategory.values)
+            _buildTopChip(category, selected),
+        ], columns: 3),
+      ],
+    );
+  }
+
+  /// 构建一级大类 chip（含下钻箭头）。
+  ///
+  /// 参数：[category] 一级大类；[selected] 显式选中的叶子集合。
+  /// 返回：一级 chip。
+  Widget _buildTopChip(ListingCategory category, Set<int> selected) {
+    final CategoryNode? node = categoryTree
+        .where((n) => n.topCategory == category)
+        .firstOrNull;
+    return _CategoryChip(
+      label: category.label,
+      selected: node != null && _anySelected(_leavesOf(node), selected),
+      color: category.deepColor,
+      dotColor: category.color,
+      onTap: () => _selectTop(category),
+      onDrill: node == null ? null : () => _drillTop(node),
+    );
+  }
+
+  /// 二级：全部 + 该一级下的二级子类。
+  ///
+  /// 参数：[top] 一级节点；[selected] 当前叶子集合。
+  /// 返回：二级分类区。
+  Widget _buildLevelTwo(CategoryNode top, Set<int> selected) {
+    final Color color = top.topCategory?.deepColor ?? Color(AppColors.primary);
+    final Color dotColor = top.topCategory?.color ?? Color(AppColors.primary);
+    final List<int> topLeaves = _leavesOf(top);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _breadcrumb(
+          top: top.name,
+          current: '选择子类',
+          strongCurrent: false,
+          onBack: _back,
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        _grid([
+          _CategoryChip(
+            label: '全部${top.name}',
+            selected: _allSelected(topLeaves, selected),
+            color: color,
+            onTap: () => _selectWholeTop(top),
+          ),
+          for (final CategoryNode mid in top.children)
+            _CategoryChip(
+              label: mid.name,
+              selected: _anySelected(_leavesOf(mid), selected),
+              color: color,
+              dotColor: dotColor,
+              dense: true,
+              onTap: () => _toggleGroup(_leavesOf(mid)),
+              onDrill: () => _drillMid(mid),
+            ),
+        ], columns: 3),
+      ],
+    );
+  }
+
+  /// 三级：叶子多选。
+  ///
+  /// 参数：[top] 一级节点；[mid] 二级节点；[selected] 当前叶子集合。
+  /// 返回：三级分类区。
+  Widget _buildLevelThree(
+    CategoryNode top,
+    CategoryNode mid,
+    Set<int> selected,
+  ) {
+    final Color color = top.topCategory?.deepColor ?? Color(AppColors.primary);
+    final List<int> leaves = _leavesOf(mid);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _breadcrumb(
+          top: top.name,
+          current: mid.name,
+          strongCurrent: true,
+          onBack: _back,
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        Wrap(
+          spacing: AppSpacing.sm,
+          runSpacing: AppSpacing.sm,
+          children: [
+            _LeafChip(
+              label: '全部',
+              selected: _allSelected(leaves, selected),
+              color: Color(AppColors.primary),
+              onTap: () => _toggleGroup(leaves),
+            ),
+            for (final CategoryNode leaf in mid.children)
+              _LeafChip(
+                label: leaf.name,
+                selected: selected.contains(leaf.id),
+                color: color,
+                onTap: () => _toggleLeaf(leaf.id),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  /// 分类面包屑（一级 › 当前级 + 返回）。
+  ///
+  /// 参数：[top] 一级名；[current] 当前级文案；[strongCurrent] 是否加粗当前级；
+  /// [onBack] 返回回调。
+  /// 返回：面包屑控件。
+  Widget _breadcrumb({
+    required String top,
+    required String current,
+    required bool strongCurrent,
+    required VoidCallback onBack,
+  }) {
+    return Row(
+      children: [
+        Text(
+          top,
+          style: TextStyle(
+            fontSize: AppTypeScale.small.size,
+            color: Color(AppColors.textSecondary),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
+          child: Text(
+            '›',
+            style: TextStyle(
+              fontSize: AppTypeScale.small.size,
+              color: Color(AppColors.textPlaceholder),
+            ),
+          ),
+        ),
         Expanded(
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                _PillButton(
-                  label: '全部',
-                  selected: effective.isAllCategories,
-                  // 已是「全部」时再点不改变筛选态 —— 不算一次切换，也不能开新会话：
-                  // 否则会记下一条「零耗时」的假样本，把 P95 白拉低。
-                  onTap: () {
-                    if (effective.isAllCategories) return;
-                    markSwitchStart();
-                    notifier.clearCategories();
-                  },
-                ),
-                ...ListingCategory.values.map((c) {
-                  final on = effective.includesCategory(c);
-                  return Padding(
-                    padding: const EdgeInsets.only(left: AppSpacing.sm),
-                    child: _PillButton(
-                      label: c.label,
-                      selected: on,
-                      // 选中态用 deepColor 作底：分类原色配白字不过 AA
-                      // （design_tokens.dart:74）。
-                      selectedColor: c.deepColor,
-                      icon: c.icon,
-                      // 点已选中的分类会取消选中 —— 筛选态同样改变，仍是一次切换。
-                      onTap: () {
-                        markSwitchStart();
-                        notifier.toggleCategory(c);
-                      },
-                    ),
-                  );
-                }),
-              ],
+          child: Text(
+            current,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: AppTypeScale.small.size,
+              fontWeight: strongCurrent ? FontWeight.w600 : FontWeight.w400,
+              color: strongCurrent
+                  ? Color(AppColors.textPrimary)
+                  : Color(AppColors.textSecondary),
+            ),
+          ),
+        ),
+        GestureDetector(
+          onTap: onBack,
+          behavior: HitTestBehavior.opaque,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.sm,
+              vertical: AppSpacing.xs,
+            ),
+            child: Text(
+              '‹ 返回',
+              style: TextStyle(
+                fontSize: AppTypeScale.caption.size,
+                color: Color(AppColors.primary),
+              ),
             ),
           ),
         ),
       ],
     );
   }
+
+  /// 等宽网格（用于一级/二级分类）。
+  ///
+  /// 参数：[items] 子项；[columns] 列数；返回：按行排好的网格。
+  Widget _grid(List<Widget> items, {required int columns}) {
+    final List<Widget> rows = [];
+    for (int start = 0; start < items.length; start += columns) {
+      final List<Widget> cells = [];
+      for (int offset = 0; offset < columns; offset++) {
+        final int index = start + offset;
+        cells.add(
+          Expanded(
+            child: index < items.length ? items[index] : const SizedBox(),
+          ),
+        );
+        if (offset < columns - 1) {
+          cells.add(const SizedBox(width: 6));
+        }
+      }
+      rows.add(Row(children: cells));
+      if (start + columns < items.length) {
+        rows.add(const SizedBox(height: 6));
+      }
+    }
+    return Column(children: rows);
+  }
+
+  /// 某节点下的全部叶子 ID。
+  ///
+  /// 参数：[node] 一级或二级节点；返回：叶子 ID 列表。
+  List<int> _leavesOf(CategoryNode node) => [
+    for (final CategoryNode mid in node.children)
+      for (final CategoryNode leaf in mid.children) leaf.id,
+  ];
+
+  /// 目标叶子是否全部选中。
+  ///
+  /// 参数：[ids] 目标集合；[selected] 当前集合；返回：是否全选。
+  bool _allSelected(Iterable<int> ids, Set<int> selected) {
+    final List<int> list = ids.toList();
+    return list.isNotEmpty && list.every(selected.contains);
+  }
+
+  /// 目标叶子是否有任一选中。
+  ///
+  /// 参数：[ids] 目标集合；[selected] 当前集合；返回：是否任一选中。
+  bool _anySelected(Iterable<int> ids, Set<int> selected) =>
+      ids.any(selected.contains);
+
+  /// 集合值相等。
+  ///
+  /// 参数：[a]/[b] 两个集合；返回：内容是否相同。
+  bool _sameSet(Set<int> a, Set<int> b) =>
+      a.length == b.length && a.containsAll(b);
+}
+
+/// 分类胶囊（可带分类色圆点与下钻箭头）。
+class _CategoryChip extends StatelessWidget {
+  const _CategoryChip({
+    required this.label,
+    required this.selected,
+    required this.color,
+    required this.onTap,
+    this.dotColor,
+    this.onDrill,
+    this.dense = false,
+  });
+
+  final String label;
+  final bool selected;
+  final Color color;
+  final VoidCallback onTap;
+  final Color? dotColor;
+  final VoidCallback? onDrill;
+
+  /// 紧凑档：二级 6 项用三列时缩小字号与内边距。
+  final bool dense;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color foreground = selected
+        ? Color(AppColors.surface)
+        : Color(AppColors.textPrimary);
+    final double fontSize = dense ? 10.5 : 11.5;
+    return Container(
+      height: 36,
+      margin: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
+      decoration: BoxDecoration(
+        color: selected ? color : const Color(0xFFF2F4F1),
+        borderRadius: BorderRadius.circular(AppRadius.full),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: GestureDetector(
+              onTap: onTap,
+              behavior: HitTestBehavior.opaque,
+              child: Padding(
+                padding: EdgeInsets.only(left: dense ? 6 : 8, right: 2),
+                child: dotColor == null
+                    ? Center(
+                        child: Text(
+                          label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: fontSize,
+                            fontWeight: selected
+                                ? FontWeight.w600
+                                : FontWeight.w400,
+                            color: foreground,
+                          ),
+                        ),
+                      )
+                    : Row(
+                        children: [
+                          Container(
+                            width: 6,
+                            height: 6,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: selected
+                                  ? Color(AppColors.surface)
+                                  : dotColor,
+                            ),
+                          ),
+                          SizedBox(width: dense ? 4 : 5),
+                          Expanded(
+                            child: Text(
+                              label,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: fontSize,
+                                fontWeight: selected
+                                    ? FontWeight.w600
+                                    : FontWeight.w400,
+                                color: foreground,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
+            ),
+          ),
+          if (onDrill != null)
+            GestureDetector(
+              onTap: onDrill,
+              behavior: HitTestBehavior.opaque,
+              child: SizedBox(
+                width: dense ? 20 : 24,
+                height: 36,
+                child: Icon(
+                  Icons.chevron_right,
+                  size: dense ? 15 : 16,
+                  color: selected
+                      ? Color(AppColors.surface)
+                      : Color(AppColors.textSecondary).withValues(alpha: .55),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 三级叶子胶囊（可多选）。
+class _LeafChip extends StatelessWidget {
+  const _LeafChip({
+    required this.label,
+    required this.selected,
+    required this.color,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        height: 32,
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+        decoration: BoxDecoration(
+          color: selected ? color : const Color(0xFFF2F4F1),
+          borderRadius: BorderRadius.circular(AppRadius.full),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 11.5,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+            color: selected
+                ? Color(AppColors.surface)
+                : Color(AppColors.textPrimary),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// 图例（PRD §6.4.1：实心＝资源，空心+?＝需求）。
-///
-/// 面板内常驻而非独立浮层：PRD 要求图例「不再常驻在地图上」，但它在面板展开时
-/// 出现是合理的 —— 用户正在筛供需，此刻恰是最需要知道两者视觉差别的时候。
 class _LegendRow extends StatelessWidget {
   const _LegendRow();
 
@@ -361,7 +1201,7 @@ class _LegendRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        _RowLabel('图例'),
+        const _RowLabel('图例'),
         _LegendItem(isSupply: true, text: '实心 = 资源'),
         const SizedBox(width: AppSpacing.md),
         _LegendItem(isSupply: false, text: '空心+? = 需求'),
@@ -370,6 +1210,7 @@ class _LegendRow extends StatelessWidget {
   }
 }
 
+/// 单条图例。
 class _LegendItem extends StatelessWidget {
   const _LegendItem({required this.isSupply, required this.text});
 
@@ -378,7 +1219,7 @@ class _LegendItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = Color(AppColors.textSecondary);
+    final Color color = Color(AppColors.textSecondary);
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -401,7 +1242,7 @@ class _LegendItem extends StatelessWidget {
   }
 }
 
-/// 行首标签。固定宽度让四行的控件左边缘对齐。
+/// 行首标签。固定宽度让各行的控件左边缘对齐。
 class _RowLabel extends StatelessWidget {
   const _RowLabel(this.text);
 
@@ -428,25 +1269,18 @@ class _PillButton extends StatelessWidget {
     required this.label,
     required this.selected,
     required this.onTap,
-    this.selectedColor,
-    this.icon,
   });
 
   final String label;
   final bool selected;
   final VoidCallback onTap;
 
-  /// 选中态底色。为 null 时用品牌主色。
-  final Color? selectedColor;
-
-  final IconData? icon;
-
   @override
   Widget build(BuildContext context) {
-    final bg = selected
-        ? (selectedColor ?? Color(AppColors.primary))
+    final Color bg = selected
+        ? Color(AppColors.primary)
         : Color(AppColors.background);
-    final fg = selected
+    final Color fg = selected
         ? Color(AppColors.surface)
         : Color(AppColors.textPrimary);
 
@@ -464,18 +1298,11 @@ class _PillButton extends StatelessWidget {
             color: bg,
             borderRadius: BorderRadius.circular(AppRadius.full),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (icon != null) ...[
-                Icon(icon, size: 14, color: fg),
-                const SizedBox(width: AppSpacing.xs),
-              ],
-              Text(
-                label,
-                style: TextStyle(fontSize: AppTypeScale.small.size, color: fg),
-              ),
-            ],
+          child: Center(
+            child: Text(
+              label,
+              style: TextStyle(fontSize: AppTypeScale.small.size, color: fg),
+            ),
           ),
         ),
       ),
