@@ -20,6 +20,36 @@ import 'package:zhaoyazhao/router/app_router.dart';
 import '../../support/fake_repositories.dart';
 import '../../support/post_fixtures.dart';
 
+/// 取页面上所有富文本副标题的纯文本（图标以 WidgetSpan 占位符出现）。
+///
+/// 参数：[tester] 测试器。
+/// 返回：[List<String>] 各富文本的 plain text。
+List<String> _subtitleTexts(WidgetTester tester) => tester
+    .widgetList<Text>(find.byType(Text))
+    .where((text) => text.textSpan != null)
+    .map((text) => text.textSpan!.toPlainText())
+    .toList();
+
+/// 取 `myPostsPayload()` 的第 [index] 条列表项（可变副本）。
+///
+/// 参数：[index] 条目下标。
+/// 返回：[Map] 列表项 payload。
+Map<String, Object?> _itemOf(int index) => {
+  ...(((myPostsPayload()['items'] as List<Object?>)[index])
+      as Map<String, Object?>),
+};
+
+/// 用给定列表项构造 `GET /posts/mine` 响应 DTO。
+///
+/// 参数：[items] 列表项 payload。
+/// 返回：[MyPostsPageDto]。
+MyPostsPageDto _pageOf(List<Map<String, Object?>> items) =>
+    MyPostsPageDto.fromJson({
+      ...myPostsPayload(),
+      'items': items,
+      'total': items.length,
+    });
+
 void main() {
   late FakePostRepository repo;
 
@@ -206,5 +236,78 @@ void main() {
 
     expect(find.textContaining('没有匹配'), findsOneWidget);
     expect(repo.mineFetchCount, before, reason: '本地筛选不得发请求');
+  });
+
+  testWidgets('非草稿卡片：浏览 42 与收藏 3 以图标 + 数字出现（R7）',
+      (tester) async {
+    await pumpScreen(tester);
+
+    expect(find.byIcon(Icons.visibility_outlined), findsOneWidget);
+    // 1001 收藏 3、1002 收藏 0：两张卡都给星标。
+    expect(find.byIcon(Icons.star_border), findsNWidgets(2));
+    final subtitles = _subtitleTexts(tester);
+    expect(
+      subtitles.any((text) => text.contains('42') && text.contains('3')),
+      isTrue,
+      reason: '实收：$subtitles',
+    );
+  });
+
+  testWidgets('浏览为 null：只出现收藏组（防御分支，不渲染成 0）',
+      (tester) async {
+    repo.mineToReturn = _pageOf([_itemOf(1)]);
+    await pumpScreen(tester);
+
+    expect(find.byIcon(Icons.visibility_outlined), findsNothing);
+    expect(find.byIcon(Icons.star_border), findsOneWidget);
+    expect(
+      _subtitleTexts(tester).any((text) => text.contains(' 0')),
+      isTrue,
+      reason: '收藏 0 要显示「星形图标 + 0」',
+    );
+  });
+
+  testWidgets('已下架卡片：与在架卡同样显示计数（R9 三页签一致）',
+      (tester) async {
+    repo.mineToReturn = _pageOf([
+      {..._itemOf(1), 'view_count': 20, 'favorite_count': 5},
+    ]);
+    await pumpScreen(tester);
+
+    expect(find.byIcon(Icons.visibility_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.star_border), findsOneWidget);
+    final subtitles = _subtitleTexts(tester);
+    expect(
+      subtitles.any((text) => text.contains('20') && text.contains('5')),
+      isTrue,
+      reason: '实收：$subtitles',
+    );
+  });
+
+  testWidgets('草稿卡片：不出现浏览/收藏计数', (tester) async {
+    await const DraftStore().save(
+      DraftSnapshot.of(const PublishFormState(title: '无计数的草稿')),
+    );
+
+    await pumpScreen(tester);
+    await tester.tap(find.text('草稿'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('无计数的草稿'), findsOneWidget);
+    expect(find.byIcon(Icons.visibility_outlined), findsNothing);
+    expect(find.byIcon(Icons.star_border), findsNothing);
+  });
+
+  testWidgets('超长计数：副标题单行省略，不撑高卡片', (tester) async {
+    repo.mineToReturn = _pageOf([
+      {..._itemOf(0), 'view_count': 1234567890123, 'favorite_count': 987654321},
+    ]);
+    await pumpScreen(tester);
+
+    final subtitle = tester
+        .widgetList<Text>(find.byType(Text))
+        .firstWhere((text) => text.textSpan != null);
+    expect(subtitle.maxLines, 1);
+    expect(subtitle.overflow, TextOverflow.ellipsis);
   });
 }

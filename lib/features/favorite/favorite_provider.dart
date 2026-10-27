@@ -12,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/network/api_exception.dart';
 import 'favorite_dto.dart';
 import 'favorite_repository.dart';
+import 'favorite_state.dart';
 
 /// 收藏页签（设计稿 `my-favorite-screen` 的三格：资源/需求/全部）。
 enum FavoriteTab {
@@ -165,6 +166,9 @@ class FavoritesNotifier extends Notifier<AsyncValue<FavoritesData>> {
   /// 抛出：[ApiException] 由页面提示。
   Future<void> remove(int postId) async {
     await ref.read(favoriteRepositoryProvider).removeFavorite(postId);
+    // 同步共享收藏态：详情页据此立即把星标恢复空心（R6），
+    // 不依赖详情接口二次拉取。
+    ref.read(favoriteStateProvider.notifier).mark(postId, false);
     await refresh();
   }
 }

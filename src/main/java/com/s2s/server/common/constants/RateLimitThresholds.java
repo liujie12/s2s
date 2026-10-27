@@ -139,6 +139,17 @@ public final class RateLimitThresholds {
     /** 微信登录·IP 维 1 小时窗阈值（B2-6a）。依据同上（§5.1.1 门禁①）。 */
     public static final int WECHAT_LOGIN_IP_LIMIT_PER_HOUR = 20;
 
+    // --- 行 15–17：浏览上报（账号 / 设备 / IP）→ 42907 ------------------------------
+
+    /** 浏览上报·账号维度 1 自然日阈值（次）。详情每次成功渲染上报一次；200/d 覆盖重度浏览。 */
+    public static final int VIEW_REPORT_UID_LIMIT_PER_DAY = 200;
+
+    /** 浏览上报·设备维度 1 自然日阈值。沿用未登录详情设备档 30/d（不新造数字）。 */
+    public static final int VIEW_REPORT_DEV_LIMIT_PER_DAY = GUEST_DETAIL_DEV_LIMIT_PER_DAY;
+
+    /** 浏览上报·IP 维度 1 自然日阈值。沿用未登录详情 IP 档 100/d。 */
+    public static final int VIEW_REPORT_IP_LIMIT_PER_DAY = GUEST_DETAIL_IP_LIMIT_PER_DAY;
+
     // --- 超限码（引用 ErrorCode 唯一口径源，PRD §12.5）-----------------------------
 
     /** 短信发送超限码（详设 §3.4 第 1–2 行）。{@code 42905}，needRetryAfter。 */
@@ -168,4 +179,8 @@ public final class RateLimitThresholds {
     /** 微信登录超限码（详设 §3.4 第 12–13 行，设备/IP 两维同码）。{@code 42905}，
      * needRetryAfter；沿用短信频控码（架构 §5.1.1 门禁①明定「不新造码」）。 */
     public static final ErrorCode WECHAT_LOGIN_OVERFLOW = ErrorCode.SMS_LIMIT;
+
+    /** 浏览上报超限码（新增行 15–17，账号/设备/IP 三维同码）。{@code 42907}，
+     * needRetryAfter；复用未登录详情的限频码，不新增错误码。 */
+    public static final ErrorCode VIEW_REPORT_OVERFLOW = ErrorCode.GUEST_DETAIL_LIMIT;
 }

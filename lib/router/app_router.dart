@@ -190,6 +190,11 @@ final List<RouteBase> _routes = [
     // 与「已下架」是同一种用户可理解的结果；抛异常只会白屏。
     builder: (context, state) => DetailScreen(
       listingId: int.tryParse(state.pathParameters['id'] ?? '') ?? -1,
+      // extra 传 [DetailScreenArgs]（是否来自「我的收藏」+ 列表已加载的收藏态，
+      // KTD4）；允许为空是为了让深链可被直接访问，空即「未知来源」。
+      args: state.extra is DetailScreenArgs
+          ? state.extra as DetailScreenArgs
+          : const DetailScreenArgs(),
     ),
   ),
   GoRoute(

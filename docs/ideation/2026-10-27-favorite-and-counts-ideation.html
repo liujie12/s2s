@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>构想：详情页收藏与在架计数（2026-10-27）</title>
+<style>
+  :root{
+    --primary:#0B7C8C; --primary-soft:#E6F6F8; --primary-dark:#075E6B;
+    --accent:#B4531A; --accent-soft:#FDF1E7;
+    --success:#22C55E; --success-soft:#EAF9F0; --success-text:#15803D;
+    --warning:#F59E0B; --warning-soft:#FEF6E7; --warning-text:#B45309;
+    --error:#EF4444; --error-soft:#FDECEC; --error-text:#B91C1C;
+    --text:#1F2937; --text-2:#6B7280; --text-3:#9CA3AF;
+    --border:#E5E7EB; --bg:#F8FAFC; --surface:#FFFFFF;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    font-size:15px; line-height:1.75; -webkit-font-smoothing:antialiased;
+  }
+  .page{max-width:900px; margin:0 auto; padding:48px 28px 72px}
+  header.doc-head{margin-bottom:28px}
+  .eyebrow{font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--primary); font-weight:700}
+  h1{font-size:30px; line-height:1.3; margin:10px 0 14px; font-weight:700; letter-spacing:-.01em}
+  .meta{display:flex; flex-wrap:wrap; gap:8px 18px; font-size:12.5px; color:var(--text-2)}
+  .meta b{color:var(--text); font-weight:600}
+  .stats{display:flex; flex-wrap:wrap; gap:10px; margin:26px 0 8px}
+  .stat{background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:10px 14px; min-width:120px}
+  .stat .n{font-size:20px; font-weight:700; color:var(--primary)}
+  .stat .l{font-size:11.5px; color:var(--text-2)}
+  nav.toc{background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:14px 18px; margin:22px 0 34px}
+  nav.toc .t{font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--text-3); font-weight:700; margin-bottom:6px}
+  nav.toc ol{margin:0; padding-left:18px}
+  nav.toc li{font-size:13.5px}
+  nav.toc a{color:var(--primary-dark); text-decoration:none}
+  nav.toc a:hover{text-decoration:underline}
+  section{margin:44px 0}
+  h2{font-size:20px; margin:0 0 6px; font-weight:700; padding-bottom:8px; border-bottom:2px solid var(--primary)}
+  h2 .sub{font-size:12px; color:var(--text-2); font-weight:400; margin-left:8px}
+  h3{font-size:16px; margin:26px 0 8px; font-weight:700}
+  p{margin:10px 0; max-width:78ch}
+  ul,ol{max-width:78ch}
+  code{background:#F1F5F9; border:1px solid #E2E8F0; border-radius:4px; padding:1px 5px; font-size:12.5px;
+       font-family:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace; color:#334155}
+  .card{background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:22px 24px; margin:18px 0}
+  .card h3{margin-top:0; display:flex; align-items:baseline; gap:10px; flex-wrap:wrap}
+  .idchip{display:inline-block; font-size:11.5px; font-weight:700; letter-spacing:.04em;
+          background:var(--primary-soft); color:var(--primary-dark); border-radius:6px; padding:2px 8px}
+  .chips{display:flex; flex-wrap:wrap; gap:6px; margin:8px 0 14px}
+  .chip{font-size:11.5px; border-radius:999px; padding:2px 10px; border:1px solid transparent; white-space:nowrap}
+  .chip.axis{background:#EEF2FF; color:#3730A3}
+  .chip.conf-h{background:var(--success-soft); color:var(--success-text)}
+  .chip.conf-m{background:var(--warning-soft); color:var(--warning-text)}
+  .chip.cx{background:#F1F5F9; color:#475569}
+  dl{margin:0}
+  dt{font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--text-3); font-weight:700; margin-top:14px}
+  dd{margin:4px 0 0}
+  .basis{border-left:3px solid var(--primary); padding:2px 0 2px 12px; color:#334155; font-size:14px}
+  .basis .tag{font-weight:700; color:var(--primary-dark); margin-right:4px}
+  table{width:100%; border-collapse:collapse; margin:14px 0; font-size:13.5px; background:var(--surface)}
+  th,td{border:1px solid var(--border); padding:8px 10px; text-align:left; vertical-align:top}
+  th{background:#F8FAFC; font-size:12px; letter-spacing:.04em; color:var(--text-2); font-weight:700}
+  td code{font-size:12px}
+  .callout{background:var(--warning-soft); border-radius:12px; padding:16px 18px; margin:16px 0}
+  .callout .lbl{font-size:11px; letter-spacing:.1em; text-transform:uppercase; font-weight:700; color:var(--warning-text); margin-bottom:4px}
+  .figure{background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:16px; margin:16px 0}
+  .figure figcaption{font-size:12px; color:var(--text-2); margin-top:6px}
+  footer.composition-signal{margin-top:56px; padding-top:16px; border-top:1px solid var(--border);
+    font-size:12px; color:var(--text-3)}
+  @media (max-width:620px){ h1{font-size:24px} .page{padding:28px 16px 56px} .card{padding:18px} }
+</style>
+</head>
+<body>
+<div class="page">
+
+<header class="doc-head">
+  <div class="eyebrow">Ideation · 找呀找</div>
+  <h1>详情页收藏，与「在架」页的收藏数／浏览数</h1>
+  <div class="meta">
+    <span><b>日期</b> 2026-10-27</span>
+    <span><b>主题</b> favorite-and-counts</span>
+    <span><b>焦点</b> 详情页新增收藏动作；我的发布 → 在架 Tab 展示收藏数与浏览数（帖主视角）</span>
+    <span><b>模式</b> 仓库内</span>
+  </div>
+  <div class="stats">
+    <div class="stat"><div class="n">40</div><div class="l">原始候选（5 副眼镜 × 8）</div></div>
+    <div class="stat"><div class="n">20</div><div class="l">合并去重后</div></div>
+    <div class="stat"><div class="n">7</div><div class="l">存活方向</div></div>
+    <div class="stat"><div class="n">4</div><div class="l">覆盖轴</div></div>
+  </div>
+</header>
+
+<nav class="toc">
+  <div class="t">目录</div>
+  <ol>
+    <li><a href="#grounding">Grounding Context</a></li>
+    <li><a href="#axes">Topic Axes</a></li>
+    <li><a href="#ideas">Ranked Ideas</a>（<a href="#i1">1</a> · <a href="#i2">2</a> · <a href="#i3">3</a> · <a href="#i4">4</a> · <a href="#i5">5</a> · <a href="#i6">6</a> · <a href="#i7">7</a>）</li>
+    <li><a href="#rejections">Rejection Summary</a></li>
+  </ol>
+</nav>
+
+<section id="grounding">
+  <h2>Grounding Context <span class="sub">仓库现状与被核实的原文</span></h2>
+
+  <h3>需求落点与既有实现</h3>
+  <ul>
+    <li>收藏域已完整存在：<code>POST/DELETE /posts/{post_id}/favorite</code>、<code>GET /favorites</code>；前端四件套在 <code>lib/features/favorite/</code>。缺的只是详情页的入口。</li>
+    <li>详情页 <code>lib/features/detail/detail_screen.dart</code> 的 AppBar 无 <code>actions</code>（<code>:56-68</code>），底部 <code>_ContactBar</code> 是单个 <code>FilledButton</code> 占满整行（<code>:427-483</code>），没有次要动作位。</li>
+    <li>「在架」是「我的发布」的四页签之一（全部／在架／已下架／草稿），卡片副标题 <code>_subtitle()</code> 是**唯一**计数出口（<code>my_publish_screen.dart:1098-1111</code>），且未设 <code>maxLines</code>。</li>
+  </ul>
+
+  <h3>计数目前没有数据源</h3>
+  <ul>
+    <li><code>view_count</code> 后端硬编码 <code>null</code>：<code>PostQueryService.java:207-208</code>，注释写明「Batch1 无数据源」。</li>
+    <li><code>MyPostItem</code> 无 <code>favorite_count</code>；<code>PostDetail</code> 无 <code>favorited</code>、无任何计数；<code>PostCard</code> 无计数（<code>openapi.yaml:4856-4982</code>）。</li>
+    <li>埋点这条路在本期走不通：5 个事件里没有浏览事件（<code>track_event.dart:23-37</code>）、月表无 <code>post_id</code> 列（<code>V1__init_track_schema.sql:33-51</code>）、<code>/track/events</code> 强制登录（<code>TrackController.java:55-79</code>）、表注释写明「90 天、允许丢、不可用于合规举证」。</li>
+    <li>可复用的现成范式：<code>contact_count</code> 的整页批量聚合 <code>IN + GROUP BY</code>（<code>PostQueryMapper.xml:91-98</code>）。</li>
+  </ul>
+
+  <h3>一处关键纠正（推翻了初判）</h3>
+  <p class="callout" style="background:var(--success-soft)">
+    <span class="lbl" style="color:var(--success-text)">已核实</span>
+    后端收藏前置校验 <code>countPostById</code> 是 <code>SELECT COUNT(*) FROM post WHERE id=#{postId}</code>，<strong>不带 status 条件</strong>；同文件注释写明「post 无软删列，下架帖仍在库里可被收藏」（<code>FavoriteMapper.xml:7-11、36-38</code>）。
+    因此 PRD 的「已下架时收藏保留」在服务端本来就成立——砸掉它的是前端 <code>detail_screen.dart:105</code> 把 41001 整页替换成 <code>_NotFoundScreen</code>。
+  </p>
+
+  <h3>空间预算</h3>
+  <p>卡片宽 358，扣 1px 描边 ×2 与内边距 16×2 后为 324；再扣色条 4 + 间距 12 + 缩略图 44 + 间距 12 = 72，剩 252；再扣状态标前 8 与状态标本体（在架 38 / 契约外取值 60），主体只剩 <strong>206 / 184</strong>。而「浏览 12｜收藏 3｜3 天前发布」在 caption 11 下约 143px、在 small 12 下约 156px。</p>
+</section>
+
+<section id="axes">
+  <h2>Topic Axes</h2>
+  <ul>
+    <li><strong>A1 收藏动作的落点与状态</strong> —— 详情页放哪、什么形态，未登录／自己的帖子／已下架／网络失败各走哪条路。</li>
+    <li><strong>A2 在架卡片的信息密度与计数呈现</strong> —— 槽位、文案格式、零值、大数、溢出与卡高。</li>
+    <li><strong>A3 计数口径与可信度</strong> —— 数据从哪来、是否含自己、怎么聚合、是否模糊化。</li>
+    <li><strong>A4 激励与边界</strong> —— 谁看得见、是否进排序／通知，以及契约形状怎么把边界钉死。</li>
+  </ul>
+</section>
+
+<section id="ideas">
+  <h2>Ranked Ideas</h2>
+
+  <div class="card" id="i1">
+    <h3><span class="idchip">1</span> 收藏不能只活在 data 态：让星标跨五种屏存活</h3>
+    <div class="chips">
+      <span class="chip axis">A1 动作落点</span>
+      <span class="chip conf-h">Confidence 88%</span>
+      <span class="chip cx">复杂度 中</span>
+    </div>
+    <dl>
+      <dt>Description</dt>
+      <dd>把 <code>Scaffold</code>／<code>AppBar</code> 提到 <code>detailAsync.when</code> 之外，星标固定在 <code>appBar.actions</code>，body 内部再分流 loading／error／41001／40301。41001 不再是「另一个页面」，而是同一壳的降级态：顶部红条 + 正文 Opacity 60% + 联系按钮禁用 + 星标仍在。设计交付物应是一张「5 屏 × 星标（可见・可用・实心）」矩阵，而不是一屏稿加一句说明。</dd>
+      <dt>Basis</dt>
+      <dd class="basis"><span class="tag">direct:</span> <code>detail_screen.dart:45-49</code> 是 <code>when(loading/error/data)</code>，只有 data 分支内部建 Scaffold（<code>:54</code>），loading 与 error 各建独立屏；<code>:102-113</code> 三路整页替换；<code>_NotFoundScreen:615-651</code> 只有图标与「这条信息已下架或不存在」；<code>PRD.md:1891</code> 与 <code>:2449</code> 两处都写「联系按钮禁用，<strong>收藏保留</strong>」；后端 <code>FavoriteMapper.xml:7-11、36-38</code> 证实下架帖仍可收藏。</dd>
+      <dt>Rationale</dt>
+      <dd>宿主留在 data 态，「收藏保留」就永远落不了地；而用户从「我的收藏」点进一条已下架信息想取消收藏，会走进一条死路——这恰好是收藏最该发挥作用的时刻（「我想留住这条」）。四个错误屏各加一次星标还会产生四份重复实现。</dd>
+      <dt>Downsides</dt>
+      <dd>41001 时拿不到详情 DTO，星标的初始「是否已收藏」没有来源，只能靠收藏列表索引或契约补字段（见方向 2）；错误屏与正常屏共用 AppBar 后，标题文案与返回行为的差异要在矩阵里写清，否则会退化成「什么都保留了」。</dd>
+    </dl>
+  </div>
+
+  <div class="card" id="i2">
+    <h3><span class="idchip">2</span> 星标是三态，不是布尔：未知态与「登录后自动补收藏」</h3>
+    <div class="chips">
+      <span class="chip axis">A1 动作落点</span>
+      <span class="chip conf-h">Confidence 80%</span>
+      <span class="chip cx">复杂度 中</span>
+    </div>
+    <dl>
+      <dt>Description</dt>
+      <dd>星标至少有三种视觉与行为：已收藏（实心）／未收藏（空心）／<em>未知</em>（详情未加载、游客、请求失败）。未知态不允许被画成空心——那是在替用户断言「你没收藏过」。点击时若未登录，走 <code>push&lt;bool&gt;(AppRoutes.login)</code>，<code>ok == true</code> 后<strong>自动补执行这次收藏</strong>，而不是要求用户回来再点一次。前端需要一个按 <code>postId</code> 索引的收藏态来源（来自详情字段或批量状态查询），不能靠比较 <code>author.id:int</code> 与 <code>AuthSession.userId:String</code>。</dd>
+      <dt>Basis</dt>
+      <dd class="basis"><span class="tag">direct:</span> <code>contact_screen.dart:209-217</code> 已有范式 <code>final ok = await GoRouter.of(context).push&lt;bool&gt;(AppRoutes.login); if (!mounted || ok != true) return; await _reveal();</code>；<code>login_screen.dart:243-253</code> 注释「登录多半是从收藏/联系按钮弹上来的」；<code>api_error_code.dart:71</code> <code>unauthorized(40101, ErrBehavior.refreshToken)</code> 只续期、不弹登录；<code>detail_screen.dart</code> 全文无 <code>isLoggedInProvider</code> 消费；<code>PostDetailDto</code> 无 <code>favorited</code>／<code>isOwner</code>（<code>post_dto.dart:218-237</code>）。</dd>
+      <dt>Rationale</dt>
+      <dd>现状是「未登录点星标 → 一次静默的 40101 → 用户看到错误而不是登录页」。同一类账号依赖动作，联系入口有前置判断、收藏没有，说明缺的不是能力而是落点。把「未知」做成一等状态，也顺手解决了「详情加载失败时星标该显示什么」这个最容易糊过去的问题。</dd>
+      <dt>Downsides</dt>
+      <dd>「登录后自动补收藏」意味着平台替用户完成了一次写操作，需要明确的口头确认（星标立刻实心 + 一条可撤销提示，见方向 3）。若收藏态改由服务端新字段承载，要同步 openapi 的 <code>required</code> 与 Dart 可空性（规范 <code>:196</code> 禁 <code>??</code> 掩盖可空），并决定游客场景该字段是「缺失」还是「false」。</dd>
+    </dl>
+  </div>
+
+  <div class="card" id="i3">
+    <h3><span class="idchip">3</span> 收藏是一次本地翻转，不是一次整页重拉：乐观写 + 3 秒撤销</h3>
+    <div class="chips">
+      <span class="chip axis">A1 动作落点</span>
+      <span class="chip conf-h">Confidence 82%</span>
+      <span class="chip cx">复杂度 中</span>
+    </div>
+    <dl>
+      <dt>Description</dt>
+      <dd>点击后本地立即翻转图标并计入待提交队列，失败回滚；成功给一条 3 秒撤销提示。撤销有两种实现：延迟提交（3 秒内再点一次即取消、零请求）或提交后反向提交。无论哪种，收藏状态必须是「按 postId 的单一事实源」，让详情页星标、我的收藏页星标、未来发现页星标读同一处；<code>refresh()</code> 退化为对账手段，不再是交互路径。</dd>
+      <dt>Basis</dt>
+      <dd class="basis"><span class="tag">direct:</span> <code>favorite_provider.dart:138-142</code> <code>refresh()</code> 先把 state 置 <code>AsyncValue.loading()</code>；<code>:161-169</code> <code>remove()</code> 仅 <code>removeFavorite</code> + <code>refresh()</code>，无乐观、无回滚；<code>favorite_screen.dart:78-87</code> 失败只弹 SnackBar，无撤销；<code>PRD.md:1979</code> 明确要求「取消后 3 秒内显示"撤销"浮条」；全库仅 <code>media_section.dart:374</code> 一处 <code>SnackBarAction</code>。</dd>
+      <dt>Rationale</dt>
+      <dd>现在的写法在物理上让「撤销条」无处可挂：取消收藏会触发整页骨架，页面正在转圈，没有稳定 UI 承载浮条。把收藏改成乐观写，撤销条才有落点，收藏页取消也不再整页闪一下。这是一次结构性修改，会让三处星标共用一套并发控制。</dd>
+      <dt>Downsides</dt>
+      <dd>同一帖子在多处并发点击需要 pending 去重，否则后到的响应会覆盖先前的翻转；延迟提交要求离开页面／切后台时立刻落地，否则撤销会吞掉用户的操作；失败回滚需要本地状态，而当前没有任何回滚通道。</dd>
+    </dl>
+  </div>
+
+  <div class="card" id="i4">
+    <h3><span class="idchip">4</span> 先拆掉不合规的状态胶囊，再谈两个数字怎么排</h3>
+    <div class="chips">
+      <span class="chip axis">A2 卡片密度</span>
+      <span class="chip conf-m">Confidence 78%</span>
+      <span class="chip cx">复杂度 低</span>
+    </div>
+    <dl>
+      <dt>Description</dt>
+      <dd>状态标目前是 <code>Container</code> + 12% 底色 + 横向 8 内边距的胶囊，而规范要求这类元数据「纯文本、无容器无底色」。还原成纯文本后主体宽度从 206／184 回到 222／200，恒定 +16px。加上 <code>maxLines: 1</code> 与一套降级序列（三段全出 → 只出收藏 + 时间 → 只出时间），并规定<strong>整页统一取同一档</strong>，避免逐卡自适应导致卡高参差。</dd>
+      <dt>Basis</dt>
+      <dd class="basis"><span class="tag">direct:</span> <code>设计系统与组件规范.md:213</code>「纯文本、无容器无底色」；<code>:190</code> 摘要用 small 12；实现却是 <code>my_publish_screen.dart:669-677</code> 的 Container + <code>alpha 0.12</code> + 横 8，且副标题 <code>:601-607</code> 未设 <code>maxLines</code>／<code>overflow</code>。<span class="tag">reasoned:</span> 先修一处既有偏离（胶囊违规）正好付得起另一处（小字号 caption 11 而非 small 12）的账——宽度问题不是被计数吃掉的，是被不合规容器吃掉的。</dd>
+      <dt>Rationale</dt>
+      <dd>开发者现在没有任何宽度预算可依，加一个字就换行；逐卡换行会让列表从「等高卡」退化为「自然流」，卡高漂移比字挤更早被用户感知。先把不该占的 16px 要回来，能让「要不要缩字号／要不要砍一个数」这类牺牲式讨论直接取消。</dd>
+      <dt>Downsides</dt>
+      <dd>纯文本化会同时降低「在架」状态的视觉权重，需要确认产品是否接受；16px 之外仍需真机验证（现有 206/184 是按代码常量推算，未在 360dp 小屏实测）；如果「全部」页签里状态标必须突出，就得给组件加显隐开关而不是一刀切。</dd>
+    </dl>
+
+    <figure class="figure">
+      <svg viewBox="0 0 640 200" width="100%" role="img" aria-label="卡片主体可用宽度与计数文案所需宽度的对比">
+        <text x="0" y="14" font-size="12" fill="#6B7280">主体可用宽度 vs 计数串所需宽度（px）</text>
+        <g font-size="12" fill="#1F2937">
+          <text x="0" y="48">最坏状态标</text>
+          <rect x="96" y="34" width="368" height="18" rx="3" fill="#CBD5E1"/>
+          <text x="472" y="48" fill="#6B7280">184</text>
+
+          <text x="0" y="86">在架状态标</text>
+          <rect x="96" y="72" width="412" height="18" rx="3" fill="#0B7C8C"/>
+          <text x="516" y="86" fill="#6B7280">206</text>
+
+          <text x="0" y="124">拆胶囊后</text>
+          <rect x="96" y="110" width="444" height="18" rx="3" fill="#22C55E"/>
+          <text x="548" y="124" fill="#6B7280">222</text>
+        </g>
+        <g stroke="#B4531A" stroke-dasharray="4 3" stroke-width="1.5">
+          <line x1="382" y1="28" x2="382" y2="136"/>
+          <line x1="408" y1="28" x2="408" y2="136"/>
+        </g>
+        <g font-size="11" fill="#B4531A">
+          <text x="374" y="158" text-anchor="middle">143 三段(caption 11)</text>
+          <text x="416" y="174" text-anchor="middle">156 三段(small 12)</text>
+        </g>
+        <line x1="96" y1="188" x2="580" y2="188" stroke="#E5E7EB"/>
+      </svg>
+      <figcaption>示意：三段式文案在最坏状态标下余量仅 41px，升到规范要求的 small 12 后只剩 26px；拆掉胶囊可一次性回收 16px。</figcaption>
+    </figure>
+  </div>
+
+  <div class="card" id="i5">
+    <h3><span class="idchip">5</span> 零值分三种，不能共用一个「0」</h3>
+    <div class="chips">
+      <span class="chip axis">A2 卡片密度</span>
+      <span class="chip conf-m">Confidence 65%</span>
+      <span class="chip cx">复杂度 低</span>
+    </div>
+    <dl>
+      <dt>Description</dt>
+      <dd>「没有数字」要拆成三种语义分别处理：①<em>无数据源</em>（整段不显示，沿用现状）；②<em>真实 0</em>（有口径但确实没人收藏，需要一句不伤人的话术，具体文案待产品裁定）；③<em>刚发布</em>（还没进入统计窗口，用「刚发布」而不是 0）。三态共用一套判定函数，时间窗落 <code>NfrXxx</code> 常量，不在 UI 里写魔法数。</dd>
+      <dt>Basis</dt>
+      <dd class="basis"><span class="tag">reasoned:</span> 现有注释拒绝的是<strong>归因错误</strong>——「把『没有数据源』说成『没人看过』，会把发布者劝退」（<code>my_publish_screen.dart:1100-1102</code>）。真实 0 不存在归因错误，但仍有情绪问题；这两者必须分开处理，而不能把该注释直接外推成「0 一律不显示」。<span class="tag">direct:</span> <code>PRD.md:2805-2807</code> 要求 NFR 数字集中落 <code>lib/nfr_constants.dart</code> 并回改 PRD。<span class="tag">external:</span> eBay 浏览数对卖家可见但对 bot 两阶段过滤、YouTube 明示指标可延迟／冻结／下调，两者做法都是「不保证即时精确」而非「藏掉」。eBay 官方帮助页「Viewing page views」。</dd>
+      <dt>Rationale</dt>
+      <dd>收藏数一上线会立刻捅破现有那条只覆盖 null 的口径；而新发布、最需要鼓励的那张卡恰恰是 0/0。三态分开后，绝大多数「为什么我的数不动」的客服问题在界面上就被消化掉。</dd>
+      <dt>Downsides</dt>
+      <dd>真实 0 的文案是产品判断，工程不能自拟（项目红线：设计未覆盖的口径先问）；三种状态叠加会让副标题逻辑变厚，需要单测固定；如果「刚发布」按信息类型给不同窗口，常量就不再是单值。</dd>
+    </dl>
+  </div>
+
+  <div class="card" id="i6">
+    <h3><span class="idchip">6</span> 浏览数本期不交；收藏数一次把口径定死</h3>
+    <div class="chips">
+      <span class="chip axis">A3 计数口径</span>
+      <span class="chip conf-h">Confidence 85%</span>
+      <span class="chip cx">复杂度 中</span>
+    </div>
+    <dl>
+      <dt>Description</dt>
+      <dd>设计稿上写清楚两栏：「本期可上线」= 收藏数；「依赖后续批次」= 浏览数。收藏数只走业务表聚合：补 <code>favorite(post_id, deleted_at)</code> 索引，照抄 <code>contact_count</code> 的整页 <code>IN + GROUP BY</code>，一次查询覆盖整页，聚合时排除帖主自己。同时显式拒绝「收藏率／热度分」——收藏按人去重是<em>人头</em>，浏览被实名额度与游客限频裁剪过是<em>通过闸门的次数</em>，两者不同质；文案用量词承载（「3 人收藏」）。</dd>
+      <dt>Basis</dt>
+      <dd class="basis"><span class="tag">direct:</span> <code>view_count</code> 硬编码 null（<code>PostQueryService.java:207-208</code>）；5 个埋点事件无浏览（<code>track_event.dart:23-37</code>）；月表无 <code>post_id</code> 列（<code>V1__init_track_schema.sql:33-51</code>）；<code>TrackController.java:55-79</code> 强制登录；表注释「允许丢、不可用于合规举证」。收藏侧：<code>FavoriteService.java:75-81</code> 只校验帖子存在、<strong>不拦自收藏</strong>；<code>V1__init_schema.sql:286-296</code> <code>uk_user_post(user_id, post_id)</code> 无 <code>post_id</code> 独立索引；<code>PostQueryMapper.xml:91-98</code> 是成熟批量聚合范式。</dd>
+      <dt>Rationale</dt>
+      <dd>这是本刀唯一能让工期翻倍的隐藏坑：稿上三个数字，编码时两个是空的。一个只有作者看得见、作者自己还能刷的数字，连「参考」都算不上。<code>contact_event</code> 的批量聚合证明这条路在本仓是现成的，不需要为了一个卡片数字去改埋点表、放开游客上报、再建读路径。</dd>
+      <dt>Downsides</dt>
+      <dd>拿不到「曝光 → 收藏」漏斗与长期趋势；排除自收藏意味着作者自己的收藏不计入，日后若把收藏当书签需要重新定义口径；补索引会随软删行膨胀，需与 30 天物删任务一起看。</dd>
+    </dl>
+  </div>
+
+  <div class="card" id="i7">
+    <h3><span class="idchip">7</span> 用契约形状钉死可见性：数字只进「我的发布」</h3>
+    <div class="chips">
+      <span class="chip axis">A4 激励边界</span>
+      <span class="chip conf-h">Confidence 85%</span>
+      <span class="chip cx">复杂度 低</span>
+    </div>
+    <dl>
+      <dt>Description</dt>
+      <dd><code>favorite_count</code> 只加在 <code>MyPostItem</code>；<code>PostCard</code>（发现页卡片）与 <code>PostDetail</code>（他人视角）都不加，<code>sort</code> 枚举不新增任何计数项，并在字段 description 里写死「仅帖主可见、不对外展示、不参与排序」。互动通知仍只有「被联系 × 次」，不扩成「被收藏 × 次」。</dd>
+      <dt>Basis</dt>
+      <dd class="basis"><span class="tag">direct:</span> <code>openapi.yaml:4939-4961</code> <code>MyPostItem</code> 已有 <code>view_count</code>／<code>contact_count</code>；<code>:4963-4982</code> <code>PostCard</code> 无任何计数；<code>:4856-4922</code> <code>PostDetail</code> 无计数、无 <code>favorited</code>；<code>:1795-1817</code> <code>sort</code> 六项无计数，<code>composite</code> = 时效 40% + 距离 40% + 完整度档 20%。<code>PRD.md:640</code> 不做信誉徽章／评价历史；<code>:745</code> 无商业化分级；<code>:1678</code> 完整度角标「不卖、不含等级」；<code>:2046-2050</code> 完整度三档是唯一曝光杠杆（×2／×1／×0.5）。</dd>
+      <dt>Rationale</dt>
+      <dd>收藏数一旦出现在他人可见的卡片上，它事实上就变成了跨用户的信任信号，直接撞上「信任信号只由实名／资质 + 完整度构成」的口径。把它钉在 <code>MyPostItem</code> 一个 schema 里，后续所有「帖主反馈」类需求都在对内一侧，不必每次重开可见性讨论。</dd>
+      <dt>Downsides</dt>
+      <dd>契约里的 description 不是运行时约束，仍要靠评审守；如果未来真要做「热门」，必须重开契约并过红线评审；「仅帖主可见」这条结论目前只能从 PRD 的相邻条款推出，PRD 本身没有逐字条文，需要产品在评审时确认。</dd>
+    </dl>
+  </div>
+</section>
+
+<section id="rejections">
+  <h2>Rejection Summary <span class="sub">20 条合并候选，13 条被砍</span></h2>
+  <table>
+    <thead>
+      <tr><th style="width:28%">候选</th><th style="width:52%">否决理由</th><th style="width:20%">类型</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>不新增 <code>favorited</code>，用幂等写 + 入口位置承载已收藏态</td><td>幂等写只保证点击安全，不提供星标实心／空心的初始值，反而卡死「登录后自动补收藏」。已并入方向 2 的前提。</td><td>依据不足</td></tr>
+      <tr><td>详情页加 <code>is_owner</code>，帖主视角隐藏星标</td><td>自收藏的危害已由方向 6 的服务端排除覆盖，不必为此新增一个契约字段；且所引 PRD 条款只约束「联系痕迹」，不支持该结论。</td><td>引用被扭大</td></tr>
+      <tr><td>计数上移成「我的发布」页头一行，卡片不背数字</td><td>与本次明确诉求（在架页展示计数）方向相反；所引「跨页同数」条款只管「在架 N 条」，不支撑该迁移。保留为方向 4 的备选下限。</td><td>越界／依据错配</td></tr>
+      <tr><td>用已在手里的 <code>contact_count</code> 顶替浏览数</td><td>确实是最便宜的「一个真数」，但改变了用户明确指定的指标，属范围替换；且该字段当前 UI 零渲染，需单独评估。</td><td>范围替换</td></tr>
+      <tr><td>浏览数落业务库 <code>post_view(post_id, visitor_key, day)</code></td><td>与方向 6「本期不交浏览数」自相矛盾；所引数据库设计段落只论证「快照优于热路径计数器」，推不出该表结构；且 <code>/posts/{id}/view</code> 仍是 Batch2 占位。</td><td>与本轮批次冲突</td></tr>
+      <tr><td>收藏成功处告知有效期（收藏也会过期）</td><td>引用被误读：PRD 那条是「取消后 3 秒撤销」，与有效期无关；且帖子到期与收藏软删 30 天是两个不同语义，不能互相代称。</td><td>依据被证伪</td></tr>
+      <tr><td>重发后计数归属必须先定</td><td>现成语义已回答：重发是克隆新草稿 → 新 <code>post_id</code>，计数天然归新帖。所引 PRD 段落只是卡片版面。</td><td>伪问题</td></tr>
+      <tr><td>为一个还没被误用的字段预写排序护栏测试</td><td>依据建立在「sort 枚举里没有计数」这一缺席事实上（默证），且当前没有排序需求；等真要动排序时再落测试更合适。</td><td>时机过早</td></tr>
+      <tr><td>收藏数走埋点表聚合</td><td>埋点库无任何读路径、90 天即弃、不可举证；业务表本身就是收藏的唯一写点，绕开它只会得到更差的数据。</td><td>重复且更差</td></tr>
+      <tr><td>把时间挪进右侧 <code>freshness</code> 槽，副标题整行给计数</td><td>像素账算下来更贵：右侧元数据在 <code>Expanded</code> 之外，加一格会吃标题宽度（约 −45px），在已被色条 + 缩略图占 72px 的窄卡上得不偿失。</td><td>代价高于收益</td></tr>
+      <tr><td>详情页显示「X 人收藏」作社会证明</td><td>撞 PRD 640／745／1678：公开计数会立即成为跨用户的信任信号与热度标尺，而完整度三档被定为唯一曝光杠杆。</td><td>触碰红线</td></tr>
+      <tr><td>用「收藏率／热度分」体现信息质量</td><td>分子是人头、分母是经限额裁剪的查看次数，不同质；比值会被读成信息质量评分。方向 6 已把「显式不做」写入口径。</td><td>假精度</td></tr>
+      <tr><td>详情页收藏态靠全量拉取 <code>GET /favorites</code> 再比对</td><td>DEC-31 明确收藏不设上限、分页翻取，全量扫描在数据量上来后不可行；且每次进详情都多一次请求。</td><td>不可扩展</td></tr>
+    </tbody>
+  </table>
+  <p style="font-size:13px;color:var(--text-2)">轴覆盖：A1 ×3、A2 ×2、A3 ×1、A4 ×1 —— 四轴均有存活，无空轴。</p>
+</section>
+
+<footer class="composition-signal">
+  Composed 2026-10-27 by ce-ideate · 仓库 <code>d:\developer\code\aicoding\s2s</code> · 依据 4 份证据 dossier 与 1 次独立依据校验
+</footer>
+
+</div>
+</body>
+</html>

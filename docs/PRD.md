@@ -1914,8 +1914,11 @@ POC 拆为**算法级（POC-A）与定标级（POC-B）两级**，二者回答�
 列表卡片（每行一条）：
 - 左：缩略图（或大类色占位）+ 资源/需求态图标；
 - 中：标题 · 类目二级 · 价格 · 状态标（在架绿/下架灰/草稿黄）；
+  副标题行（2026-10-27 补）：完整度圆点 + 档名 · 👁 浏览数 · ☆ 收藏数 · ｜发布相对时间，单行不换行；
 - 右：操作组（编辑 · 重发 · 上下架切换）；
 空状态：鸭子插图 + "还没发布，立即发一条 →"按钮。
+
+- **计数仅帖主可见**：浏览数与收藏数只出现在本页非草稿卡片；发现列表、地图卡片、详情页、排序一律不出现。收藏数为 `0` 显示「☆ 0」；浏览数按人/天去重、排除作者本人、功能上线后从 0 起算；收藏数排除作者自收藏。草稿卡不显示计数。
 
 #### 8.3.2 我的收藏页
 
@@ -1976,7 +1979,7 @@ POC 拆为**算法级（POC-A）与定标级（POC-B）两级**，二者回答�
 | 草稿自动保存 | 每编辑 3 秒自动存本地；退出页面提示"有未发布草稿，是否保存？" |
 | 重发分类变动 | 若分类已被运营停用 → 弹"该分类已停用，请重选分类" |
 | 通知清除 | 单条左滑删除；"全部已读"只置已读不删除；提供"清空全部"二次确认 |
-| 收藏取消误操作 | 取消后 3 秒内显示"撤销"浮条；过期后需重新收藏 |
+| 收藏取消误操作 | **取消后不显示「撤销」浮条**（2026-10-28 裁定：浮条会压住详情页「联系 TA」，且星标变色已是足够的成功反馈）；误取消直接再点一次星标重新收藏即可 |
 
 ---
 
@@ -2364,7 +2367,10 @@ POC 拆为**算法级（POC-A）与定标级（POC-B）两级**，二者回答�
 | GET | `/posts/{id}/contact` | 拉取完整联系方式并记联系事件 | out: `channel_type`,`contact_value`(完整) | §7.7 反爬 |
 | POST | `/posts/{id}/report` | 举报 | in: `reason`(不实信息/诈骗/违规类目/骚扰/其他),`evidence[]` | §7.7 / §9.10.3 |
 | POST | `/posts/{id}/favorite` / DELETE | 收藏 / 取消 | — | §8.3.2 |
+| POST | `/posts/{id}/view` | 详情曝光上报（浏览计数写入，游客可调） | in: `X-Device-Id`(游客必填)；out: 无 data | §8.3.1 / §13.2 `post_view` |
 | GET | `/favorites?type=` | 我的收藏（资源/需求/全部） | 分页 | §8.3.2 |
+
+- **`/posts/{id}/view` 口径（2026-10-27 补）**：客户端在详情数据渲染成功后调用一次，失败静默、不阻塞详情展示。登录用户按 `user:<id>`、游客按 `device:<X-Device-Id>` 以「人/天」去重（`uk_post_viewer_day`）；同一设备当日先游客后登录时合并设备行，保证只计 1；作者本人上报直接返回成功但不写；帖子不存在回 `41001`，游客缺设备号回 `40001`；限频沿用设备/IP 维既有阈值，超限走既有 `429xx`（不新增错误码）。服务端按唯一键幂等，重复上报仍返回 `200`。
 
 - **`/contact` 是全系统唯一返回完整联系方式的接口**，完整号码**禁止**出现在 `/posts/{id}` 等任何其他响应中（§7.7「完整号码不写入前端初始状态」）；
 - **三维限频同时生效，任一超限即拒绝**：同账号 ≤30 次/日、同设备指纹 ≤30 次/日、同 IP ≤100 次/日，超限返回 `42902`（§7.7，额度不按实名状态分层）；
@@ -2662,9 +2668,35 @@ POC 拆为**算法级（POC-A）与定标级（POC-B）两级**，二者回答�
 | `created_at` | datetime | NOT NULL DEFAULT CURRENT_TIMESTAMP | 收藏时间 | — |
 | `deleted_at` | datetime | NULL | 软删时间，30 天后物删（供误删恢复） | §8.6 / §13.4 |
 
-- 索引 `uk_user_post(user_id, post_id)` UNIQUE —— 唯一性约束本体；`idx_user_deleted(user_id, deleted_at)` —— 按 user_id 查未删收藏列表；`idx_deleted_at(deleted_at)` —— 30 天物删定时任务扫描。
+- 索引 `uk_user_post(user_id, post_id)` UNIQUE —— 唯一性约束本体；`idx_user_deleted(user_id, deleted_at)` —— 按 user_id 查未删收藏列表；`idx_deleted_at(deleted_at)` —— 30 天物删定时任务扫描；`idx_post_deleted(post_id, deleted_at)` —— 帖主收藏数聚合（`post_id IN (...) AND deleted_at IS NULL`，2026-10-27 补）。
 - **唯一性**：由**物理唯一索引 `uk_user_post(user_id, post_id)`** 保证（不含 `deleted_at`，故一对 user-post 全生命周期只有一行），取消收藏置 `deleted_at`、重新收藏置回 `NULL`；service 层用 `INSERT ... ON DUPLICATE KEY UPDATE deleted_at = NULL` 一条语句完成「插入或复活」。原「service 层显式查重」方案在两请求并发时会双插，已于 2026-09-04 评审改为由数据库保证幂等。
 - **保留策略**：取消收藏记录保留 30 天软删，满 30 天物删（§13.4 NFR）。
+- **计数口径**（2026-10-27 补）：帖主收藏数 = `deleted_at IS NULL AND user_id <> 帖子作者` 的行数，排除作者自收藏；只在「我的发布」对帖主展示。
+
+**`post_view`**（2026-10-27 新造，Batch2 浏览计数明细）
+
+| 字段 | 类型 | 约束 | 说明 | 来源 |
+|---|---|---|---|---|
+| `id` | bigint | PK | — | — |
+| `post_id` | bigint | FK | 被浏览帖子 ID | §8.3.1 |
+| `viewer_key` | varchar(64) | NOT NULL | 去重键：登录 `user:<id>` / 游客 `device:<X-Device-Id>` | §12.3 浏览上报 |
+| `view_day` | date | NOT NULL | 业务日（Asia/Shanghai） | §13.4 |
+| `created_at` | datetime | NOT NULL DEFAULT CURRENT_TIMESTAMP | 写入时刻 | — |
+
+- 唯一键 `uk_post_viewer_day(post_id, viewer_key, view_day)` —— **人/天去重本体**：同日同 viewer 只能有一行，重复上报由唯一键兜底；`idx_view_day(view_day)` —— 明细按保留期清理的扫描列。
+- **只做去重与保留期清理**，不承载计数读取：计数一律从 `post_view_daily` 聚合（避免清理明细后计数倒退）。
+
+**`post_view_daily`**（2026-10-27 新造，Batch2 浏览日计数）
+
+| 字段 | 类型 | 约束 | 说明 | 来源 |
+|---|---|---|---|---|
+| `post_id` | bigint | PK(联合) | 帖子 ID | §8.3.1 |
+| `view_day` | date | PK(联合) | 业务日（Asia/Shanghai） | §13.4 |
+| `view_count` | int unsigned | NOT NULL | 当日去重后浏览人数 | §8.3.1 |
+
+- 主键 `(post_id, view_day)`；写入用 `INSERT ... ON DUPLICATE KEY UPDATE view_count = GREATEST(0, view_count + delta)`，`delta` 为净增量（登录合并当日设备行时可为 `-1`，故钳 0 防负）。
+- **永久保留，永不参与清理**：帖主浏览数 = 该帖全部日计数之和，因此明细清理不会让计数倒退（单调不降）。
+- **排除作者**：作者本人上报直接返回成功但不写明细与日计数（§12.3）。
 
 **`cert`**（2026-09-04 新造，Batch2 但本期建表）
 
@@ -2793,6 +2825,7 @@ POC 拆为**算法级（POC-A）与定标级（POC-B）两级**，二者回答�
 | 审计留痕 `audit_log` | `audit_log_180d` | **≥180 天** | 仅超级管理员可查，导出需二次确认 | §9.10.1 审计留痕 |
 | 图片 EXIF | `exif_strip` | 不保留 | 上传后服务端**强制剥离** GPS/设备/拍摄时间 | §9.6 媒体元数据剥离 |
 | 用户位置轨迹 | `location_no_collect` | 不采集 | 只存发布时选择的经纬度点 | §9.6 |
+| 详情浏览明细 `post_view` | `post_view_detail_30d` | **30 天** | 按 `view_day` 分批删除明细；`post_view_daily` 日计数**永久保留**（计数单调不降） | §8.3.1 / §12.3 |
 
 - **「保留策略键」列是 CI 门禁的比对键**（Batch1 R17）：`RetentionRuleRegistry` 注册的 key 集合须与本列逐值相等，任一侧改动而另一侧未跟进则 `RetentionRuleCoverageTest` 构建失败。
 
@@ -2807,6 +2840,16 @@ POC 拆为**算法级（POC-A）与定标级（POC-B）两级**，二者回答�
 > **改动纪律**：任一常量改动**必须同时改本 PRD 对应行与该文件**，缺一即视为未改 —— 否则真源变成两个，比没有真源更糟（两处都"看起来是权威"）。
 >
 > **为何本期手写而不上生成脚本**：21 项常量中 18 项当前尚无代码消费方（缓存层、埋点层、接口层未实现），写 Markdown 表格解析器不划算。Batch2 接口面变宽后，照 `design_tokens.dart` 那套上生成脚本 + 断言校验（参照 `prototype-figma/export-dart-tokens.js` + `probe-token-vars.py`）。
+
+**收藏与浏览计数常量（2026-10-27 补；代码真源：前端 `lib/nfr_constants.dart` / 后端 `common.constants`）**
+
+| 常量 | 值 | 用途 | 来源 |
+|---|---|---|---|
+| `NfrPostView.dedupeWindowDays` | **1 天** | 浏览去重窗口（人/天） | §8.3.1 |
+| `NfrPostView.detailRetentionDays` | **30 天** | `post_view` 明细保留期；`post_view_daily` 永久保留 | §13.4 |
+| 浏览上报限频 | 账号 **200/日**、设备 **30/日**、IP **100/日** | 设备/IP 维沿用 §7.7 既有阈值；超限复用既有 `429xx`，不新增错误码 | §12.3 |
+
+> 收藏「撤销」窗口常量已于 2026-10-28 随 §8.7 裁定下线（不再显示撤销浮条），前后端 `NfrFavorite` 常量类一并删除；误取消通过再次点击星标复原，无需窗口阈值。
 
 | 指标 | 目标 | 判定口径 | 来源 |
 |---|---|---|---|

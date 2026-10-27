@@ -188,8 +188,10 @@ class _SegTabs extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: Color(AppColors.surface),
+      // 颜色必须落在 decoration 内：Container 同时给 color 与 decoration 会触发
+      // 「Cannot provide both a color and a decoration」断言（debug 红屏）。
       decoration: BoxDecoration(
+        color: Color(AppColors.surface),
         border: Border(bottom: BorderSide(color: Color(AppColors.border))),
       ),
       child: Row(

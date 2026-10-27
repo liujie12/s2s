@@ -176,6 +176,23 @@ class PostRepository {
     return PostDetailDto.fromJson(response.data);
   }
 
+  /// 上报一次详情浏览（`POST /posts/{post_id}/view`）。
+  ///
+  /// 客户端 fire-and-forget：失败静默，不阻塞详情展示；自动重试由全局
+  /// `RetryInterceptor` 负责，服务端按人/天幂等（重复上报不增计数）。
+  ///
+  /// 参数：
+  ///   [postId] 帖子 ID；
+  ///   [interactionId] 交互起点生成的 X-Interaction-Id；null 由拦截器兜底。
+  /// 返回：[Future<void>]。
+  /// 抛出：[ApiException] 调用方必须吞掉（上报失败不影响详情）。
+  Future<void> reportView(int postId, {String? interactionId}) async {
+    await _dio.post<Object?>(
+      '/posts/$postId/view',
+      options: _interactionOptions(interactionId),
+    );
+  }
+
   /// 查「我的发布」列表（`GET /posts/mine`，[127] 前端段）。
   ///
   /// **筛选只接受契约单值**（openapi `status` 参数 `$ref: PostStatusEnum`）：

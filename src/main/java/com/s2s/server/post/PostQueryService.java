@@ -11,6 +11,7 @@ import com.s2s.server.common.dto.AuthorBrief;
 import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
 import com.s2s.server.common.ratelimit.RateLimitKeys;
+import com.s2s.server.contact.FavoriteQueryService;
 import com.s2s.server.post.dto.MediaItem;
 import com.s2s.server.post.dto.MyPostItem;
 import com.s2s.server.post.dto.MyPostsResponse;
@@ -54,6 +55,7 @@ public class PostQueryService {
     private final ObjectMapper objectMapper;
     private final CertService certService;
     private final DetailQuotaGate detailQuotaGate;
+    private final FavoriteQueryService favoriteQueryService;
 
     /**
      * 构造 post 读服务。
@@ -64,6 +66,9 @@ public class PostQueryService {
      * @param categoryService    分类服务（类目面包屑）
      * @param systemConfigService 系统配置读取（详情额度开关）
      * @param objectMapper       JSON 解析器（{@code template_values} → attributes）
+     * @param certService        实名/额度服务
+     * @param detailQuotaGate    未实名详情额度闸
+     * @param favoriteQueryService 收藏只读查询（跨域 service 接口，详情页 {@code favorited}）
      */
     public PostQueryService(PostQueryMapper postQueryMapper,
             PostMediaMapper postMediaMapper,
@@ -72,7 +77,8 @@ public class PostQueryService {
             SystemConfigService systemConfigService,
             ObjectMapper objectMapper,
             CertService certService,
-            DetailQuotaGate detailQuotaGate) {
+            DetailQuotaGate detailQuotaGate,
+            FavoriteQueryService favoriteQueryService) {
         this.postQueryMapper = postQueryMapper;
         this.postMediaMapper = postMediaMapper;
         this.mediaAssembler = mediaAssembler;
@@ -81,6 +87,7 @@ public class PostQueryService {
         this.objectMapper = objectMapper;
         this.certService = certService;
         this.detailQuotaGate = detailQuotaGate;
+        this.favoriteQueryService = favoriteQueryService;
     }
 
     /**
@@ -118,6 +125,10 @@ public class PostQueryService {
         }
 
         Integer leafCategoryId = toInteger(row.get("leaf_category_id"));
+        // 收藏态只对登录用户有意义；游客返回 null（客户端按可收藏的空心态处理）。
+        Boolean favorited = viewerId == null
+                ? null
+                : favoriteQueryService.isFavorited(viewerId, postId);
         AuthorBrief author = new AuthorBrief(
                 toLong(row.get("author_id")),
                 (String) row.get("author_nickname"),
@@ -152,7 +163,8 @@ public class PostQueryService {
                 toInstant(row.get("expire_at")),
                 author,
                 toLong(row.get("version")),
-                Boolean.TRUE.equals(toBoolean(row.get("ai_assisted"))));
+                Boolean.TRUE.equals(toBoolean(row.get("ai_assisted"))),
+                favorited);
     }
 
     /**
@@ -187,6 +199,8 @@ public class PostQueryService {
         }
         Map<Long, MediaItem> covers = coverMediaByPost(postIds, true);
         Map<Long, Long> contactCounts = contactCountByPost(postIds);
+        Map<Long, Long> favoriteCounts = favoriteCountByPost(postIds, userId);
+        Map<Long, Long> viewCounts = viewCountByPost(postIds);
 
         List<MyPostItem> items = new ArrayList<>(rows.size());
         for (Map<String, Object> row : rows) {
@@ -204,8 +218,8 @@ public class PostQueryService {
                     PostStatus.toApi((String) row.get("status"), toInteger(row.get("status_reason"))),
                     toInstant(row.get("created_at")),
                     toInstant(row.get("expire_at")),
-                    // viewCount：Batch1 无数据源（浏览计数随 [129] 埋点落库），恒 null
-                    null,
+                    viewCounts.getOrDefault(id, 0L),
+                    favoriteCounts.getOrDefault(id, 0L),
                     contactCounts.getOrDefault(id, 0L),
                     toLong(row.get("version"))));
         }
@@ -293,7 +307,43 @@ public class PostQueryService {
         if (postIds.isEmpty()) {
             return Map.of();
         }
-        List<Map<String, Object>> rows = postQueryMapper.countContactEvents(postIds);
+        return toCountMap(postQueryMapper.countContactEvents(postIds));
+    }
+
+    /**
+     * 批量取一批帖子的有效收藏数（排除作者自收藏）。
+     *
+     * @param postIds 当前页帖子 ID 列表
+     * @param ownerId 帖主 ID（当前用户）
+     * @return {@link Map} postId → 收藏数；无收藏的帖子不出现在 map 里
+     */
+    private Map<Long, Long> favoriteCountByPost(List<Long> postIds, Long ownerId) {
+        if (postIds.isEmpty()) {
+            return Map.of();
+        }
+        return toCountMap(postQueryMapper.countFavoritesByPost(postIds, ownerId));
+    }
+
+    /**
+     * 批量取一批帖子的累计浏览数。
+     *
+     * @param postIds 当前页帖子 ID 列表
+     * @return {@link Map} postId → 浏览数；无浏览的帖子不出现在 map 里
+     */
+    private Map<Long, Long> viewCountByPost(List<Long> postIds) {
+        if (postIds.isEmpty()) {
+            return Map.of();
+        }
+        return toCountMap(postQueryMapper.sumPostViews(postIds));
+    }
+
+    /**
+     * 把「post_id + cnt」聚合行转成 Map。
+     *
+     * @param rows Mapper 聚合结果（列名 {@code post_id} / {@code cnt}）
+     * @return {@link Map} postId → 计数
+     */
+    private Map<Long, Long> toCountMap(List<Map<String, Object>> rows) {
         Map<Long, Long> counts = new LinkedHashMap<>();
         for (Map<String, Object> row : rows) {
             counts.put(toLong(row.get("post_id")), toLong(row.get("cnt")));

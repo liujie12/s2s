@@ -176,4 +176,17 @@ public interface TaskMapper {
      */
     int deleteContactEventsBefore(@Param("threshold") LocalDateTime threshold,
             @Param("limit") int limit);
+
+    /**
+     * 删除超过保留期的浏览明细（保留策略 {@code post_view_detail_30d}）。
+     *
+     * <p>只删 {@code post_view} 明细；{@code post_view_daily} 永久保留，
+     * 保证帖主浏览数单调不降。</p>
+     *
+     * @param threshold 保留阈值（{@code view_day} 早于它的行被删）
+     * @param limit     单批上限
+     * @return int 实际删除行数
+     */
+    int deletePostViewsBefore(@Param("threshold") java.time.LocalDate threshold,
+            @Param("limit") int limit);
 }

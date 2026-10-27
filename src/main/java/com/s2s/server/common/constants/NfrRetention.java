@@ -52,4 +52,9 @@ public final class NfrRetention {
      * 消费方：证件图清理任务（{@code CertImageCleanupTask}，2026-10-23 补实现）——
      * 到期删 OSS 对象并清空 {@code cert.ocr_image_ref}，保留认证结果本身。 */
     public static final int CERT_IMAGE_RETENTION_DAYS = 7;
+
+    /** 浏览明细保留天数（保留策略键 {@code post_view_detail_30d}）。
+     * 消费方：浏览明细清理任务（{@code PostViewCleanupTask}）——只删 {@code post_view} 明细，
+     * {@code post_view_daily} 日计数永久保留，保证浏览数单调不降。 */
+    public static final int POST_VIEW_DETAIL_RETENTION_DAYS = 30;
 }

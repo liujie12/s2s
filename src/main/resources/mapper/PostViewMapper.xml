@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.s2s.server.contact.mapper.PostViewMapper">
+
+    <!-- 作者判定：只查主键，不 JOIN。 -->
+    <select id="selectPostOwner" resultType="long">
+        SELECT user_id
+        FROM post
+        WHERE id = #{postId}
+    </select>
+
+    <!-- 明细存在性：命中唯一键 uk_post_viewer_day。 -->
+    <select id="countView" resultType="int">
+        SELECT COUNT(*)
+        FROM post_view
+        WHERE post_id = #{postId}
+          AND viewer_key = #{viewerKey}
+          AND view_day = #{viewDay}
+    </select>
+
+    <!-- 明细插入：唯一键冲突抛出，由 service 捕获按去重处理。 -->
+    <insert id="insertView">
+        INSERT INTO post_view (post_id, viewer_key, view_day)
+        VALUES (#{postId}, #{viewerKey}, #{viewDay})
+    </insert>
+
+    <!-- 合并当日游客行：登录上报时删除同设备同日明细。 -->
+    <delete id="deleteView">
+        DELETE FROM post_view
+        WHERE post_id = #{postId}
+          AND viewer_key = #{viewerKey}
+          AND view_day = #{viewDay}
+    </delete>
+
+    <!-- 日计数增减：行不存在插入，存在则累加（delta 可为负）。
+         两处都必须钳 0：delta=-1 是「登录合并当日设备行」的净增量，而
+         `view_count` 为 INT UNSIGNED —— 直接写 -1 会触发
+         "Out of range value for column 'view_count'"（INSERT 分支在唯一键判重
+         之前就做值域校验，2026-10-27 真机冒烟实测）；UPDATE 分支的
+         `view_count + -1` 同样会在无符号算术下溢出，故先 CAST SIGNED。 -->
+    <insert id="upsertDaily">
+        INSERT INTO post_view_daily (post_id, view_day, view_count)
+        VALUES (#{postId}, #{viewDay}, GREATEST(0, #{delta}))
+        ON DUPLICATE KEY UPDATE view_count = GREATEST(0, CAST(view_count AS SIGNED) + #{delta})
+    </insert>
+
+</mapper>

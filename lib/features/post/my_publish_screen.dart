@@ -598,28 +598,18 @@ class _MyPostCard extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: AppSpacing.xs),
-                      Text(
-                        _subtitle(item),
-                        style: TextStyle(
-                          fontSize: AppTypeScale.caption.size,
-                          color: Color(AppColors.textSecondary),
-                        ),
-                      ),
+                      // 副标题 = 完整度 · 浏览 · 收藏 · 发布时间（R7）：
+                      // 计数只在帖主视角出现，故这里是浏览/收藏数唯一的渲染处。
+                      _CardSubtitle(item: item),
                       const SizedBox(height: AppSpacing.sm),
-                      Row(
-                        children: [
-                          Text(
-                            // 无价格显示「面议」而非留空（§5.8 允许价格为空）
-                            _priceLabel(item),
-                            style: TextStyle(
-                              fontSize: AppTypeScale.small.size,
-                              fontWeight: FontWeight.w700,
-                              color: Color(AppColors.accent),
-                            ),
-                          ),
-                          const SizedBox(width: AppSpacing.sm),
-                          _CompletenessDot(level: item.completenessLevel),
-                        ],
+                      Text(
+                        // 无价格显示「面议」而非留空（§5.8 允许价格为空）
+                        _priceLabel(item),
+                        style: TextStyle(
+                          fontSize: AppTypeScale.small.size,
+                          fontWeight: FontWeight.w700,
+                          color: Color(AppColors.accent),
+                        ),
                       ),
                     ],
                   ),
@@ -683,46 +673,6 @@ class _StatusChip extends StatelessWidget {
           color: text,
         ),
       ),
-    );
-  }
-}
-
-/// 完整度档位点（PRD §9.8 三档视觉标记；卡片只给「色点 + 档名」双通道）。
-///
-/// **契约外档位刻意 fail-fast**（[CompletenessLevel.fromApi] 抛 `ApiException.parse`）：
-/// 完整度是发布质量的主信号，给个错色点比当屏报错更糟——用户会据此判断「这条信息
-/// 齐不齐」。风险面已评估：`completeness_level` 是库内 STORED 生成列、契约枚举锁定
-/// 0/1/2，服务端不会送出第三个值；真的送出说明契约或库被改坏，当屏失败是期望行为。
-class _CompletenessDot extends StatelessWidget {
-  const _CompletenessDot({required this.level});
-
-  /// 契约 `completeness_level`(0/1/2)。
-  final int level;
-
-  @override
-  Widget build(BuildContext context) {
-    final parsed = CompletenessLevel.fromApi(level);
-    final (int dot, int text) = switch (parsed) {
-      CompletenessLevel.green => (AppColors.success, AppColors.successText),
-      CompletenessLevel.yellow => (AppColors.warning, AppColors.warningText),
-      CompletenessLevel.red => (AppColors.error, AppColors.errorText),
-    };
-    return Row(
-      children: [
-        Container(
-          width: 8,
-          height: 8,
-          decoration: BoxDecoration(color: Color(dot), shape: BoxShape.circle),
-        ),
-        const SizedBox(width: AppSpacing.xs),
-        Text(
-          parsed.label,
-          style: TextStyle(
-            fontSize: AppTypeScale.caption.size,
-            color: Color(text),
-          ),
-        ),
-      ],
     );
   }
 }
@@ -1095,19 +1045,100 @@ String _statusLabel(String apiStatus) => switch (apiStatus) {
   ),
 };
 
-/// 卡片副标题：「浏览 N｜3 天前发布」。
+/// 完整度档位选择器（0/1/2 → 双色；PRD §9.8 三档视觉标记）。
 ///
-/// `view_count` Batch1 恒 null（浏览计数随 [129] 埋点落库），此时**不显示
-/// 「浏览 0」**——那是把「没有数据源」说成「没人看过」，会把发布者劝退。
+/// **契约外档位刻意 fail-fast**（[CompletenessLevel.fromApi] 抛 `ApiException.parse`）：
+/// 完整度是发布质量的主信号，给个错色点比当屏报错更糟——用户会据此判断「这条信息
+/// 齐不齐」。风险面已评估：`completeness_level` 是库内 STORED 生成列、契约枚举锁定
+/// 0/1/2，服务端不会送出第三个值；真的送出说明契约或库被改坏，当屏失败是期望行为。
 ///
-/// 参数：[item] 列表项。
-/// 返回：[String] 副标题文案。
-String _subtitle(MyPostItemDto item) {
-  final publishAt = item.publishAt;
-  final published = publishAt == null ? null : formatRelativePublishAge(publishAt);
-  final views = item.viewCount;
-  if (views == null) return published ?? '发布时间未知';
-  return published == null ? '浏览 $views' : '浏览 $views｜$published';
+/// 参数：[level] 契约 `completeness_level`。
+/// 返回：[(圆点色, 文字色)]。
+(Color, Color) _completenessColors(int level) {
+  final parsed = CompletenessLevel.fromApi(level);
+  return switch (parsed) {
+    CompletenessLevel.green => (
+      Color(AppColors.success),
+      Color(AppColors.successText),
+    ),
+    CompletenessLevel.yellow => (
+      Color(AppColors.warning),
+      Color(AppColors.warningText),
+    ),
+    CompletenessLevel.red => (Color(AppColors.error), Color(AppColors.errorText)),
+  };
+}
+
+/// 卡片副标题：「● 完整 👁 42 ☆ 3｜3 天前发布」（R7 / R8 / KTD10）。
+///
+/// 计数三态：`null` = 字段缺失（防御分支，整组隐藏）；`0` = 真实 0，照常
+/// 显示图标 + `0`；正整数显示数字。整行 `maxLines: 1` + 省略号，数字再长
+/// 也不撑高卡片。
+class _CardSubtitle extends StatelessWidget {
+  const _CardSubtitle({required this.item});
+
+  /// 列表项（本人视角，计数非空即真实值）。
+  final MyPostItemDto item;
+
+  @override
+  Widget build(BuildContext context) {
+    final parsed = CompletenessLevel.fromApi(item.completenessLevel);
+    final (dotColor, labelColor) = _completenessColors(item.completenessLevel);
+    final published = item.publishAt == null
+        ? null
+        : formatRelativePublishAge(item.publishAt!);
+    final views = item.viewCount;
+    final favorites = item.favoriteCount;
+    final caption = TextStyle(
+      fontSize: AppTypeScale.caption.size,
+      color: Color(AppColors.textSecondary),
+    );
+    final iconColor = Color(AppColors.textSecondary);
+
+    return Text.rich(
+      TextSpan(
+        children: [
+          WidgetSpan(
+            alignment: PlaceholderAlignment.middle,
+            child: Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                color: dotColor,
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+          TextSpan(
+            text: ' ${parsed.label}',
+            style: TextStyle(color: labelColor),
+          ),
+          // 计数按「字段存在才渲染」：null 是契约缺字段的防御分支，
+          // 渲染成 0 会把「没有数据源」说成「没人看过」。
+          if (views != null) ...[
+            const TextSpan(text: '  '),
+            WidgetSpan(
+              alignment: PlaceholderAlignment.middle,
+              child: Icon(Icons.visibility_outlined, size: 12, color: iconColor),
+            ),
+            TextSpan(text: ' $views'),
+          ],
+          if (favorites != null) ...[
+            const TextSpan(text: '  '),
+            WidgetSpan(
+              alignment: PlaceholderAlignment.middle,
+              child: Icon(Icons.star_border, size: 12, color: iconColor),
+            ),
+            TextSpan(text: ' $favorites'),
+          ],
+          if (published != null) TextSpan(text: '｜$published'),
+        ],
+      ),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: caption,
+    );
+  }
 }
 
 /// 卡片价格文案（无价格显示「面议」，与详情页同一实现处）。

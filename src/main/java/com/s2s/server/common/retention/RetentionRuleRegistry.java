@@ -54,6 +54,8 @@ public final class RetentionRuleRegistry {
         RULES.put("audit_log_180d", "task.AuditLogCleanupTask（删除超过 180 天的审计行）");
         RULES.put("exif_strip", "post 域媒体上传链路（上传时服务端强制剥离 EXIF，非定时任务）");
         RULES.put("location_no_collect", "post 域写入前断言（只存发布点经纬度，不采集轨迹）");
+        RULES.put("post_view_detail_30d",
+                "task.PostViewCleanupTask（删 post_view 明细；post_view_daily 永久保留）");
     }
 
     /**

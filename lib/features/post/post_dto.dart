@@ -234,6 +234,7 @@ class PostDetailDto {
     this.media = const [],
     this.contactMask,
     this.aiAssisted = false,
+    this.favorited,
   });
 
   /// 由信封 data 构造。
@@ -280,6 +281,8 @@ class PostDetailDto {
       media: media,
       contactMask: optString(map, 'contact_mask', 'PostDetail'),
       aiAssisted: optBool(map, 'ai_assisted', 'PostDetail') ?? false,
+      // favorited：登录用户恒 true/false；游客为 null（详情页据此区分「未收藏」与「未知」）。
+      favorited: optBool(map, 'favorited', 'PostDetail'),
     );
   }
 
@@ -343,6 +346,11 @@ class PostDetailDto {
   ///
   /// 契约 `ai_assisted` 非 required，缺失/JSON null 均按 false（存量行 = 非 AI 辅助）。
   final bool aiAssisted;
+
+  /// 当前用户是否已收藏（契约 `favorited`）。
+  ///
+  /// 登录用户恒 true/false；游客为 null，详情页据此区分「未收藏」与「未知」。
+  final bool? favorited;
 }
 
 /// 解析必填 date-time 字段（RFC3339 UTC，服务端保证合法）。
@@ -443,6 +451,7 @@ class MyPostItemDto {
     this.publishAt,
     this.expireAt,
     this.viewCount,
+    this.favoriteCount,
     this.contactCount,
   });
 
@@ -467,8 +476,10 @@ class MyPostItemDto {
       coverMedia: coverRaw == null ? null : MediaItemDto.fromJson(coverRaw),
       publishAt: _optDateTime(map, 'publish_at', 'MyPostItem'),
       expireAt: _optDateTime(map, 'expire_at', 'MyPostItem'),
-      // view_count：Batch1 无数据源（浏览计数随 [129] 埋点落库），恒 null
+      // view_count：帖主视角的真实浏览数（人/天去重，上线后从 0 起算）。
       viewCount: optInt(map, 'view_count', 'MyPostItem'),
+      // favorite_count：帖主视角的收藏数（排除作者自收藏）。
+      favoriteCount: optInt(map, 'favorite_count', 'MyPostItem'),
       contactCount: optInt(map, 'contact_count', 'MyPostItem'),
     );
   }
@@ -509,8 +520,11 @@ class MyPostItemDto {
   /// 到期时间。
   final DateTime? expireAt;
 
-  /// 浏览数（Batch1 恒 null）。
+  /// 浏览数（帖主视角真实数据；null 仅作字段缺失的防御分支）。
   final int? viewCount;
+
+  /// 收藏数（帖主视角，排除作者自收藏；null 仅作防御分支）。
+  final int? favoriteCount;
 
   /// 被查看联系方式次数。
   final int? contactCount;

@@ -1980,11 +1980,28 @@ paths:
       operationId: reportPostView
       x-batch: Batch2
       x-domain: contact
-      description: 占位。Batch2 交付，配套埋点事件 resource_detail_click。
+      description: |
+        详情页曝光上报（浏览计数写入）。客户端在详情数据渲染成功后调用一次，
+        失败静默，不阻塞详情展示。
+
+        - **去重口径**：登录用户按 `user:<id>`、游客按 `device:<X-Device-Id>`，
+          以「人/天」为唯一键；同一用户/设备同日重复上报不增加计数。
+        - **作者排除**：作者本人浏览自己的帖子不计数。
+        - **跨身份合并**：登录用户上报时合并当日同设备的游客行，保证
+          「先游客后登录」同日只计 1。
+        - **幂等**：服务端按唯一键去重，重复上报仍返回 200。
+        - **限频**：按账号与 IP 维度限频，超限走既有 429 业务码。
       parameters:
         - $ref: '#/components/parameters/PostIdPath'
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/XDeviceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
       responses:
-        '200': { description: 占位，Batch2 交付 }
+        '200': { description: 上报成功（含去重命中） }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '410': { $ref: '#/components/responses/Gone' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalError' }
 
   # ===========================================================================
   # 分组七：认证（共 3 个接口，Batch2 覆盖 3 个）
@@ -4918,6 +4935,13 @@ components:
           type: integer
           format: int64
           description: 乐观锁版本号。**PATCH status 时必须原样回传**
+        favorited:
+          type: boolean
+          nullable: true
+          description: |
+            当前登录用户是否已收藏。**登录用户恒返回 `true`/`false`**；
+            游客无收藏身份，返回 `null`（客户端按「可收藏的空心态」处理）。
+            不下发收藏数：计数仅帖主可见（PRD §8.3.1）。
         author:
           $ref: '#/components/schemas/AuthorBrief'
 
@@ -4953,7 +4977,18 @@ components:
         status: { $ref: '#/components/schemas/PostStatusEnum' }
         publish_at: { type: string, format: date-time }
         expire_at: { type: string, format: date-time }
-        view_count: { type: integer, format: int64 }
+        view_count:
+          type: integer
+          format: int64
+          description: |
+            浏览数，来自 `post_view_daily` 聚合。仅帖主可见，不对外展示、不参与排序。
+            口径：按人/天去重、排除作者本人、功能上线后从 0 起算。
+        favorite_count:
+          type: integer
+          format: int64
+          description: |
+            收藏数，来自 `favorite` 聚合。仅帖主可见，不对外展示、不参与排序。
+            口径：排除作者自收藏。
         contact_count:
           type: integer
           format: int64

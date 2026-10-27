@@ -155,7 +155,34 @@ public enum RateLimitTrack {
     WECHAT_LOGIN_IP(
             new WindowRule(RateLimitThresholds.WECHAT_LOGIN_IP_LIMIT_PER_HOUR,
                     RateLimitThresholds.WINDOW_HOUR_SECONDS,
-                    RateLimitThresholds.WECHAT_LOGIN_OVERFLOW));
+                    RateLimitThresholds.WECHAT_LOGIN_OVERFLOW)),
+
+    /**
+     * 行 15 · 浏览上报（账号维度）：键形 {@code rl:viewreport:uid:{userId}:1d}，
+     * 200/d → 42907。详情每次成功渲染上报一次，账号轨防单账号批量刷。
+     */
+    VIEW_REPORT_UID(
+            new WindowRule(RateLimitThresholds.VIEW_REPORT_UID_LIMIT_PER_DAY,
+                    RateLimitThresholds.WINDOW_DAY_SECONDS,
+                    RateLimitThresholds.VIEW_REPORT_OVERFLOW)),
+
+    /**
+     * 行 16 · 浏览上报（设备维度，辅助）：键形 {@code rl:viewreport:dev:{deviceId}:1d}，
+     * 30/d → 42907。设备号不可信，只提高刷量成本，主约束是 IP 轨。
+     */
+    VIEW_REPORT_DEV(
+            new WindowRule(RateLimitThresholds.VIEW_REPORT_DEV_LIMIT_PER_DAY,
+                    RateLimitThresholds.WINDOW_DAY_SECONDS,
+                    RateLimitThresholds.VIEW_REPORT_OVERFLOW)),
+
+    /**
+     * 行 17 · 浏览上报（IP 维度，渠道级主约束）：键形
+     * {@code rl:viewreport:ip:{ip}:1d}，100/d → 42907。
+     */
+    VIEW_REPORT_IP(
+            new WindowRule(RateLimitThresholds.VIEW_REPORT_IP_LIMIT_PER_DAY,
+                    RateLimitThresholds.WINDOW_DAY_SECONDS,
+                    RateLimitThresholds.VIEW_REPORT_OVERFLOW));
 
     private final WindowRule[] rules;
 

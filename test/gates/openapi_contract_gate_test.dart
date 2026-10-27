@@ -373,6 +373,81 @@ void main() {
     });
   });
 
+  group('收藏与计数契约（U1 / R11）', () {
+    /// 取 components/schemas 下的具名模型。
+    ///
+    /// 参数：[name] 模型名。
+    /// 返回：[YamlMap] 模型定义。
+    YamlMap schemaOf(String name) {
+      final schema = spec.schemas?[name] as YamlMap?;
+      expect(schema, isNotNull, reason: '契约缺少 $name 模型');
+      return schema!;
+    }
+
+    /// 取模型的属性表。
+    ///
+    /// 参数：[name] 模型名。
+    /// 返回：[YamlMap] properties（模型未声明时为空映射）。
+    YamlMap propsOf(String name) =>
+        (schemaOf(name)['properties'] as YamlMap?) ??
+        (loadYaml('{}') as YamlMap);
+
+    /// 取模型的必填字段名集合（`required` 列表）。
+    ///
+    /// 参数：[name] 模型名。
+    /// 返回：[Set<String>] 必填字段名；模型未声明 required 时为空集。
+    Set<String> requiredOf(String name) {
+      final required = schemaOf(name)['required'];
+      if (required is! YamlList) return <String>{};
+      return required.map((e) => e.toString()).toSet();
+    }
+
+    test('PostDetail.favorited 存在、boolean、可空、不进 required', () {
+      final favorited = propsOf('PostDetail')['favorited'] as YamlMap?;
+      expect(favorited, isNotNull, reason: '详情缺少收藏态字段');
+      expect(favorited!['type'], 'boolean');
+      expect(favorited['nullable'], isTrue,
+          reason: '游客不返回收藏态，必须可空');
+      expect(favorited['description'], isNotEmpty,
+          reason: '可空语义（游客 null）须写进契约描述');
+      expect(requiredOf('PostDetail').contains('favorited'), isFalse,
+          reason: '新增字段不得进入 required（旧客户端可忽略）');
+    });
+
+    test('MyPostItem.favorite_count 存在、integer、不进 required', () {
+      final favoriteCount = propsOf('MyPostItem')['favorite_count'] as YamlMap?;
+      expect(favoriteCount, isNotNull, reason: '帖主列表缺少收藏数');
+      expect(favoriteCount!['type'], 'integer');
+      expect(favoriteCount['format'], 'int64');
+      expect(requiredOf('MyPostItem').contains('favorite_count'), isFalse);
+    });
+
+    test('MyPostItem.view_count 描述为真实口径（不是占位说明）', () {
+      final viewCount = propsOf('MyPostItem')['view_count'] as YamlMap?;
+      final description = viewCount?['description']?.toString() ?? '';
+      expect(description, contains('人/天'),
+          reason: '浏览数口径（人/天去重、排除作者）须写进契约');
+    });
+
+    test('/posts/{post_id}/view 已由占位转真（含完整响应集）', () {
+      final ops = spec
+          .operations()
+          .where((op) => op.path == '/posts/{post_id}/view' && op.method == 'post')
+          .toList();
+      expect(ops, hasLength(1), reason: '浏览上报接口缺失');
+      final responses = ops.single.responses;
+      expect(responses, isNotNull);
+      for (final status in ['200', '400', '410', '429', '500']) {
+        expect(responses!.containsKey(status), isTrue,
+            reason: '浏览上报缺少 $status 响应定义');
+      }
+      expect(ops.single.referencesParameter('XDeviceId'), isTrue,
+          reason: '游客去重依赖设备号，须声明 X-Device-Id 参数');
+      expect(ops.single.referencesParameter('IdempotencyKey'), isTrue,
+          reason: '全局纪律：写接口必带 Idempotency-Key');
+    });
+  });
+
   // 判据自检：resolveResponse 是两条契约绑定断言的检出链第一环，
   // 其失声会让整道门恒绿（复审 #2），必须有独立单测。
   group('resolveResponse 判据自检（复审 #2）', () {

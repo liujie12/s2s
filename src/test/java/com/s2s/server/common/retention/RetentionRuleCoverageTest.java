@@ -42,8 +42,8 @@ class RetentionRuleCoverageTest {
     private static final Pattern RETENTION_KEY_CELL =
             Pattern.compile("^\\|\\s*[^|]+\\|\\s*`([a-z0-9_]+)`\\s*\\|");
 
-    /** 期望条数：PRD §13.4 表格 9 行（条数变化即文档口径变化，须人工确认后再改本值）。 */
-    private static final int EXPECTED_KEY_COUNT = 9;
+    /** 期望条数：PRD §13.4 表格 10 行（条数变化即文档口径变化，须人工确认后再改本值）。 */
+    private static final int EXPECTED_KEY_COUNT = 10;
 
     /**
      * 注册表 key 集合与 PRD §13.4 表格逐值相等。

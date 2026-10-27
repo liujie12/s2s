@@ -50,6 +50,7 @@ import java.util.Map;
  * @param author            作者摘要（POST /posts 出参不填充，保持 null）
  * @param version           乐观锁版本号
  * @param aiAssisted        本条是否由 T2 AI 智能发布辅助生成（B2-4，PRD §5.9；详情页标识来源）
+ * @param favorited         当前登录用户是否已收藏；登录用户恒 {@code true/false}，游客 {@code null}
  */
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public record PostDetail(
@@ -75,5 +76,6 @@ public record PostDetail(
         Instant expireAt,
         AuthorBrief author,
         Long version,
-        Boolean aiAssisted) {
+        Boolean aiAssisted,
+        Boolean favorited) {
 }

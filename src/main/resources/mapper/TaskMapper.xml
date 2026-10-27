@@ -59,6 +59,14 @@
         LIMIT #{limit}
     </delete>
 
+    <!-- 浏览明细清理（post_view_detail_30d）：只删明细，日计数表不动。 -->
+    <delete id="deletePostViewsBefore">
+        DELETE FROM post_view
+        WHERE view_day &lt; #{threshold}
+        ORDER BY view_day
+        LIMIT #{limit}
+    </delete>
+
     <!--
       待清理注销用户（架构 §8 任务 7；PRD §3.7 注销 7 天冷静期）。
 

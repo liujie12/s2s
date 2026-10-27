@@ -10,6 +10,15 @@
         WHERE id = #{postId}
     </select>
 
+    <!-- 详情页 favorited：命中唯一键 uk_user_post(user_id, post_id)，再过滤软删。 -->
+    <select id="countActiveFavorite" resultType="int">
+        SELECT COUNT(*)
+        FROM favorite
+        WHERE user_id = #{userId}
+          AND post_id = #{postId}
+          AND deleted_at IS NULL
+    </select>
+
     <!--
       收藏（幂等写）。ON DUPLICATE KEY UPDATE 命中唯一键 uk_user_post(user_id, post_id)：
         新建 → 1 行；已软删 → 复活 deleted_at=NULL；已在收藏态 → 0 行（值未变）。

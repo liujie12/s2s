@@ -191,7 +191,9 @@ Map<String, Object?> myPostsPayload() => {
       'status': 'active',
       'publish_at': '2026-09-01T04:00:00Z',
       'expire_at': '2026-09-08T04:00:00Z',
-      'view_count': null,
+      // 帖主视角计数（R7/R8）：真实值形态。
+      'view_count': 42,
+      'favorite_count': 3,
       'contact_count': 3,
       'version': 1,
     },
@@ -207,7 +209,9 @@ Map<String, Object?> myPostsPayload() => {
       'status': 'offline',
       'publish_at': '2026-08-20T04:00:00Z',
       'expire_at': '2026-08-27T04:00:00Z',
+      // 浏览 null = 字段缺失的防御分支；收藏 0 = 真实 0（两形态各留一条）。
       'view_count': null,
+      'favorite_count': 0,
       'contact_count': 0,
       'version': 4,
     },

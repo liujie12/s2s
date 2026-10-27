@@ -69,6 +69,24 @@ public interface PostQueryMapper {
     List<Map<String, Object>> countContactEvents(@Param("postIds") List<Long> postIds);
 
     /**
+     * 批量统计一批帖子的有效收藏数（排除作者自收藏）。
+     *
+     * @param postIds 帖子 ID 列表（非空，调用方保证）
+     * @param ownerId 帖主 user_id；聚合条件为 {@code user_id <> ownerId}
+     * @return {@link List} 每行含 {@code post_id} 与 {@code cnt}；无收藏的帖子不出现在结果里
+     */
+    List<Map<String, Object>> countFavoritesByPost(@Param("postIds") List<Long> postIds,
+            @Param("ownerId") Long ownerId);
+
+    /**
+     * 批量统计一批帖子的累计浏览数（{@code post_view_daily} 按帖 SUM）。
+     *
+     * @param postIds 帖子 ID 列表（非空，调用方保证）
+     * @return {@link List} 每行含 {@code post_id} 与 {@code cnt}；无浏览的帖子不出现在结果里
+     */
+    List<Map<String, Object>> sumPostViews(@Param("postIds") List<Long> postIds);
+
+    /**
      * 统计某叶子类目在时间窗内的发布数（[153] B2-5 §9.10.2 达标判定用）。
      *
      * @param leafCategoryId 叶子类目 ID

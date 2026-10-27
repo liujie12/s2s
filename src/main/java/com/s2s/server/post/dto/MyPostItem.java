@@ -23,7 +23,8 @@ import java.time.Instant;
  * @param status            状态（API 值）
  * @param publishAt         发布时间
  * @param expireAt          到期时间
- * @param viewCount         浏览数；Batch1 无数据源（浏览计数随 [129] 埋点落库），恒 {@code null}
+ * @param viewCount         浏览数（{@code post_view_daily} 按帖聚合；人/天去重、排除作者、上线后起算）
+ * @param favoriteCount     收藏数（{@code favorite} 按帖聚合；排除作者自收藏）
  * @param contactCount      被查看联系方式次数（{@code contact_event} 按 post_id 聚合，
  *                          [128] 起有数据）
  * @param version           乐观锁版本号
@@ -42,6 +43,7 @@ public record MyPostItem(
         Instant publishAt,
         Instant expireAt,
         Long viewCount,
+        Long favoriteCount,
         Long contactCount,
         Long version) {
 }

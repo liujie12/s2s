@@ -15,6 +15,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/ui/list_states.dart';
 import '../../design_tokens.dart';
+import '../detail/detail_screen.dart';
 import 'favorite_dto.dart';
 import 'favorite_provider.dart';
 
@@ -176,8 +177,8 @@ class _SegTabs extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: Color(AppColors.surface),
       decoration: BoxDecoration(
+        color: Color(AppColors.surface),
         border: Border(bottom: BorderSide(color: Color(AppColors.border))),
       ),
       child: Row(
@@ -224,7 +225,15 @@ class _FavoriteCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: () => context.push('/detail/${item.postId}'),
+      // 带上入口来源与已加载的收藏态：41001 时详情页据此把星标渲染为
+      // 「已收藏可取消」，而不是不可点的未知态（KTD4 / R5）。
+      onTap: () => context.push(
+        '/detail/${item.postId}',
+        extra: const DetailScreenArgs(
+          fromFavorites: true,
+          initialFavorited: true,
+        ),
+      ),
       child: Container(
         decoration: BoxDecoration(
           color: Color(AppColors.surface),

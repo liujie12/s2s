@@ -523,7 +523,9 @@ public class PostService {
                 post.getExpireAt().toInstant(ZoneOffset.UTC),
                 null,
                 post.getVersion(),
-                Boolean.TRUE.equals(post.getAiAssisted()));
+                Boolean.TRUE.equals(post.getAiAssisted()),
+                // favorited：POST /posts 刚创建的帖子必为未收藏；该字段由 GET 详情填充
+                null);
     }
 
     /**

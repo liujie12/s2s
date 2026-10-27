@@ -1,10 +1,16 @@
 /// 详情页（PRD §7.4.1 / §7.4.3 需求态差异 / §10.1）。
 ///
-/// **本期不做的三项**（依赖未就位，做了必返工）：
+/// **本期不做的两项**（依赖未就位，做了必返工）：
 /// ① **详情小地图**：§7.7 要求高德小地图 + Marker，依赖 Key（同地图页现状）；
-/// ② **收藏 / 分享**：收藏依赖账号（§13.2 `favorite` 表以 user_id 为键），
-///    分享需 share sheet 插件且要带落地页 URL，而 URL 依赖已备案域名（上架手册 P2）；
-/// ③ **举报入口**：属联系中转页（§7.4.2 底部），不在详情页。
+/// ② **分享**：需 share sheet 插件且要带落地页 URL，而 URL 依赖已备案域名（上架手册 P2）。
+///
+/// **收藏已实装**（2026-10-27）：外壳（`Scaffold`/`AppBar`）常驻，星标在 `actions`，
+/// body 按 loading / error / 41001 / 40301 / data 分流（KTD1）。41001 不再整页替换，
+/// 改为同壳降级：联系按钮禁用；星标仅当入口能证明该帖曾存在（来自「我的收藏」）
+/// 时才按已收藏态可点，深链 / 未知来源渲染不可点的未知态（KTD4）。
+/// 收藏态读写 [favoriteStateProvider]（KTD2），乐观更新 + 失败回滚。
+/// **不弹底部浮条**（2026-10-28 用户裁定）：星标由空心变实心（反之亦然）已是
+/// 足够的成功反馈，浮条只会压住「联系 TA」；误取消再点一次星标即可复原。
 ///
 /// **[B2-11] 顶部媒体区已由占位转真**：`_MediaPlaceholder`（分类色渐变块）
 /// 换成 `MediaCarousel`（消费 `PostDetail.media` 的真图轮播 + 点击全屏查看）。
@@ -14,6 +20,8 @@
 /// 「点联系 TA → 弹中转页」，中转页本身是下一个任务。按钮不放会让页面
 /// 缺掉最主要的行动点，验收时看不出真实的视觉重量。
 library;
+
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -29,28 +37,55 @@ import '../../domain/listing_category.dart';
 // 否则聚合模块（features/map/clustering/）无法持有它，就得退回用 int 传分类。
 import '../../domain/listing_category_style.dart';
 import '../../domain/listing_detail.dart';
+import '../auth/auth_repository.dart';
+import '../favorite/favorite_state.dart';
+import '../post/post_repository.dart';
 import 'media_carousel.dart';
 import 'post_detail_provider.dart';
 
-class DetailScreen extends ConsumerWidget {
-  const DetailScreen({super.key, required this.listingId});
+/// 详情页入口参数（路由 `extra` 可空，缺失即「深链 / 未知来源」）。
+class DetailScreenArgs {
+  /// 构造入口参数。
+  ///
+  /// 参数：[fromFavorites] 是否从「我的收藏」进入；
+  ///   [initialFavorited] 列表页已加载的收藏态（仅 [fromFavorites] 时携带）。
+  const DetailScreenArgs({this.fromFavorites = false, this.initialFavorited});
+
+  /// 是否从「我的收藏」进入：入口能证明该帖曾存在（KTD4）。
+  final bool fromFavorites;
+
+  /// 列表页已加载的收藏态；null = 未知。
+  final bool? initialFavorited;
+}
+
+class DetailScreen extends ConsumerStatefulWidget {
+  const DetailScreen({
+    super.key,
+    required this.listingId,
+    this.args = const DetailScreenArgs(),
+  });
 
   /// 帖子 ID（`int`，契约 `PostIdPath` 为 `int64`，详细设计 §10.4.3）。
   /// 由路由把 URL 字符串解析后传入，非法值传 -1 → 走「信息不存在」。
   final int listingId;
 
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final detailAsync = ref.watch(postDetailProvider(listingId));
-    return detailAsync.when(
-      loading: () => const _LoadingScreen(),
-      error: (error, _) => _buildErrorScreen(error),
-      data: (detail) => _buildDetail(detail),
-    );
-  }
+  /// 入口参数（是否来自「我的收藏」等）。
+  final DetailScreenArgs args;
 
-  /// 组装详情正文（三态中的 data 态）。
-  Widget _buildDetail(ListingDetail detail) {
+  @override
+  ConsumerState<DetailScreen> createState() => _DetailScreenState();
+}
+
+/// 详情页状态：持浏览上报的一次性标志与收藏动作。
+class _DetailScreenState extends ConsumerState<DetailScreen> {
+  /// 浏览上报只发一次（R12）：实例级标志，重建 / 翻页都不重复。
+  bool _viewReported = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final detailAsync = ref.watch(postDetailProvider(widget.listingId));
+    _reportViewOnce(detailAsync);
+
     return Scaffold(
       backgroundColor: Color(AppColors.background),
       appBar: AppBar(
@@ -65,51 +100,231 @@ class DetailScreen extends ConsumerWidget {
             color: Color(AppColors.textPrimary),
           ),
         ),
-      ),
-      body: ListView(
-        // 底部留出主按钮高度 + 安全区，否则最后一段内容会被按钮永久遮住，
-        // 且用户无法察觉下面还有东西。
-        padding: const EdgeInsets.only(bottom: 96),
-        children: [
-          MediaCarousel(
-            mediaUrls: detail.mediaUrls,
-            category: detail.listing.category,
+        // 星标常驻：加载中 / 失败 / 已下架时也保留位置，避免内容跳位（KTD1）。
+        actions: [
+          _FavoriteAction(
+            visual: _favoriteVisual(detailAsync),
+            onPressed: _onFavoriteTap,
           ),
-          _InfoSection(detail: detail),
-          if (detail.templateFields.isNotEmpty)
-            _TemplateSection(fields: detail.templateFields),
-          _DescriptionSection(text: detail.description),
-          // B2-4 内容标识落点二：AI 辅助生成的帖子显式标注（PRD §5.9 合规裁定）。
-          if (detail.aiAssisted) const _AiAssistBadge(),
-          _PublisherCard(
-            publisher: detail.publisher,
-            completeness: detail.completeness,
-          ),
-          if (detail.listing.supplyDemand == SupplyDemand.demand)
-            const _DemandHelpEntry(),
         ],
       ),
-      bottomNavigationBar: _ContactBar(detail: detail),
+      body: detailAsync.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (error, _) => _buildErrorBody(error),
+        data: _buildDetailBody,
+      ),
+      bottomNavigationBar: _buildBottomBar(detailAsync),
     );
   }
 
-  /// 错误态分流：41001（信息下架/不存在）显示「信息不存在」，其余显示可重试错误。
+  /// 详情渲染成功后上报一次浏览（R12）；失败静默，自动重试由全局拦截器负责。
+  ///
+  /// 参数：[detailAsync] 详情数据三态。
+  /// 返回：void。
+  void _reportViewOnce(AsyncValue<ListingDetail> detailAsync) {
+    if (_viewReported || !detailAsync.hasValue) return;
+    _viewReported = true;
+    unawaited(
+      ref
+          .read(postRepositoryProvider)
+          .reportView(widget.listingId)
+          .catchError((Object _) {}),
+    );
+  }
+
+  /// 解析星标三态（R2 / KTD4 / KTD9）。
+  ///
+  /// 优先级：共享收藏态 → 加载中未知 → 错误分流 → 服务端 `favorited` → 游客空心态。
+  ///
+  /// 参数：[detailAsync] 详情数据三态。
+  /// 返回：[_FavoriteVisual]。
+  _FavoriteVisual _favoriteVisual(AsyncValue<ListingDetail> detailAsync) {
+    final userId =
+        ref.watch(authSessionProvider.select((session) => session?.userId));
+    if (userId != null) {
+      final stored = ref.watch(favoriteStateProvider)[
+          FavoriteKey(userId: userId, postId: widget.listingId)];
+      if (stored != null) {
+        return stored ? _FavoriteVisual.filled : _FavoriteVisual.empty;
+      }
+    }
+
+    if (detailAsync.isLoading) return _FavoriteVisual.unknown;
+
+    if (detailAsync.hasError) {
+      final gone = asApiException(detailAsync.error!).code == ApiErrorCode.postGone;
+      // 只有「来自我的收藏」的 41001 能证明该帖曾存在，才允许按已收藏态操作。
+      if (gone && widget.args.fromFavorites) {
+        final initial = widget.args.initialFavorited;
+        if (initial == null) return _FavoriteVisual.unknown;
+        return initial ? _FavoriteVisual.filled : _FavoriteVisual.empty;
+      }
+      return _FavoriteVisual.unknown;
+    }
+
+    final favorited = detailAsync.value?.favorited;
+    if (favorited != null) {
+      return favorited ? _FavoriteVisual.filled : _FavoriteVisual.empty;
+    }
+    // 游客：未登录不可能是已收藏（KTD9），映射为可收藏的空心态。
+    return userId == null ? _FavoriteVisual.empty : _FavoriteVisual.unknown;
+  }
+
+  /// 点击星标：未登录先进登录，返回成功后补执行本次收藏（R3 / KTD5）。
+  ///
+  /// 参数：[visual] 点击时的星标态。
+  /// 返回：[Future<void>]。
+  Future<void> _onFavoriteTap(_FavoriteVisual visual) async {
+    if (visual == _FavoriteVisual.unknown) return;
+
+    if (!ref.read(isLoggedInProvider)) {
+      final ok = await GoRouter.of(context).push<bool>(AppRoutes.login);
+      // 用户放弃登录（返回非 true）时状态不变：他刚刚放弃了这个动作。
+      if (!mounted || ok != true) return;
+    }
+
+    await _commit(visual != _FavoriteVisual.filled);
+  }
+
+  /// 提交收藏 / 取消收藏；失败时容器已回滚，这里只提示错误（R4）。
+  ///
+  /// **成功不弹底部浮条**（2026-10-28 用户裁定）：星标由空心变实心（反之亦然）
+  /// 已是足够的成功反馈，浮条会压住「联系 TA」；误取消只需再点一次星标即可
+  /// 复原，不需要额外的「撤销」按钮。
+  ///
+  /// 参数：[favorited] 目标状态。
+  /// 返回：[Future<void>]。
+  Future<void> _commit(bool favorited) async {
+    try {
+      await ref.read(favoriteStateProvider.notifier).set(widget.listingId, favorited);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(asApiException(e).uiMessage)),
+      );
+    }
+  }
+
+  /// 组装详情正文（三态中的 data 态）。
+  ///
+  /// 参数：[detail] 详情域模型。
+  /// 返回：Widget。
+  Widget _buildDetailBody(ListingDetail detail) {
+    return ListView(
+      // 底部留出主按钮高度 + 安全区，否则最后一段内容会被按钮永久遮住，
+      // 且用户无法察觉下面还有东西。
+      padding: const EdgeInsets.only(bottom: 96),
+      children: [
+        MediaCarousel(
+          mediaUrls: detail.mediaUrls,
+          category: detail.listing.category,
+        ),
+        _InfoSection(detail: detail),
+        if (detail.templateFields.isNotEmpty)
+          _TemplateSection(fields: detail.templateFields),
+        _DescriptionSection(text: detail.description),
+        // B2-4 内容标识落点二：AI 辅助生成的帖子显式标注（PRD §5.9 合规裁定）。
+        if (detail.aiAssisted) const _AiAssistBadge(),
+        _PublisherCard(
+          publisher: detail.publisher,
+          completeness: detail.completeness,
+        ),
+        if (detail.listing.supplyDemand == SupplyDemand.demand)
+          const _DemandHelpEntry(),
+      ],
+    );
+  }
+
+  /// 错误态分流（body 内，外壳常驻）。
   ///
   /// 必须先经 [asApiException] 归一：信封业务错误在链上以
   /// `DioException(error: ApiException)` 形态到达（EnvelopeInterceptor 的
   /// reject 载体），直接判 `error is ApiException` 恒为 false，41001 会落到
   /// 通用错误屏。既有范式见 category_selector_screen.dart / category_tree_provider.dart。
-  Widget _buildErrorScreen(Object error) {
+  ///
+  /// 参数：[error] 详情请求异常。
+  /// 返回：Widget。
+  Widget _buildErrorBody(Object error) {
     final apiError = asApiException(error);
     // 41001 是「这条信息已下架/不存在」——用户的预期结果，非故障。
     if (apiError.code == ApiErrorCode.postGone) {
-      return const _NotFoundScreen();
+      return const _NotFoundBody();
     }
     // 40301 未实名详情额度耗尽：弹引导实名（PRD §3.7），非普通错误态。
     if (apiError.code == ApiErrorCode.detailQuotaUsed) {
-      return const _QuotaExhaustedScreen();
+      return const _QuotaExhaustedBody();
     }
-    return const _ErrorScreen();
+    return const _ErrorBody();
+  }
+
+  /// 底部联系栏：data 态给真按钮；41001 保留但禁用（R5）；其余不显示。
+  ///
+  /// 参数：[detailAsync] 详情数据三态。
+  /// 返回：`Widget?`。
+  Widget? _buildBottomBar(AsyncValue<ListingDetail> detailAsync) {
+    final detail = detailAsync.value;
+    if (detail != null) return _ContactBar(detail: detail);
+    final error = detailAsync.error;
+    if (error != null && asApiException(error).code == ApiErrorCode.postGone) {
+      return const _ContactBar.disabled();
+    }
+    return null;
+  }
+}
+
+/// 星标三态（R2）。
+enum _FavoriteVisual {
+  /// 已收藏（实心星）。
+  filled,
+
+  /// 未收藏（空心星，可点）。
+  empty,
+
+  /// 未知（置灰不可点，不渲染成确定的空心态）。
+  unknown,
+}
+
+/// 导航栏收藏动作：星标 + 「收藏/已收藏」，点击区不小于 44×44（R1）。
+class _FavoriteAction extends StatelessWidget {
+  /// 构造收藏动作。
+  ///
+  /// 参数：[visual] 星标三态；[onPressed] 点击回调（未知态不触发）。
+  const _FavoriteAction({required this.visual, required this.onPressed});
+
+  /// 星标三态。
+  final _FavoriteVisual visual;
+
+  /// 点击回调（携带点击时的星标态，供页面决定目标状态）。
+  final ValueChanged<_FavoriteVisual> onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final filled = visual == _FavoriteVisual.filled;
+    final enabled = visual != _FavoriteVisual.unknown;
+    // 未知态用占位色置灰：既保留位置，又不冒充「确定未收藏」。
+    final color = !enabled
+        ? Color(AppColors.textPlaceholder)
+        : filled
+            ? Color(AppColors.accent)
+            : Color(AppColors.textPrimary);
+
+    return Padding(
+      padding: const EdgeInsets.only(right: AppSpacing.sm),
+      child: TextButton.icon(
+        onPressed: enabled ? () => onPressed(visual) : null,
+        icon: Icon(filled ? Icons.star : Icons.star_border, size: 20),
+        label: Text(
+          filled ? '已收藏' : '收藏',
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+        ),
+        style: TextButton.styleFrom(
+          foregroundColor: color,
+          disabledForegroundColor: Color(AppColors.textPlaceholder),
+          minimumSize: const Size(84, 44),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+        ),
+      ),
+    );
   }
 }
 
@@ -424,17 +639,32 @@ class _DemandHelpEntry extends StatelessWidget {
 }
 
 /// 底部固定联系栏（PRD §7.4.1 底部固定主按钮胶囊）。
+///
+/// 41001 时走 [ _ContactBar.disabled ]：外壳与占位保留，但按钮禁用——
+/// 「已下架仍可收藏」需要这条提示仍在，而联系入口已无意义（R5）。
 class _ContactBar extends StatelessWidget {
-  const _ContactBar({required this.detail});
+  const _ContactBar({required ListingDetail this.detail}) : enabled = true;
 
-  final ListingDetail detail;
+  /// 已下架（41001）降级态：无详情数据，按钮禁用。
+  const _ContactBar.disabled()
+      : detail = null,
+        enabled = false;
+
+  /// 详情域模型；禁用态为 null。
+  final ListingDetail? detail;
+
+  /// 联系入口是否可点（41001 时为 false）。
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
     // 需求态按钮文案改为「响应需求」（§7.4.3）：对需求发布者说「联系 TA」
     // 语义是反的 —— 点击者是来提供资源的，不是来求助的。
-    final isDemand = detail.listing.supplyDemand == SupplyDemand.demand;
+    final isDemand = detail?.listing.supplyDemand == SupplyDemand.demand;
     final label = isDemand ? '响应需求' : '联系 TA';
+    final icon = detail?.contactChannel == ContactChannel.wechat
+        ? Icons.chat_bubble_outline
+        : Icons.phone;
 
     return SafeArea(
       child: Container(
@@ -455,13 +685,10 @@ class _ContactBar extends StatelessWidget {
         child: SizedBox(
           height: 48,
           child: FilledButton.icon(
-            onPressed: () => context.push('/contact/${detail.listing.id}'),
-            icon: Icon(
-              detail.contactChannel == ContactChannel.phone
-                  ? Icons.phone
-                  : Icons.chat_bubble_outline,
-              size: 20,
-            ),
+            onPressed: enabled
+                ? () => context.push('/contact/${detail!.listing.id}')
+                : null,
+            icon: Icon(icon, size: 20),
             label: Text(
               label,
               style: TextStyle(
@@ -482,62 +709,35 @@ class _ContactBar extends StatelessWidget {
   }
 }
 
-/// 加载态（详情接口首次拉取中）。
-class _LoadingScreen extends StatelessWidget {
-  const _LoadingScreen();
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Color(AppColors.background),
-      appBar: AppBar(
-        toolbarHeight: 48,
-        backgroundColor: Color(AppColors.surface),
-        elevation: 0,
-        title: const Text('详情'),
-      ),
-      body: const Center(child: CircularProgressIndicator()),
-    );
-  }
-}
-
 /// 通用错误态（网络失败 / 游客限频 42907 / 服务端错误等，非 41001）。
 ///
 /// 不展示具体错误码：详情页失败对用户而言都是「暂时看不到这条信息」，
 /// 具体原因（限频 vs 网络）在 §12.2 行为表的 UI 层再细分——本页只兜住
 /// 「非 41001 的失败」这一档，避免把错误码细节泄给页面。
-class _ErrorScreen extends StatelessWidget {
-  const _ErrorScreen();
+/// 外壳（`Scaffold`/`AppBar`）由详情页常驻，这里只给 body（KTD1）。
+class _ErrorBody extends StatelessWidget {
+  const _ErrorBody();
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Color(AppColors.background),
-      appBar: AppBar(
-        toolbarHeight: 48,
-        backgroundColor: Color(AppColors.surface),
-        elevation: 0,
-        title: const Text('详情'),
-      ),
-      body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.cloud_off_outlined,
-              size: 48,
-              color: Color(AppColors.textPlaceholder),
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.cloud_off_outlined,
+            size: 48,
+            color: Color(AppColors.textPlaceholder),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Text(
+            '加载失败，请稍后重试',
+            style: TextStyle(
+              fontSize: AppTypeScale.body.size,
+              color: Color(AppColors.textSecondary),
             ),
-            const SizedBox(height: AppSpacing.md),
-            Text(
-              '加载失败，请稍后重试',
-              style: TextStyle(
-                fontSize: AppTypeScale.body.size,
-                color: Color(AppColors.textSecondary),
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -545,106 +745,93 @@ class _ErrorScreen extends StatelessWidget {
 
 /// 未实名详情额度耗尽（40301）：引导实名（PRD §3.7「今天的 N 条看完了」）。
 ///
-/// 与 [_ErrorScreen] 分开：额度耗尽不是故障，而是「完成实名即可解锁」的
+/// 与 [_ErrorBody] 分开：额度耗尽不是故障，而是「完成实名即可解锁」的
 /// 引导态，须给「去实名」入口（跳 trust 实名表单页），不是重试。
-class _QuotaExhaustedScreen extends StatelessWidget {
-  const _QuotaExhaustedScreen();
+class _QuotaExhaustedBody extends StatelessWidget {
+  const _QuotaExhaustedBody();
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Color(AppColors.background),
-      appBar: AppBar(
-        toolbarHeight: 48,
-        backgroundColor: Color(AppColors.surface),
-        elevation: 0,
-        title: const Text('详情'),
-      ),
-      body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.verified_user_outlined,
-              size: 48,
-              color: Color(AppColors.textPlaceholder),
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.verified_user_outlined,
+            size: 48,
+            color: Color(AppColors.textPlaceholder),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Text(
+            '今天的 ${NfrCert.detailQuotaLimitPerDay} 条看完了',
+            style: TextStyle(
+              fontSize: AppTypeScale.body.size,
+              color: Color(AppColors.textPrimary),
             ),
-            const SizedBox(height: AppSpacing.md),
-            Text(
-              '今天的 ${NfrCert.detailQuotaLimitPerDay} 条看完了',
-              style: TextStyle(
-                fontSize: AppTypeScale.body.size,
-                color: Color(AppColors.textPrimary),
-              ),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            '完成实名后可无限查看',
+            style: TextStyle(
+              fontSize: AppTypeScale.small.size,
+              color: Color(AppColors.textSecondary),
             ),
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              '完成实名后可无限查看',
-              style: TextStyle(
-                fontSize: AppTypeScale.small.size,
-                color: Color(AppColors.textSecondary),
-              ),
+          ),
+          const SizedBox(height: AppSpacing.xl),
+          ElevatedButton(
+            onPressed: () => context.push(AppRoutes.trust),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Color(AppColors.primary),
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape: StadiumBorder(),
             ),
-            const SizedBox(height: AppSpacing.xl),
-            ElevatedButton(
-              onPressed: () => context.push(AppRoutes.trust),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Color(AppColors.primary),
-                foregroundColor: Colors.white,
-                elevation: 0,
-                shape: StadiumBorder(),
-              ),
-              child: const Text('去实名（约 30 秒）'),
+            child: const Text('去实名（约 30 秒）'),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          TextButton(
+            onPressed: () => context.pop(),
+            child: Text(
+              '明天再来',
+              style: TextStyle(color: Color(AppColors.textSecondary)),
             ),
-            const SizedBox(height: AppSpacing.sm),
-            TextButton(
-              onPressed: () => context.pop(),
-              child: Text(
-                '明天再来',
-                style: TextStyle(color: Color(AppColors.textSecondary)),
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 }
 
 /// 信息不存在（已下架 / id 非法）。
-class _NotFoundScreen extends StatelessWidget {
-  const _NotFoundScreen();
+///
+/// 与旧版「整页替换」的差异（KTD1 / R5）：不再自建 `Scaffold`，外壳、
+/// 星标与底部禁用联系栏由详情页提供 —— 从「我的收藏」进来的已下架帖
+/// 仍能取消收藏。
+class _NotFoundBody extends StatelessWidget {
+  const _NotFoundBody();
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Color(AppColors.background),
-      appBar: AppBar(
-        backgroundColor: Color(AppColors.surface),
-        elevation: 0,
-        title: const Text('详情'),
-      ),
-      body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.inventory_2_outlined,
-              size: 48,
-              color: Color(AppColors.textPlaceholder),
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.inventory_2_outlined,
+            size: 48,
+            color: Color(AppColors.textPlaceholder),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Text(
+            // 说明原因而非只说「不存在」：信息过期下架是本产品的常态
+            // （§5.11 默认 7 天），用户需要知道这不是 App 出错。
+            '这条信息已下架或不存在',
+            style: TextStyle(
+              fontSize: AppTypeScale.body.size,
+              color: Color(AppColors.textSecondary),
             ),
-            const SizedBox(height: AppSpacing.md),
-            Text(
-              // 说明原因而非只说「不存在」：信息过期下架是本产品的常态
-              // （§5.11 默认 7 天），用户需要知道这不是 App 出错。
-              '这条信息已下架或不存在',
-              style: TextStyle(
-                fontSize: AppTypeScale.body.size,
-                color: Color(AppColors.textSecondary),
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

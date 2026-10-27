@@ -110,6 +110,7 @@ class ListingDetail {
     this.negotiable = false,
     this.mediaUrls = const [],
     this.aiAssisted = false,
+    this.favorited,
   });
 
   /// 复用列表模型承载共有字段，避免同一条信息在两个类里各存一份标题与坐标。
@@ -183,6 +184,12 @@ class ListingDetail {
   /// 为 true 时详情页展示「AI 辅助生成」内容标识（合规裁定：确认页 + 详情页两处都做）。
   /// 存量帖/非 AI 帖为 false。
   final bool aiAssisted;
+
+  /// 当前用户是否已收藏；登录用户恒 true/false，游客为 null。
+  ///
+  /// 只作为收藏态容器的首次填充与对账来源，不作为交互路径（交互读
+  /// `favoriteStateProvider`）。
+  final bool? favorited;
 
   /// 剩余有效期天数（向上取整）。
   ///

@@ -354,6 +354,43 @@ public final class RateLimitKeys {
     }
 
     // ------------------------------------------------------------------
+    // 行 15–17：浏览上报（账号 / 设备 / IP）
+    // ------------------------------------------------------------------
+
+    /**
+     * 行 15 · 浏览上报·账号·1 自然日窗键。
+     *
+     * @param userId 用户 ID
+     * @param date   自然日（Asia/Shanghai）
+     * @return {@link String} 键形 {@code rl:viewreport:uid:{userId}:1d:{yyyyMMdd}}
+     */
+    public static String viewReportUidDay(Long userId, LocalDate date) {
+        return KEY_PREFIX + "viewreport:uid:" + userId + ":1d:" + date.format(DATE_FORMAT);
+    }
+
+    /**
+     * 行 16 · 浏览上报·设备·1 自然日窗键。
+     *
+     * @param deviceId 设备标识（X-Device-Id，调用方已校验合法）
+     * @param date     自然日
+     * @return {@link String} 键形 {@code rl:viewreport:dev:{deviceId}:1d:{yyyyMMdd}}
+     */
+    public static String viewReportDevDay(String deviceId, LocalDate date) {
+        return KEY_PREFIX + "viewreport:dev:" + deviceId + ":1d:" + date.format(DATE_FORMAT);
+    }
+
+    /**
+     * 行 17 · 浏览上报·IP·1 自然日窗键。
+     *
+     * @param ip   IP 地址
+     * @param date 自然日
+     * @return {@link String} 键形 {@code rl:viewreport:ip:{ip}:1d:{yyyyMMdd}}
+     */
+    public static String viewReportIpDay(String ip, LocalDate date) {
+        return KEY_PREFIX + "viewreport:ip:" + ip + ":1d:" + date.format(DATE_FORMAT);
+    }
+
+    // ------------------------------------------------------------------
     // 行 15：微信登录（设备维 + IP 维，渠道级，B2-6a）
     // ------------------------------------------------------------------
 

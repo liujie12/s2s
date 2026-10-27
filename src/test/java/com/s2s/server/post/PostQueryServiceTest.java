@@ -20,6 +20,7 @@ import com.s2s.server.common.config.SystemConfigService;
 import com.s2s.server.common.constants.NfrApi;
 import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
+import com.s2s.server.contact.FavoriteQueryService;
 import com.s2s.server.post.dto.MyPostsResponse;
 import com.s2s.server.post.dto.PostDetail;
 import com.s2s.server.post.dto.PostStatusResult;
@@ -51,6 +52,7 @@ class PostQueryServiceTest {
     private SystemConfigService systemConfigService;
     private CertService certService;
     private DetailQuotaGate detailQuotaGate;
+    private FavoriteQueryService favoriteQueryService;
     private PostQueryService service;
 
     @BeforeEach
@@ -62,9 +64,10 @@ class PostQueryServiceTest {
         systemConfigService = mock(SystemConfigService.class);
         certService = mock(CertService.class);
         detailQuotaGate = mock(DetailQuotaGate.class);
+        favoriteQueryService = mock(FavoriteQueryService.class);
         service = new PostQueryService(postQueryMapper, postMediaMapper, mediaAssembler,
                 categoryService, systemConfigService, new ObjectMapper(), certService,
-                detailQuotaGate);
+                detailQuotaGate, favoriteQueryService);
         when(postMediaMapper.selectList(any())).thenReturn(List.of());
         when(systemConfigService.isOn(any())).thenReturn(false);
     }
@@ -232,5 +235,57 @@ class PostQueryServiceTest {
         // page=-3 -> 第 1 页；page_size=0 -> 默认 20；status=active 走 DB_ACTIVE 筛选
         verify(postQueryMapper).selectMine(eq(1L), eq(List.of(PostStatus.DB_ACTIVE)), eq(List.of()),
                 eq(false), eq(0), eq(NfrApi.PAGE_SIZE_DEFAULT));
+    }
+
+    @Test
+    void 登录用户详情带收藏态且按当前用户查() {
+        when(postQueryMapper.selectDetailRow(any())).thenReturn(detailRow("active", null));
+        when(favoriteQueryService.isFavorited(2L, 100L)).thenReturn(true);
+
+        PostDetail detail = service.getDetail(2L, 100L);
+
+        assertThat(detail.favorited()).isTrue();
+        verify(favoriteQueryService).isFavorited(2L, 100L);
+    }
+
+    @Test
+    void 游客详情收藏态为null且不查收藏表() {
+        when(postQueryMapper.selectDetailRow(any())).thenReturn(detailRow("active", null));
+
+        PostDetail detail = service.getDetail(null, 100L);
+
+        assertThat(detail.favorited()).isNull();
+        verify(favoriteQueryService, never()).isFavorited(any(), any());
+    }
+
+    @Test
+    void 我的发布出参带收藏数与浏览数() {
+        when(postQueryMapper.countMine(any(), any(), any(), anyBoolean())).thenReturn(1L);
+        when(postQueryMapper.selectMine(any(), any(), any(), anyBoolean(), anyInt(), anyInt()))
+                .thenReturn(List.of(mineRow("active", null)));
+        when(postQueryMapper.countFavoritesByPost(anyList(), eq(1L)))
+                .thenReturn(List.of(Map.of("post_id", 100L, "cnt", 3L)));
+        when(postQueryMapper.sumPostViews(anyList()))
+                .thenReturn(List.of(Map.of("post_id", 100L, "cnt", 42L)));
+
+        MyPostsResponse response = service.listMine(1L, null, 1, 20);
+
+        assertThat(response.items().get(0).favoriteCount()).isEqualTo(3L);
+        assertThat(response.items().get(0).viewCount()).isEqualTo(42L);
+    }
+
+    @Test
+    void 无收藏无浏览时计数为0而非null() {
+        when(postQueryMapper.countMine(any(), any(), any(), anyBoolean())).thenReturn(1L);
+        when(postQueryMapper.selectMine(any(), any(), any(), anyBoolean(), anyInt(), anyInt()))
+                .thenReturn(List.of(mineRow("active", null)));
+        when(postQueryMapper.countFavoritesByPost(anyList(), eq(1L))).thenReturn(List.of());
+        when(postQueryMapper.sumPostViews(anyList())).thenReturn(List.of());
+
+        MyPostsResponse response = service.listMine(1L, null, 1, 20);
+
+        // R8：正常返回 0，前端显示「☆ 0」；null 只留给字段缺失的防御分支
+        assertThat(response.items().get(0).favoriteCount()).isZero();
+        assertThat(response.items().get(0).viewCount()).isZero();
     }
 }

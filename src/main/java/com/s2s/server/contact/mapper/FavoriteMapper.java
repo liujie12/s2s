@@ -30,6 +30,15 @@ public interface FavoriteMapper {
     int countPostById(@Param("postId") Long postId);
 
     /**
+     * 判断某用户是否已有效收藏某帖子（详情页 {@code favorited} 出参来源）。
+     *
+     * @param userId 用户 ID
+     * @param postId 帖子 ID
+     * @return int 命中行数（0＝未收藏或已软删）
+     */
+    int countActiveFavorite(@Param("userId") Long userId, @Param("postId") Long postId);
+
+    /**
      * 收藏（幂等写）：不存在则插入，存在则把 {@code deleted_at} 复活为 {@code NULL}。
      *
      * <p>用 {@code INSERT ... ON DUPLICATE KEY UPDATE} 一条语句完成「插入或复活」，

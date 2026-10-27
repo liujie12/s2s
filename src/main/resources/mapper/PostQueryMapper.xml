@@ -98,6 +98,29 @@
     </select>
 
     <!--
+      收藏数批量聚合：只计未软删，且排除作者自收藏（写侧仍允许作者收藏自己帖子，
+      仅在计数口径排除）。走 favorite.idx_post_deleted(post_id, deleted_at)。
+    -->
+    <select id="countFavoritesByPost" resultType="map">
+        SELECT post_id, COUNT(*) AS cnt
+        FROM favorite
+        WHERE post_id IN
+        <foreach collection="postIds" item="pid" open="(" separator="," close=")">#{pid}</foreach>
+          AND deleted_at IS NULL
+          AND user_id &lt;&gt; #{ownerId}
+        GROUP BY post_id
+    </select>
+
+    <!-- 浏览数批量聚合：只读日计数表，明细清理不影响累计值。 -->
+    <select id="sumPostViews" resultType="map">
+        SELECT post_id, SUM(view_count) AS cnt
+        FROM post_view_daily
+        WHERE post_id IN
+        <foreach collection="postIds" item="pid" open="(" separator="," close=")">#{pid}</foreach>
+        GROUP BY post_id
+    </select>
+
+    <!--
       统计某叶子类目在时间窗内的发布数（[153] B2-5 §9.10.2 达标判定用）。
 
       EXPLAIN 结论（2026-10-17 容量复核订正）：`post` 上**没有** leaf_category_id 前缀索引
