@@ -19,6 +19,7 @@ import '../../core/network/api_error_code.dart';
 import '../../core/network/api_exception.dart';
 import '../../design_tokens.dart';
 import '../../nfr_constants.dart';
+import '../../router/app_router.dart';
 import '../publish/media_section.dart';
 import 'cert_models.dart';
 import 'cert_provider.dart';
@@ -110,6 +111,58 @@ class _QualificationFormScreenState extends ConsumerState<QualificationFormScree
 
   /// 是否编辑态。
   bool get _isEditing => widget.initialQualification != null;
+
+  /// 去完成实名（未实名时表单顶部横幅的入口）。
+  ///
+  /// 返回后刷新认证状态，横幅与提交守卫随之更新。
+  ///
+  /// 参数：无。
+  /// 返回：[Future<void>]。
+  Future<void> _openRealname() async {
+    await context.push(AppRoutes.trustRealname);
+    if (!mounted) return;
+    await ref.read(trustOverviewProvider.notifier).refresh();
+  }
+
+  /// 未实名横幅：告知「添加资质前需先完成实名」，并给直达入口。
+  ///
+  /// 参数：无。
+  /// 返回：[Widget]。
+  Widget _buildRealnameNotice() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: AppSpacing.md),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.sm,
+      ),
+      decoration: BoxDecoration(
+        color: const Color(AppColors.primaryLight),
+        borderRadius: BorderRadius.circular(AppRadius.md),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              '添加资质前需先完成实名认证',
+              style: TextStyle(
+                fontSize: AppTypeScale.small.size,
+                color: const Color(AppColors.primaryDark),
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: _openRealname,
+            style: TextButton.styleFrom(
+              padding: EdgeInsets.zero,
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: const Text('去完成实名 ›'),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   void dispose() {
@@ -245,6 +298,13 @@ class _QualificationFormScreenState extends ConsumerState<QualificationFormScree
   /// 参数：无。
   /// 返回：[Future<void>]。
   Future<void> _submit() async {
+    // 未实名不发起请求：直接把原因说清楚，而不是等 40302 兜回来。
+    final realnamePassed =
+        ref.read(trustOverviewProvider).value?.cert.isRealnamePassed;
+    if (!_isEditing && realnamePassed == false) {
+      setState(() => _error = '请先完成实名认证，再添加资质');
+      return;
+    }
     for (final draft in _drafts) {
       if (draft.mediaIds.isEmpty) {
         setState(() => _error = '请至少上传一张证照图');
@@ -569,6 +629,10 @@ class _QualificationFormScreenState extends ConsumerState<QualificationFormScree
   @override
   Widget build(BuildContext context) {
     final busy = _submitting || _deleting;
+    // 未实名横幅只在添加态出现；状态未加载（null）时不臆测，交给服务端 40302 兜底。
+    final realnamePassed =
+        ref.watch(trustOverviewProvider).value?.cert.isRealnamePassed;
+    final showRealnameNotice = !_isEditing && realnamePassed == false;
     return Scaffold(
       backgroundColor: const Color(AppColors.background),
       appBar: AppBar(
@@ -595,6 +659,7 @@ class _QualificationFormScreenState extends ConsumerState<QualificationFormScree
           : ListView(
               padding: const EdgeInsets.all(AppSpacing.lg),
               children: [
+                if (showRealnameNotice) _buildRealnameNotice(),
                 for (var i = 0; i < _drafts.length; i++) _buildDraftSection(i, busy),
                 if (_error != null) ...[
                   const SizedBox(height: AppSpacing.md),
