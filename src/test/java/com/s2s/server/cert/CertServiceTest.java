@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -15,6 +16,8 @@ import com.s2s.server.ai.dto.CertProfileGuess;
 import com.s2s.server.auth.UserService;
 import com.s2s.server.cert.dto.CertOcrResult;
 import com.s2s.server.cert.dto.CertStatusResponse;
+import com.s2s.server.cert.dto.QualificationBatchSubmitResult;
+import com.s2s.server.cert.dto.QualificationSubmitItem;
 import com.s2s.server.cert.dto.QualificationSubmitRequest;
 import com.s2s.server.cert.dto.QualificationSubmitResult;
 import com.s2s.server.cert.dto.QualificationUpdateRequest;
@@ -84,7 +87,8 @@ class CertServiceTest {
      * @return {@link QualificationSubmitRequest} 资质提交请求
      */
     private QualificationSubmitRequest qualification() {
-        return new QualificationSubmitRequest(List.of("m1"), "家政服务资质", "ocr");
+        return new QualificationSubmitRequest(List.of(
+                new QualificationSubmitItem(List.of("m1"), "家政服务资质", "ocr")));
     }
 
     /**
@@ -174,12 +178,13 @@ class CertServiceTest {
     @Test
     void 提交资质即approved并落证名() {
         when(userService.realnameStatusOf(1L)).thenReturn(CertService.REALNAME_STATUS_PASSED);
-        QualificationSubmitResult result = service.submitQualification(1L, qualification());
+        QualificationBatchSubmitResult result = service.submitQualification(1L, qualification());
 
         ArgumentCaptor<CertEntity> captor = ArgumentCaptor.forClass(CertEntity.class);
         verify(certMapper).insert(captor.capture());
         CertEntity saved = captor.getValue();
-        assertThat(result.status()).isEqualTo("approved");
+        assertThat(result.items()).hasSize(1);
+        assertThat(result.items().get(0).status()).isEqualTo("approved");
         assertThat(saved.getStatus()).isEqualTo("approved");
         assertThat(saved.getCertType()).isEqualTo("personal_qualification");
         assertThat(saved.getCertName()).isEqualTo("家政服务资质");
@@ -191,8 +196,8 @@ class CertServiceTest {
     @Test
     void 证照图为空回40001() {
         when(userService.realnameStatusOf(1L)).thenReturn(CertService.REALNAME_STATUS_PASSED);
-        QualificationSubmitRequest request = new QualificationSubmitRequest(
-                List.of(" "), "家政服务资质", "ocr");
+        QualificationSubmitRequest request = new QualificationSubmitRequest(List.of(
+                new QualificationSubmitItem(List.of(" "), "家政服务资质", "ocr")));
         assertThatThrownBy(() -> service.submitQualification(1L, request))
                 .isInstanceOf(BizException.class)
                 .extracting(e -> ((BizException) e).getErrorCode())
@@ -202,8 +207,8 @@ class CertServiceTest {
     @Test
     void 证名超64字回40001() {
         when(userService.realnameStatusOf(1L)).thenReturn(CertService.REALNAME_STATUS_PASSED);
-        QualificationSubmitRequest request = new QualificationSubmitRequest(
-                List.of("m1"), "证".repeat(65), "manual");
+        QualificationSubmitRequest request = new QualificationSubmitRequest(List.of(
+                new QualificationSubmitItem(List.of("m1"), "证".repeat(65), "manual")));
         assertThatThrownBy(() -> service.submitQualification(1L, request))
                 .isInstanceOf(BizException.class)
                 .extracting(e -> ((BizException) e).getErrorCode())
@@ -213,8 +218,8 @@ class CertServiceTest {
     @Test
     void 证名来源非法回40001() {
         when(userService.realnameStatusOf(1L)).thenReturn(CertService.REALNAME_STATUS_PASSED);
-        QualificationSubmitRequest request = new QualificationSubmitRequest(
-                List.of("m1"), "家政服务资质", "guess");
+        QualificationSubmitRequest request = new QualificationSubmitRequest(List.of(
+                new QualificationSubmitItem(List.of("m1"), "家政服务资质", "guess")));
         assertThatThrownBy(() -> service.submitQualification(1L, request))
                 .isInstanceOf(BizException.class)
                 .extracting(e -> ((BizException) e).getErrorCode())
@@ -267,6 +272,37 @@ class CertServiceTest {
                 .isInstanceOf(BizException.class)
                 .extracting(e -> ((BizException) e).getErrorCode())
                 .isEqualTo(ErrorCode.AI_UNAVAILABLE);
+    }
+
+    @Test
+    void 一次提交多张不同名资质全部落库() {
+        when(userService.realnameStatusOf(1L)).thenReturn(CertService.REALNAME_STATUS_PASSED);
+        QualificationSubmitRequest request = new QualificationSubmitRequest(List.of(
+                new QualificationSubmitItem(List.of("m1"), "养老护理员证", "ocr"),
+                new QualificationSubmitItem(List.of("m2"), "育婴员证", "manual"),
+                new QualificationSubmitItem(List.of("m3"), "保洁员证", "manual")));
+
+        QualificationBatchSubmitResult result = service.submitQualification(1L, request);
+
+        assertThat(result.items()).hasSize(3);
+        verify(certMapper, times(3)).insert(any(CertEntity.class));
+        verify(mediaService).ensureOwned(1L, "m1");
+        verify(mediaService).ensureOwned(1L, "m2");
+        verify(mediaService).ensureOwned(1L, "m3");
+    }
+
+    @Test
+    void 批内证名重复整批回40001不落库() {
+        when(userService.realnameStatusOf(1L)).thenReturn(CertService.REALNAME_STATUS_PASSED);
+        QualificationSubmitRequest request = new QualificationSubmitRequest(List.of(
+                new QualificationSubmitItem(List.of("m1"), "养老护理员证", "manual"),
+                new QualificationSubmitItem(List.of("m2"), "养老护理员证", "manual")));
+
+        assertThatThrownBy(() -> service.submitQualification(1L, request))
+                .isInstanceOf(BizException.class)
+                .extracting(e -> ((BizException) e).getErrorCode())
+                .isEqualTo(ErrorCode.PARAM_INVALID);
+        verify(certMapper, never()).insert(any(CertEntity.class));
     }
 
     @Test

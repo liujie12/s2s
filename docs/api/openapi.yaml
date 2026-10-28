@@ -2106,15 +2106,17 @@ paths:
       x-domain: cert
       description: |
         提交资质认证，只上传**证照图 + 证书名**（不再选择证件类型、不再有有效期）。
+        2026-10-28 起支持**一次提交多张**：`items` 每组 = 一张证照图 + 一个证书名。
         本轮**取消人工审核，提交即 `approved`**，不落 `pending`、不返回 SLA；
         `pending` / `rejected` 保留在枚举里，本轮不写入。
         未实名用户提交资质回 `40302`（高敏类目前置实名），不新增错误码。
 
         证书名由 `/cert/ocr` 预填，用户确认后随本接口提交：
-        - `media_ids` 必填（至少 1 张，首张作为证照图）；
+        - `items` 必填（1–9 条，每条 `media_ids` 至少 1 张，首张作为证照图）；
         - `cert_name` 可空（抽取失败且用户未填时留空），最长 64 字，超出回 `40001`；
         - `name_source` 取 `ocr` / `manual`，其他值回 `40001`；
-        - 同一用户可有多张资质，但**证书名不可重复**：已存在同名资质回 `40001`（唯一键 `uk_user_cert_name` 兜底并发）。
+        - 同一用户证书名不可重复（含批内重复）：任一条重名回 `40001`（唯一键 `uk_user_cert_name` 兜底并发）；
+        - **整批一个事务**：任一条非法即整批不写，不返回「部分成功」。
       parameters:
         - $ref: '#/components/parameters/XInteractionId'
         - $ref: '#/components/parameters/XDeviceId'
@@ -2127,7 +2129,7 @@ paths:
               $ref: '#/components/schemas/QualificationSubmitRequest'
       responses:
         '200':
-          description: 资质已添加（即时生效）
+          description: 资质已添加（逐条即时生效，顺序同请求）
           content:
             application/json:
               schema:
@@ -2136,7 +2138,7 @@ paths:
                   - type: object
                     properties:
                       data:
-                        $ref: '#/components/schemas/QualificationSubmitResult'
+                        $ref: '#/components/schemas/QualificationBatchSubmitResult'
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -4347,12 +4349,28 @@ components:
 
     QualificationSubmitRequest:
       type: object
+      description: |
+        批量提交载荷：一次提交 1–9 条资质（每组 = 一张证照图 + 一个证书名）。
+        整批一个事务，任一条非法或证名与本人已有资质/批内其他条重复，整批回 `40001` 不落库。
+      required: [items]
+      properties:
+        items:
+          type: array
+          minItems: 1
+          maxItems: 9
+          description: 待提交资质条目；条数上限与 `media` 单帖图片上限同源
+          items:
+            $ref: '#/components/schemas/QualificationSubmitItem'
+
+    QualificationSubmitItem:
+      type: object
+      description: 批量提交中的单条资质（一组证照图 + 一个证书名）。
       required: [media_ids]
       properties:
         media_ids:
           type: array
           minItems: 1
-          description: 证照图 media_id 列表（首张作为证照图）
+          description: 本条证照图 media_id 列表（首张作为证照图）
           items: { type: string }
         cert_name:
           type: string
@@ -4364,6 +4382,16 @@ components:
             - $ref: '#/components/schemas/CertNameSourceEnum'
           nullable: true
           description: 证名来源；非 `ocr` / `manual` 回 `40001`
+
+    QualificationBatchSubmitResult:
+      type: object
+      description: 批量提交结果；`items` 顺序与请求 `items` 一致。
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/QualificationSubmitResult'
 
     QualificationUpdateRequest:
       type: object

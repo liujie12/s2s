@@ -62,34 +62,27 @@ class CertRepository {
     return CertStatus.fromJson(response.data);
   }
 
-  /// 提交资质（`POST /cert/qualification`，高敏类目前置实名）。
+  /// 批量提交资质（`POST /cert/qualification`，一次可提交多张；高敏类目前置实名）。
   ///
-  /// 本轮服务端**提交即 `approved`**，不落 `pending`；2026-10-28 起不再有
-  /// 证件类型与有效期，载荷只有证照图与可选的证书名称。
+  /// 服务端**提交即 `approved`**；整批一个事务，任一条非法或证名重复则整批回滚。
   ///
   /// 参数：
-  ///   [mediaIds] 证照图 media_id 列表（**必填**，须先走上传链路拿到）；
-  ///   [certName] 证书名称（可空：抽取失败且用户未填）；
-  ///   [nameSource] 证名来源（`ocr`=原样提交抽取值，`manual`=用户改过）；
+  ///   [items] 待提交条目（每组 = 证照图 + 证书名 + 来源）；
   ///   [interactionId] 交互 ID，null 由拦截器兜底。
-  /// 返回：[QualificationSubmitResult]（cert_id + status）。
-  /// 抛出：[ApiException] 信封业务错误（40302 未实名提交资质 / 40001 参数 / 50302 认证服务不可用）。
-  Future<QualificationSubmitResult> submitQualification({
-    required List<String> mediaIds,
-    String? certName,
-    String? nameSource,
+  /// 返回：[QualificationBatchSubmitResult]（逐条 cert_id + status）。
+  /// 抛出：[ApiException] 信封业务错误（40302 未实名 / 40001 参数或重名 / 50302 认证服务不可用）。
+  Future<QualificationBatchSubmitResult> submitQualification({
+    required List<QualificationSubmitItem> items,
     String? interactionId,
   }) async {
     final response = await _dio.post<Object?>(
       '/cert/qualification',
       data: {
-        'media_ids': mediaIds,
-        'cert_name': ?certName,
-        'name_source': ?nameSource,
+        'items': [for (final item in items) item.toJson()],
       },
       options: _interactionOptions(interactionId),
     );
-    return QualificationSubmitResult.fromJson(response.data);
+    return QualificationBatchSubmitResult.fromJson(response.data);
   }
 
   /// 从证照图抽取证书名称（`POST /cert/ocr`，纯读不写库）。

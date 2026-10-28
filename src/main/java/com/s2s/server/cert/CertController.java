@@ -3,6 +3,7 @@ package com.s2s.server.cert;
 import com.s2s.server.cert.dto.CertOcrRequest;
 import com.s2s.server.cert.dto.CertOcrResult;
 import com.s2s.server.cert.dto.CertStatusResponse;
+import com.s2s.server.cert.dto.QualificationBatchSubmitResult;
 import com.s2s.server.cert.dto.QualificationSubmitRequest;
 import com.s2s.server.cert.dto.QualificationSubmitResult;
 import com.s2s.server.cert.dto.QualificationUpdateRequest;
@@ -63,14 +64,14 @@ public class CertController {
     }
 
     /**
-     * 新增资质（{@code POST /cert/qualification}）。
+     * 新增资质（{@code POST /cert/qualification}，一次可提交多张）。
      *
-     * @param request 资质提交请求（证照图/证名/证名来源，经 @Valid 校验）
+     * @param request 批量提交请求（每条形如 证照图/证名/证名来源，经 @Valid 校验）
      * @param http    当前 HTTP 请求（取登录态 userId）
-     * @return {@link QualificationSubmitResult} 新记录 ID + 生效状态
+     * @return {@link QualificationBatchSubmitResult} 逐条记录 ID + 生效状态（顺序同请求）
      */
     @PostMapping("/qualification")
-    public QualificationSubmitResult submitQualification(
+    public QualificationBatchSubmitResult submitQualification(
             @Valid @RequestBody QualificationSubmitRequest request, HttpServletRequest http) {
         return certService.submitQualification(requireUserId(http), request);
     }
