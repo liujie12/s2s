@@ -789,7 +789,8 @@ void main() {
     /// 46 = 45 + cert_name_store.dart（自定义证名本机记忆）。
     /// 45 = 46 − cert_type_option.dart（2026-10-28 资质简化为「名称 + 图片」，
     /// 证件类型枚举与按类型候选不再需要，文件删除）。
-    const int featuresDartFileBaseline = 45;
+    /// 44 = 45 − cert_name_store.dart（2026-10-28 去掉常用名称候选后删除）。
+    const int featuresDartFileBaseline = 44;
 
     /// lib/ 全部 Dart 文件数基线（同上，评审 #10）。
     /// 71 = 67 + [127] 前端段四件（core/time_format + 我的发布三件）；
@@ -811,7 +812,8 @@ void main() {
     /// 80 = 79 + cert_name_store.dart（自定义证名本机记忆）。
     /// 79 = 80 − cert_type_option.dart（2026-10-28 资质简化，与
     /// featuresDartFileBaseline 同步减 1）。
-    const int libDartFileBaseline = 79;
+    /// 78 = 79 − cert_name_store.dart（去掉常用名称候选后删除）。
+    const int libDartFileBaseline = 78;
 
     /// `ApiException.parse(` 命中总数基线（判据 C1）：工厂定义 1 + 调用 55。
     ///

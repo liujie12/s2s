@@ -543,12 +543,6 @@ class NfrCert {
 
   /// 未实名用户每日详情浏览额度（条）。PRD §12.3 / DEC-30（2026-10-11 由 3 条改 5 条）。
   static const int detailQuotaLimitPerDay = 5;
-
-  /// 本机记住的自定义证件名称条数上限（每用户）。
-  ///
-  /// 自定义名只是输入便利，不是档案数据；上限防止候选越滚越长，
-  /// 超出按「最近使用优先」淘汰。
-  static const int rememberedNameLimit = 20;
 }
 
 /// §5.8/§5.9/§5.10 AI 智能发布配额（ai 域，B2-4）。

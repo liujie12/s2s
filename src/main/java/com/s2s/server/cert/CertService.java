@@ -29,6 +29,7 @@ import com.s2s.server.post.MediaService;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -310,6 +311,7 @@ public class CertService {
         }
         String certName = requireCertName(request.certName());
         String nameSource = requireNameSource(request.nameSource());
+        ensureCertNameAvailable(userId, certName, null);
         mediaService.ensureOwned(userId, imageRef);
 
         LocalDateTime now = LocalDateTime.now();
@@ -322,7 +324,12 @@ public class CertService {
         entity.setSubmittedAt(now);
         entity.setApprovedAt(now);
         entity.setOcrImageRef(imageRef);
-        certMapper.insert(entity);
+        try {
+            certMapper.insert(entity);
+        } catch (DuplicateKeyException duplicate) {
+            // 唯一键 uk_user_cert_name 兜底：并发下同名写入仍回 40001。
+            throw BizException.of(ErrorCode.PARAM_INVALID);
+        }
         auditLogWriter.write(AuditEntry.minimal(userId, OperatorRole.USER,
                 AUDIT_ACTION_QUALIFICATION_SUBMIT, AUDIT_TARGET_USER, userId));
         return new QualificationSubmitResult(entity.getId(), CERT_STATUS_APPROVED);
@@ -384,12 +391,19 @@ public class CertService {
             update.set("ocr_image_ref", imageRef);
         }
         if (request.certName() != null) {
-            update.set("cert_name", requireCertName(request.certName()));
+            String nextName = requireCertName(request.certName());
+            ensureCertNameAvailable(userId, nextName, certId);
+            update.set("cert_name", nextName);
         }
         if (request.nameSource() != null) {
             update.set("name_source", requireNameSource(request.nameSource()));
         }
-        certMapper.update(null, update);
+        try {
+            certMapper.update(null, update);
+        } catch (DuplicateKeyException duplicate) {
+            // 唯一键兜底：改名撞上他人同名同样回 40001。
+            throw BizException.of(ErrorCode.PARAM_INVALID);
+        }
         auditLogWriter.write(AuditEntry.minimal(userId, OperatorRole.USER,
                 AUDIT_ACTION_QUALIFICATION_UPDATE, AUDIT_TARGET_USER, userId));
         return new QualificationSubmitResult(certId, existing.getStatus());
@@ -467,6 +481,33 @@ public class CertService {
             throw BizException.of(ErrorCode.PARAM_INVALID);
         }
         return normalized;
+    }
+
+    /**
+     * 同一用户的证书名不可重复（{@code uk_user_cert_name} 的唯一性前置校验）。
+     *
+     * <p>只校验非实名记录：个人实名的 {@code cert_name} 恒为空，不参与唯一。
+     * 编辑时用 {@code excludeCertId} 排除自己，避免「不改名也报重复」。</p>
+     *
+     * @param userId        当前登录用户 ID
+     * @param certName      归一化后的证名（可空，空则跳过）
+     * @param excludeCertId 编辑时排除的记录 ID（新增传 {@code null}）
+     * @throws BizException {@code 40001} 已存在同名资质
+     */
+    private void ensureCertNameAvailable(Long userId, String certName, Long excludeCertId) {
+        if (certName == null || certName.isBlank()) {
+            return;
+        }
+        QueryWrapper<CertEntity> query = new QueryWrapper<CertEntity>()
+                .eq("user_id", userId)
+                .eq("cert_name", certName)
+                .ne("cert_type", CERT_TYPE_PERSONAL_REALNAME);
+        if (excludeCertId != null) {
+            query.ne("id", excludeCertId);
+        }
+        if (certMapper.selectCount(query) > 0) {
+            throw BizException.of(ErrorCode.PARAM_INVALID);
+        }
     }
 
     /**

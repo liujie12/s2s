@@ -2114,7 +2114,7 @@ paths:
         - `media_ids` 必填（至少 1 张，首张作为证照图）；
         - `cert_name` 可空（抽取失败且用户未填时留空），最长 64 字，超出回 `40001`；
         - `name_source` 取 `ocr` / `manual`，其他值回 `40001`；
-        - 同一用户可有多张资质（`cert` 无唯一约束）。
+        - 同一用户可有多张资质，但**证书名不可重复**：已存在同名资质回 `40001`（唯一键 `uk_user_cert_name` 兜底并发）。
       parameters:
         - $ref: '#/components/parameters/XInteractionId'
         - $ref: '#/components/parameters/XDeviceId'
@@ -2204,7 +2204,7 @@ paths:
       x-domain: cert
       description: |
         同一张证的原记录更新，不新建记录。字段全部可选，只改传入项，但至少传一项，
-        全部缺失回 `40001`：
+        全部缺失回 `40001`。改名后若与其他资质同名，同样回 `40001`。
 
         - `media_ids` 非空时替换证照图引用，不覆盖未传的另一个字段；
         - 只改名时不动证照图，反之亦然；

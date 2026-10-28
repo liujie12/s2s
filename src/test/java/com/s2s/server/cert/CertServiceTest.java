@@ -270,6 +270,30 @@ class CertServiceTest {
     }
 
     @Test
+    void 同名资质重复提交回40001() {
+        when(userService.realnameStatusOf(1L)).thenReturn(CertService.REALNAME_STATUS_PASSED);
+        when(certMapper.selectCount(any())).thenReturn(1L);
+
+        assertThatThrownBy(() -> service.submitQualification(1L, qualification()))
+                .isInstanceOf(BizException.class)
+                .extracting(e -> ((BizException) e).getErrorCode())
+                .isEqualTo(ErrorCode.PARAM_INVALID);
+        verify(certMapper, never()).insert(any(CertEntity.class));
+    }
+
+    @Test
+    void 改名撞上已有同名回40001() {
+        when(certMapper.selectById(9L)).thenReturn(existingCert("approved"));
+        when(certMapper.selectCount(any())).thenReturn(1L);
+
+        assertThatThrownBy(() -> service.updateQualification(1L, 9L,
+                new QualificationUpdateRequest(null, "养老护理员证", "manual")))
+                .isInstanceOf(BizException.class)
+                .extracting(e -> ((BizException) e).getErrorCode())
+                .isEqualTo(ErrorCode.PARAM_INVALID);
+    }
+
+    @Test
     void 编辑只改证名不动状态() {
         CertEntity row = existingCert("approved");
         when(certMapper.selectById(9L)).thenReturn(row);

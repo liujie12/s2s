@@ -21,10 +21,9 @@ import '../../core/network/api_error_code.dart';
 import '../../core/network/api_exception.dart';
 import '../../design_tokens.dart';
 import '../../nfr_constants.dart';
-import '../auth/auth_repository.dart';
 import '../publish/media_section.dart';
 import 'cert_models.dart';
-import 'cert_name_store.dart';
+import 'cert_provider.dart';
 import 'cert_repository.dart';
 
 /// 资质添加 / 编辑表单页。
@@ -65,15 +64,38 @@ class _QualificationFormScreenState extends ConsumerState<QualificationFormScree
   /// 最近一次送抽取的 media_id（同一张不重复抽取）。
   String? _lastOcrMediaId;
 
-  /// 该用户在本机用过的自定义证名（仅本人可见）。
-  List<String> _rememberedNames = const [];
-
   /// 是否正在把抽取结果写入输入框（避免被 [TextEditingController] 监听误判为手工改写）。
   bool _applyingOcr = false;
 
   bool _submitting = false;
   bool _deleting = false;
   String? _error;
+
+  /// 添加成功后停留在本页的「已添加」态（可继续新增下一张）。
+  bool _justAdded = false;
+
+  /// 本次进页是否至少添加成功过一张（返回时据此让档案列表刷新）。
+  bool _added = false;
+
+  /// 最近一次添加成功的证书名（「已添加」态回显）。
+  String? _lastAddedName;
+
+  /// 清空表单（添加成功后再新增一张时复用同一页面）。
+  ///
+  /// 参数：无。
+  /// 返回：void（调用方负责 setState）。
+  void _resetForm() {
+    _mediaIds = const [];
+    _lastOcrMediaId = null;
+    _nameFromOcr = false;
+    _nameTouched = false;
+    _ocrAttempted = false;
+    _ocrLoading = false;
+    _applyingOcr = true;
+    _nameCtrl.clear();
+    _applyingOcr = false;
+    _error = null;
+  }
 
   /// 是否编辑态。
   bool get _isEditing => widget.initialQualification != null;
@@ -83,24 +105,6 @@ class _QualificationFormScreenState extends ConsumerState<QualificationFormScree
     super.initState();
     // 证名变化影响「已读取 / 手工填写」标注与提交的 name_source，故监听重绘。
     _nameCtrl.addListener(_onNameChanged);
-    _loadRememberedNames();
-  }
-
-  /// 读取当前用户在本机记住的自定义证名。
-  ///
-  /// 未登录时清空（没有可归属的候选来源）。
-  ///
-  /// 参数：无。
-  /// 返回：[Future<void>]。
-  Future<void> _loadRememberedNames() async {
-    final userId = ref.read(authSessionProvider)?.userId;
-    if (userId == null) {
-      _rememberedNames = const [];
-      return;
-    }
-    final names = await ref.read(certNameStoreProvider).read(userId);
-    if (!mounted) return;
-    setState(() => _rememberedNames = names);
   }
 
   @override
@@ -186,31 +190,22 @@ class _QualificationFormScreenState extends ConsumerState<QualificationFormScree
     _nameFromOcr = true;
   }
 
-  /// 候选证名（内置全局候选 + 本人历史自定义名，去重保序）。
+  /// 该用户是否已有同名资质（同用户证书名不可重复）。
   ///
-  /// 参数：无。
-  /// 返回：[List<String>]（恒非空）。
-  List<String> get _nameCandidates {
-    final seen = <String>{};
-    return [
-      for (final name in [...kCertNameSuggestions, ..._rememberedNames])
-        if (seen.add(name)) name,
-    ];
-  }
-
-  /// 点选候选证名：填入输入框并按「手工确认」提交来源。
+  /// 客户端只做前置提示，最终以服务端唯一约束为准。
   ///
-  /// 参数：[name] 候选名称。
-  /// 返回：void。
-  void _pickName(String name) {
-    _applyingOcr = true;
-    _nameCtrl.text = name;
-    _applyingOcr = false;
-    setState(() {
-      _nameTouched = true;
-      _nameFromOcr = false;
-      _error = null;
-    });
+  /// 参数：[name] 已 trim 的证书名。
+  /// 返回：bool；编辑态会排除自己。
+  bool _isDuplicateName(String name) {
+    if (name.isEmpty) return false;
+    final cert = ref.read(trustOverviewProvider).value?.cert;
+    if (cert == null) return false;
+    final selfId = widget.initialQualification?.certId;
+    for (final item in cert.qualifications) {
+      if (selfId != null && item.certId == selfId) continue;
+      if ((item.certName ?? '').trim() == name) return true;
+    }
+    return false;
   }
 
   /// 提交（添加走 POST，编辑走 PATCH）。
@@ -223,6 +218,10 @@ class _QualificationFormScreenState extends ConsumerState<QualificationFormScree
       return;
     }
     final name = _nameCtrl.text.trim();
+    if (_isDuplicateName(name)) {
+      setState(() => _error = '该证书名称已存在，请换一个名称');
+      return;
+    }
     // name_source 由客户端显式回传（契约：服务端不二次猜测）：用户改过即 manual。
     final nameSource = name.isEmpty
         ? null
@@ -252,20 +251,21 @@ class _QualificationFormScreenState extends ConsumerState<QualificationFormScree
             );
       }
       if (!mounted) return;
-      // 记住用户自定义的证名（内置候选不重复存；仅本机、仅本人）。
-      final userId = ref.read(authSessionProvider)?.userId;
-      if (userId != null && name.isNotEmpty) {
-        await ref.read(certNameStoreProvider).remember(
-              userId,
-              name,
-              exclude: kCertNameSuggestions,
-            );
+      if (_isEditing) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('已更新')),
+        );
+        context.pop(true);
+        return;
       }
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_isEditing ? '已更新' : '已添加，发布时可以选择这张证')),
-      );
-      context.pop(true);
+      // 添加成功：留在本页，可「继续新增资质」，不必返回档案页再进一次。
+      setState(() {
+        _added = true;
+        _justAdded = true;
+        _submitting = false;
+        _lastAddedName = name;
+        _resetForm();
+      });
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -334,6 +334,66 @@ class _QualificationFormScreenState extends ConsumerState<QualificationFormScree
     return api.requestId == null ? text : '$text（${api.requestId}）';
   }
 
+  /// 「已添加」态：可继续新增下一张资质，或完成后返回档案页。
+  ///
+  /// 参数：无。
+  /// 返回：[Widget]。
+  Widget _buildAddedPanel() {
+    return Padding(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const SizedBox(height: AppSpacing.xl),
+          Icon(Icons.check_circle, size: 48, color: const Color(AppColors.success)),
+          const SizedBox(height: AppSpacing.md),
+          Text(
+            '已添加',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: AppTypeScale.h3.size,
+              fontWeight: FontWeight.w600,
+              color: const Color(AppColors.textPrimary),
+            ),
+          ),
+          if ((_lastAddedName ?? '').isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.xs),
+            Text(
+              _lastAddedName!,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: AppTypeScale.small.size,
+                color: const Color(AppColors.textSecondary),
+              ),
+            ),
+          ],
+          const SizedBox(height: AppSpacing.xl),
+          SizedBox(
+            height: 48,
+            child: ElevatedButton(
+              onPressed: () => setState(() {
+                _justAdded = false;
+                _resetForm();
+              }),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(AppColors.primary),
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: const StadiumBorder(),
+              ),
+              child: const Text('继续新增资质'),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          TextButton(
+            onPressed: () => context.pop(_added),
+            child: const Text('完成'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final busy = _submitting || _deleting;
@@ -347,7 +407,7 @@ class _QualificationFormScreenState extends ConsumerState<QualificationFormScree
         centerTitle: true,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new, size: 18, color: Color(AppColors.textPrimary)),
-          onPressed: () => context.pop(),
+          onPressed: () => context.pop(_added),
         ),
         title: Text(
           _isEditing ? '编辑资质' : '添加资质',
@@ -358,17 +418,11 @@ class _QualificationFormScreenState extends ConsumerState<QualificationFormScree
           ),
         ),
       ),
-      body: ListView(
+      body: _justAdded
+          ? _buildAddedPanel()
+          : ListView(
         padding: const EdgeInsets.all(AppSpacing.lg),
         children: [
-          Text(
-            '资质由你自行提供，平台未做核验；不添加也不影响发布其他内容',
-            style: TextStyle(
-              fontSize: AppTypeScale.small.size,
-              color: const Color(AppColors.textSecondary),
-            ),
-          ),
-          const SizedBox(height: AppSpacing.xl),
           _SectionLabel('证照照片'),
           const SizedBox(height: AppSpacing.xs),
           Text(
@@ -422,27 +476,6 @@ class _QualificationFormScreenState extends ConsumerState<QualificationFormScree
           const SizedBox(height: AppSpacing.lg),
           _SectionLabel('证书名称'),
           const SizedBox(height: AppSpacing.xs),
-          Text(
-            '选一个常用名称，或直接输入新的',
-            style: TextStyle(
-              fontSize: AppTypeScale.small.size,
-              color: const Color(AppColors.textSecondary),
-            ),
-          ),
-          const SizedBox(height: AppSpacing.xs),
-          Wrap(
-            spacing: AppSpacing.xs,
-            runSpacing: AppSpacing.xs,
-            children: [
-              for (final candidate in _nameCandidates)
-                ChoiceChip(
-                  label: Text(candidate),
-                  selected: _nameCtrl.text.trim() == candidate,
-                  onSelected: busy ? null : (_) => _pickName(candidate),
-                ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.sm),
           TextField(
             controller: _nameCtrl,
             enabled: !busy,
