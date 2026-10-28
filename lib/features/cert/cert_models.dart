@@ -225,3 +225,62 @@ class QualificationUpdateRequest {
         if (nameSource != null) 'name_source': nameSource,
       };
 }
+
+/// 批量提交中的单条资质（openapi `QualificationSubmitItem`）。
+///
+/// 每组 = 一张证照图 + 一个证书名；多条随一次 POST 提交。
+class QualificationSubmitItem {
+  /// 构造单条提交项。
+  ///
+  /// 参数：[mediaIds] 证照图 media_id；[certName] 证书名（可空）；[nameSource] 证名来源。
+  const QualificationSubmitItem({
+    required this.mediaIds,
+    this.certName,
+    this.nameSource,
+  });
+
+  /// 证照图 media_id 列表（首张作为证照图）。
+  final List<String> mediaIds;
+
+  /// 证书名称（可空）。
+  final String? certName;
+
+  /// 证名来源（ocr/manual，可空）。
+  final String? nameSource;
+
+  /// 构造契约请求体：null 键不出现。
+  ///
+  /// 参数：无。
+  /// 返回：[Map]。
+  Map<String, Object?> toJson() => <String, Object?>{
+        'media_ids': mediaIds,
+        if (certName != null) 'cert_name': certName,
+        if (nameSource != null) 'name_source': nameSource,
+      };
+}
+
+/// 批量提交结果（openapi `QualificationBatchSubmitResult`）。
+class QualificationBatchSubmitResult {
+  /// 构造批量结果。
+  ///
+  /// 参数：[items] 逐条结果（顺序与请求一致）。
+  const QualificationBatchSubmitResult({required this.items});
+
+  /// 由契约 JSON 构造。
+  ///
+  /// 参数：[json] 信封拆出的 data。
+  /// 返回：[QualificationBatchSubmitResult]。
+  /// 抛出：[ApiException.parse] `items` 缺失/类型不符时。
+  factory QualificationBatchSubmitResult.fromJson(Object? json) {
+    final map = requireMap(json, 'QualificationBatchSubmitResult');
+    return QualificationBatchSubmitResult(
+      items: [
+        for (final item in requireList(map, 'items', 'QualificationBatchSubmitResult'))
+          QualificationSubmitResult.fromJson(item),
+      ],
+    );
+  }
+
+  /// 逐条结果（顺序与请求一致）。
+  final List<QualificationSubmitResult> items;
+}

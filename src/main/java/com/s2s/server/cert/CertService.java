@@ -9,7 +9,9 @@ import com.s2s.server.cert.dto.CertOcrResult;
 import com.s2s.server.cert.dto.CertReviewPage;
 import com.s2s.server.cert.dto.CertSnapshot;
 import com.s2s.server.cert.dto.CertStatusResponse;
+import com.s2s.server.cert.dto.QualificationBatchSubmitResult;
 import com.s2s.server.cert.dto.QualificationItem;
+import com.s2s.server.cert.dto.QualificationSubmitItem;
 import com.s2s.server.cert.dto.QualificationSubmitRequest;
 import com.s2s.server.cert.dto.QualificationSubmitResult;
 import com.s2s.server.cert.dto.QualificationUpdateRequest;
@@ -297,42 +299,60 @@ public class CertService {
      * @throws BizException {@code 40302} 未实名 / {@code 40001} 参数非法或媒体非本人
      */
     @Transactional
-    public QualificationSubmitResult submitQualification(Long userId,
+    public QualificationBatchSubmitResult submitQualification(Long userId,
             QualificationSubmitRequest request) {
         if (!REALNAME_STATUS_PASSED.equals(getRealnameStatus(userId))) {
             throw BizException.of(ErrorCode.QUALIFICATION_NEEDED);
         }
-        if (request.mediaIds() == null || request.mediaIds().isEmpty()) {
+        if (request == null || request.items() == null || request.items().isEmpty()) {
             throw BizException.of(ErrorCode.PARAM_INVALID);
         }
-        String imageRef = request.mediaIds().get(0);
-        if (imageRef == null || imageRef.isBlank()) {
-            throw BizException.of(ErrorCode.PARAM_INVALID);
+        // 第一遍：整批校验（图片归属、证名长度/来源、批内重名、与库内重名）。
+        // 任一条不合法即整批拒绝，避免「部分成功」。
+        List<String> batchNames = new ArrayList<>();
+        for (QualificationSubmitItem item : request.items()) {
+            if (item.mediaIds() == null || item.mediaIds().isEmpty()) {
+                throw BizException.of(ErrorCode.PARAM_INVALID);
+            }
+            String imageRef = item.mediaIds().get(0);
+            if (imageRef == null || imageRef.isBlank()) {
+                throw BizException.of(ErrorCode.PARAM_INVALID);
+            }
+            mediaService.ensureOwned(userId, imageRef);
+            String certName = requireCertName(item.certName());
+            requireNameSource(item.nameSource());
+            if (certName != null) {
+                if (batchNames.contains(certName)) {
+                    throw BizException.of(ErrorCode.PARAM_INVALID);
+                }
+                ensureCertNameAvailable(userId, certName, null);
+                batchNames.add(certName);
+            }
         }
-        String certName = requireCertName(request.certName());
-        String nameSource = requireNameSource(request.nameSource());
-        ensureCertNameAvailable(userId, certName, null);
-        mediaService.ensureOwned(userId, imageRef);
-
+        // 第二遍：逐条落库（同一事务，任一失败整批回滚）。
         LocalDateTime now = LocalDateTime.now();
-        CertEntity entity = new CertEntity();
-        entity.setUserId(userId);
-        entity.setCertType(CERT_TYPE_QUALIFICATION);
-        entity.setCertName(certName);
-        entity.setNameSource(nameSource);
-        entity.setStatus(CERT_STATUS_APPROVED);
-        entity.setSubmittedAt(now);
-        entity.setApprovedAt(now);
-        entity.setOcrImageRef(imageRef);
-        try {
-            certMapper.insert(entity);
-        } catch (DuplicateKeyException duplicate) {
-            // 唯一键 uk_user_cert_name 兜底：并发下同名写入仍回 40001。
-            throw BizException.of(ErrorCode.PARAM_INVALID);
+        List<QualificationSubmitResult> results = new ArrayList<>();
+        for (QualificationSubmitItem item : request.items()) {
+            CertEntity entity = new CertEntity();
+            entity.setUserId(userId);
+            entity.setCertType(CERT_TYPE_QUALIFICATION);
+            entity.setCertName(requireCertName(item.certName()));
+            entity.setNameSource(requireNameSource(item.nameSource()));
+            entity.setStatus(CERT_STATUS_APPROVED);
+            entity.setSubmittedAt(now);
+            entity.setApprovedAt(now);
+            entity.setOcrImageRef(item.mediaIds().get(0));
+            try {
+                certMapper.insert(entity);
+            } catch (DuplicateKeyException duplicate) {
+                // 唯一键 uk_user_cert_name 兜底：并发下同名写入仍回 40001。
+                throw BizException.of(ErrorCode.PARAM_INVALID);
+            }
+            results.add(new QualificationSubmitResult(entity.getId(), CERT_STATUS_APPROVED));
         }
         auditLogWriter.write(AuditEntry.minimal(userId, OperatorRole.USER,
                 AUDIT_ACTION_QUALIFICATION_SUBMIT, AUDIT_TARGET_USER, userId));
-        return new QualificationSubmitResult(entity.getId(), CERT_STATUS_APPROVED);
+        return new QualificationBatchSubmitResult(results);
     }
 
     /**
