@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>构思：地图二级分类图标体系</title>
+<style>
+  :root {
+    --bg: #fbfaf8;
+    --surface: #ffffff;
+    --ink: #1f2328;
+    --ink-2: #4b5259;
+    --ink-3: #79808a;
+    --line: #e3e0da;
+    --line-2: #efede9;
+    --accent: #2f6f5e;
+    --accent-soft: #e6f1ec;
+    --accent-ink: #1f5044;
+    --warn-soft: #fbf1e2;
+    --warn-ink: #7a5215;
+    --stop-soft: #f7e9e7;
+    --stop-ink: #8a3a31;
+    --radius: 10px;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.72 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  }
+  .page { max-width: 960px; margin-inline: auto; padding: 56px 28px 96px; }
+  .prose, p, li { max-width: 72ch; }
+  h1, h2, h3, h4 { line-height: 1.3; letter-spacing: -0.01em; }
+  h1 { font-size: 30px; margin: 8px 0 12px; font-weight: 650; }
+  h2 { font-size: 21px; margin: 0 0 16px; font-weight: 620; }
+  h3 { font-size: 17px; margin: 0 0 8px; font-weight: 620; }
+  h4 { font-size: 13px; margin: 0 0 6px; font-weight: 620; color: var(--ink-2); letter-spacing: 0.02em; }
+  code { font-family: var(--mono); font-size: 0.88em; background: #f2f0ec; padding: 1px 5px; border-radius: 4px; }
+  a { color: var(--accent-ink); }
+  .eyebrow {
+    font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--ink-3); font-weight: 600; margin: 0;
+  }
+  .lede { font-size: 16px; color: var(--ink-2); margin: 0 0 26px; max-width: 68ch; }
+  .meta {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 14px 22px; margin: 0 0 34px; padding: 18px 20px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+  }
+  .meta dt { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); margin: 0 0 2px; }
+  .meta dd { margin: 0; font-size: 14px; color: var(--ink); font-weight: 520; }
+  .stats {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 1px; background: var(--line-2); border: 1px solid var(--line-2);
+    border-radius: var(--radius); overflow: hidden; margin: 0 0 46px;
+  }
+  .stat { background: var(--surface); padding: 14px 16px; }
+  .stat b { display: block; font-size: 22px; font-weight: 640; letter-spacing: -0.02em; }
+  .stat span { display: block; font-size: 11.5px; color: var(--ink-3); margin-top: 2px; }
+  section { margin: 0 0 52px; }
+  .rule { height: 1px; background: var(--line); margin: 0 0 26px; border: 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; margin: 0 0 8px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line-2); vertical-align: top; }
+  th { font-size: 11.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; border-bottom: 1px solid var(--line); }
+  td.id { font-family: var(--mono); font-size: 12px; white-space: nowrap; color: var(--ink-2); }
+  .jump {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 6px 20px; margin: 0 0 26px; padding: 14px 18px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    list-style: none; font-size: 13.5px;
+  }
+  .jump li { max-width: none; }
+  .jump a { text-decoration: none; color: var(--ink); display: flex; gap: 8px; }
+  .jump a:hover { color: var(--accent-ink); }
+  .jump .num { font-family: var(--mono); font-size: 12px; color: var(--accent-ink); font-weight: 600; min-width: 22px; }
+  article.card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 22px 24px; margin: 0 0 16px;
+  }
+  .card-head { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; margin-bottom: 4px; }
+  .rid {
+    font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent-ink);
+    background: var(--accent-soft); padding: 2px 8px; border-radius: 999px;
+  }
+  .card h3 { margin: 0; flex: 1 1 320px; }
+  .tags { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0 14px; }
+  .tag {
+    font-size: 11.5px; padding: 2px 9px; border-radius: 999px;
+    background: #f2f0ec; color: var(--ink-2); border: 1px solid var(--line-2); white-space: nowrap;
+  }
+  .tag.conf-high { background: var(--accent-soft); color: var(--accent-ink); border-color: transparent; }
+  .tag.conf-med { background: var(--warn-soft); color: var(--warn-ink); border-color: transparent; }
+  .field { margin: 0 0 14px; }
+  .field:last-child { margin-bottom: 0; }
+  .field p { margin: 0; color: var(--ink); }
+  .basis {
+    border-left: 0; background: #f7f6f3; border: 1px solid var(--line-2);
+    border-radius: 8px; padding: 12px 14px; font-size: 13.5px; color: var(--ink-2);
+  }
+  .basis .kind {
+    font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: 0.04em;
+    color: var(--accent-ink); background: var(--accent-soft); padding: 1px 7px; border-radius: 4px; margin-right: 6px;
+  }
+  .callout {
+    border-radius: 8px; padding: 14px 16px; font-size: 13.5px; margin: 0 0 14px;
+  }
+  .callout p { margin: 0; }
+  .callout .label { display: block; font-size: 11px; letter-spacing: 0.09em; text-transform: uppercase; font-weight: 700; margin-bottom: 5px; }
+  .callout.warn { background: var(--warn-soft); }
+  .callout.warn .label { color: var(--warn-ink); }
+  .callout.warn p { color: #5f4212; }
+  .callout.note { background: #f4f3f0; }
+  .callout.note .label { color: var(--ink-3); }
+  .callout.note p { color: var(--ink-2); }
+  .steps { list-style: none; padding: 0; margin: 0 0 14px; counter-reset: step; }
+  .steps > li {
+    position: relative; padding: 0 0 0 38px; margin: 0 0 14px; max-width: 72ch;
+    counter-increment: step;
+  }
+  .steps > li::before {
+    content: counter(step); position: absolute; left: 0; top: 1px;
+    width: 24px; height: 24px; border-radius: 999px;
+    background: var(--accent-soft); color: var(--accent-ink);
+    font: 600 12px/24px var(--mono); text-align: center;
+  }
+  .steps h4 { margin: 0 0 3px; }
+  .steps p { margin: 0; }
+  .empty-note { font-size: 13.5px; color: var(--ink-2); background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; }
+  .rej td:nth-child(1) { font-family: var(--mono); font-size: 11.5px; white-space: nowrap; color: var(--ink-3); }
+  .rej td:nth-child(2) { width: 27%; }
+  footer.composition-signal {
+    border-top: 1px solid var(--line); padding-top: 18px; margin-top: 56px;
+    font-size: 12px; color: var(--ink-3); max-width: none;
+  }
+  @media (max-width: 620px) {
+    .page { padding: 36px 18px 72px; }
+    h1 { font-size: 24px; }
+    article.card { padding: 18px 16px; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+<header>
+  <p class="eyebrow">Ideation · 找呀找 s2s</p>
+  <h1>地图二级分类图标体系</h1>
+  <p class="lede">地图现在只按一级分类出图，同一大类下 3–5 个二级共用一个图标与一个颜色，密集处看起来全是同一个蓝箱子。本次只解决图标设计本身：21 个二级各画什么、怎么保证同族不混、怎么在 20px 下验收。</p>
+
+  <dl class="meta">
+    <div><dt>日期</dt><dd><time datetime="2026-10-28">2026-10-28</time></dd></div>
+    <div><dt>类型</dt><dd>构思（ideation）</dd></div>
+    <div><dt>范围</dt><dd>仅二级图标设计，不含地图展示实现</dd></div>
+    <div><dt>候选</dt><dd>41 条原始 → 合并后 5 条方向</dd></div>
+    <div><dt>状态</dt><dd>已合并 R1+R2+R3 为选型规程，待选定</dd></div>
+  </dl>
+
+  <div class="stats">
+    <div class="stat"><b>5 / 21</b><span>一级 / 二级分类</span></div>
+    <div class="stat"><b>20px</b><span>marker 内图标实际边长</span></div>
+    <div class="stat"><b>15</b><span>名称自带斜杠的二级</span></div>
+    <div class="stat"><b>35 对</b><span>同族内需两两可分</span></div>
+    <div class="stat"><b>1</b><span>可用的全局修饰符（已被告知占用）</span></div>
+  </div>
+</header>
+
+<section id="grounding">
+  <h2>依据</h2>
+  <hr class="rule">
+  <p>现状不是「图标不好看」，而是<strong>同一级分类的图标与颜色完全相同</strong>：单点 marker 40px（选中 48px），圆心图标边长 = 直径 × 0.5 ≈ 20px，由 <code>TextPainter</code> 把 Material Icons 当字形绘制；21 个二级在数据层既没有图标也没有独立颜色。</p>
+
+  <h4>三条通道都已分配完</h4>
+  <table>
+    <thead><tr><th>通道</th><th>当前承载</th><th>还能否给二级</th></tr></thead>
+    <tbody>
+      <tr><td class="id">颜色</td><td>一级分类五色（原色 / deep 变体不可互换）；需求态还有分类色描边</td><td>否。新增色相要同补 deep，且会与价格类连续变量抢预算</td></tr>
+      <tr><td class="id">形状</td><td>实心 = 资源、空心 + 右上 <code>?</code> 角标 = 需求</td><td>部分。右上扇区已被 <code>?</code> 占住</td></tr>
+      <tr><td class="id">尺寸</td><td>聚合三档 32 / 40 / 48 映射聚合条数</td><td>否。再加一档就不能再用「尺寸 = 聚合量」这条既有语义</td></tr>
+    </tbody>
+  </table>
+
+  <h4>既有硬规范（不可绕）</h4>
+  <ul>
+    <li>图标资产统一取 <strong>Material Symbols filled</strong>（Apache 2.0），禁 emoji、禁手写 SVG 坐标 —— PRD §6.4.2 已定稿，取代过 emoji 与手写路径两版。</li>
+    <li>验收必须在<strong>真实渲染尺寸</strong>下做：20px 对照条、40cm 臂展逐个认类、另做 Saturation −100 去色校验。</li>
+    <li>语义覆盖度<strong>按子类目逐条核算</strong>：生活类曾因 <code>package_2</code> 只覆盖 11/15 被否，最终选 15/15 全覆盖的 <code>volunteer_activism</code>。</li>
+    <li>40×40 内信息条数曾从 4 降到 3 才换来辨识度提升 —— 往圆里加东西是有前科的失败路径。</li>
+    <li>21 个二级名称<strong>逐字照抄</strong>，不缩写、不改写、不合并（含「家政/保洁」的斜杠）。</li>
+  </ul>
+
+  <div class="callout warn">
+    <span class="label">校验阶段修正的事实错误</span>
+    <p>名称自带斜杠的二级实为 <strong>15 个</strong>（先后漏掉了「301 顺风车/拼车」「202 求租/找房」「203 短租/日租」；源码中 16 处含斜杠，其中「房源线索/中介合作」是三级叶子）。这个基数直接决定斜杠裁决的工作量，本文件中一切相关数字以 15 为准。</p>
+  </div>
+
+  <h4>参考索引</h4>
+  <table>
+    <thead><tr><th>来源</th><th>提供了什么</th></tr></thead>
+    <tbody>
+      <tr><td><a href="https://github.com/liujie12/s2s/blob/main/docs/PRD.md">docs/PRD.md</a> §6.4.2</td><td>图标映射表、选型方法论四步、配色规则、验收口径、两次历史否决记录</td></tr>
+      <tr><td><a href="https://github.com/liujie12/s2s/blob/main/lib/domain/category_tree.dart">category_tree.dart</a></td><td>5 / 21 / 48 全量分类树与编码规则，名称逐字建模</td></tr>
+      <tr><td><a href="https://github.com/liujie12/s2s/blob/main/lib/features/map/marker_layer.dart">marker_layer.dart</a></td><td>单层 CustomPaint 绘制、图标边长、字号、角标位置、字形缓存</td></tr>
+      <tr><td><a href="https://github.com/liujie12/s2s/blob/main/lib/domain/listing_category_style.dart">listing_category_style.dart</a></td><td>五个一级图标常量与「不再自带 SVG 资产」的原始理由</td></tr>
+      <tr><td><a href="https://github.com/liujie12/s2s/blob/main/docs/progress/Batch1-进度记录.md">Batch1-进度记录.md</a></td><td>三轮图标返工的原始记录与沉淀原则</td></tr>
+      <tr><td>外部先例</td><td>Google Places（glyph + 背景色两字段）、Mapbox Maki（15px 网格）、Material Symbols（24dp 网格、fill 表达状态）、航图 / 地铁图 / 气象站模型的层级编码</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="axes">
+  <h2>议题轴</h2>
+  <hr class="rule">
+  <p>拆成 5 个正交面，每一条方向都落在其中一个面上；幸存集在 5 个面上均有人。</p>
+  <table>
+    <thead><tr><th>轴</th><th>要回答的问题</th><th>幸存方向</th></tr></thead>
+    <tbody>
+      <tr><td class="id">A1</td><td>图形语法：21 个二级各自用什么字形？候选从哪来？</td><td>R1 · R4</td></tr>
+      <tr><td class="id">A2</td><td>通道分工：谁承载归属、谁承载细分？会不会和供需态打架？</td><td>R3</td></tr>
+      <tr><td class="id">A3</td><td>20px 可辨性：哪些字形在这个尺寸上注定失败？</td><td>R2 · R5</td></tr>
+      <tr><td class="id">A4</td><td>21 个二级的收敛：是否每个都值一个独立字形？</td><td>R1 · R4</td></tr>
+      <tr><td class="id">A5</td><td>落地通道：字形还是资产？名字存哪？</td><td>R1</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="ideas">
+  <h2>排序后的方向</h2>
+  <hr class="rule">
+  <ul class="jump">
+    <li><a href="#r1"><span class="num">R1</span><span>选型规程：定轴 → 检索族谱 → 裁斜杠名</span></a></li>
+    <li><a href="#r2"><span class="num">R2</span><span>同族两两可分，35 对先行</span></a></li>
+    <li><a href="#r3"><span class="num">R3</span><span>二级图标永久无色</span></a></li>
+    <li><a href="#r4"><span class="num">R4</span><span>覆盖账本：逐叶子核算</span></a></li>
+    <li><a href="#r5"><span class="num">R5</span><span>验收台：两档真实尺寸 + 去色</span></a></li>
+  </ul>
+
+  <article class="card" id="r1">
+    <div class="card-head"><span class="rid">R1</span><h3>二级图标选型规程：定轴 → 检索族谱 → 裁斜杠名</h3></div>
+    <div class="tags"><span class="tag conf-high">置信 高</span><span class="tag">轴 A1 / A4 / A5</span><span class="tag">成本 中</span><span class="tag">合并：原 R1+R2+R3</span></div>
+    <div class="field basis"><span class="kind">direct</span>PRD:1209 否决 <code>swap_horiz</code> 的原文：「工作=手提箱、房屋=屋形、车辆=汽车、服务=扳手四件皆为具象实物，唯独生活是抽象符号，五个并排时明显异质」；PRD:1196 表头「以『大类的二级范围』为依据」。<span class="kind">direct</span><code>marker_layer.dart:376</code> 只画一个码位（<code>String.fromCharCode(icon.codePoint)</code>），<code>pubspec.yaml</code> 无自定义字体、assets 段全注释 —— 组合语法做不出来。<span class="kind">direct</span>PRD:1207 以 <code>handyman</code> 否决双件拼贴：「两件工具在 20px 下会粘连，故改取单件 <code>build</code>」。</div>
+    <div class="field"><h4>主张</h4><p>把「21 次凭感觉挑图标」变成一条三步规程。三步是<strong>闭环</strong>而不是流水线：轴给出检索方向，族谱检索的结果反过来裁决这条轴是否成立。</p></div>
+    <ol class="steps">
+      <li><h4>定轴：每个一级先定一条族内差分轴</h4><p>房屋 = 居住单元的粒度（整栋 / 单间 / 短住 / 咨询）；车辆 = 参与方式（同乘 / 租借 / 买卖 / 搭车）；工作 = 雇佣方向（招人 / 被招 / 找活）；生活 = 物与人；服务 = 上门做什么。21 个二级先沿轴排位，再谈图形。</p></li>
+      <li><h4>检索族谱：同对象域 + 同轴（brainstorm 已定口径）</h4><p>通道一次只能画一个字形，所以不做「母题 + 修饰符」的运行时合成。原口径「同一剪影 + 变体」在房屋、车辆、服务三族凑不出来，故改为：<strong>同族 = 同一对象域（住 / 车 / 上门劳动）+ 同一条语义轴</strong>，禁止跨域借形。族的成员必须落在同一条轴上（例：工作族 <code>work</code> / <code>work_history</code> / <code>person_search</code> 沿「招人 → 被招 → 找活」排列）；凑不出同域候选时，回到第 1 步改轴而不是换图标。</p></li>
+      <li><h4>裁斜杠名：15 个名称只画一侧</h4><p>兼职/临时工、整租/合租、求租/找房、短租/日租、租车/借车、顺风车/拼车、求搭车/求拼、借物/互助、寻物启事/失物招领、求购/求助、家政/保洁、维修/安装、教学/培训、美容/美发/按摩、代办/跑腿。规则：只取能同时覆盖两侧的<strong>交集母题</strong>；没有交集时取高频侧，并在账本登记缺口；<strong>一律禁止把两件东西画进同一张图</strong>。被舍弃的那一侧交给名称承载（筛选面板与发布页本来就有文字在场）。</p></li>
+    </ol>
+    <div class="field"><h4>产出物</h4><p>一张表：二级编码 / 名称（逐字）/ 族内轴位置 / Material 名 / 覆盖的叶子 / 被舍弃侧的去处。外加每族 5 个候选的 20px 对照条。</p></div>
+    <div class="field"><h4>为什么重要</h4><p>族群一致性是一级图标已经付过一次学费换来的口径，而 21 个二级各自为政等于把统一的 5 枚体系拆成 21 枚拼盘 —— 那正是 PRD 两次否决的理由。合并后这条同时解决了三件事：先想清楚差在哪（不然挑出来必然异质）、承认候选池只有 Material 库（不然设计稿落不了地）、把 15 个最难的名字一次性裁掉（不然每换一个页面就可能画成另一半语义）。</p></div>
+    <div class="callout note"><span class="label">会议检验</span><p>两步各有一个可当场执行的检验：① 把 5 条差分轴写成一页，让没参与首轮选型的人只拿这一页，能否在 10 分钟内给「204 租房信息咨询」提一个可辩护的候选？② 五个族各列 5 个真实 Material Symbols 候选、20px 同排，任何一族凑不满或出现「五个互不像同母题」，用 PRD:1209 直接否决。</p></div>
+    <div class="field"><h4>已知代价</h4><p>需要产品逐族拍板差分轴，轴定错则 21 枚全部重挑 —— 这是本方向最大的风险点。另外候选池被限定在 Material 库，个别二级可能确实找不到贴切字形（服务族「代办/跑腿」是高风险项），此时只能换轴而不能自造图形。21 个名字最终要落到可配置的数据字段上才谈得上运营可改，但那属实现，不在本次交付内。</p></div>
+  </article>
+
+  <article class="card" id="r2">
+    <div class="card-head"><span class="rid">R2</span><h3>同族两两可分，35 对先行 —— 判据从「独立可识读」改为「同族不混」</h3></div>
+    <div class="tags"><span class="tag conf-high">置信 高</span><span class="tag">轴 A3</span><span class="tag">成本 中</span><span class="tag">验收前提</span></div>
+    <div class="field basis"><span class="kind">direct</span>PRD:1211 生活类图标是「24 个候选里唯一 15/15 全覆盖」；Batch1-进度记录:548「图标语义的覆盖度要按子类目逐条核算」。<span class="kind">external</span>盲文六点格：位置编码、含义靠被教，不描绘对象 —— 与「低像素下只要求同族两两可分」结构同构。</div>
+    <div class="field"><h4>主张</h4><p>21 枚两两是 210 对，全测不现实；但<strong>跨族本来就靠一级色区分</strong>，真正的比较只发生在同族内：3+6+6+10+10 = <strong>35 对</strong>。把流程倒过来 —— 先渲 20px 单色条，在同族内先过这 35 对「并排会不会糊」，淘汰掉再回头核单枚语义覆盖。判断标准也随之改变：二级图标<strong>从不单独出现</strong>（筛选 chip、发布选择器、分类树都与名称并排），所以不需要「独立见图知意」，只需要「同族内两两不混」；唯一单独出现的地方是地图，所以地图上必须保留一级色圆底。</p></div>
+    <div class="field"><h4>为什么重要</h4><p>现有验收口径是把一级图标的标准（自解释）平移给二级，这会逼着 21 个图标去做「独立可识读」这件物理上做不到的事，最后只能靠放大评审自欺。改判据不改图形，设计目标就从「21 个自明图形」收缩成「5 组各 3–5 个可分辨变体」。</p></div>
+    <div class="callout note"><span class="label">会议检验</span><p>挑语义最近的 3 对（借物·求购、家政·维修、顺风车·求搭车），20px 去色并排，判「两两不混」而非「逐个说名」。再做一次遮住名称的对照 —— 若遮住后全线崩，就把「二级图标不得脱离名称单独使用」写进规格，而不是假装它能独立识读。</p></div>
+    <div class="field"><h4>已知代价</h4><p>这条会推翻现有「先按语义挑、再肉眼验」的工序，需要团队明确点头。它也隐含一个产品结论：生活族 5 个成员最拥挤，必须最先做、且严格度最高。</p></div>
+  </article>
+
+  <article class="card" id="r3">
+    <div class="card-head"><span class="rid">R3</span><h3>二级图标永久无色：颜色只归一级</h3></div>
+    <div class="tags"><span class="tag conf-med">置信 中</span><span class="tag">轴 A2</span><span class="tag">成本 低</span><span class="tag">硬约束</span></div>
+    <div class="field basis"><span class="kind">direct</span>PRD:1221「去色后仍能区分，说明形状本身承载了语义、没有全靠颜色硬撑」。<code>filter_panel.dart:1005-1016</code> 二级 chip 现状是 6×6 圆点取<strong>一级</strong>色 + 文字，二级从未有过自己的颜色。</div>
+    <div class="field"><h4>主张</h4><p>把「要不要给二级一个颜色」这条争论一次性关掉：二级图标 100% 跟随一级色（资源态白、需求态分类色），<strong>不新增色相、不引入 secondary tint</strong>。二级之间的区分只发生在字形与内部负形上。因此二级形状的验收只能用去色后的单色条 —— 颜色对它不构成证据。</p></div>
+    <div class="field"><h4>为什么重要</h4><p>颜色预算零和：五原色 + 五个 deep 已被一级占满，且 deep 与原色不可互换（原色白字只有 2.54–4.23:1，不过 AA）。再加 21 个色相不仅破坏「同一大类全站同色」的既有承诺，还会与色弱可用性直接冲突。</p></div>
+    <div class="callout note"><span class="label">会议检验</span><p>出两版对照条：二级跟随一级色 vs 二级统一中性墨色。Saturation −100 后，若两版都区分不出类别，说明颜色本就不承载语义，统一取色无损失；若跟随版明显更好，本条作废。</p></div>
+    <div class="field"><h4>已知代价</h4><p>需求态（白底 + 分类色描边）里，图标若也取中性色，用户要靠描边色读大类 —— 需要一次真机核验确认这层推断还成立。</p></div>
+  </article>
+
+  <article class="card" id="r4">
+    <div class="card-head"><span class="rid">R4</span><h3>覆盖账本：每个二级图标登记它覆盖了哪些叶子</h3></div>
+    <div class="tags"><span class="tag conf-med">置信 中</span><span class="tag">轴 A4</span><span class="tag">成本 低</span><span class="tag">可复用资产</span></div>
+    <div class="field basis"><span class="kind">direct</span>PRD:1210 生活类曾按「5 个二级 / 15 个三级」逐条核算，<code>package_2</code> 只覆盖物品侧 11/15 被否；PRD:1211 <code>volunteer_activism</code> 是唯一 15/15；<code>category_tree.dart:62-66</code>「已发布的编号不得重排」保证账本键长期稳定。</div>
+    <div class="field"><h4>主张</h4><p>选型表不只写「二级 → Material 名」，还要加一列<strong>「覆盖哪些叶子 id」</strong>，并沿用既有 15/15 式的覆盖核算。账本按分类树版本存档：新增二级或叶子时先查账本 —— 现有图标是否仍覆盖？不覆盖才触发选型。这让「第 22 个二级来了怎么办」变成一个有检查点的流程，而不是临时拍脑袋。</p></div>
+    <div class="field"><h4>为什么重要</h4><p>覆盖度核算不是形式主义 —— 它已经真实否决过一个视觉上更好看的候选（纸箱）。三级叶子是 48 个，一个二级图标声称代表 3–5 个叶子，没有账本就无法证明它没漏。它也是 R1 第三步「登记缺口」的落点。</p></div>
+    <div class="callout note"><span class="label">会议检验</span><p>产品提出新增「206 房屋托管」时，没有设计师在场，能否靠账本判断「现有 21 个里有没有能覆盖的」，还是要重开设计？</p></div>
+    <div class="field"><h4>已知代价</h4><p>账本是维护成本。若分类树一年不动，它就是纯开销；若运营频繁扩类，它决定后续每一次改动的成本。</p></div>
+  </article>
+
+  <article class="card" id="r5">
+    <div class="card-head"><span class="rid">R5</span><h3>验收台：两档真实尺寸 + 去色，且须先推翻「评审器材用后即清」</h3></div>
+    <div class="tags"><span class="tag conf-med">置信 中</span><span class="tag">轴 A3</span><span class="tag">成本 中</span><span class="tag">需先改既有决定</span></div>
+    <div class="field basis"><span class="kind">direct</span>PRD:1221 要求「20px 真实尺寸对照条」+ 40cm 臂展 + Saturation −100；PRD:1213 又写明「评审用的渲染脚本属一次性器材」，Batch1-进度记录:552「三个渲染工具用后即清」。<span class="kind">external</span>已有教训：48/96px 预览会掩盖 24px 缺陷，双方会签下一个错误决策；放大只允许最近邻。</div>
+    <div class="field"><h4>主张</h4><p>把一次性的对照条固化成一条可重跑的命令：<strong>21 个二级 × 资源/需求 × 20px 与 14px 两档 × 去色变体</strong>，放大只用 <code>INTER_NEAREST</code>，新增图标自动入条。样本数按 21 枚算（资源态与需求态各一条），不沿用一级的 10 枚条。</p></div>
+    <div class="field"><h4>为什么重要</h4><p>验收机制本身能复利：第二次用在筛选面板的 14px、第五次用在 Material Symbols 版本升级回归，都只是重跑同一条命令。它同时补上「T6-⑤ 在代码侧没有任何对应产物」这个缺口，也是 R2 那 35 对比较的执行工具。</p></div>
+    <div class="callout warn"><span class="label">必须先做的前置决定</span><p>这条与 PRD:1213 / 进度记录:552 的「评审器材用后即清、仓库不留存」直接冲突。要采纳，就得明确改成「留生成器、不留产物」；不先推翻这条纪律，本方向不成立 —— 这是它只给中等置信的原因。</p></div>
+    <div class="callout note"><span class="label">会议检验</span><p>明天新增第 22 个二级，能否不打开设计工具、只跑一条命令就看到它在 20px 下的样子并当场判定通过？</p></div>
+    <div class="field"><h4>已知代价</h4><p>需要破例维护一段生成脚本，并新增「差异度阈值」这类常量（同一命令里也顺手把图标尺寸 / 描边从 <code>marker_layer.dart</code> 的字面量提成 token）。</p></div>
+  </article>
+</section>
+
+<section id="rejections">
+  <h2>未采纳清单</h2>
+  <hr class="rule">
+  <p>41 条原始候选全部经过独立校验（未知生成过程、可回查每一处 <code>file:line</code>），以下是逐条落选理由。校验阶段共抓到 5 处实质错误，已在依据一节修正。</p>
+  <table class="rej">
+    <thead><tr><th>编号</th><th>候选</th><th>落选理由</th></tr></thead>
+    <tbody>
+      <tr><td>F1#1</td><td>先通链路再画字形</td><td>断链属实，但四段打通属实现范围；对设计的影响已写进 R1 的代价</td></tr>
+      <tr><td>F1#2</td><td>验收样本量扩到 42 枚</td><td>数字自相矛盾（实为 31 或 52），由 R5 以正确口径取代</td></tr>
+      <tr><td>F1#3</td><td>混淆矩阵前置</td><td>并入 R2</td></tr>
+      <tr><td>F1#4</td><td>二级图标永久无色</td><td>保留为 R3</td></tr>
+      <tr><td>F1#5</td><td>首字形裁决表</td><td>基数错误（初报 12，实为 15），并入 R1 的第三步</td></tr>
+      <tr><td>F1#6</td><td>先定族内差分轴</td><td>并入 R1 的第一步</td></tr>
+      <tr><td>F1#7</td><td>允许 21≠21，同族共用字形</td><td>把 21 枚交付缩成 5 枚，等于换掉任务前提；用户要的是 21 个二级各自可辨</td></tr>
+      <tr><td>F1#8</td><td>字形即配置，不进 assets</td><td>属交付通道实现，非图标设计；已作为 R1 第二步的边界前提</td></tr>
+      <tr><td>F2#1</td><td>把二级进地图整步删掉</td><td>与用户明确要求「在地图展示二级分类图标」相悖</td></tr>
+      <tr><td>F2#2</td><td>21 → 5 族字形</td><td>同 F1#7，交付残缺</td></tr>
+      <tr><td>F2#3</td><td>二级画一个汉字</td><td>违反 PRD:1192「统一 Material Symbols filled」，且自造字形无法通过上游 20/24px 网格校验</td></tr>
+      <tr><td>F2#4</td><td>方位小标记挂在一级图标上</td><td>40×40 内再加信息，重演 PRD:1219/1220 已判「叠加不可读」</td></tr>
+      <tr><td>F2#5</td><td>二级做聚合键</td><td>属聚合策略，超出本次范围</td></tr>
+      <tr><td>F2#6</td><td>分类树驱动，删客户端 switch</td><td>与 F1#8 重复，属实现</td></tr>
+      <tr><td>F2#7</td><td>机器找冲突对替代肉眼评审</td><td>PRD:1213/1221 明定真实尺寸肉眼验收，机器只能补充；内核实现在 R5</td></tr>
+      <tr><td>F2#8</td><td>二级统一取中性色</td><td>命题空转（二级本无独立色）；内核作为 R3 的反面校验保留</td></tr>
+      <tr><td>F4#1</td><td>族形语法</td><td>并入 R1 的第一步</td></tr>
+      <tr><td>F4#2</td><td>单字形双级自解释</td><td>20px 内同时读出两级，违反 PRD:1207「小尺寸下结构简单优先于语义精确」</td></tr>
+      <tr><td>F4#3</td><td>禁双件拼贴</td><td>并入 R1 的第三步</td></tr>
+      <tr><td>F4#4</td><td>五道闸门漏斗</td><td>「五道」无出处（PRD:1213 是四步）；工序已并入 R1</td></tr>
+      <tr><td>F4#5</td><td>验收台脚本化</td><td>保留为 R5</td></tr>
+      <tr><td>F4#6</td><td>图标尺寸 / 描边进 token</td><td>属实现改造；作为 R5 的附带产出保留</td></tr>
+      <tr><td>F4#7</td><td>接通 DB icon 列，一处配置五处消费</td><td>属后端 + 渲染实现，超范围；后续落地 R1 的选型表时需要它</td></tr>
+      <tr><td>F4#8</td><td>覆盖账本</td><td>保留为 R4（剥掉无据的「版本绑定」半句）</td></tr>
+      <tr><td>F5#1</td><td>纹章差分：只削轮廓做负形</td><td>纹章 cadency 是「加」标记而非削轮廓；且渲染通道只画单码位，无路径可削。修正内核并入 R1 第二步</td></tr>
+      <tr><td>F5#2</td><td>海图方位表，右上 45° 为禁区</td><td>「海图方位表」无来源；右上被 <code>?</code> 占用这一事实已写进 R1 第三步的代价</td></tr>
+      <tr><td>F5#3</td><td>盲文码模型，判据改两两可分</td><td>并入 R2</td></tr>
+      <tr><td>F5#4</td><td>每族可辨上限 5</td><td>从现成员数（3/4/4/5/5）倒推，不是小地图规则；「严格度按族分级」被 R2 吸收</td></tr>
+      <tr><td>F5#5</td><td>二歧检索表，两个二元性状</td><td>2×2 只有 4 个变体，撑不起 5 成员族，数量上不成立</td></tr>
+      <tr><td>F5#6</td><td>气象站单杆双参数</td><td>气象站恰是<em>多参数</em>方位编码，与「砍掉参数」结论相反</td></tr>
+      <tr><td>F5#7</td><td>单码位族谱检索</td><td>并入 R1 的第二步</td></tr>
+      <tr><td>F5#8</td><td>交通标志的唯一全局修饰符</td><td>PRD:1219 已写明 <code>?</code> 的独占地位，无增量；作为 R1 第三步的边界注记</td></tr>
+      <tr><td>A1 / C1</td><td>把圆心让给二级，一级只留颜色</td><td>被 PRD:304「分类与供需不得成为只能从 Pin 颜色获知的信息」直接否掉 —— 本轮最容易被误认为成立的一类</td></tr>
+      <tr><td>A2</td><td>一级字形做底 + 6 个修饰符</td><td>同 F2#4 的叠加问题；「6 个」亦无据</td></tr>
+      <tr><td>A3</td><td>右下角标承载二级</td><td>正是 PRD:1220 明文卸掉的那条信息位置</td></tr>
+      <tr><td>A4</td><td>中文单字当图标</td><td>同 F2#3，与 Material Symbols 硬规范冲突</td></tr>
+      <tr><td>A5</td><td>21 个收敛为 5 个动词</td><td>PRD:1209 已否决动作符号（<code>swap_horiz</code> 的否决理由）</td></tr>
+      <tr><td>A6</td><td>只做头部 8 个</td><td>「8」无据；其余继承一级＝交付残缺</td></tr>
+      <tr><td>A7</td><td>用 fill / weight 表达斜杠双义</td><td>内置字体是静态 MaterialIcons，无可变轴；20px 下 weight 差不可见</td></tr>
+      <tr><td>A8</td><td>图标表达方向而非类别</td><td>与 PRD:1204「语义映射错误是首要成因」相悖；方向语义已被 <code>?</code> 占用</td></tr>
+      <tr><td>B1</td><td>如果只能有 5 个图标</td><td>同 F2#2</td></tr>
+      <tr><td>B2</td><td>如果一年后加到 40 个二级</td><td>「40」凭空；检查点思想并入 R4</td></tr>
+      <tr><td>B3</td><td>如果图标预算为零（纯排版）</td><td>把交付物整体换掉，超范围</td></tr>
+      <tr><td>B4</td><td>如果必须 12px 可辨</td><td>12px 不是产品真实尺寸（PRD:1213 为 40 / 20 / 14），自造尺寸违反评审纪律</td></tr>
+      <tr><td>B5</td><td>如果评审只能看黑白</td><td>PRD:1221 已规定去色校验，非新提案，低于会议门槛</td></tr>
+      <tr><td>B6</td><td>如果地图禁止出现二级图标</td><td>与用户要求相悖</td></tr>
+      <tr><td>B7</td><td>如果图标必须由规则生成</td><td>与 PRD:1213 的人工真实尺寸比对冲突；规则生成的字形无法事后验收</td></tr>
+      <tr><td>B8</td><td>负预算：先删一条才允许加一条</td><td>是 PRD:1220 已存在的通用纪律，本身不构成可执行设计</td></tr>
+      <tr><td>C2</td><td>选型流水线合成</td><td>带着「五道闸门」错误，已按正确工序并入 R1</td></tr>
+      <tr><td>C3</td><td>负形与槽位规程</td><td>前提 F5#1 不成立，整包塌</td></tr>
+      <tr><td>C4</td><td>斜杠名规程合成</td><td>基数错误 + 数量不成立，并入 R1 第三步</td></tr>
+      <tr><td>C5</td><td>验收资产合成</td><td>混入 12px 与 42 枚两个问题件，并入 R5</td></tr>
+    </tbody>
+  </table>
+
+  <p class="empty-note">轴覆盖检查：5 个议题轴均至少有一条幸存方向（A1→R1/R4；A2→R3；A3→R2/R5；A4→R1/R4；A5→R1），无故意留空的轴。原 R1/R2/R3 已按讨论合并为新的 R1，清单由 7 条重排为 5 条。</p>
+</section>
+
+<footer class="composition-signal">
+  Composed 2026-10-28 by ce-ideate from 用户输入「地图当前只显示一级分类图标，显得重复很重，需要设计二级分类图标并在地图展示，先完成图标设计」 · 依据 docs/PRD.md §6.4.2、lib/domain/category_tree.dart、lib/features/map/marker_layer.dart、docs/progress/Batch1-进度记录.md · 41 条原始候选经独立依据校验后裁决为 7 条，再合并为 5 条
+</footer>
+
+</div>
+</body>
+</html>
