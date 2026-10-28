@@ -31,6 +31,8 @@ import java.util.Map;
  * @param contactValue   联系方式值（必填，maxLength 64）
  * @param aiAssisted     本条是否由 T2 AI 智能发布辅助生成（B2-4，PRD §5.9）；为 true 时
  *                       发布成功后扣 1 次 AI 配额，并落 {@code post.ai_assisted}
+ * @param certId         可选挂载的资质档案 ID（一帖一证；缺省/ {@code null} = 本次不展示，
+ *                       不阻断发布、不进 precheck 阻断项）
  */
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public record PostCreateRequest(
@@ -48,5 +50,6 @@ public record PostCreateRequest(
         @Size(max = 9) List<String> mediaIds,
         @NotBlank String contactType,
         @NotBlank @Size(max = 64) String contactValue,
-        Boolean aiAssisted) {
+        Boolean aiAssisted,
+        Long certId) {
 }

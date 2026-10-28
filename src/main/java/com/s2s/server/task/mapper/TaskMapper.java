@@ -150,24 +150,6 @@ public interface TaskMapper {
     int deletePostsByUserIds(@Param("userIds") List<Long> userIds);
 
     /**
-     * 取到期应清理的证照原件图（保留策略 {@code ocr_image_7d}；2026-10-23 补实现）。
-     *
-     * @param threshold 保留阈值（{@code submitted_at} 早于它的行）
-     * @param limit     单批上限
-     * @return {@link List} 每行两列 {@code id} / {@code ocr_image_ref}
-     */
-    List<Map<String, Object>> selectExpiredCertImages(@Param("threshold") LocalDateTime threshold,
-            @Param("limit") int limit);
-
-    /**
-     * 清空证照图引用（OSS 对象删除成功后执行，保留认证结果本身）。
-     *
-     * @param ids 认证记录 ID（非空）
-     * @return int 实际更新行数
-     */
-    int clearCertImageRefs(@Param("ids") List<Long> ids);
-
-    /**
      * 删除超过保留期的联系事件（保留策略 {@code transit_log_30d}；2026-10-23 补实现）。
      *
      * @param threshold 保留阈值（{@code created_at} 早于它的行被删）
@@ -189,4 +171,16 @@ public interface TaskMapper {
      */
     int deletePostViewsBefore(@Param("threshold") java.time.LocalDate threshold,
             @Param("limit") int limit);
+
+    /**
+     * 到期资质流转（每日任务：{@code status=approved} 且已过有效期 → {@code expired}）。
+     *
+     * <p>「长期有效」（{@code expire_type=permanent}）不参与流转；到期只改状态，
+     * 不删记录、不删证照图、不改已挂载帖子的快照。</p>
+     *
+     * @param now   当前时刻（时间基准由任务侧统一取一次）
+     * @param limit 单批上限（分批收敛，避免长事务持锁）
+     * @return int 实际更新行数
+     */
+    int expireCerts(@Param("now") LocalDateTime now, @Param("limit") int limit);
 }

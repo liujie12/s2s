@@ -162,6 +162,54 @@ public class MediaService {
     }
 
     /**
+     * 校验媒体属于当前用户（不签发 URL、不产生副作用）。
+     *
+     * <p>供非 media 域在上传后、引用前做归属校验（如资质档案引用证照图）。</p>
+     *
+     * @param userId  当前用户 user_id
+     * @param mediaId 媒体 ID
+     * @throws BizException 媒体不存在/非本人 → 40001
+     */
+    public void ensureOwned(Long userId, String mediaId) {
+        loadOwned(userId, mediaId);
+    }
+
+    /**
+     * 为「本人媒体」签发普通只读 GET 签名 URL（catalog 展示用，不带缩放参数）。
+     *
+     * <p>与 {@link #signAiReadAccess} 的区别：后者给 AI 上游用、图片带等比缩放参数；
+     * 本方法给前端展示用，原样出图。</p>
+     *
+     * @param userId  当前用户 user_id（归属校验，防 IDOR）
+     * @param mediaId 媒体 ID
+     * @return {@link String} 只读签名 URL
+     * @throws BizException 媒体不存在/非本人 → 40001
+     */
+    public String signOwnedReadUrl(Long userId, String mediaId) {
+        PostMediaEntity media = loadOwned(userId, mediaId);
+        return ossClient.signAccessUrl(readableKeyOf(media));
+    }
+
+    /**
+     * 删除「本人媒体」的 OSS 对象与登记行（资质删除时清理证照原件）。
+     *
+     * <p>只清理尚未挂到帖子上的媒体（{@code post_id IS NULL}）：一旦被帖子引用，
+     * 删对象会让帖子图片裂图，故直接跳过——资质删除不应连带破坏帖子内容。</p>
+     *
+     * @param userId  当前用户 user_id（归属校验，防 IDOR）
+     * @param mediaId 媒体 ID
+     * @throws BizException 媒体不存在/非本人 → 40001
+     */
+    public void deleteOwnedMedia(Long userId, String mediaId) {
+        PostMediaEntity media = loadOwned(userId, mediaId);
+        if (media.getPostId() != null) {
+            return;
+        }
+        ossClient.deleteObject(readableKeyOf(media));
+        mediaMapper.deleteById(media.getId());
+    }
+
+    /**
      * 解析媒体「可签名读取」的 OSS 对象键（同源口径单点，禁各处自行判分支）。
      *
      * <p>音频 {@code commit} 不走 EXIF 链、原对象始终保留 → 用原键；图片已 commit

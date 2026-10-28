@@ -18,6 +18,7 @@ import 'package:go_router/go_router.dart';
 import 'home_shell.dart';
 import '../domain/category_tree.dart';
 import '../features/auth/login_screen.dart';
+import '../features/cert/cert_models.dart';
 import '../features/cert/cert_type_option.dart';
 import '../features/cert/qualification_form_screen.dart';
 import '../features/cert/realname_form_screen.dart';
@@ -225,9 +226,15 @@ final List<RouteBase> _routes = [
   ),
   GoRoute(
     path: AppRoutes.publishSuccess,
-    // extra 为提交时的表单快照，用于算 §9.8 档位；为空时按 🔴 档展示。
-    builder: (context, state) =>
-        PublishSuccessScreen(form: state.extra as PublishFormState?),
+    // extra 兼容两种：`PublishSuccessArgs`（表单快照 + 新帖 ID，本轮补挂入口）
+    // 与裸 `PublishFormState?`（历史调用/深链）；为空时按 🔴 档展示。
+    builder: (context, state) {
+      final extra = state.extra;
+      if (extra is PublishSuccessArgs) {
+        return PublishSuccessScreen(form: extra.form, postId: extra.postId);
+      }
+      return PublishSuccessScreen(form: extra as PublishFormState?);
+    },
   ),
   GoRoute(
     path: AppRoutes.contact,
@@ -270,11 +277,13 @@ final List<RouteBase> _routes = [
   ),
   GoRoute(
     path: AppRoutes.trustQualification,
-    // [B2-11]：资质提交（契约 `POST /cert/qualification`）。资质类型由 query
-    // 带入（`?type=enterprise`）作进页预选；未知/缺失值按「未选」处理，
-    // 不猜默认类型（`CertTypeOption.fromApi` 未知返回 null）。
+    // 资质添加 / 编辑共用本页：`extra` 传 `CertQualification` 即编辑态（回填），
+    // 传空为添加态（类型由 `?type=` 预选，未知/缺失按「未选」处理）。
     builder: (context, state) => QualificationFormScreen(
       initialType: CertTypeOption.fromApi(state.uri.queryParameters['type']),
+      initialQualification: state.extra is CertQualification
+          ? state.extra! as CertQualification
+          : null,
     ),
   ),
   // ── 模态：用 fullscreenDialog 语义，返回栈行为与页面不同 ──

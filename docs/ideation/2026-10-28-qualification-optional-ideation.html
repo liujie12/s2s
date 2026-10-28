@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ideation: 资质认证可选化与发布侧信任引导</title>
+<style>
+  :root{
+    --bg:#fbfbf9;
+    --surface:#ffffff;
+    --ink:#1b1f24;
+    --muted:#5b6672;
+    --line:#e2e6e8;
+    --accent:#0f766e;
+    --accent-soft:#e6f4f1;
+    --warn:#a35a09;
+    --warn-soft:#fdf4e6;
+    --danger:#a12c2c;
+    --danger-soft:#fbeeee;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:var(--sans);
+    font-size:15px;
+    line-height:1.7;
+  }
+  .page{max-width:900px;margin-inline:auto;padding:56px 28px 96px}
+  header.doc-head{border-bottom:1px solid var(--line);padding-bottom:28px;margin-bottom:36px}
+  .eyebrow{
+    display:inline-block;
+    font-size:11px;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+    color:var(--accent);
+    background:var(--accent-soft);
+    padding:3px 8px;
+    border-radius:4px;
+    margin-bottom:14px;
+  }
+  h1{font-size:30px;line-height:1.3;margin:0 0 10px;letter-spacing:-.01em}
+  .subtitle{margin:0 0 20px;color:var(--muted);font-size:15px;max-width:62ch}
+  .doc-meta{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
+    gap:10px 26px;
+    margin:0;
+    font-size:13px;
+  }
+  .doc-meta div{display:flex;gap:8px}
+  .doc-meta dt{color:var(--muted);min-width:44px}
+  .doc-meta dd{margin:0}
+  code{
+    font-family:var(--mono);
+    font-size:.9em;
+    background:#f2f4f4;
+    padding:1px 5px;
+    border-radius:3px;
+    word-break:break-word;
+  }
+  nav.toc{
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:16px 20px;
+    margin:0 0 44px;
+    font-size:14px;
+  }
+  nav.toc ol{margin:0;padding-left:20px}
+  nav.toc li{margin:4px 0}
+  a{color:var(--accent);text-decoration:none;border-bottom:1px solid rgba(15,118,110,.28)}
+  a:hover{border-bottom-color:var(--accent)}
+  section{margin:0 0 56px}
+  h2{
+    font-size:21px;
+    margin:0 0 6px;
+    padding-top:8px;
+    letter-spacing:-.01em;
+  }
+  .section-note{color:var(--muted);font-size:13px;margin:0 0 22px}
+  h3{font-size:17px;margin:0;line-height:1.4}
+  p{margin:0 0 14px;max-width:72ch}
+  ul,ol{margin:0 0 14px;padding-left:22px}
+  li{margin:5px 0}
+  .axes-list{list-style:none;padding:0;margin:0;display:grid;gap:10px}
+  .axes-list li{
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:12px 16px;
+    margin:0;
+  }
+  .axes-list .axis-id{
+    font-family:var(--mono);
+    font-size:12px;
+    color:var(--accent);
+    margin-right:8px;
+  }
+  .jump{
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:12px 18px;
+    margin:0 0 26px;
+    font-size:14px;
+  }
+  .jump ol{margin:0;padding-left:20px}
+  article.idea{
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:22px 24px 8px;
+    margin:0 0 20px;
+  }
+  .idea-head{display:flex;align-items:baseline;gap:12px;margin-bottom:14px}
+  .rank{
+    font-family:var(--mono);
+    font-size:12px;
+    color:var(--muted);
+    border:1px solid var(--line);
+    border-radius:4px;
+    padding:2px 7px;
+    flex:0 0 auto;
+  }
+  dl.fields{margin:0 0 10px;display:grid;grid-template-columns:104px 1fr;gap:9px 16px;font-size:14.5px}
+  dl.fields dt{color:var(--muted);font-size:12.5px;letter-spacing:.02em;padding-top:2px}
+  dl.fields dd{margin:0}
+  .tag{
+    display:inline-block;
+    font-family:var(--mono);
+    font-size:11px;
+    letter-spacing:.03em;
+    padding:1px 6px;
+    border-radius:3px;
+    margin-right:6px;
+    vertical-align:1px;
+  }
+  .tag-direct{background:var(--accent-soft);color:var(--accent)}
+  .tag-external{background:#eef1f8;color:#3a4a8a}
+  .tag-reasoned{background:#f3eefa;color:#6a4a9c}
+  .metric{
+    display:inline-flex;
+    align-items:center;
+    gap:7px;
+    font-size:13px;
+  }
+  .bar{width:88px;height:6px;border-radius:3px;background:#eceff0;overflow:hidden;display:inline-block}
+  .bar > span{display:block;height:100%;background:var(--accent)}
+  .fig{margin:18px 0 22px}
+  .fig svg{display:block;width:100%;height:auto}
+  .fig figcaption{font-size:12.5px;color:var(--muted);margin-top:8px}
+  .note{
+    background:var(--warn-soft);
+    border-radius:8px;
+    padding:12px 16px;
+    font-size:13.5px;
+    margin:14px 0 18px;
+    color:#5c3d0c;
+  }
+  .note strong{color:#4a310a}
+  table{width:100%;border-collapse:collapse;font-size:14px;background:var(--surface)}
+  caption{text-align:left;font-size:12.5px;color:var(--muted);padding-bottom:8px}
+  th,td{padding:10px 12px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}
+  th{font-size:12px;letter-spacing:.04em;color:var(--muted);font-weight:600;white-space:nowrap}
+  td:first-child{font-family:var(--mono);font-size:12.5px;color:var(--muted);white-space:nowrap}
+  tr:last-child td{border-bottom:none}
+  footer.composition-signal{
+    margin-top:64px;
+    padding-top:18px;
+    border-top:1px solid var(--line);
+    font-size:12.5px;
+    color:var(--muted);
+  }
+  @media (max-width:640px){
+    .page{padding:36px 18px 64px}
+    h1{font-size:24px}
+    dl.fields{grid-template-columns:1fr;gap:4px}
+    dl.fields dt{padding-top:10px}
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+<header class="doc-head">
+  <span class="eyebrow">Ideation</span>
+  <h1>资质认证可选化与发布侧信任引导</h1>
+  <p class="subtitle">
+    把资质从「发布前必须过的一道闸」改成「用户档案里的可挂载凭证」，并在详情页把它陈列成可核对的事实而不是结论。
+  </p>
+  <dl class="doc-meta">
+    <div><dt>Date</dt><dd><time datetime="2026-10-28">2026-10-28</time></dd></div>
+    <div><dt>Topic</dt><dd><code>qualification-optional</code></dd></div>
+    <div><dt>Mode</dt><dd>repo-grounded</dd></div>
+    <div style="grid-column:1/-1"><dt>Focus</dt><dd>资质不强制、用户可选、弱化人工审核（可以不审核）、发布时引导关联、详情页展示所挂资质</dd></div>
+  </dl>
+</header>
+
+<nav class="toc" aria-label="目录">
+  <ol>
+    <li><a href="#grounding">Grounding Context</a></li>
+    <li><a href="#axes">Topic Axes</a></li>
+    <li><a href="#ranked">Ranked Ideas</a></li>
+    <li><a href="#rejections">Rejection Summary</a></li>
+  </ol>
+</nav>
+
+<section id="grounding">
+  <h2>Grounding Context</h2>
+  <p class="section-note">代码库上下文与外部信号，全部候选在此之上被资格化与筛选。</p>
+
+  <h3 style="margin-bottom:10px">一、产品与红线</h3>
+  <p>
+    找呀找（s2s）是 Flutter + Spring Boot 的本地生活分类信息产品。信任体系代号 T4，只有三件套：实名标、资质标、信息完整度三档。
+    三条红线写进了产品文档与代码注释：不做统一信誉分、不做信誉徽章/评价历史、不做负面背书标
+    （<code>docs/PRD.md:640,646,1029,1679</code>；<code>lib/domain/listing_detail.dart:85-86</code>；
+    <code>lib/features/detail/detail_screen.dart:583-584</code>）。
+  </p>
+
+  <h3 style="margin-bottom:10px">二、现状的五个断点</h3>
+  <ul>
+    <li>
+      <strong>强制是一条硬拦截，不是建议。</strong>
+      <code>category.need_cert</code>（<code>V1__init_schema.sql:80-87</code>）驱动服务端 40302（<code>PostValidator.java:85-88</code>），
+      客户端每个叶子类目还硬编码了 <code>requiredCert</code>（<code>lib/domain/category_tree.dart:197-517</code>）；
+      发布页在提交前拦下并跳转认证浮层，注释写得很直白：「无论用户选哪个都不放行」（<code>lib/features/publish/publish_screen.dart:322-334</code>）。
+    </li>
+    <li>
+      <strong>「资质」与「一条信息」之间没有数据关系。</strong>
+      <code>post</code> 表没有任何 cert 列（<code>V1:152-198</code>），发布 payload 没有资质字段（<code>lib/features/publish/publish_form_state.dart:372-397</code>），
+      <code>PostCreateRequest</code> 的 required 里也没有（<code>docs/api/openapi.yaml:4782-4790</code>）。资质只挂在用户身上。
+    </li>
+    <li>
+      <strong>详情页的资质展示是断的。</strong>
+      <code>PostQueryService.java:132-138</code> 把 <code>qualification_badges</code> 硬编码成 <code>List.of()</code>；
+      <code>post_detail_provider.dart:90-92</code> 取首项；<code>detail_screen.dart:583-595</code> 用单行
+      <code>_TrustLine(Icons.workspace_premium)</code> 渲染。领域模型 <code>Publisher</code> 只有单个 label，没有签发方、没有有效期。
+    </li>
+    <li>
+      <strong>人工审核写进了契约，但从未兑现。</strong>
+      <code>/cert/qualification</code> 只落 <code>pending</code> 并返回 2 小时 SLA，「人工审核留 B2-5 运营后台」（<code>openapi.yaml:2053-2062</code>）；
+      <code>/cert/status</code> 的资质列表「本轮恒空」（<code>:2092-2100</code>）。而隐私政策写的是「资质证照仅用于人工审核，7 天内自动删除」。
+    </li>
+    <li>
+      <strong>有效期是空字段。</strong>
+      <code>expire_at</code> 在 DDL、DTO、PRD 里都有，但代码里没有赋值、没有 <code>expired</code> 写入、没有定时任务，<code>NfrCert</code> 里也没有对应常量。
+    </li>
+  </ul>
+
+  <h3 style="margin-bottom:10px">三、已经可以复用的东西</h3>
+  <ul>
+    <li>
+      快照先例：<code>post.contact_mask</code> 在发布时算好落库，读路径「不触调解密」
+      （<code>V9__post_contact_mask.sql</code>、<code>PostService.java:325-330</code>、<code>PostQueryService.java:157-159</code>）。
+    </li>
+    <li>
+      迁移纪律：最新是 V21，已应用的迁移不可改，新改动必须新开 V22；
+      <code>docs/solutions/workflow-issues/data-model-reservation-for-deferred-features.md</code> 主张「延期的是逻辑，不是数据」，预留可空列优于 NOT NULL 或唯一键。
+    </li>
+    <li>
+      审计：<code>AuditLogWriter</code> 是 <code>audit_log</code> 唯一写入口（刻意不加 <code>@Transactional</code>，保留 180 天，白名单剔除 <code>id_card/real_name/*_enc</code>）。
+    </li>
+    <li>
+      设计语言：B 族静态标记（内边距 2/4、圆角 4、caption、accent 填充 + surface 文字）最接近「资质徽章」；
+      状态一律「矢量色点 + 文字档名」，禁 emoji（<code>PRD.md:815</code>）；信任卡在浅青底上文字取 <code>primary-dark</code>（6.7:1）。
+    </li>
+  </ul>
+
+  <h3 style="margin-bottom:10px">四、外部信号</h3>
+  <ul>
+    <li>
+      <strong>没有主流平台把资质审核直接取消。</strong>
+      它们把审核对象从「人」换成「件/交易」，把展示拆成等级：闲鱼 2025-09 卖家协议把「经营资质核验」与「个人声明」并列可选；
+      Thumbtack 全员强制背调 + 可选 Licensed pro；Upwork 强制身份核验 + 可选 Identity Verified + 约 1% Expert-Vetted；
+      Amazon 强制 KYB + 可选第三方证书；Airbnb 双向强制证件但从不展示证件。
+    </li>
+    <li>
+      <strong>监管在收紧，而不是放松。</strong>
+      SAMR 2026-04 以「一店一罚」对 6 家平台罚 35.97 亿元，罪名即未尽资质审查义务；2026-09 两高典型案例涉伪造证件 3961 张；
+      抖音 2025-08 处置 6.2 万资质造假商家。电商法 38 条是连带责任，「形式审核不算尽责」。医疗须在显著位置公示电子证照；
+      家政有「家政信用查 / 电子居家上门服务证」；便民劳务允许自我声明，但必须明示。
+    </li>
+    <li>
+      <strong>机审不是万能。</strong>
+      企业信用公示系统、学信网在线验证报告、医师电子证照都没有面向任意第三方的公开查询 API，需要机构合作才能接。
+    </li>
+    <li>
+      <strong>可借的结构。</strong>
+      Sigstore/Rekor 透明日志只证明「未被篡改」，不证明「内容可信」；SLSA 2026-05 的教训是「provenance 有效 ≠ 内容可信，徽章必须写清证明了什么」；
+      餐厅 A/B/C 分级优于「有证/无证」二元；arXiv 靠可追溯与撤稿水印建立信任而非准入门槛。
+    </li>
+  </ul>
+</section>
+
+<section id="axes">
+  <h2>Topic Axes</h2>
+  <p class="section-note">四个正交切面，用来防止六副镜头都落在同一个解读上。</p>
+  <ul class="axes-list">
+    <li><span class="axis-id">A</span><strong>信任信号的陈列与分级</strong> —— 详情页/发布者卡/列表显示什么、单张还是多张、已核验与自声明如何并存、签发方与有效期怎么露出。</li>
+    <li><span class="axis-id">B</span><strong>发布侧引导与关联</strong> —— 发布流哪里引导而不拦截、一条信息挂一张的模型与选择器、跳过路径、成功页与草稿编辑。</li>
+    <li><span class="axis-id">C</span><strong>资质数据与生命周期</strong> —— cert 与 post 的关系、审核取消后的状态语义、过期与撤销、快照还是读时关联、审计留痕。</li>
+    <li><span class="axis-id">D</span><strong>无人审下的风控与合规</strong> —— 假证、分级分类、机审能力边界、抽检与举报、法律责任、拦截降级。</li>
+  </ul>
+</section>
+
+<section id="ranked">
+  <h2>Ranked Ideas</h2>
+  <p class="section-note">41 条原始候选 → 归并去重 → 依据校验 → 6 条留存。排序按「先做哪条最能让其余动作变便宜」。</p>
+
+  <div class="jump">
+    <ol>
+      <li><a href="#idea-1">发布关联快照：一帖一证，冻结在发布那一刻</a></li>
+      <li><a href="#idea-2">资质元数据档案与详情页证据行</a></li>
+      <li><a href="#idea-3">类目资质要求三档化，只删「建议档」的硬拦截</a></li>
+      <li><a href="#idea-4">发布后补挂：把引导从摩擦点挪到意愿峰值</a></li>
+      <li><a href="#idea-5">取消全量前置人审，改为核验强度声明 + 抽样后置</a></li>
+      <li><a href="#idea-6">有效期是日历事件，不是一次状态跃迁</a></li>
+    </ol>
+  </div>
+
+  <article class="idea" id="idea-1">
+    <div class="idea-head">
+      <span class="rank">01</span>
+      <h3>发布关联快照：一帖一证，冻结在发布那一刻</h3>
+    </div>
+    <dl class="fields">
+      <dt>Description</dt>
+      <dd>
+        新开 V22 迁移，建 <code>post_cert_link</code>：<code>post_id</code>、<code>cert_id</code>（可空）、投放时冻结的 <code>snapshot</code>、
+        <code>declared_at</code>、<code>version</code>。发布或补录时，把展示所需字段一次性算好写进快照；详情页读快照，不 join <code>cert</code>、
+        不读原图、不解密，也不随用户后续认证状态漂移。用户换证后给一个显式的「更新为最新」动作生成新版本，历史版本原地保留。
+      </dd>
+      <dt>Axis</dt>
+      <dd>C 资质数据与生命周期</dd>
+      <dt>Basis</dt>
+      <dd>
+        <span class="tag tag-direct">direct</span><code>V1:152-198</code> post 表无任何 cert 列；
+        <span class="tag tag-direct">direct</span><code>publish_form_state.dart:372-397</code> payload 无资质字段；
+        <span class="tag tag-direct">direct</span><code>PostService.java:325-330</code> + <code>PostQueryService.java:157-159</code> 的 <code>contact_mask</code> 先例「读取它不触调解密」；
+        <span class="tag tag-direct">direct</span>迁移纪律：最新 V21、新改动必须 V22；
+        <span class="tag tag-reasoned">reasoned</span>资质是账号的易变状态，帖子是可被外部引用的历史陈述，把两者直接 join 会让一条三个月前的帖子在无人操作时「变差」。
+      </dd>
+      <dt>Rationale</dt>
+      <dd>
+        用户要的是「资质属于用户信息、每次发布可以关联某个资质证书」。这句话在数据模型上的正解是「引用 + 冻结」，不是外键指针。
+        这条也是其余五条的地基：没有关联层，详情页永远只能从作者聚合态猜，任何展示、引导、过期逻辑都没有落点。
+      </dd>
+      <dt>Downsides</dt>
+      <dd>
+        快照会让「发布时是什么」与「现在还有效吗」分叉，因此必须同时保留一个实时有效性判定，否则撤证或过期后详情页仍会显示「已核验」；
+        JSON 快照需要版本号支撑字段演进；写入口有三处（发布、补录、换证），不收敛就会口径漂移。
+      </dd>
+      <dt>Confidence</dt>
+      <dd><span class="metric"><span class="bar"><span style="width:85%"></span></span>85%</span></dd>
+      <dt>Complexity</dt>
+      <dd>Medium</dd>
+    </dl>
+    <figure class="fig">
+      <svg viewBox="0 0 820 210" role="img" aria-label="快照数据流：用户资质档案在发布或补录时冻结为帖子快照，详情页只读快照">
+        <defs>
+          <marker id="arrow1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="#5b6672"></path>
+          </marker>
+        </defs>
+        <rect x="14" y="58" width="160" height="62" rx="8" fill="#f2f4f4" stroke="#c9d0d3"></rect>
+        <text x="94" y="84" text-anchor="middle" font-family="ui-monospace,monospace" font-size="11" fill="#5b6672">用户级</text>
+        <text x="94" y="102" text-anchor="middle" font-size="13" fill="#1b1f24">资质档案 cert</text>
+
+        <line x1="178" y1="89" x2="232" y2="89" stroke="#5b6672" stroke-width="1.4" marker-end="url(#arrow1)"></line>
+        <text x="205" y="78" text-anchor="middle" font-size="11" fill="#5b6672">勾选</text>
+
+        <rect x="238" y="58" width="160" height="62" rx="8" fill="#e6f4f1" stroke="#0f766e"></rect>
+        <text x="318" y="84" text-anchor="middle" font-family="ui-monospace,monospace" font-size="11" fill="#0f766e">发布 / 补录时</text>
+        <text x="318" y="102" text-anchor="middle" font-size="13" fill="#1b1f24">冻结快照</text>
+
+        <line x1="402" y1="89" x2="456" y2="89" stroke="#5b6672" stroke-width="1.4" marker-end="url(#arrow1)"></line>
+        <text x="429" y="78" text-anchor="middle" font-size="11" fill="#5b6672">写入</text>
+
+        <rect x="462" y="58" width="160" height="62" rx="8" fill="#ffffff" stroke="#0f766e"></rect>
+        <text x="542" y="84" text-anchor="middle" font-family="ui-monospace,monospace" font-size="11" fill="#0f766e">post_cert_link</text>
+        <text x="542" y="102" text-anchor="middle" font-size="13" fill="#1b1f24">快照 + 版本</text>
+
+        <line x1="626" y1="89" x2="674" y2="89" stroke="#5b6672" stroke-width="1.4" marker-end="url(#arrow1)"></line>
+        <text x="650" y="78" text-anchor="middle" font-size="11" fill="#5b6672">只读</text>
+
+        <rect x="680" y="58" width="126" height="62" rx="8" fill="#ffffff" stroke="#c9d0d3"></rect>
+        <text x="743" y="84" text-anchor="middle" font-size="13" fill="#1b1f24">详情页</text>
+        <text x="743" y="102" text-anchor="middle" font-size="13" fill="#1b1f24">证据行</text>
+
+        <text x="14" y="164" font-size="12" fill="#5b6672">不采用的做法：详情页读时 join cert —— 换证或过期会静默改写旧帖，且读路径要碰原图与解密。</text>
+      </svg>
+      <figcaption>快照把「发布那一刻展示了什么」变成可复现的事实；读路径零成本、零解密、零审核态抖动。</figcaption>
+    </figure>
+  </article>
+
+  <article class="idea" id="idea-2">
+    <div class="idea-head">
+      <span class="rank">02</span>
+      <h3>资质元数据档案与详情页证据行</h3>
+    </div>
+    <dl class="fields">
+      <dt>Description</dt>
+      <dd>
+        <code>cert</code> 从「只存原图引用」升级为「结构化元数据 + 原图」：补签发方、脱敏证号、核验来源、核验时间、有效期、图像哈希六个字段。
+        原图仍按隐私政策窗口清理，元数据与哈希长期保留。详情页把现在的单行 <code>_TrustLine(Icons.workspace_premium)</code>
+        换成「证据行」：证名 · 签发方 · 有效期至 · 平台做了什么核验；没有关联资质时整块不渲染。点证据行进入只读资质档案页，
+        列出该用户全部资质，页面上不放评分、评价、发布次数。
+      </dd>
+      <dt>Axis</dt>
+      <dd>A 信任信号的陈列与分级</dd>
+      <dt>Basis</dt>
+      <dd>
+        <span class="tag tag-direct">direct</span><code>V1:299-322</code> cert 表无 issuer、无证书编号、无核验来源列；
+        <span class="tag tag-direct">direct</span><code>detail_screen.dart:583-595</code> 只有单个 <code>qualificationLabel</code>，
+        且同处注释已确立「没有认证就不展示，不做负面背书」；
+        <span class="tag tag-direct">direct</span><code>docs/legal/隐私政策（草稿）.md:38,44-49</code>「资质证照仅用于人工审核」「核验完成后 7 天内自动删除」——
+        这条目的限定正是「只存原图」方案的天花板；
+        <span class="tag tag-external">external</span>SLSA 2026-05 的教训：徽章必须写清「证明了什么」，而不是「可不可信」；
+        <span class="tag tag-external">external</span>餐厅 A/B/C 分级之所以有效，是因为它公示可核对的检查事实，而不是给一个总评。
+      </dd>
+      <dt>Rationale</dt>
+      <dd>
+        用户说「详情可以看到资质信息，这样可以提升资源的可信度」。现在详情页拿到的是一个恒定空列表。
+        把档案主体从图像换成元数据，同时解决两件事：7 天删图不再等于「无证可展示」，以及平台终于能只陈述自己做过什么、不替用户下结论。
+      </dd>
+      <dt>Downsides</dt>
+      <dd>
+        必须先改隐私政策的目的限定（从「仅用于人工审核」扩到「用于展示资质摘要」），否则这条与现行政策直接冲突——这是本条的硬前置，不是工程细节；
+        六个列属于 V22 里的实质变更；签发方要么用户填、要么 OCR 提取，录入成本上升；
+        「平台做了什么核验」写错一个字就是虚假陈述，文案需要法务逐条过。
+      </dd>
+      <dt>Confidence</dt>
+      <dd><span class="metric"><span class="bar"><span style="width:60%"></span></span>60%</span></dd>
+      <dt>Complexity</dt>
+      <dd>Medium</dd>
+    </dl>
+  </article>
+
+  <article class="idea" id="idea-3">
+    <div class="idea-head">
+      <span class="rank">03</span>
+      <h3>类目资质要求三档化，只删「建议档」的硬拦截</h3>
+    </div>
+    <dl class="fields">
+      <dt>Description</dt>
+      <dd>
+        把类目的资质要求从「有无强制」升级为三档：<code>none</code> / <code>suggest</code> / <code>require-by-law</code>。
+        <code>suggest</code> 档只产出一条非阻断提示（「此类目关联资质后，对方更容易联系你」+ 可跳过的「去关联」），
+        不调用认证浮层、不阻断提交、不产生 precheck 码；<code>require-by-law</code> 档保留既有 40302 与拦截浮层。
+        40302 的语义与号段一律不动。客户端 <code>category_tree.dart</code> 的硬编码 <code>requiredCert</code> 改为读服务端下发的档位，消掉双源。
+      </dd>
+      <dt>Axis</dt>
+      <dd>B 发布侧引导与关联</dd>
+      <dt>Basis</dt>
+      <dd>
+        <span class="tag tag-direct">direct</span><code>publish_screen.dart:322-334</code>「无论用户选哪个都不放行」；
+        <span class="tag tag-direct">direct</span><code>PostValidator.java:85-88</code> 产 40302，<code>category_tree.dart:197-517</code> 逐叶子硬编码；
+        <span class="tag tag-direct">direct</span>「哪些类目必须认证」同时写在用户协议 7.3/8.1 与 PRD §4.3，是法务承诺而非 UX 选项，所以只能按档降级、不能整体删除；
+        <span class="tag tag-external">external</span>闲鱼 2025-09 卖家协议把「经营资质核验」与「个人声明」并列可选，而不是取消强制项。
+      </dd>
+      <dt>Rationale</dt>
+      <dd>
+        这是让「可选」在代码层成立的方式：不是把 <code>if</code> 改成 <code>false</code>，而是让「强制」从布尔位变成档位，
+        <code>suggest</code> 档彻底不进入拦截链路，同时给法务留一个明确出口。只改条件判断会留下一个「实名即资质」的隐形闸门
+        （<code>PostValidator.java:141-143</code> 现在拿实名状态当资质代理）。
+      </dd>
+      <dt>Downsides</dt>
+      <dd>
+        「哪些类目属于 require-by-law」是一次法务盘点，不是工程决定；医疗类目当前由 40303 禁发兜底，不能直接当样板；
+        改客户端读服务端档位会牵动 <code>category_tree</code> 的本地兜底与既有测试；降档后若某类目纠纷率上升，回滚成本在数据侧而不在代码侧。
+      </dd>
+      <dt>Confidence</dt>
+      <dd><span class="metric"><span class="bar"><span style="width:55%"></span></span>55%</span></dd>
+      <dt>Complexity</dt>
+      <dd>Medium</dd>
+    </dl>
+    <div class="note">
+      <strong>修订记录。</strong>初版曾提议把 40302 收敛为「未绑手机」单一语义。该校验被否：改单义必须另起一个错误码，撞「不新增错误码」硬纪律。
+      本版只删 <code>suggest</code> 档的客户端硬拦截，40302 的双语义保持原样。
+    </div>
+  </article>
+
+  <article class="idea" id="idea-4">
+    <div class="idea-head">
+      <span class="rank">04</span>
+      <h3>发布后补挂：把引导从摩擦点挪到意愿峰值</h3>
+    </div>
+    <dl class="fields">
+      <dt>Description</dt>
+      <dd>
+        发布表单里的资质区块默认折叠、可跳过、不参与 <code>canSubmit</code>；发布成功页与「我的发布」各加一张「给这条加一份资质」卡片，
+        点开只列档案里未过期的证书，选中后原地预览它出现在详情页的样子。补挂与发布走同一个快照写入口，补挂率作为可观测指标。
+      </dd>
+      <dt>Axis</dt>
+      <dd>B 发布侧引导与关联</dd>
+      <dt>Basis</dt>
+      <dd>
+        <span class="tag tag-direct">direct</span><code>publish_success_screen.dart</code> 目前只有「首页 / 我的发布 / 回去补齐」三个出口，没有任何资质引导；
+        <span class="tag tag-direct">direct</span><code>publish_screen.dart:933-937</code> 现在是在分类行先用 _HintText 预告「该分类发布前需完成…认证」，
+        把提示做成了事前压力；
+        <span class="tag tag-reasoned">reasoned</span>用户在发布成功获得正反馈时上传意愿最高，在被表单拦住时最低——引导应该放在意愿峰值，而不是摩擦峰值。
+      </dd>
+      <dt>Rationale</dt>
+      <dd>
+        用户原话是「增强有助资源发布信任度提升引导」。引导不是拦截的软化版，而是换时间点；后置补挂还顺手把「发布转化」与「资质覆盖」解耦，
+        两个指标可以分别优化。
+      </dd>
+      <dt>Downsides</dt>
+      <dd>
+        后置补挂让「发布时快照」变成「发布后可写」，必须先定一件事：补挂算不算修改帖子，要不要动 <code>updated_at</code> 与 PRD:1679 里时效那 20% 的权重。
+        这个口径 PRD 未覆盖，属于「先问再写」的范畴。另外成功页多一张卡会挤压现有的「回去补全」路径。
+      </dd>
+      <dt>Confidence</dt>
+      <dd><span class="metric"><span class="bar"><span style="width:70%"></span></span>70%</span></dd>
+      <dt>Complexity</dt>
+      <dd>Low</dd>
+    </dl>
+  </article>
+
+  <article class="idea" id="idea-5">
+    <div class="idea-head">
+      <span class="rank">05</span>
+      <h3>取消全量前置人审，改为核验强度声明 + 抽样后置</h3>
+    </div>
+    <dl class="fields">
+      <dt>Description</dt>
+      <dd>
+        <code>/cert/qualification</code> 不再以「pending 等 2 小时人审」为默认路径：提交后按实际能做到的核验方式落一条
+        <code>verify_source</code>（用户声明 / 材料已留档 / 平台比对项 / 人工抽检），展示层只陈述「平台做了什么」，不说「已认证」。
+        同时保留常量比例的随机抽检与举报触发的后置复核；复核不通过只解除该次关联，并复用既有下架与处置链路，不新增错误码。
+        连带改写 PRD §4.3/§4.5、隐私政策、用户协议 8.1 里「人工审核」的表述。
+      </dd>
+      <dt>Axis</dt>
+      <dd>D 无人审下的风控与合规</dd>
+      <dt>Basis</dt>
+      <dd>
+        <span class="tag tag-direct">direct</span><code>openapi.yaml:2053-2062</code>「本轮落 cert 表 status='pending'…人工审核留 B2-5 运营后台」，
+        <code>:2092-2100</code>「资质列表本轮恒空（人工审核未上线）」——现状是把人审写进契约但从未兑现；
+        <span class="tag tag-direct">direct</span><code>docs/上架前置工作指导手册.md:453</code>「报告里写的审核机制与 App 实际不符…抽查即穿」；
+        <span class="tag tag-external">external</span>SAMR 2026-04「一店一罚」罚 6 平台 35.97 亿元、两高 2026-09 伪造证件 3961 张、
+        抖音 2025-08 处置 6.2 万造假商家——监管要的是可追溯与可处置，不是人人都被看一眼。
+      </dd>
+      <dt>Rationale</dt>
+      <dd>
+        用户明确说「可以不审核」。能站住的形态不是静默关掉开关，而是把承诺口径从「这条资质是真的」改成「我们做了哪几项核验、事后能怎么处置」，
+        同时把成本结构从 O(提交量) 改成 O(抽样率 + 举报量)。SLSA 的教训正好适用：把流程证明包装成内容结论，就是虚假背书。
+      </dd>
+      <dt>Downsides</dt>
+      <dd>
+        这是一次跨文档改写（PRD、隐私政策、用户协议、openapi、上架自评材料），不是纯代码变更，落地前必须过法务；
+        「用证书编号自动比对官方库」目前走不通——企业信用公示、学信网、医师电子证照都没有面向任意第三方的公开 API，需要机构合作，
+        因此不能作为主路径写进方案；抽检比例若落到 0，约束只剩举报，需要先确认举报入口与响应时限已在现有口径内。
+      </dd>
+      <dt>Confidence</dt>
+      <dd><span class="metric"><span class="bar"><span style="width:50%"></span></span>50%</span></dd>
+      <dt>Complexity</dt>
+      <dd>High</dd>
+    </dl>
+    <figure class="fig">
+      <svg viewBox="0 0 830 232" role="img" aria-label="审核时序前后对比：现在为提交后排 2 小时人工审核，改后为提交即展示并抽样与举报触发后置复核">
+        <defs>
+          <marker id="arrow2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="#5b6672"></path>
+          </marker>
+        </defs>
+        <text x="8" y="58" font-size="12" fill="#5b6672">现在</text>
+        <rect x="62" y="36" width="132" height="46" rx="7" fill="#f2f4f4" stroke="#c9d0d3"></rect>
+        <text x="128" y="64" text-anchor="middle" font-size="12" fill="#1b1f24">提交</text>
+        <line x1="198" y1="59" x2="224" y2="59" stroke="#5b6672" stroke-width="1.3" marker-end="url(#arrow2)"></line>
+        <rect x="228" y="36" width="132" height="46" rx="7" fill="#f2f4f4" stroke="#c9d0d3"></rect>
+        <text x="294" y="64" text-anchor="middle" font-size="12" fill="#1b1f24">pending 排队</text>
+        <line x1="364" y1="59" x2="390" y2="59" stroke="#5b6672" stroke-width="1.3" marker-end="url(#arrow2)"></line>
+        <rect x="394" y="36" width="132" height="46" rx="7" fill="#fdf4e6" stroke="#a35a09"></rect>
+        <text x="460" y="64" text-anchor="middle" font-size="12" fill="#5c3d0c">人工审核 ≤2h</text>
+        <line x1="530" y1="59" x2="556" y2="59" stroke="#5b6672" stroke-width="1.3" marker-end="url(#arrow2)"></line>
+        <rect x="560" y="36" width="132" height="46" rx="7" fill="#f2f4f4" stroke="#c9d0d3"></rect>
+        <text x="626" y="64" text-anchor="middle" font-size="12" fill="#1b1f24">approved</text>
+        <line x1="696" y1="59" x2="722" y2="59" stroke="#5b6672" stroke-width="1.3" marker-end="url(#arrow2)"></line>
+        <rect x="726" y="36" width="92" height="46" rx="7" fill="#f2f4f4" stroke="#c9d0d3"></rect>
+        <text x="772" y="64" text-anchor="middle" font-size="12" fill="#1b1f24">展示</text>
+
+        <text x="8" y="164" font-size="12" fill="#0f766e">改后</text>
+        <rect x="62" y="142" width="132" height="46" rx="7" fill="#ffffff" stroke="#c9d0d3"></rect>
+        <text x="128" y="170" text-anchor="middle" font-size="12" fill="#1b1f24">提交</text>
+        <line x1="198" y1="165" x2="224" y2="165" stroke="#5b6672" stroke-width="1.3" marker-end="url(#arrow2)"></line>
+        <rect x="228" y="142" width="132" height="46" rx="7" fill="#e6f4f1" stroke="#0f766e"></rect>
+        <text x="294" y="170" text-anchor="middle" font-size="12" fill="#1b1f24">写核验来源</text>
+        <line x1="364" y1="165" x2="390" y2="165" stroke="#5b6672" stroke-width="1.3" marker-end="url(#arrow2)"></line>
+        <rect x="394" y="142" width="132" height="46" rx="7" fill="#ffffff" stroke="#0f766e"></rect>
+        <text x="460" y="170" text-anchor="middle" font-size="12" fill="#1b1f24">即时展示</text>
+        <line x1="530" y1="165" x2="556" y2="165" stroke="#5b6672" stroke-width="1.3" marker-end="url(#arrow2)"></line>
+        <rect x="560" y="142" width="132" height="46" rx="7" fill="#f2f4f4" stroke="#c9d0d3"></rect>
+        <text x="626" y="170" text-anchor="middle" font-size="12" fill="#1b1f24">抽样 / 举报</text>
+        <line x1="696" y1="165" x2="722" y2="165" stroke="#5b6672" stroke-width="1.3" marker-end="url(#arrow2)"></line>
+        <rect x="726" y="142" width="92" height="46" rx="7" fill="#f2f4f4" stroke="#c9d0d3"></rect>
+        <text x="772" y="164" text-anchor="middle" font-size="11" fill="#1b1f24">复核→</text>
+        <text x="772" y="179" text-anchor="middle" font-size="11" fill="#1b1f24">解除关联</text>
+
+        <text x="62" y="216" font-size="12" fill="#5b6672">等待被删除，责任从「每条都看过」变成「有机制、有记录、有处置」。</text>
+      </svg>
+      <figcaption>审核对象从「准入」移到「事后」；平台承诺的从真实性改成可追溯与可处置。</figcaption>
+    </figure>
+  </article>
+
+  <article class="idea" id="idea-6">
+    <div class="idea-head">
+      <span class="rank">06</span>
+      <h3>有效期是日历事件，不是一次状态跃迁</h3>
+    </div>
+    <dl class="fields">
+      <dt>Description</dt>
+      <dd>
+        <code>expire_at</code> 在证书写入时落库；展示层按当前日期比较决定是否陈列该条资质——到期即静默不显示，不写 <code>expired</code>、
+        不跑批、不显示「已失效」红标，续期后自动恢复可见。到期前提醒窗口收敛到 <code>NfrCert</code> 常量，供通知与「我的」页复用；
+        完整度「待补」仍由既有三档规则产生，不为资质另造负面标。
+      </dd>
+      <dt>Axis</dt>
+      <dd>C 资质数据与生命周期</dd>
+      <dt>Basis</dt>
+      <dd>
+        <span class="tag tag-direct">direct</span><code>expire_at</code> 在 DDL、DTO、PRD 里都有，但代码无赋值、无 <code>expired</code> 写入、
+        无定时任务，<code>NfrCert</code> 也无对应常量；
+        <span class="tag tag-direct">direct</span><code>PRD.md:856</code>「年审到期前 30 天提醒，超期自动打『待补』标，不可继续发高敏类目」；
+        <span class="tag tag-direct">direct</span><code>detail_screen.dart:583-584</code>「不做负面背书」；
+        <span class="tag tag-reasoned">reasoned</span>「有效期至 YYYY-MM」是用户可以自己判断的事实，而「已过期」是平台对该用户下的判断。
+      </dd>
+      <dt>Rationale</dt>
+      <dd>
+        少一个状态值、少一个定时任务、少一类客服工单；同时天然满足「不做负面背书」——过期表现为消失，而不是变红。
+        这也补上了现在最荒谬的一处：<code>expire_at</code> 有列没人写，等于资质永远有效。
+      </dd>
+      <dt>Downsides</dt>
+      <dd>
+        PRD:856 明确要求「超期打待补标、不可继续发高敏类目」，静默不陈列与该条冲突，必须先改 PRD 或把「待补」明确限定在完整度上而不作用于资质行；
+        「不跑批」与到期提醒的通知投递需要惰性写入或查询兜底，否则提醒永远发不出去；读时比较的成本要在列表与详情两处各评一次。
+      </dd>
+      <dt>Confidence</dt>
+      <dd><span class="metric"><span class="bar"><span style="width:65%"></span></span>65%</span></dd>
+      <dt>Complexity</dt>
+      <dd>Low</dd>
+    </dl>
+  </article>
+</section>
+
+<section id="rejections">
+  <h2>Rejection Summary</h2>
+  <p class="section-note">每条被淘汰的候选都带一句理由；被并入的注明去向，避免同一个想法以两个名字重复出现。</p>
+  <table>
+    <caption>考虑过并被裁掉的候选（含并入与降级）</caption>
+    <thead>
+      <tr><th>#</th><th>Idea</th><th>Reason Rejected</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>1</td>
+        <td>40302 收敛为「未绑手机」单一语义</td>
+        <td>改单义必须另起一个错误码，撞「不新增错误码」硬纪律。已并入 #3，仅删建议档的客户端硬拦截。</td>
+      </tr>
+      <tr>
+        <td>2</td>
+        <td>详情页通用信任插槽 <code>trust_slots[]</code></td>
+        <td>与 #2 的证据行同源，属于同一渲染协议的两种写法。已并入 #2，等第二种证据源真出现时再抽协议。</td>
+      </tr>
+      <tr>
+        <td>3</td>
+        <td>三档文案表（自声明 / 机审 / 人工核验）</td>
+        <td>并入 #5：文案口径是「核验强度声明」的组成部分，单独列会变成只有表格没有机制。</td>
+      </tr>
+      <tr>
+        <td>4</td>
+        <td>只展示结构化字段、不展示证照图 + 按需授权查看</td>
+        <td>并入 #2：这本来就是元数据档案的默认行为，且与隐私政策「证照不公开」一致，不需要独立立项。</td>
+      </tr>
+      <tr>
+        <td>5</td>
+        <td>资质-类目能力映射表（某证能支撑哪些类目）</td>
+        <td>事实失准：<code>need_cert</code> 是 <code>VARCHAR(32)</code> 认证类型而非布尔；反向映射会与既有类目打标形成双真源必然漂移，且「默认勾选最匹配一张」等于替用户做公开披露决定。</td>
+      </tr>
+      <tr>
+        <td>6</td>
+        <td>类目关联率社会证明（删掉强制，展示同伴比例）</td>
+        <td>删 <code>need_cert</code> 是删法务承诺而非删 UX 选项——用户协议 7.3/8.1 与 PRD §4.3 三重钉死；且「近 N 天」的 N 未定义，把同伴行为做成对个体的隐性压力。</td>
+      </tr>
+      <tr>
+        <td>7</td>
+        <td>资质签发关系（企业资质为员工个人资质背书）</td>
+        <td>cert 表没有 issuer 模型；所引 Thumbtack/Upwork 是平台核验政府牌照，不存在「企业为个人签发资质」这种关系。展示未经核验的第三方企业事实，法律风险高于收益。</td>
+      </tr>
+      <tr>
+        <td>8</td>
+        <td>关联资质换取纠纷「优先响应 / 协助举证」</td>
+        <td>无对应链路：现有只有 <code>/admin/reports</code> 举报工单，没有用户侧申诉接口；且认证已在 PRD:1679 拿到排序权重，再叠一项权益是平台新的单方承诺。</td>
+      </tr>
+      <tr>
+        <td>9</td>
+        <td>零上传机审（用证书编号自动比对官方库）</td>
+        <td>降级并入 #5 的可选增强：企业信用公示、学信网、医师电子证照均无面向任意第三方的公开查询 API，需机构合作，不能作为主路径。</td>
+      </tr>
+      <tr>
+        <td>10</td>
+        <td>过期即显示「已失效」红色徽标</td>
+        <td>与「不做负面背书标」红线直接冲突。改由 #6 的静默不陈列 + 既有完整度三档承担。</td>
+      </tr>
+      <tr>
+        <td>11</td>
+        <td>把「资质档案页」作为独立立项</td>
+        <td>它是 #2 的下游：cert 没有签发方与核验来源字段时，页面无数据可放。已并入 #2。</td>
+      </tr>
+      <tr>
+        <td>—</td>
+        <td>axis: 四轴均有留存</td>
+        <td>无覆盖缺口：A 对应 #2，B 对应 #3/#4，C 对应 #1/#6，D 对应 #5。</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<footer class="composition-signal">
+  Composed 2026-10-28 by ce-ideate · source: 本轮用户 prompt（资质认证可选化）+ 仓库取证（PRD / openapi / 迁移 / 前后端源码 / 合规文本）· 41 条原始候选，6 条留存，11 条裁撤或并入
+</footer>
+
+</div>
+</body>
+</html>

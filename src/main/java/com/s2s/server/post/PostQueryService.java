@@ -56,6 +56,7 @@ public class PostQueryService {
     private final CertService certService;
     private final DetailQuotaGate detailQuotaGate;
     private final FavoriteQueryService favoriteQueryService;
+    private final PostCredentialAssembler credentialAssembler;
 
     /**
      * 构造 post 读服务。
@@ -69,6 +70,7 @@ public class PostQueryService {
      * @param certService        实名/额度服务
      * @param detailQuotaGate    未实名详情额度闸
      * @param favoriteQueryService 收藏只读查询（跨域 service 接口，详情页 {@code favorited}）
+     * @param credentialAssembler 帖级凭证声明组装器（详情页资质行）
      */
     public PostQueryService(PostQueryMapper postQueryMapper,
             PostMediaMapper postMediaMapper,
@@ -78,7 +80,8 @@ public class PostQueryService {
             ObjectMapper objectMapper,
             CertService certService,
             DetailQuotaGate detailQuotaGate,
-            FavoriteQueryService favoriteQueryService) {
+            FavoriteQueryService favoriteQueryService,
+            PostCredentialAssembler credentialAssembler) {
         this.postQueryMapper = postQueryMapper;
         this.postMediaMapper = postMediaMapper;
         this.mediaAssembler = mediaAssembler;
@@ -88,6 +91,7 @@ public class PostQueryService {
         this.certService = certService;
         this.detailQuotaGate = detailQuotaGate;
         this.favoriteQueryService = favoriteQueryService;
+        this.credentialAssembler = credentialAssembler;
     }
 
     /**
@@ -164,7 +168,9 @@ public class PostQueryService {
                 author,
                 toLong(row.get("version")),
                 Boolean.TRUE.equals(toBoolean(row.get("ai_assisted"))),
-                favorited);
+                favorited,
+                // 帖级凭证声明：未关联/脏数据为 null，客户端整块不渲染（快照主行 + 实时说明行）
+                credentialAssembler.of(postId));
     }
 
     /**

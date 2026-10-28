@@ -5,6 +5,8 @@ import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.s2s.server.ai.AiQuotaGate;
+import com.s2s.server.cert.CertService;
+import com.s2s.server.cert.dto.CertSnapshot;
 import com.s2s.server.common.constants.NfrPost;
 import com.s2s.server.auth.IdentityBindingService;
 import com.s2s.server.common.crypto.CryptoFacade;
@@ -14,6 +16,7 @@ import com.s2s.server.common.geo.GridIdCalculator;
 import com.s2s.server.common.ratelimit.RateLimitKeys;
 import com.s2s.server.post.dto.MediaItem;
 import com.s2s.server.post.dto.PostCreateRequest;
+import com.s2s.server.post.dto.PostCredential;
 import com.s2s.server.post.dto.PostDetail;
 import com.s2s.server.post.dto.PostStatusResult;
 import com.s2s.server.post.dto.PostStatusUpdateRequest;
@@ -65,6 +68,8 @@ public class PostService {
     private final IdentityBindingService identityBindingService;
     private final AmapPoiClient amapPoiClient;
     private final CommunityResolver communityResolver;
+    private final CertService certService;
+    private final PostCredentialAssembler credentialAssembler;
 
     /**
      * 构造发布服务。
@@ -73,6 +78,8 @@ public class PostService {
      * @param identityBindingService 身份绑定门禁（B2-6a：未绑手机号禁止发布）
      * @param amapPoiClient 高德 Web 服务（逆地理取城市 adcode；未配置 Key 自动降级）
      * @param communityResolver 小区实体归一（发布时把地址收敛为 community_id）
+     * @param certService 资质服务（发布/补挂时校验可挂载资质，跨域只调 service）
+     * @param credentialAssembler 帖级凭证声明组装器（写快照 + 读展示）
      */
     public PostService(PostMapper postMapper,
             PostMediaMapper mediaMapper,
@@ -83,7 +90,9 @@ public class PostService {
             AiQuotaGate aiQuotaGate,
             IdentityBindingService identityBindingService,
             AmapPoiClient amapPoiClient,
-            CommunityResolver communityResolver) {
+            CommunityResolver communityResolver,
+            CertService certService,
+            PostCredentialAssembler credentialAssembler) {
         this.postMapper = postMapper;
         this.mediaMapper = mediaMapper;
         this.cryptoFacade = cryptoFacade;
@@ -94,6 +103,8 @@ public class PostService {
         this.identityBindingService = identityBindingService;
         this.amapPoiClient = amapPoiClient;
         this.communityResolver = communityResolver;
+        this.certService = certService;
+        this.credentialAssembler = credentialAssembler;
     }
 
     /**
@@ -187,6 +198,12 @@ public class PostService {
 
         // 关联媒体（post_media.post_id 落位）
         linkMedia(userId, post.getId(), req.mediaIds());
+
+        // 帖级凭证声明（可选，不阻断发布）：写入即冻结快照，之后换证/续期不回溯
+        if (req.certId() != null) {
+            CertSnapshot snapshot = certService.requireAttachable(userId, req.certId());
+            credentialAssembler.upsert(post.getId(), snapshot);
+        }
 
         // [B2-4] AI 配额扣减点：仅 ai_assisted=true 的发布扣 1 次（PRD §5.9「仅确认发布才计 1 次」）
         if (Boolean.TRUE.equals(req.aiAssisted())) {
@@ -525,7 +542,32 @@ public class PostService {
                 post.getVersion(),
                 Boolean.TRUE.equals(post.getAiAssisted()),
                 // favorited：POST /posts 刚创建的帖子必为未收藏；该字段由 GET 详情填充
-                null);
+                null,
+                credentialAssembler.of(post.getId()));
+    }
+
+    /**
+     * 发布后补挂 / 替换凭证声明（{@code PUT /posts/{post_id}/cert}）。
+     *
+     * <p><b>只写声明记录</b>：不修改 {@code post} 行，不改 {@code updated_at}/{@code expire_at}/
+     * {@code version}，不进入任何排序权重（PRD §8 补挂口径）。已有声明时按替换处理，
+     * 快照重取、声明时间刷新。</p>
+     *
+     * @param userId 当前登录用户 ID
+     * @param postId 帖子 ID
+     * @param certId 本人资质 ID（须为 approved 且在有效期内）
+     * @return {@link PostCredential} 最新声明块（供页面即时刷新）
+     * @throws BizException {@code 40001} 帖子不存在/非本人、资质不可挂载
+     */
+    @Transactional
+    public PostCredential attachCert(Long userId, Long postId, Long certId) {
+        PostEntity post = postMapper.selectById(postId);
+        if (post == null || !post.getUserId().equals(userId)) {
+            throw BizException.of(ErrorCode.PARAM_INVALID);
+        }
+        CertSnapshot snapshot = certService.requireAttachable(userId, certId);
+        credentialAssembler.upsert(postId, snapshot);
+        return credentialAssembler.of(postId);
     }
 
     /**

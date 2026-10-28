@@ -14,6 +14,7 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.s2s.server.ai.AiQuotaGate;
 import com.s2s.server.auth.IdentityBindingService;
+import com.s2s.server.cert.CertService;
 import com.s2s.server.common.crypto.CryptoFacade;
 import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
@@ -55,6 +56,8 @@ class PostServiceTest {
     private IdentityBindingService identityBindingService;
     private AmapPoiClient amapPoiClient;
     private CommunityResolver communityResolver;
+    private CertService certService;
+    private PostCredentialAssembler credentialAssembler;
     private PostService postService;
 
     @BeforeEach
@@ -69,10 +72,12 @@ class PostServiceTest {
         identityBindingService = mock(IdentityBindingService.class);
         amapPoiClient = mock(AmapPoiClient.class);
         communityResolver = mock(CommunityResolver.class);
+        certService = mock(CertService.class);
+        credentialAssembler = mock(PostCredentialAssembler.class);
         when(communityResolver.resolve(any(), any())).thenReturn(CommunityResolver.CommunityMatch.empty());
         postService = new PostService(postMapper, mediaMapper, cryptoFacade, validator,
                 mediaAssembler, objectMapper, aiQuotaGate, identityBindingService,
-                amapPoiClient, communityResolver);
+                amapPoiClient, communityResolver, certService, credentialAssembler);
 
         when(validator.computeDerived(any(), any(), any()))
                 .thenReturn(new PrecheckResult.Derived(true, false, true));
@@ -104,7 +109,7 @@ class PostServiceTest {
 
         PostCreateRequest req = new PostCreateRequest(
                 "resource", 10101, "标题", 50.0, "小时", "描述", Map.of(), 120.15, 30.28, null,
-                false, List.of(), "phone", "13800138000", null);
+                false, List.of(), "phone", "13800138000", null, null);
 
         PostDetail detail = postService.createPost(1L, req);
 
@@ -130,7 +135,7 @@ class PostServiceTest {
         when(postMapper.selectById(100L)).thenReturn(createSavedRow());
         PostCreateRequest req = new PostCreateRequest(
                 "resource", 10101, "标题", 50.0, "小时", null, Map.of(), 120.15, 30.28, null,
-                false, List.of(), "phone", "13800138000", true);
+                false, List.of(), "phone", "13800138000", true, null);
 
         postService.createPost(1L, req);
 
@@ -176,7 +181,7 @@ class PostServiceTest {
     private static PostCreateRequest createReq(Boolean aiAssisted) {
         return new PostCreateRequest(
                 "resource", 10101, "标题", 50.0, "小时", "描述", Map.of(), 120.15, 30.28, null,
-                false, List.of(), "phone", "13800138000", aiAssisted);
+                false, List.of(), "phone", "13800138000", aiAssisted, null);
     }
 
     /**

@@ -53,6 +53,7 @@ class PostQueryServiceTest {
     private CertService certService;
     private DetailQuotaGate detailQuotaGate;
     private FavoriteQueryService favoriteQueryService;
+    private PostCredentialAssembler credentialAssembler;
     private PostQueryService service;
 
     @BeforeEach
@@ -65,9 +66,10 @@ class PostQueryServiceTest {
         certService = mock(CertService.class);
         detailQuotaGate = mock(DetailQuotaGate.class);
         favoriteQueryService = mock(FavoriteQueryService.class);
+        credentialAssembler = mock(PostCredentialAssembler.class);
         service = new PostQueryService(postQueryMapper, postMediaMapper, mediaAssembler,
                 categoryService, systemConfigService, new ObjectMapper(), certService,
-                detailQuotaGate, favoriteQueryService);
+                detailQuotaGate, favoriteQueryService, credentialAssembler);
         when(postMediaMapper.selectList(any())).thenReturn(List.of());
         when(systemConfigService.isOn(any())).thenReturn(false);
     }

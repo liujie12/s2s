@@ -52,6 +52,7 @@ import '../../domain/publish_template.dart';
 import '../../core/network/api_exception.dart';
 import '../../router/app_router.dart';
 import '../auth/auth_repository.dart';
+import '../cert/cert_picker.dart';
 import '../detail/post_detail_provider.dart';
 import '../location/high_accuracy_locator.dart';
 import '../location/location_center.dart';
@@ -357,6 +358,8 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
       // 处理（复用动作入口），其余错误按 §11.4 提示。
       // 编辑态走 PATCH（须带 version，contact 留空 = 保留原密文）；
       // 新建/重发态走 POST。两者回执字段子集同构（PostCreatedDto）。
+      // 创建回执的帖子 ID 供完成页「加一份资质」补挂（编辑态无此入口）。
+      var createdPostId = _editPostId;
       try {
         if (_isEditing) {
           await ref.read(postRepositoryProvider).updatePost(
@@ -367,9 +370,13 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
                 },
               );
         } else {
-          await ref
-              .read(postRepositoryProvider)
-              .createPost(_form.postDraftPayload());
+          // `cert_id` 只在 `PostCreateRequest` 上有：precheck 与 PATCH 的载荷
+          // schema 都没有这个键，故在这里补，不塞进 `postDraftPayload`。
+          final payload = _form.postDraftPayload();
+          final certId = _form.certId;
+          if (certId != null) payload['cert_id'] = certId;
+          final created = await ref.read(postRepositoryProvider).createPost(payload);
+          createdPostId = created.id;
         }
       } on ApiException catch (error) {
         if (!mounted) return;
@@ -405,8 +412,11 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
         // 完成页是「新发布」的闭环，编辑没有「发布成功」这一步。
         router.canPop() ? router.pop(true) : router.go(AppRoutes.myPublish);
       } else {
-        // 发布成功进完成页（带上表单快照供完成页算 §9.8 档位）。
-        router.push(AppRoutes.publishSuccess, extra: _form);
+        // 发布成功进完成页（带上表单快照供完成页算 §9.8 档位 + 新帖 ID 供补挂）。
+        router.push(
+          AppRoutes.publishSuccess,
+          extra: PublishSuccessArgs(form: _form, postId: createdPostId),
+        );
       }
     } on ApiException catch (error) {
       // precheck 链路失败（传输/信封错误）与「校验不通过」是两种语义：
@@ -720,6 +730,20 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
               onChanged: (ids) => _updateForm(_form.copyWith(mediaIds: ids)),
             ),
           ),
+          // 资质挂载位（帖子凭证方案 R6）：可选、不阻断，默认「本次不展示」。
+          // 编辑态不在此改挂载（补挂走「我的发布」的「加一份资质」）。
+          // 未登录不渲染：`GET /cert/status` 需登录，游客态只会显示一条授权错误。
+          if (!_isEditing && ref.watch(isLoggedInProvider))
+            _SectionCard(
+              index: null,
+              title: '资质',
+              done: true,
+              child: CertMountSection(
+                certId: _form.certId,
+                enabled: !_precheckInFlight,
+                onChanged: (id) => _updateForm(_form.withCertId(id)),
+              ),
+            ),
           _SectionCard(
             index: 7,
             title: '有效期',

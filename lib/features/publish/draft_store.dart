@@ -99,6 +99,7 @@ Map<String, Object?> _formToJson(PublishFormState form) => <String, Object?>{
   'description': form.description,
   'template_values': form.templateValues,
   'media_ids': form.mediaIds,
+  'cert_id': form.certId,
   'contact': form.contact,
   'agreed': form.agreed,
 };
@@ -144,6 +145,7 @@ PublishFormState _formFromJson(Object? raw) {
     description: (map['description'] as String?) ?? '',
     templateValues: templateValues,
     mediaIds: mediaIds,
+    certId: map['cert_id'] as int?,
     contact: (map['contact'] as String?) ?? '',
     agreed: (map['agreed'] as bool?) ?? false,
     // loadedTemplate 刻意不恢复：见文件头说明，由页面重新拉取。

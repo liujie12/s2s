@@ -785,7 +785,8 @@ void main() {
     /// 唯一落点，与 `post_status.dart` 同型）。
     /// 44 = 43 + track_wiring.dart（[130] 前端埋点链接线：trackReporterProvider /
     /// TrackController / TrackLifecycleObserver 的唯一落点）。
-    const int featuresDartFileBaseline = 44;
+    /// 45 = 44 + cert_picker.dart（本轮资质挂载位与补挂选证共用件）。
+    const int featuresDartFileBaseline = 45;
 
     /// lib/ 全部 Dart 文件数基线（同上，评审 #10）。
     /// 71 = 67 + [127] 前端段四件（core/time_format + 我的发布三件）；
@@ -803,7 +804,8 @@ void main() {
     /// 78 = 72 + [130] 前端埋点链六件：core/track 五件（track_event /
     /// track_queue / track_reporter / mem_peak / layer_switch_timer）+
     /// features/track/track_wiring.dart。
-    const int libDartFileBaseline = 78;
+    /// 79 = 78 + cert_picker.dart（本轮资质挂载位与补挂选证共用件）。
+    const int libDartFileBaseline = 79;
 
     /// `ApiException.parse(` 命中总数基线（判据 C1）：工厂定义 1 + 调用 55。
     ///

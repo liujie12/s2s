@@ -114,6 +114,7 @@ class PublishFormState {
     this.templateValues = const {},
     this.loadedTemplate,
     this.mediaIds = const <String>[],
+    this.certId,
     this.contact = '',
     this.agreed = false,
   });
@@ -187,6 +188,13 @@ class PublishFormState {
 
   /// 媒体张数（派生自 [mediaIds]，避免「计数」与「列表」两个真源漂移）。
   int get imageCount => mediaIds.length;
+
+  /// 发布时挂载的资质档案 ID（null = 本次不展示）。
+  ///
+  /// **不进 [postDraftPayload]**：`cert_id` 只在 `POST /posts`（`PostCreateRequest`）
+  /// 上有，precheck 与 PATCH 的载荷 schema 都没有这个键；由发布页在新建/重发
+  /// 提交时单独补上，避免把契约外键发给另外两个端点。
+  final int? certId;
 
   /// 联系方式（§5.4.1 第 8 段）。
   final String contact;
@@ -347,6 +355,35 @@ class PublishFormState {
     return copyWith(loadedTemplate: template);
   }
 
+  /// 设置/清空挂载的资质（null = 本次不展示）。
+  ///
+  /// **为什么不用 copyWith**：`copyWith` 的 `?? this.x` 语义无法把可空字段退回
+  /// null，「取消挂载」就表达不出来；这里整份重建，语义显式。
+  ///
+  /// 参数：[id] 资质档案 ID，null 表示不展示。
+  /// 返回：新的表单快照。
+  PublishFormState withCertId(int? id) {
+    return PublishFormState(
+      kind: kind,
+      leafCategoryId: leafCategoryId,
+      lng: lng,
+      lat: lat,
+      locationLabel: locationLabel,
+      doorNumber: doorNumber,
+      title: title,
+      priceText: priceText,
+      priceUnit: priceUnit,
+      negotiable: negotiable,
+      description: description,
+      templateValues: templateValues,
+      loadedTemplate: loadedTemplate,
+      mediaIds: mediaIds,
+      certId: id,
+      contact: contact,
+      agreed: agreed,
+    );
+  }
+
   /// 构造 PostDraft 契约载荷（[124] B4，`POST /posts/precheck` 用；
   /// B5 `POST /posts` 复用同一构造 —— 两个端点的载荷 schema 同源，
   /// 各写一份会出现 precheck 过了、createPost 传了不同字段的分叉）。
@@ -423,6 +460,7 @@ class PublishFormState {
       description: description,
       templateValues: const {},
       mediaIds: mediaIds,
+      certId: certId,
       contact: contact,
       agreed: agreed,
     );

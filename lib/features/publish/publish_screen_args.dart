@@ -45,3 +45,20 @@ class PublishScreenArgs {
   /// 编辑时的乐观锁版本号（仅 [editPostId] 非空时有意义）。
   final int? editVersion;
 }
+
+/// 发布完成页入参。
+///
+/// 完成页除了展示完整度（需要表单快照），还承担「加一份资质」补挂入口
+/// （帖子凭证方案 R7），后者需要刚发布的帖子 ID；两者一并透传。
+class PublishSuccessArgs {
+  /// 构造完成页入参。
+  ///
+  /// 参数：[form] 提交时的表单快照；[postId] 新建成功后的帖子 ID（补挂用）。
+  const PublishSuccessArgs({this.form, this.postId});
+
+  /// 提交时的表单快照（算完整度档位）。
+  final PublishFormState? form;
+
+  /// 新建成功后的帖子 ID；null 表示无补挂入口。
+  final int? postId;
+}

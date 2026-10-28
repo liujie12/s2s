@@ -23,9 +23,10 @@ import java.util.stream.Collectors;
  * <p><b>当前 9 条的落地状态</b>（2026-10-23 更新）：</p>
  * <ul>
  *   <li>已实现：{@code favorite_deleted_30d}、{@code deactivate_7d}、{@code audit_log_180d}、
- *       {@code ocr_image_7d}（证照图清理任务）、{@code transit_log_30d}（联系事件清理任务）；</li>
+ *       {@code transit_log_30d}（联系事件清理任务）；</li>
  *   <li>非任务型执行者（既有代码路径）：{@code exif_strip}、{@code location_no_collect}、
- *       {@code post_archived_keep}；</li>
+ *       {@code post_archived_keep}、{@code cert_image_keep}（2026-10-28：取消审核后证照原件改为
+ *       随用户删除资质一并删除，原 {@code ocr_image_7d} 定时清理任务已下线）；</li>
  *   <li>仍未落地：{@code publish_memory_180d}（发布记忆功能未开发，随该功能交付）。</li>
  * </ul>
  */
@@ -42,8 +43,8 @@ public final class RetentionRuleRegistry {
     private static final Map<String, String> RULES = new LinkedHashMap<>();
 
     static {
-        RULES.put("ocr_image_7d",
-                "task.CertImageCleanupTask（删 OSS 证照对象 + 清 cert.ocr_image_ref）");
+        RULES.put("cert_image_keep",
+                "cert 域删除流程（随用户删除该资质一并删 OSS 原件与引用，无定时清理）");
         RULES.put("transit_log_30d",
                 "task.ContactEventCleanupTask（删 contact_event 过期行；载体 = 联系事件表）");
         RULES.put("favorite_deleted_30d", "task.FavoriteCleanupTask（软删满 30 天物理删除）");

@@ -51,6 +51,7 @@ import java.util.Map;
  * @param version           乐观锁版本号
  * @param aiAssisted        本条是否由 T2 AI 智能发布辅助生成（B2-4，PRD §5.9；详情页标识来源）
  * @param favorited         当前登录用户是否已收藏；登录用户恒 {@code true/false}，游客 {@code null}
+ * @param credential        帖级凭证声明块；未关联或脏数据为 {@code null}（客户端整块不渲染）
  */
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public record PostDetail(
@@ -77,5 +78,6 @@ public record PostDetail(
         AuthorBrief author,
         Long version,
         Boolean aiAssisted,
-        Boolean favorited) {
+        Boolean favorited,
+        PostCredential credential) {
 }

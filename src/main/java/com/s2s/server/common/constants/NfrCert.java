@@ -36,12 +36,6 @@ public final class NfrCert {
     public static final long REALNAME_FAIL_LOCK_SECONDS = 86_400;
 
     /**
-     * 资质认证人工审核 SLA（小时）。PRD §4.5「人工审核（SLA ≤ 2h）」。资质提交响应的
-     * {@code sla_hours} 字段值（[149] 资质占位阶段仍返回该值，供前端展示审核时限）。
-     */
-    public static final int QUALIFICATION_SLA_HOURS = 2;
-
-    /**
      * 工具类：禁止实例化。
      */
     private NfrCert() {

@@ -4,14 +4,14 @@ import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 
 /**
- * 提交资质认证响应（[149]；对应 openapi {@code QualificationSubmitResult}）。
+ * 提交/编辑资质响应（对应 openapi {@code QualificationSubmitResult}）。
  *
- * <p>资质本轮落 {@code cert} 表 {@code status='pending'}，人工审核留 B2-5 运营后台，
- * 故 {@code status} 恒 {@code pending}；{@code slaHours} 为人工审核 SLA（PRD §4.5）。</p>
+ * <p>本轮取消人工审核，提交即生效：{@code status} 为 {@code approved}；
+ * 若提交的有效期已过，服务端直接落 {@code expired}。</p>
  *
- * @param status   提交后状态（本轮恒 {@code pending}）
- * @param slaHours 人工审核 SLA（小时，PRD §4.5）
+ * @param certId 资质档案 ID（发布挂载与编辑/删除均以此为准）
+ * @param status 提交后状态（{@code approved}/{@code expired}）
  */
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-public record QualificationSubmitResult(String status, int slaHours) {
+public record QualificationSubmitResult(Long certId, String status) {
 }

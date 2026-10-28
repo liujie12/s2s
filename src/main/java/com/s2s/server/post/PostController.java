@@ -7,7 +7,9 @@ import com.s2s.server.common.ratelimit.RateLimit;
 import com.s2s.server.common.ratelimit.RateLimitTrack;
 import com.s2s.server.common.web.AuthContext;
 import com.s2s.server.post.dto.MyPostsResponse;
+import com.s2s.server.post.dto.PostCertAttachRequest;
 import com.s2s.server.post.dto.PostCreateRequest;
+import com.s2s.server.post.dto.PostCredential;
 import com.s2s.server.post.dto.PostDetail;
 import com.s2s.server.post.dto.PostDraft;
 import com.s2s.server.post.dto.PostStatusResult;
@@ -21,6 +23,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -143,6 +146,25 @@ public class PostController {
             HttpServletRequest httpRequest) {
         Long userId = requireUserId(httpRequest);
         return postService.updatePost(userId, postId, request);
+    }
+
+    /**
+     * 发布后补挂 / 替换凭证声明（{@code PUT /posts/{post_id}/cert}）。
+     *
+     * <p>只写声明记录与快照：不改帖子时间、版本与排序权重；一帖一证，已存在则替换。</p>
+     *
+     * @param postId      帖子 ID
+     * @param request     挂载入参（{@code cert_id}）
+     * @param httpRequest 当前请求（取登录用户 ID）
+     * @return {@link PostCredential} 最新声明块
+     */
+    @PutMapping("/posts/{post_id}/cert")
+    @Idempotent
+    public PostCredential attachCert(@PathVariable("post_id") Long postId,
+            @Valid @RequestBody PostCertAttachRequest request,
+            HttpServletRequest httpRequest) {
+        Long userId = requireUserId(httpRequest);
+        return postService.attachCert(userId, postId, request.certId());
     }
 
     /**

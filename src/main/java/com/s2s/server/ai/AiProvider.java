@@ -1,5 +1,7 @@
 package com.s2s.server.ai;
 
+import com.s2s.server.ai.dto.CertProfileGuess;
+
 /**
  * 大模型供应商抽象（B2-4；DEC-30 同族的「接口 + dry-run 实现」范式）。
  *
@@ -43,4 +45,19 @@ public interface AiProvider {
      * @throws IllegalStateException 上游不可用（调用方映射 {@code 50301}）
      */
     String transcribe(Long userId, String audioUrl, String audioContentType);
+
+    /**
+     * 从证照图抽取证名与有效期（资质档案预填用）。
+     *
+     * <p><b>读不出不是错误</b>：图片模糊、非证件、字段缺失时返回
+     * {@link CertProfileGuess#empty()}，由调用方原样下发空值，不抛异常。
+     * 只有上游不可用才抛 {@link IllegalStateException}（调用方映射 {@code 50301}）。</p>
+     *
+     * @param userId      发起调用的用户 ID（真实通道记入费用台账）
+     * @param imageUrl    证照图只读短时效 URL（调用方已完成归属校验）
+     * @param contentType 图片 MIME 类型
+     * @return {@link CertProfileGuess} 证名与有效期（均可空）
+     * @throws IllegalStateException 上游不可用 / 未配置 Key（调用方映射 {@code 50301}）
+     */
+    CertProfileGuess extractCertProfile(Long userId, String imageUrl, String contentType);
 }

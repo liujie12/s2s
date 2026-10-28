@@ -205,6 +205,58 @@ class PostAuthorDto {
   final List<String> qualificationBadges;
 }
 
+/// 帖级凭证声明块 DTO（openapi `PostCredential`；本轮帖级资质行）。
+///
+/// 主行字段全取自写入时的冻结快照（`cert_name`/`expire_type`/`expire_at`），
+/// 永不改写；`state` 是读取时按凭证当前状态计算的实时值，只决定是否追加
+/// 说明行。未关联凭证时详情不返回本对象（整块不渲染）。
+class PostCredentialDto {
+  /// 构造凭证块 DTO。
+  const PostCredentialDto({
+    required this.certType,
+    required this.certName,
+    required this.expireType,
+    this.expireAt,
+    required this.state,
+    this.declaredAt,
+  });
+
+  /// 由信封 data 内的 credential 对象构造。
+  ///
+  /// 参数：[json] `PostDetail.credential` 对象。
+  /// 返回：[PostCredentialDto]。
+  /// 抛出：[ApiException.parse] required 字段缺失/类型不符时。
+  factory PostCredentialDto.fromJson(Object? json) {
+    final map = requireMap(json, 'PostCredential');
+    return PostCredentialDto(
+      certType: requireString(map, 'cert_type', 'PostCredential'),
+      certName: requireString(map, 'cert_name', 'PostCredential'),
+      expireType: requireString(map, 'expire_type', 'PostCredential'),
+      expireAt: optDateTime(map, 'expire_at', 'PostCredential'),
+      state: requireString(map, 'state', 'PostCredential'),
+      declaredAt: optDateTime(map, 'declared_at', 'PostCredential'),
+    );
+  }
+
+  /// 资质类型（契约 `CertTypeEnum`）。
+  final String certType;
+
+  /// 证名快照；历史行可能为空串。
+  final String certName;
+
+  /// 有效期类型快照（`dated`/`permanent`）。
+  final String expireType;
+
+  /// 有效期快照；`permanent` 时为 null。
+  final DateTime? expireAt;
+
+  /// 展示状态（`valid`/`expired`/`revoked`/`deleted`）。
+  final String state;
+
+  /// 声明时间（发布时或补挂时；契约非 required）。
+  final DateTime? declaredAt;
+}
+
 /// 帖子详情 DTO（openapi.yaml `PostDetail`；[127] 详情页接线）。
 ///
 /// 只解析详情页消费的字段；`version`/`status`/`l2_category_id`/`category_path`
@@ -232,6 +284,7 @@ class PostDetailDto {
     required this.expireAt,
     required this.author,
     this.media = const [],
+    this.credential,
     this.contactMask,
     this.aiAssisted = false,
     this.favorited,
@@ -279,6 +332,7 @@ class PostDetailDto {
       expireAt: _requireDateTime(map, 'expire_at', 'PostDetail'),
       author: PostAuthorDto.fromJson(map['author']),
       media: media,
+      credential: map['credential'] == null ? null : PostCredentialDto.fromJson(map['credential']),
       contactMask: optString(map, 'contact_mask', 'PostDetail'),
       aiAssisted: optBool(map, 'ai_assisted', 'PostDetail') ?? false,
       // favorited：登录用户恒 true/false；游客为 null（详情页据此区分「未收藏」与「未知」）。
@@ -334,6 +388,9 @@ class PostDetailDto {
   /// 媒体列表（他人视角仅含 `audit_status=pass` 的项；契约非 required，
   /// 缺失/JSON null 均为空列表）。
   final List<MediaItemDto> media;
+
+  /// 帖级凭证声明块（契约 `credential`；未关联时为 null，整块不渲染）。
+  final PostCredentialDto? credential;
 
   /// 脱敏联系方式（`contact_mask`；[147] DEC-13）。
   ///

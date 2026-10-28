@@ -200,7 +200,7 @@
 | 比对双方 | `RetentionRuleRegistry` 注册的 key 集合 ⟷ PRD §13.4「保留策略键」列 |
 | 判据 | **逐值相等**（不是包含、不是子集） |
 | 失败行为 | **构建失败**（普通单测失败即可达成，无需额外机制） |
-| 9 个 key | `ocr_image_7d` / `transit_log_30d` / `favorite_deleted_30d` / `publish_memory_180d` / `deactivate_7d` / `post_archived_keep` / `audit_log_180d` / `exif_strip` / `location_no_collect` |
+| 9 个 key | `cert_image_keep` / `transit_log_30d` / `favorite_deleted_30d` / `publish_memory_180d` / `deactivate_7d` / `post_archived_keep` / `audit_log_180d` / `exif_strip` / `location_no_collect` |
 
 **一个实现上的选择题**：测试如何知道 PRD 里有哪些 key？两种做法 —— ① 在测试里硬编码 9 个 key 的期望集合 ② 写 Markdown 解析器读 PRD 表格。
 

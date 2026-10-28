@@ -33,6 +33,12 @@ public class CertEntity {
     /** 认证类型：{@code personal_realname/personal_qualification/enterprise/vehicle}。 */
     private String certType;
 
+    /** 证书名称（OCR 读取后经用户确认，展示用；可空）。 */
+    private String certName;
+
+    /** 证名来源：{@code ocr}=自动读取；{@code manual}=用户手填或改写（可空）。 */
+    private String nameSource;
+
     /** 认证状态：{@code pending/approved/rejected/expired}。 */
     private String status;
 
@@ -45,10 +51,13 @@ public class CertEntity {
     /** 认证到期时间（可空，资质年审用）。 */
     private LocalDateTime expireAt;
 
+    /** 有效期类型：{@code dated}=有到期日；{@code permanent}=长期有效（不参与到期流转）。 */
+    private String expireType;
+
     /** 审核拒绝原因（可空）。 */
     private String rejectReason;
 
-    /** OCR 原始证照图 OSS 引用（可空，7 天后清理）。 */
+    /** OCR 原始证照图 OSS 引用（可空；随资质删除时一并清理）。 */
     private String ocrImageRef;
 
     /** 该用户该类型认证失败次数（默认 0）。 */
@@ -109,6 +118,42 @@ public class CertEntity {
      */
     public void setCertType(String certType) {
         this.certType = certType;
+    }
+
+    /**
+     * 返回证书名称。
+     *
+     * @return 证书名称（可空；历史行为空）
+     */
+    public String getCertName() {
+        return certName;
+    }
+
+    /**
+     * 设置证书名称。
+     *
+     * @param certName 证书名称
+     */
+    public void setCertName(String certName) {
+        this.certName = certName;
+    }
+
+    /**
+     * 返回证名来源。
+     *
+     * @return 证名来源（{@code ocr}/{@code manual}，可空）
+     */
+    public String getNameSource() {
+        return nameSource;
+    }
+
+    /**
+     * 设置证名来源。
+     *
+     * @param nameSource 证名来源（{@code ocr}/{@code manual}）
+     */
+    public void setNameSource(String nameSource) {
+        this.nameSource = nameSource;
     }
 
     /**
@@ -181,6 +226,24 @@ public class CertEntity {
      */
     public void setExpireAt(LocalDateTime expireAt) {
         this.expireAt = expireAt;
+    }
+
+    /**
+     * 返回有效期类型。
+     *
+     * @return 有效期类型（{@code dated}/{@code permanent}）
+     */
+    public String getExpireType() {
+        return expireType;
+    }
+
+    /**
+     * 设置有效期类型。
+     *
+     * @param expireType 有效期类型（{@code dated}/{@code permanent}）
+     */
+    public void setExpireType(String expireType) {
+        this.expireType = expireType;
     }
 
     /**

@@ -41,6 +41,7 @@ import '../../domain/listing.dart';
 import '../../domain/listing_category_style.dart';
 import '../../domain/listing_detail.dart';
 import '../../router/app_router.dart';
+import '../cert/cert_picker.dart';
 import '../publish/draft_store.dart';
 import '../publish/publish_form_state.dart';
 import '../publish/publish_screen_args.dart';
@@ -215,6 +216,29 @@ class _MyPublishScreenState extends ConsumerState<MyPublishScreen> {
       if (!mounted) return;
       // 重发是新建语义（走 POST /posts），成功后会进完成页；返回列表时刷新。
       await ref.read(myPostsProvider.notifier).refresh();
+    } catch (e) {
+      if (mounted) _showMessage(asApiException(e).uiMessage);
+    }
+  }
+
+  /// 补挂资质（`PUT /posts/{post_id}/cert`，帖子凭证方案 R7/F2）。
+  ///
+  /// 只写声明记录与快照，不改帖子时间；成功后详情页即时生效。
+  ///
+  /// 参数：[item] 目标列表项。
+  /// 返回：[Future<void>]。
+  Future<void> _attachCert(MyPostItemDto item) async {
+    try {
+      final candidates = await ref.read(certCandidatesProvider.future);
+      if (!mounted) return;
+      if (candidates.isEmpty) {
+        _showMessage('还没有可用的资质，请先在「信任与认证」添加');
+        return;
+      }
+      final picked = await showCertPickerSheet(context, candidates: candidates);
+      if (!mounted || !picked.confirmed || picked.certId == null) return;
+      await ref.read(postRepositoryProvider).attachCert(item.id, picked.certId!);
+      if (mounted) _showMessage('已添加，详情页立即生效');
     } catch (e) {
       if (mounted) _showMessage(asApiException(e).uiMessage);
     }
@@ -412,6 +436,10 @@ class _MyPublishScreenState extends ConsumerState<MyPublishScreen> {
           return _MyPostCard(
             item: item,
             onAction: (action) => _onAction(action, item),
+            // 补挂只对在架帖开放：下架/过期的帖子补挂后没人能看到，先不给入口。
+            onAttachCert: item.status == PostApiStatus.active
+                ? () => _attachCert(item)
+                : null,
           );
         },
       ),
@@ -529,13 +557,20 @@ class _TabBar extends StatelessWidget {
 
 /// 单条「我的发布」卡片（设计稿：色条 · 缩略图 · 信息 · 状态标 + 卡内操作组）。
 class _MyPostCard extends StatelessWidget {
-  const _MyPostCard({required this.item, required this.onAction});
+  const _MyPostCard({
+    required this.item,
+    required this.onAction,
+    this.onAttachCert,
+  });
 
   /// 列表项（契约 `MyPostItem`）。
   final MyPostItemDto item;
 
   /// 动作回调。
   final ValueChanged<MyPostCardAction> onAction;
+
+  /// 「加一份资质」回调（null = 不展示该入口）。
+  final VoidCallback? onAttachCert;
 
   @override
   Widget build(BuildContext context) {
@@ -630,6 +665,11 @@ class _MyPostCard extends StatelessWidget {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
+                if (onAttachCert != null)
+                  TextButton(
+                    onPressed: onAttachCert,
+                    child: const Text('加一份资质'),
+                  ),
                 for (final action in actions)
                   Padding(
                     padding: const EdgeInsets.only(left: AppSpacing.sm),
