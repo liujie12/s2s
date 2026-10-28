@@ -22,10 +22,13 @@ import 'media_picker.dart';
 /// 裁剪结果长边上限（像素）。
 ///
 /// 详情卡约 1080×600（3x 屏），1600 足够全屏查看，又不会让单张图过大。
-const int kCroppedMaxLongEdge = 1600;
+/// 唯一真源在 [NfrMedia.uploadLongEdgePx]（选图侧平台预缩放也用同一值）。
+const int kCroppedMaxLongEdge = NfrMedia.uploadLongEdgePx;
 
 /// 裁剪结果 JPEG 质量（体积与清晰度的折中）。
-const int kCroppedJpegQuality = 85;
+///
+/// 唯一真源在 [NfrMedia.uploadJpegQuality]。
+const int kCroppedJpegQuality = NfrMedia.uploadJpegQuality;
 
 /// 编码输入（可跨 isolate 传递的纯数据）。
 class CropEncodeInput {

@@ -80,7 +80,16 @@ class ImagePickerMediaPicker implements MediaPicker {
 
   @override
   Future<List<PickedMedia>> pickImages({required int limit}) async {
-    final files = await _picker.pickMultiImage(limit: limit);
+    // 平台侧先缩放/压缩：原图动辄 4000px+，整批在 Dart 里解码重采样是分钟级等待的
+    // 主因；交给 `image_picker` 在原生层出图后，Dart 侧只剩「已缩到目标长边」的小图，
+    // 归一化退化为毫秒级。目标尺寸与质量引用常量，不写字面量。
+    final files = await _picker.pickMultiImage(
+      limit: limit,
+      maxWidth: NfrMedia.uploadLongEdgePx.toDouble(),
+      maxHeight: NfrMedia.uploadLongEdgePx.toDouble(),
+      imageQuality: NfrMedia.uploadJpegQuality,
+      requestFullMetadata: false,
+    );
     final result = <PickedMedia>[];
     for (final file in files) {
       result.add(await _toPickedMedia(file));
@@ -90,7 +99,14 @@ class ImagePickerMediaPicker implements MediaPicker {
 
   @override
   Future<PickedMedia?> pickFromCamera() async {
-    final file = await _picker.pickImage(source: ImageSource.camera);
+    // 相机同理：拍摄原图先由平台缩到目标长边，避免 Dart 侧解码大图。
+    final file = await _picker.pickImage(
+      source: ImageSource.camera,
+      maxWidth: NfrMedia.uploadLongEdgePx.toDouble(),
+      maxHeight: NfrMedia.uploadLongEdgePx.toDouble(),
+      imageQuality: NfrMedia.uploadJpegQuality,
+      requestFullMetadata: false,
+    );
     if (file == null) return null;
     return _toPickedMedia(file);
   }

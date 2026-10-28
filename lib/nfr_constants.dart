@@ -410,6 +410,16 @@ class NfrMedia {
   /// 9 × 20MB = 180MB < 200MB）。
   static const int maxSizeBytes = 20 * 1024 * 1024;
 
+  /// 上传前归一化的长边上限（像素）。
+  ///
+  /// 详情卡约 1080×600（3x 屏），1600 足够全屏查看，又不会让单张图过大。
+  /// 该值同时用于**选图时的平台侧预缩放**（`image_picker` 的 `maxWidth/maxHeight`），
+  /// 让大图在原生层就缩到目标尺寸，避免 Dart 侧解码 4000px+ 原图（多选时可达分钟级）。
+  static const int uploadLongEdgePx = 1600;
+
+  /// 归一化 / 选图时的 JPEG 质量（体积与清晰度的折中）。
+  static const int uploadJpegQuality = 85;
+
   /// 允许上传的音频 MIME 白名单（B2-4 模式② 语音零键盘）。口径源：openapi
   /// `POST /media/upload/ticket` 请求体 `content_type` enum +
   /// 后端 `NfrMedia.AUDIO_CONTENT_TYPES`。
