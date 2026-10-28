@@ -427,14 +427,6 @@ class _PriceSectionState extends ConsumerState<_PriceSection> {
         const SizedBox(height: AppSpacing.xs),
         Row(
           children: [
-            Text(
-              '¥',
-              style: TextStyle(
-                fontSize: AppTypeScale.small.size,
-                color: Color(AppColors.textSecondary),
-              ),
-            ),
-            const SizedBox(width: AppSpacing.xs),
             Expanded(
               child: _PriceField(
                 controller: _min,
@@ -453,14 +445,6 @@ class _PriceSectionState extends ConsumerState<_PriceSection> {
                 ),
               ),
             ),
-            Text(
-              '¥',
-              style: TextStyle(
-                fontSize: AppTypeScale.small.size,
-                color: Color(AppColors.textSecondary),
-              ),
-            ),
-            const SizedBox(width: AppSpacing.xs),
             Expanded(
               child: _PriceField(
                 controller: _max,
@@ -926,13 +910,18 @@ class _CategorySectionState extends ConsumerState<_CategorySection> {
     return Column(children: rows);
   }
 
-  /// 某节点下的全部叶子 ID。
+  /// 某节点下的全部叶子 ID（一级、二级都支持）。
   ///
-  /// 参数：[node] 一级或二级节点；返回：叶子 ID 列表。
-  List<int> _leavesOf(CategoryNode node) => [
-    for (final CategoryNode mid in node.children)
-      for (final CategoryNode leaf in mid.children) leaf.id,
-  ];
+  /// **必须逐层递归**：二级节点的 `children` 已经是叶子，若只展开一层，
+  /// `_leavesOf(二级)` 会得到空集 —— 二级 chip 点了没反应、选中态也永远不亮
+  /// （2026-10-28 实测缺陷）。
+  ///
+  /// 参数：[node] 一级或二级节点；返回：叶子 ID 列表（叶子本身返回自身 ID）。
+  List<int> _leavesOf(CategoryNode node) => node.isLeaf
+      ? <int>[node.id]
+      : [
+          for (final CategoryNode child in node.children) ..._leavesOf(child),
+        ];
 
   /// 目标叶子是否全部选中。
   ///

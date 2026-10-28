@@ -119,6 +119,31 @@ void main() {
     expect(container.read(discoveryFilterProvider).leafCategoryIds, {50102});
   });
 
+  testWidgets('二级分类点主体即可整组选中（不必下钻到三级）', (tester) async {
+    final container = await pumpPanel(tester, measure: true);
+
+    // 一级「生活」的右侧箭头（「全部」没有箭头，故它是第 4 个）。
+    await tester.ensureVisible(find.byIcon(Icons.chevron_right).at(3));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.chevron_right).at(3));
+    await tester.pumpAndSettle();
+    expect(find.text('选择子类'), findsOneWidget);
+
+    // 点二级「宠物相关」主体：写入该二级下全部叶子（40401 寄养 / 40402 领养）。
+    // 曾经的缺陷是 _leavesOf 只展开一层，传二级节点得到空集，点了没反应。
+    await tester.tap(find.text('宠物相关'));
+    await tester.pumpAndSettle();
+    expect(container.read(discoveryFilterProvider).leafCategoryIds, {
+      40401,
+      40402,
+    });
+
+    // 再点一次整组取消。
+    await tester.tap(find.text('宠物相关'));
+    await tester.pumpAndSettle();
+    expect(container.read(discoveryFilterProvider).leafCategoryIds, isEmpty);
+  });
+
   testWidgets('价格输入即生效：不依赖失焦，点面板外收起也不丢', (tester) async {
     final container = ProviderContainer();
     addTearDown(container.dispose);

@@ -215,7 +215,7 @@ class _ConditionBandState extends ConsumerState<ConditionBand> {
                 color: Color(AppColors.textPrimary),
               ),
               decoration: InputDecoration(
-                hintText: '搜索保洁 / 拼车 / 租房',
+                hintText: '想找啥？说一句就行',
                 hintStyle: TextStyle(
                   fontSize: AppTypeScale.body.size,
                   color: Color(AppColors.textPlaceholder),

@@ -363,6 +363,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               !hasVisibleMarker;
 
           final bool panelExpanded = ref.watch(filterPanelExpandedProvider);
+          // 真地图前提：已同意 + 声明已写入 + 构建期注入了 Key（见 amap_init_guard 头注）。
+          // 提到 build 层是因为它还决定「是否出定位骨架屏」：降级底图不构建
+          // AMapWidget，就没有原生定位回调，骨架屏一旦显示会永远不消失。
+          final bool useRealMap =
+              AMapInitGuard.canRenderMap(consent) &&
+              AMapInitGuard.ensureSdkInitialized(context);
           // 定位按钮只在相机确实离开当前位置时出现：相机就在定位点时它点了也不会动，
           // 反而让人误以为「定位没生效」（2026-10-27 用户反馈）。
           final LocationFix? fix = ref.watch(locationFixProvider);
@@ -386,12 +392,22 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             children: [
               _buildMapBody(
                 consent,
+                useRealMap,
                 projection,
                 markers,
                 supplyDemandById,
                 frame.offset,
                 frame.layerSize,
               ),
+              // 定位前骨架屏（PRD §6.7 `:1305`）：已授权但尚未取到点 → 遮罩 + 提示。
+              // 必须排在收起遮罩**之前**（即更靠下）：骨架屏底色是 ColoredBox，
+              // 命中测试为 opaque，放到遮罩上面会把面板外地图的点击全部吃掉，
+              // 表现为「点地图收不起筛选面板」。
+              if (useRealMap &&
+                  phase == LocationPermissionPhase.granted &&
+                  !_located &&
+                  _locateFailCount < NfrLocation.locateFailThreshold)
+                const Positioned.fill(child: _LocatingSkeleton()),
               // 面板展开时：点击面板外的地图即收起面板。遮罩吃掉这次点击，
               // 避免落到 Pin 上弹详情；条件每次改动已写入 Provider，
               // 收起后面板外自然按最新条件展示结果。
@@ -403,11 +419,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                         ref.read(filterPanelExpandedProvider.notifier).close(),
                   ),
                 ),
-              // 定位前骨架屏（PRD §6.7 `:1305`）：已授权但尚未取到点 → 遮罩 + 提示。
-              if (phase == LocationPermissionPhase.granted &&
-                  !_located &&
-                  _locateFailCount < NfrLocation.locateFailThreshold)
-                const Positioned.fill(child: _LocatingSkeleton()),
               // C 态降级提示（PRD §6.8 / §6.4.4 C）：连续取点失败 ≥ 阈值 →
               // 保持默认中心 + 顶部提示 + 手动选城市（不出引导页）。
               if (_locateFailCount >= NfrLocation.locateFailThreshold)
@@ -660,6 +671,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   ///
   /// 参数：
   /// - [consent]：隐私协议状态（决定能否初始化高德原生 SDK）；
+  /// - [useRealMap]：是否渲染真地图（由 build 层的同一判据给出，避免两处漂移）；
   /// - [projection]：屏幕视口投影（底图用）；
   /// - [markers]：本帧要画的 Marker（坐标属于精算视口，见 [_markerLayerFrame]）；
   /// - [supplyDemandById]：Marker 供需查表；
@@ -670,6 +682,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   /// 圈形遮罩会额外压暗地图、干扰看图。
   Widget _buildMapBody(
     PrivacyConsentStatus consent,
+    bool useRealMap,
     MapProjection projection,
     List<MapMarker> markers,
     Map<String, SupplyDemand> supplyDemandById,
@@ -686,14 +699,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     // 故在此重复调用无副作用，也不会让未同意的用户碰到 updatePrivacyAgree。
     AMapInitGuard.applyConsent(consent);
 
-    // 真地图需要三件事同时成立：已同意 + 声明已写入 SDK + 构建期注入了 Key。
-    // 缺 Key 时必须退回降级底图：没有 Key 时构建 `AMapWidget` 是**白屏**，而白屏与
-    // 「声明没写」在真机上完全同形（见 amap_init_guard.dart 文件头），
-    // 退回降级底图能让故障可读。
-    final bool useRealMap =
-        AMapInitGuard.canRenderMap(consent) &&
-        AMapInitGuard.ensureSdkInitialized(context);
-
+    // 真地图需要三件事同时成立：已同意 + 声明已写入 SDK + 构建期注入了 Key，
+    // 判据已在 build 层算好（它还要决定是否出定位骨架屏，见 `useRealMap` 的定义）。
+    // 缺 Key 时构建 `AMapWidget` 是**白屏**，而白屏与「声明没写」在真机上完全同形
+    // （见 amap_init_guard.dart 文件头），退回降级底图能让故障可读。
     return Stack(
       fit: StackFit.expand,
       children: [
