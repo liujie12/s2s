@@ -67,8 +67,10 @@ h1{font-size:32px;font-weight:700;letter-spacing:-.02em;color:#16232E;line-heigh
 .cat.on .dot{background:#fff;opacity:.9}
 .cat.on .chev{opacity:.8}
 .leaves{display:flex;flex-wrap:wrap;gap:6px}
+/* 叶子胶囊不固定高：上下等距 padding + 行高 1.2，文字才真正垂直居中
+   （实装对应 Container 用等距 padding，不用 alignment —— Wrap 下会被拉满整行） */
 .leaf{
-  height:32px;padding:0 12px;border-radius:16px;background:#F2F4F1;display:inline-flex;align-items:center;
+  padding:6px 12px;line-height:1.2;border-radius:16px;background:#F2F4F1;display:inline-flex;align-items:center;
   font-size:11.5px;color:#374151;white-space:nowrap;
 }
 .leaf.on{background:var(--service);color:#fff;font-weight:600}

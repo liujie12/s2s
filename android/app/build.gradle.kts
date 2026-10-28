@@ -1,5 +1,6 @@
 import java.util.Properties
 import java.io.FileInputStream
+import java.util.Base64
 
 plugins {
     id("com.android.application")
@@ -93,6 +94,69 @@ android {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// 高德 Key 兜底闸门（2026-10-28 立）。
+//
+// 客户端 Key 是 Dart 编译期常量，只能由 `--dart-define` 注入
+// （lib/features/map/amap_init_guard.dart）。漏传**不会编译报错**，只会在真机上
+// 静默退化成「示意底图」——2026-10-28 就是这样装了一个无 Key 的包。
+// Flutter 会把各 define 编码后经 `-Pdart-defines` 递给 Gradle，故在此 fail-closed：
+// release 缺 Key 直接构建失败；debug 缺 Key 打印显式告警。
+// ---------------------------------------------------------------------------
+val dartDefinesRaw: String = project.findProperty("dart-defines")?.toString().orEmpty()
+
+/// 解码 Flutter 透传给 Gradle 的 dart-defines（每条为 base64 的 `KEY=VALUE`）。
+///
+/// 参数：无（读 `dart-defines` Gradle 属性）。
+/// 返回：`KEY=VALUE` 映射；属性缺失或单条解码失败时跳过该条。
+fun decodedDartDefines(): Map<String, String> =
+    dartDefinesRaw.split(",")
+        .filter { it.isNotBlank() }
+        .mapNotNull { encoded ->
+            runCatching {
+                String(Base64.getDecoder().decode(encoded), Charsets.UTF_8)
+            }.getOrNull()
+        }
+        .mapNotNull { entry ->
+            val idx = entry.indexOf('=')
+            if (idx <= 0) null else entry.substring(0, idx) to entry.substring(idx + 1)
+        }
+        .toMap()
+
+/// 是否为当前模块产出 release 包的装配任务（`assembleRelease` / `bundleRelease` 等）。
+///
+/// 参数：[task]：待判定的 Gradle 任务。
+/// 返回：true 表示该任务会产出 release 产物。
+fun isReleaseArtifactTask(task: org.gradle.api.Task): Boolean =
+    task.project.path == project.path &&
+        (task.name.startsWith("assemble") || task.name.startsWith("bundle")) &&
+        task.name.endsWith("Release")
+
+val appProjectPath: String = project.path
+
+gradle.taskGraph.whenReady(
+    object : org.gradle.api.Action<org.gradle.api.execution.TaskExecutionGraph> {
+        override fun execute(graph: org.gradle.api.execution.TaskExecutionGraph) {
+            if (!decodedDartDefines()["AMAP_ANDROID_KEY"].isNullOrEmpty()) return
+            val hint = "请带上 --dart-define=AMAP_ANDROID_KEY=<key> 重试" +
+                "（真机调试用 tool/dev-run.ps1，出包用 deploy/scripts/release-gate.sh）。"
+            if (graph.allTasks.any(::isReleaseArtifactTask)) {
+                throw GradleException(
+                    "AMAP_ANDROID_KEY 未注入：release 包的地图会退化为示意底图。$hint",
+                )
+            }
+            val buildingDebugApk = graph.allTasks.any { task ->
+                task.project.path == appProjectPath &&
+                    task.name.startsWith("assemble") &&
+                    task.name.endsWith("Debug")
+            }
+            if (buildingDebugApk) {
+                logger.warn("[高德Key] 本次 debug 构建未注入 AMAP_ANDROID_KEY，地图将显示示意底图。$hint")
+            }
+        }
+    },
+)
 
 flutter {
     source = "../.."

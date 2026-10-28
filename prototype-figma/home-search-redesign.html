@@ -167,6 +167,9 @@ body::before{
 .tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:10.5px;color:#9CA3AF}
 .tab svg{width:21px;height:21px;stroke:currentColor;stroke-width:1.7;fill:none;stroke-linecap:round;stroke-linejoin:round}
 .tab.active{color:var(--primary);font-weight:600}
+/* 「发布」是操作入口、不是 Tab：32dp 鸭子盘 + 品牌主色，靠尺寸差（32 vs 24）与选中态区分（PRD §10.2，2026-10-27 裁定） */
+.tab.publish svg{width:32px;height:32px;stroke:none;fill:initial}
+.tab.publish span{color:var(--primary);font-weight:500}
 
 /* ---------- 底部筛选面板 ---------- */
 .sheet{
@@ -182,7 +185,7 @@ body::before{
 .reset svg{width:12px;height:12px;stroke:currentColor;stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round}
 .sheet-sub{margin-top:4px;font-size:11px;color:var(--text-3)}
 .sheet-sub b{color:var(--primary);font-weight:600}
-.sheet-body{flex:1;display:flex;flex-direction:column;gap:13px;padding-top:15px;overflow:hidden}
+.sheet-body{flex:1;display:flex;flex-direction:column;gap:13px;padding:15px 0 12px;overflow:hidden}
 .row{display:flex;align-items:center;gap:8px}
 .row.top{align-items:flex-start}
 .row.top .row-label{padding-top:9px}
@@ -221,7 +224,8 @@ body::before{
 .crumb-sep{color:var(--text-3)}
 .crumb-back{margin-left:auto;font-size:11px;color:var(--primary);white-space:nowrap}
 .cat-leaves{display:flex;flex-wrap:wrap;gap:6px}
-.leaf{height:32px;padding:0 12px;border-radius:16px;background:#F2F4F1;display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:#374151;white-space:nowrap}
+/* 叶子胶囊不固定高：上下等距 padding + 行高 1.2，文字才真正垂直居中（同 category-3level.html） */
+.leaf{padding:6px 12px;line-height:1.2;border-radius:16px;background:#F2F4F1;display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:#374151;white-space:nowrap}
 .leaf.on{background:var(--service);color:#fff;font-weight:600}
 .legend-row{display:flex;align-items:center;gap:14px;font-size:11px;color:var(--text-2);padding-top:1px}
 .legend-item{display:inline-flex;align-items:center;gap:5px}
@@ -230,14 +234,6 @@ body::before{
   background:#0E3B42;color:#D8F3F7;font-family:var(--mono);font-size:10.5px;letter-spacing:.02em;
 }
 .perf i{width:4px;height:4px;border-radius:50%;background:#5BC0CE;display:block}
-.sheet-foot{flex:0 0 auto;border-top:1px solid #F0F2EE;padding:12px 0 20px;margin-top:4px;background:#fff}
-.sheet-foot .primary{
-  width:100%;height:48px;border:0;border-radius:24px;display:flex;align-items:center;justify-content:center;gap:8px;
-  background:var(--primary);color:#fff;font-size:14px;font-weight:600;letter-spacing:.01em;
-  box-shadow:0 12px 24px -12px rgba(11,124,140,.85);
-}
-.sheet-foot .primary .num{font-family:var(--mono);font-weight:600;font-size:14px}
-.sheet-foot .primary svg{width:16px;height:16px;stroke:#fff;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}
 
 /* ---------- 列表页（与地图页共用搜索栏 / 筛选栏） ---------- */
 .list-screen{background:#F8FAFC}
@@ -554,13 +550,6 @@ code{font-family:var(--mono);font-size:11.5px;background:#F3F5F1;border:1px soli
               <span class="perf"><i></i>P95 78.9 ms</span>
             </div>
           </div>
-
-          <div class="sheet-foot">
-            <button class="primary">
-              查看 <span class="num">8</span> 条结果
-              <svg viewBox="0 0 24 24"><path d="M5 12h13"/><path d="M12.5 6.5L18 12l-5.5 5.5"/></svg>
-            </button>
-          </div>
         </div>
       </div>
     </div>
@@ -747,13 +736,6 @@ code{font-family:var(--mono);font-size:11.5px;background:#F3F5F1;border:1px soli
                 <span class="legend-item"><i class="legend-mark" style="color:#6B7280"></i>空心 = 需求</span>
                 <span class="perf"><i></i>P95 78.9 ms</span>
               </div>
-            </div>
-
-            <div class="sheet-foot">
-              <button class="primary">
-                查看 <span class="num">6</span> 条结果
-                <svg viewBox="0 0 24 24"><path d="M5 12h13"/><path d="M12.5 6.5L18 12l-5.5 5.5"/></svg>
-              </button>
             </div>
           </div>
         </div>
@@ -1018,11 +1000,11 @@ code{font-family:var(--mono);font-size:11.5px;background:#F3F5F1;border:1px soli
       <ul>
         <li><b>唤起</b>：搜索栏内漏斗圆钮，或筛选栏内任意位置（含 chip 主体），均打开同一个面板。</li>
         <li><b>尺寸</b>：高 500（约 59% 屏高），顶部圆角 24，拖拽把手 36 × 4。</li>
-        <li><b>价格</b>：双端滑杆 + 两端数值框；拖动滑杆选区间，点数值可精确输入，键盘只在点数值时出现；右侧「不限」一键清空。</li>
+        <li><b>价格</b>：双端滑杆 + 两端数值框；拖动滑杆选区间，点数值可精确输入，键盘只在点数值时出现；右侧「不限」一键清空。<b>拖动滑杆时两侧数值框实时回写</b>（不依赖失焦，键盘未收也同步）。</li>
         <li><b>价格映射</b>：左端 = 下限，右端 = 上限；清空某一端 = 该侧不限；手动输入可超出滑杆量程，滑杆置顶但数值以输入为准。</li>
-        <li><b>分类</b>：3 × 2 网格，六项全部可见；选中态用分类 deep 色填充，避免横滑藏项。</li>
-        <li><b>无遮罩</b>：不压暗地图，让用户直接看到条件变化后的 Pin 结果（与现有交互一致）。</li>
-        <li><b>关闭</b>：下拉、点地图空白、或点底部「查看 N 条结果」。</li>
+        <li><b>分类</b>：一级 3 × 2 网格（全部 + 5 大类），点主体选整类、点 › 逐级下钻到二级 / 三级叶子，叶子可多选。</li>
+        <li><b>无视觉遮罩</b>：不压暗地图，让用户直接看到条件变化后的 Pin 结果；地图页仅叠一层透明层承接「点外部收起」，列表页复用弹层遮罩。</li>
+        <li><b>关闭</b>：点面板之外（地图页点地图空白、列表页点遮罩）即收起，<b>没有底部确认按钮</b>；收起即按最新条件取数。</li>
         <li><b>AI FAB</b>：面板展开时自动上移到面板顶边之上，入口不消失。</li>
       </ul>
     </div>
@@ -1092,7 +1074,7 @@ code{font-family:var(--mono);font-size:11.5px;background:#F3F5F1;border:1px soli
           <tr><td>4</td><td>点击搜索栏内漏斗 / 筛选栏任意位置</td><td>打开底部面板；点 chip 主体时，面板滚动并高亮该 chip 对应分组。</td></tr>
           <tr><td>5</td><td>面板内切换任一条件</td><td>立即写入筛选态，筛选栏同步追加 / 移除 chip；地图 Pin 与左下角命中数同步刷新。</td></tr>
           <tr><td>6</td><td>点击 chip 上的 ×</td><td>只删除这一条条件，面板不弹出；若该维度回到默认值，chip 消失而不是变成「5km」。</td></tr>
-          <tr><td>7</td><td>关闭面板</td><td>下拉 / 点地图空白 / 点「查看 N 条结果」，三种方式等价；条件与 chip 全部保留。</td></tr>
+          <tr><td>7</td><td>关闭面板</td><td>点面板之外（地图页点地图空白 / 列表页点遮罩）即收起，无底部确认按钮；收起时立即按最新条件取数，条件与 chip 全部保留。</td></tr>
           <tr><td>8</td><td>取数中 / 取数失败</td><td>左下角命中数显示「—」；失败时变为「加载失败 · 重试」，点击重取，不阻塞底图与筛选栏。</td></tr>
           <tr><td>9</td><td>解析失败 / 没听懂</td><td>筛选栏保持隐藏；搜索栏下方浮出深色提示「没听懂 · 重试」，点击重试，8s 自动消失。</td></tr>
           <tr><td>10</td><td>切到列表页</td><td>同一搜索栏与筛选栏直接复用；地图上解析出的条件在列表页继续生效，结果行显示「N 条结果」，排序不写回筛选态。</td></tr>
@@ -1184,9 +1166,9 @@ code{font-family:var(--mono);font-size:11.5px;background:#F3F5F1;border:1px soli
     <div class="card">
       <h3>前端文件</h3>
       <ul>
-        <li><code>features/map/map_screen.dart</code>：删除 <code>_buildAppBar()</code>；搜索栏拆成「放大镜 + 输入 + 漏斗 + 话筒/提交」，筛选栏条件非空才出现；右侧按钮列只保留列表与定位。</li>
+        <li><code>features/map/map_screen.dart</code>：删除 <code>_buildAppBar()</code>；搜索栏拆成「放大镜 + 输入 + 漏斗 + 话筒/提交」，筛选栏条件非空才出现；右侧按钮列只保留列表与定位，且<b>定位按钮仅在相机偏离视口短边 20% 时出现</b>（已在当前位置就不显示，避免误判定位状态）。</li>
         <li><code>features/discovery/condition_band.dart</code>：拆成 <code>SearchField</code>（含话筒 / 提交态）与 <code>ChipBar</code>；<code>ChipBar</code> 仅在条件非空时渲染，命中数移出为左下角状态胶囊。</li>
-        <li><code>features/discovery/filter_panel.dart</code>：保留四行控件与图例，增加把手、标题行、底部主按钮；价格行改为 <code>RangeSlider</code> + 两端数值框（点开才唤起键盘），去掉预设档位；分类补齐二级/三级下钻与面包屑；选中态直接写 provider。</li>
+        <li><code>features/discovery/filter_panel.dart</code>：保留四行控件与图例，增加把手、标题行；<b>没有底部主按钮</b>（点面板外即收起并按最新条件取数）；价格行改为 <code>RangeSlider</code> + 两端数值框（拖动滑杆时数值框实时回写，点数值才唤起键盘），去掉预设档位；分类补齐二级/三级下钻与面包屑；选中态只读 <code>explicitCategorySelectionProvider</code> 投影、写入统一走 <code>searchConditionsProvider</code>。</li>
         <li><code>features/discovery/list_screen.dart</code>：用同一 <code>SearchField</code> + <code>ChipBar</code> 替换 <code>ConditionBand</code>；删除 AppBar 的 tune 图标；命中数并入结果行，与排序同排；漏斗复用同一面板。</li>
         <li><code>features/discovery/effective_filter.dart</code>：投影层需要补「是否被用户显式设置」标记，UI 只渲染显式项；否则默认 5km / 资源+需求 / 全部分类会再次出现。</li>
         <li><code>features/discovery/discovery_filter.dart</code>：除 Top 大类集合外补叶子 ID 集合与下钻层级；分类 chip 文案取叶子/二级名；<code>filterPanelExpandedProvider</code> 可保留用于 FAB 避让。</li>
@@ -1389,11 +1371,11 @@ const STATUS_BAR = `
 
 const TAB_BAR = `
 <div class="tab active">
-  <svg viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg>
+  <svg viewBox="0 0 24 24"><path d="M3 6.5 9 4l6 2.5L21 4v13.5L15 20l-6-2.5L3 20z"/><path d="M9 4v13.5M15 6.5V20"/></svg>
   <span>丫圈</span>
 </div>
-<div class="tab">
-  <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 8v8M8 12h8"/></svg>
+<div class="tab publish">
+  <svg viewBox="0 0 1024 1024" aria-hidden="true"><circle cx="512" cy="512" r="504.01" fill="#0B7C8C"/><path d="M303.84 184.1 C276.6 194.17 257.96 206.86 238.93 219.91 C219.91 232.96 204.98 246.03 189.69 262.43 C174.4 278.84 158.74 299.75 147.17 318.39 C135.59 337.04 127.76 344.51 120.31 374.35 C112.85 404.18 100.54 456.42 102.4 497.45 C104.26 538.48 115.09 582.12 131.5 620.56 C147.9 658.99 172.52 696.66 200.88 727.99 C229.24 759.33 262.82 786.92 301.6 808.57 C340.39 830.21 392.25 848.48 433.66 857.81 C475.07 867.14 522.45 864.91 550.05 864.52 C577.65 864.14 588.48 859.67 599.29 855.57 C610.1 851.48 609.74 845.12 614.96 839.9 C614.22 834.69 622.41 841.02 612.72 824.24 C603.03 807.45 568.69 761.18 556.77 739.18 C544.84 717.18 543.34 706.73 541.1 692.18 C538.86 677.63 539.6 665.7 543.34 651.89 C547.07 638.08 551.55 622.79 563.48 609.36 C575.41 595.93 584 581.77 614.96 571.31 C645.91 560.86 712.32 556.77 749.25 546.69 C786.19 536.62 812.66 524.69 836.55 510.88 C860.43 497.07 879.45 477.31 892.5 463.88 C905.55 450.45 910.41 440.38 914.89 430.3 C919.36 420.23 917.86 412.4 919.36 403.44 C911.91 398.23 916 390.4 896.98 387.78 C877.95 385.16 833.19 391.51 805.21 387.78 C777.23 384.04 748.52 374.73 729.11 365.39 C709.7 356.06 701.51 348.61 688.82 331.82 C676.13 315.03 664.94 282.96 653.01 264.67 C641.08 246.39 636.6 237.08 617.2 222.15 C597.79 207.22 561.62 185.6 536.62 175.14 C511.62 164.69 489.62 162.09 467.23 159.48 C444.85 156.86 429.57 155.38 402.33 159.48 C375.09 163.57 331.08 174.02 303.84 184.1 Z" fill="#FFFFFF"/><circle cx="501.03" cy="341.89" r="45.37" fill="#0B7C8C"/></svg>
   <span>发布</span>
 </div>
 <div class="tab">
