@@ -21,8 +21,10 @@ import '../../core/network/api_error_code.dart';
 import '../../core/network/api_exception.dart';
 import '../../design_tokens.dart';
 import '../../nfr_constants.dart';
+import '../auth/auth_repository.dart';
 import '../publish/media_section.dart';
 import 'cert_models.dart';
+import 'cert_name_store.dart';
 import 'cert_repository.dart';
 import 'cert_type_option.dart';
 
@@ -86,6 +88,9 @@ class _QualificationFormScreenState extends ConsumerState<QualificationFormScree
   /// 最近一次送抽取的 media_id（同一张不重复抽取）。
   String? _lastOcrMediaId;
 
+  /// 该用户在本类型下用过的自定义证名（本机记忆，仅本人可见）。
+  List<String> _rememberedNames = const [];
+
   /// 是否正在把抽取结果写入输入框（避免被 [TextEditingController] 监听误判为手工改写）。
   bool _applyingOcr = false;
 
@@ -115,6 +120,26 @@ class _QualificationFormScreenState extends ConsumerState<QualificationFormScree
     super.initState();
     // 证名变化影响「已读取 / 手工填写」标注与提交的 name_source，故监听重绘。
     _nameCtrl.addListener(_onNameChanged);
+    _loadRememberedNames();
+  }
+
+  /// 读取当前用户在当前资质类型下记住的自定义证名。
+  ///
+  /// 未登录或未选类型时清空（没有可归属的候选来源）。
+  ///
+  /// 参数：无。
+  /// 返回：[Future<void>]。
+  Future<void> _loadRememberedNames() async {
+    final type = _type;
+    final userId = ref.read(authSessionProvider)?.userId;
+    if (type == null || userId == null) {
+      // 初始即空（未选类型/未登录）：无需 setState，首帧本就是空列表。
+      _rememberedNames = const [];
+      return;
+    }
+    final names = await ref.read(certNameStoreProvider).read(userId, type.apiType);
+    if (!mounted) return;
+    setState(() => _rememberedNames = names);
   }
 
   @override
@@ -214,6 +239,35 @@ class _QualificationFormScreenState extends ConsumerState<QualificationFormScree
     }
   }
 
+  /// 认证类型的候选证名（内置候选 + 本人历史自定义名，去重保序）。
+  ///
+  /// 参数：无。
+  /// 返回：[List<String>]；未选类型时为空。
+  List<String> get _nameCandidates {
+    final type = _type;
+    if (type == null) return const [];
+    final seen = <String>{};
+    return [
+      for (final name in [...type.suggestedNames, ..._rememberedNames])
+        if (seen.add(name)) name,
+    ];
+  }
+
+  /// 点选候选证名：填入输入框并按「手工确认」提交来源。
+  ///
+  /// 参数：[name] 候选名称。
+  /// 返回：void。
+  void _pickName(String name) {
+    _applyingOcr = true;
+    _nameCtrl.text = name;
+    _applyingOcr = false;
+    setState(() {
+      _nameTouched = true;
+      _nameFromOcr = false;
+      _error = null;
+    });
+  }
+
   /// 提交（添加走 POST，编辑走 PATCH）。
   ///
   /// 参数：无。
@@ -270,6 +324,17 @@ class _QualificationFormScreenState extends ConsumerState<QualificationFormScree
               nameSource: nameSource,
               expireType: expireType,
               expireAt: expireAt,
+            );
+      }
+      if (!mounted) return;
+      // 记住用户自定义的证名（内置候选不重复存；仅本机、仅本人）。
+      final userId = ref.read(authSessionProvider)?.userId;
+      if (userId != null && name.isNotEmpty) {
+        await ref.read(certNameStoreProvider).remember(
+              userId,
+              type.apiType,
+              name,
+              exclude: type.suggestedNames,
             );
       }
       if (!mounted) return;
@@ -396,10 +461,14 @@ class _QualificationFormScreenState extends ConsumerState<QualificationFormScree
                 // ignore: deprecated_member_use
                 onChanged: busy
                     ? null
-                    : (value) => setState(() {
+                    : (value) {
+                        setState(() {
                           _type = value;
                           _error = null;
-                        }),
+                        });
+                        // 候选证名随类型切换（内置候选 + 本人该类型的历史自定义名）。
+                        _loadRememberedNames();
+                      },
                 contentPadding: EdgeInsets.zero,
                 dense: true,
                 title: Text(
@@ -414,7 +483,9 @@ class _QualificationFormScreenState extends ConsumerState<QualificationFormScree
           _SectionLabel('证照照片'),
           const SizedBox(height: AppSpacing.xs),
           Text(
-            _isEditing ? '换图会重新读取证名与有效期；不换图可跳过' : '最多 ${NfrMedia.maxMediaCount} 张，需能看清证照编号与有效期',
+            _isEditing
+                ? '换图会重新读取证名与有效期；不换图可跳过'
+                : '最多 ${NfrMedia.maxMediaCount} 张，首张用于自动识别证名与有效期',
             style: TextStyle(
               fontSize: AppTypeScale.small.size,
               color: const Color(AppColors.textSecondary),
@@ -462,6 +533,29 @@ class _QualificationFormScreenState extends ConsumerState<QualificationFormScree
           const SizedBox(height: AppSpacing.lg),
           _SectionLabel('证书名称'),
           const SizedBox(height: AppSpacing.xs),
+          if (_nameCandidates.isNotEmpty) ...[
+            Text(
+              '选一个常用名称，或直接输入新的',
+              style: TextStyle(
+                fontSize: AppTypeScale.small.size,
+                color: const Color(AppColors.textSecondary),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.xs),
+            Wrap(
+              spacing: AppSpacing.xs,
+              runSpacing: AppSpacing.xs,
+              children: [
+                for (final candidate in _nameCandidates)
+                  ChoiceChip(
+                    label: Text(candidate),
+                    selected: _nameCtrl.text.trim() == candidate,
+                    onSelected: busy ? null : (_) => _pickName(candidate),
+                  ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.sm),
+          ],
           TextField(
             controller: _nameCtrl,
             enabled: !busy,
