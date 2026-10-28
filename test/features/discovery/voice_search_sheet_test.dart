@@ -47,7 +47,8 @@ void main() {
     expect(find.text('正在听…松开结束'), findsNothing);
   });
 
-  testWidgets('文字输入框始终可用（转写失败不阻塞文字）', (tester) async {
+  testWidgets('面板只做语音，不再提供打字框（与搜索栏重复，2026-10-28 用户裁定）',
+      (tester) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -61,8 +62,7 @@ void main() {
       ),
     );
 
-    expect(find.byType(TextField), findsOneWidget);
-    await tester.enterText(find.byType(TextField), '1公里内 2000以内 合租');
-    expect(find.text('1公里内 2000以内 合租'), findsOneWidget);
+    expect(find.byType(TextField), findsNothing);
+    expect(find.text('按住说话'), findsOneWidget);
   });
 }

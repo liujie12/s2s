@@ -1,6 +1,8 @@
 /// 语音搜索面板（地图语音语义搜索 U6，方案 R1/R2/R3/R15）。
 ///
-/// 交互：按住说话 → 松开后转写并解析；也允许直接打字提交（转写失败不阻塞文字）。
+/// 交互：按住说话 → 松开后转写并解析。**面板内不设打字框**（2026-10-28 用户裁定：
+/// 搜索栏已是文字入口，面板里再放一份是重复入口，还会让「这是语音面板」变得含糊；
+/// 文字搜索一律走搜索栏）。
 /// 音频去向（KTD7/KTD9）：
 /// - 登录用户：上传得 `voice_media_id`，服务端签名后 ASR，转写成功即删除；
 /// - 游客：base64 随请求直传，不落 OSS、不建媒体记录、转写即弃。
@@ -60,17 +62,10 @@ class VoiceSearchSheet extends ConsumerStatefulWidget {
 }
 
 class _VoiceSearchSheetState extends ConsumerState<VoiceSearchSheet> {
-  final TextEditingController _controller = TextEditingController();
   bool _recording = false;
   bool _busy = false;
   bool _permissionDenied = false;
   String? _hint;
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
 
   /// 开始录音（先查权限；被拒给跳系统设置指引）。
   ///
@@ -158,16 +153,6 @@ class _VoiceSearchSheetState extends ConsumerState<VoiceSearchSheet> {
     );
   }
 
-  /// 提交文字解析。
-  ///
-  /// 参数：[text] 搜索框文字。
-  /// 返回：[Future] 完成信号。
-  Future<void> _submitText(String text) async {
-    if (text.trim().isEmpty || _busy) return;
-    setState(() => _busy = true);
-    await _resolve(text: text);
-  }
-
   /// 调解析并处理结果（成功即关闭面板）。
   ///
   /// 参数：见 [SearchIntentNotifier.resolve]。
@@ -203,14 +188,8 @@ class _VoiceSearchSheetState extends ConsumerState<VoiceSearchSheet> {
   @override
   Widget build(BuildContext context) {
     final status = ref.watch(searchStatusProvider);
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
     return Padding(
-      padding: EdgeInsets.fromLTRB(
-        AppSpacing.lg,
-        AppSpacing.lg,
-        AppSpacing.lg,
-        AppSpacing.lg + bottomInset,
-      ),
+      padding: const EdgeInsets.all(AppSpacing.lg),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -232,26 +211,6 @@ class _VoiceSearchSheetState extends ConsumerState<VoiceSearchSheet> {
             ),
           ),
           const SizedBox(height: AppSpacing.md),
-          TextField(
-            controller: _controller,
-            autofocus: false,
-            onChanged: (value) {
-              // 键盘输入立即停麦（R1）：用户已改用文字，继续录只是白耗电与流量。
-              if (_recording) _stop();
-            },
-            onSubmitted: _submitText,
-            decoration: InputDecoration(
-              hintText: '也可以直接打字',
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(AppRadius.md),
-              ),
-              suffixIcon: IconButton(
-                icon: const Icon(Icons.arrow_forward),
-                onPressed: () => _submitText(_controller.text),
-              ),
-            ),
-          ),
-          const SizedBox(height: AppSpacing.lg),
           Center(
             child: GestureDetector(
               onLongPressStart: (_) => _start(),

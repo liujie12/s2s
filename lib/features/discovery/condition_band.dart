@@ -215,7 +215,7 @@ class _ConditionBandState extends ConsumerState<ConditionBand> {
                 color: Color(AppColors.textPrimary),
               ),
               decoration: InputDecoration(
-                hintText: '想好要找什么？一句话 AI 帮你找',
+                hintText: '想找什么？一句话 AI 帮你找',
                 hintStyle: TextStyle(
                   fontSize: AppTypeScale.body.size,
                   color: Color(AppColors.textPlaceholder),
