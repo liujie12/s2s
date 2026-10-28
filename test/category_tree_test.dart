@@ -240,6 +240,94 @@ void main() {
     });
   });
 
+  group('服务端 icon 名解析（DB `category.icon` → API → domain → 渲染）', () {
+    /// PRD §6.4.2 两表「Material 名」列：一级 5 + 二级 21。
+    ///
+    /// 这里是**名字清单的守门断言**：PRD 改表而代码漏跟时，它会失败。
+    const names = [
+      // 一级
+      'work',
+      'home',
+      'directions_car',
+      'volunteer_activism',
+      'build',
+      // 二级（2026-10-28 定稿）
+      'work_history',
+      'person_search',
+      'apartment',
+      'real_estate_agent',
+      'hotel',
+      'support_agent',
+      'airport_shuttle',
+      'car_rental',
+      'sell',
+      'hail',
+      'inventory_2',
+      'search',
+      'pets',
+      'campaign',
+      'cleaning_services',
+      'home_repair_service',
+      'school',
+      'spa',
+      'directions_run',
+    ];
+
+    test('PRD 两表的名字全部可解析；null 与未知名返回 null 交调用方降级', () {
+      for (final String name in names) {
+        expect(categoryIconByName(name), isNotNull, reason: '未登记字形：$name');
+      }
+      // 不兜底成某个字形：兜底会把「服务端换了图标名」伪装成「图标选错了」。
+      expect(categoryIconByName(null), isNull);
+      expect(categoryIconByName('not_a_material_symbol'), isNull);
+    });
+
+    test('按二级 ID 与按叶子 ID 查同一字形（两条入口不许漂移）', () {
+      for (final top in categoryTree) {
+        for (final mid in top.children) {
+          final icon = l2CategoryIconOfMid(mid.id);
+          expect(icon, isNotNull, reason: '二级 ${mid.id}（${mid.name}）无字形');
+          expect(
+            l2CategoryIcon(mid.children.first.id),
+            icon,
+            reason: '二级 ${mid.id} 的叶子入口与二级入口字形不一致',
+          );
+        }
+      }
+      expect(l2CategoryIconOfMid(null), isNull);
+      expect(l2CategoryIconOfMid(999), isNull);
+    });
+
+    test('nodeIconOf 四级回退：服务端名 → 本地二级 → 一级 → 中性', () {
+      // 1) 服务端名优先：故意给 101 一个与本地映射（work）不同的名。
+      expect(
+        nodeIconOf(const CategoryNode(id: 101, name: '全职招聘', icon: 'pets')),
+        Icons.pets,
+      );
+      // 2) 无服务端名 → 本地二级映射（101 = work）。二级节点带子节点，
+      //    故按 isLeaf=false 走「二级 ID」入口（不带子节点会被当成叶子）。
+      expect(
+        nodeIconOf(
+          const CategoryNode(
+            id: 101,
+            name: '全职招聘',
+            children: [CategoryNode(id: 10101, name: '餐饮服务')],
+          ),
+        ),
+        Icons.work,
+      );
+      // 3) 叶子按所属二级取字形（10101 → 101）。
+      expect(nodeIconOf(const CategoryNode(id: 10101, name: '餐饮服务')), Icons.work);
+      // 4) 一级查不到二级（id=1 → 0），落一级枚举。
+      expect(nodeIconOf(const CategoryNode(id: 2, name: '房屋')), Icons.home);
+      // 5) 全查不到 → 中性图标（分类树落后是预期内状态，不崩）。
+      expect(
+        nodeIconOf(const CategoryNode(id: 99999, name: '未知类目')),
+        neutralCategoryIcon,
+      );
+    });
+  });
+
   test('版本号非空且形如 yyyy-MM-dd.n（§2.9 版本号 + 本地缓存的比对依据）', () {
     expect(RegExp(r'^\d{4}-\d{2}-\d{2}\.\d+$').hasMatch(categoryTreeVersion), isTrue);
   });

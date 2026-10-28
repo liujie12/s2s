@@ -128,6 +128,8 @@ void main() {
     await tester.tap(find.byIcon(Icons.chevron_right).at(3));
     await tester.pumpAndSettle();
     expect(find.text('选择子类'), findsOneWidget);
+    // 二级图标与文字并排（PRD §6.4.2 验收口径）：404 宠物相关 → Icons.pets。
+    expect(find.byIcon(Icons.pets), findsWidgets);
 
     // 点二级「宠物相关」主体：写入该二级下全部叶子（40401 寄养 / 40402 领养）。
     // 曾经的缺陷是 _leavesOf 只展开一层，传二级节点得到空集，点了没反应。

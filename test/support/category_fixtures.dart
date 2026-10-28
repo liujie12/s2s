@@ -39,6 +39,9 @@ Map<String, Object?> serverCategoryTreePayload({
               'id': 101,
               'name': '全职招聘',
               'level': 2,
+              // 二级图标的服务端形态（V21 迁移后 DB 的 `category.icon`）：
+              // 用例断言 DTO → domain 的 icon 透传。
+              'icon': 'work',
               'children': [
                 {
                   'id': 10101,

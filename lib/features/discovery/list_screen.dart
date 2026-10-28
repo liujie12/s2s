@@ -443,7 +443,11 @@ class _ListingCard extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _CategoryBadge(category: category, supplyDemand: supplyDemand),
+            _CategoryBadge(
+              category: category,
+              supplyDemand: supplyDemand,
+              leafCategoryId: card.leafCategoryId,
+            ),
             const SizedBox(width: AppSpacing.md),
             Expanded(
               child: Column(
@@ -542,11 +546,21 @@ class _LoadFailedState extends StatelessWidget {
 /// 需求＝浅底配分类深色图标。两处若各自定义，用户在地图上认得的颜色
 /// 到列表里对不上。
 class _CategoryBadge extends StatelessWidget {
-  const _CategoryBadge({required this.category, required this.supplyDemand});
+  const _CategoryBadge({
+    required this.category,
+    required this.supplyDemand,
+    this.leafCategoryId,
+  });
 
   /// 一级大类；null = 本地分类树查不到（版本落后，§16.4 预期内状态）。
   /// 此时走中性配色而**不丢弃该条** —— 丢一条会让用户以为平台没有这条信息。
   final ListingCategory? category;
+
+  /// 叶子类目 ID（`PostCard.leaf_category_id`），用于取二级字形。
+  ///
+  /// 二级图标比一级更能说明「这条在做什么」（PRD §6.4.2 的选型动机），
+  /// 列表卡与地图 Pin 共用同一份映射，两处字形必须一致。
+  final int? leafCategoryId;
 
   final SupplyDemand supplyDemand;
 
@@ -567,7 +581,8 @@ class _CategoryBadge extends StatelessWidget {
             : Border.all(color: accent ?? Color(AppColors.border), width: 1.5),
       ),
       child: Icon(
-        category?.icon ?? Icons.place,
+        // 二级 → 一级 → 通用图钉（分类树落后时的三级降级，与地图 Pin 同序）。
+        l2CategoryIcon(leafCategoryId) ?? category?.icon ?? Icons.place,
         size: 22,
         // 需求态/中性态用深色：分类原色在浅灰底上对比度不足
         // （design_tokens.dart:74）。

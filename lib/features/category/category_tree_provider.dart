@@ -106,6 +106,8 @@ List<CategoryNode> categoryNodesFromDtos(List<CategoryNodeDto> dtos) => [
     CategoryNode(
       id: dto.id,
       name: dto.name,
+      // 图标名透传：契约 `CategoryNode.icon` 端到端可用，渲染层按名解析字形。
+      icon: dto.icon,
       requiredCert: (dto.children == null || dto.children!.isEmpty)
           ? requiredCertForLeaf(dto.id)
           : RequiredCert.none,

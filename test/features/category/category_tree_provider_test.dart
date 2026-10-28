@@ -138,6 +138,19 @@ void main() {
       // 10102 契约无 children 键 → 空列表而非 null（domain 语义）。
       expect(mid.children.last.children, isEmpty);
     });
+
+    test('服务端 icon 名透传到 domain（缺失与 JSON null 均为 null）', () {
+      final nodes = categoryNodesFromDtos(
+        CategoryTreeDto.fromJson(serverCategoryTreePayload()).categories,
+      );
+
+      // 一级：夹具未下发 icon 键。
+      expect(nodes.single.icon, isNull);
+      // 二级：服务端名原样透传（渲染层据此解析字形，不改写、不校验）。
+      expect(nodes.single.children.single.icon, 'work');
+      // 叶子：JSON null 形态解析为 null，不落成空串。
+      expect(nodes.single.children.single.children.first.icon, isNull);
+    });
   });
 
   group('CategoryTreeNotifier', () {

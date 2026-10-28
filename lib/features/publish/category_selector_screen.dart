@@ -433,6 +433,16 @@ class _MidColumn extends StatelessWidget {
                         : Colors.transparent,
                   ),
                   const SizedBox(width: 8),
+                  // 二级图标与文字并排（PRD §6.4.2 验收口径）：
+                  // 服务端 `icon` 名优先，本地二级映射兜底（nodeIconOf）。
+                  Icon(
+                    nodeIconOf(node),
+                    size: 18,
+                    color: active
+                        ? Color(AppColors.primary)
+                        : Color(AppColors.textSecondary),
+                  ),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       node.name,

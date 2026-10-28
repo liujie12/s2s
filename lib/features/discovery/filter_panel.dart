@@ -766,6 +766,8 @@ class _CategorySectionState extends ConsumerState<_CategorySection> {
               selected: _anySelected(_leavesOf(mid), selected),
               color: color,
               dotColor: dotColor,
+              // 二级图标与文字并排（PRD §6.4.2 验收口径）；服务端名优先，本地兜底。
+              icon: nodeIconOf(mid),
               dense: true,
               onTap: () => _toggleGroup(_leavesOf(mid)),
               onDrill: () => _drillMid(mid),
@@ -944,7 +946,7 @@ class _CategorySectionState extends ConsumerState<_CategorySection> {
       a.length == b.length && a.containsAll(b);
 }
 
-/// 分类胶囊（可带分类色圆点与下钻箭头）。
+/// 分类胶囊（可带分类色圆点、二级图标与下钻箭头）。
 class _CategoryChip extends StatelessWidget {
   const _CategoryChip({
     required this.label,
@@ -952,6 +954,7 @@ class _CategoryChip extends StatelessWidget {
     required this.color,
     required this.onTap,
     this.dotColor,
+    this.icon,
     this.onDrill,
     this.dense = false,
   });
@@ -961,6 +964,12 @@ class _CategoryChip extends StatelessWidget {
   final Color color;
   final VoidCallback onTap;
   final Color? dotColor;
+
+  /// 二级类目字形（与文字并排，PRD §6.4.2「二级在筛选面板与发布页始终与文字并排」）。
+  ///
+  /// 一级仍用分类色圆点：一级的区分靠色，二级的区分靠字形（二级不持独立色相）。
+  final IconData? icon;
+
   final VoidCallback? onDrill;
 
   /// 紧凑档：二级 6 项用三列时缩小字号与内边距。
@@ -987,50 +996,7 @@ class _CategoryChip extends StatelessWidget {
               behavior: HitTestBehavior.opaque,
               child: Padding(
                 padding: EdgeInsets.only(left: dense ? 6 : 8, right: 2),
-                child: dotColor == null
-                    ? Center(
-                        child: Text(
-                          label,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: fontSize,
-                            fontWeight: selected
-                                ? FontWeight.w600
-                                : FontWeight.w400,
-                            color: foreground,
-                          ),
-                        ),
-                      )
-                    : Row(
-                        children: [
-                          Container(
-                            width: 6,
-                            height: 6,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: selected
-                                  ? Color(AppColors.surface)
-                                  : dotColor,
-                            ),
-                          ),
-                          SizedBox(width: dense ? 4 : 5),
-                          Expanded(
-                            child: Text(
-                              label,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: fontSize,
-                                fontWeight: selected
-                                    ? FontWeight.w600
-                                    : FontWeight.w400,
-                                color: foreground,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
+                child: _buildContent(foreground, fontSize),
               ),
             ),
           ),
@@ -1053,6 +1019,54 @@ class _CategoryChip extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  /// 胶囊内容：图标（二级）/ 圆点（一级）/ 纯文字三形态。
+  ///
+  /// 参数：[foreground] 文字色；[fontSize] 字号。返回：内容控件。
+  Widget _buildContent(Color foreground, double fontSize) {
+    final Widget text = Text(
+      label,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        fontSize: fontSize,
+        fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+        color: foreground,
+      ),
+    );
+    if (icon != null) {
+      return Row(
+        children: [
+          Icon(
+            icon,
+            size: dense ? 12 : 13,
+            color: selected
+                ? Color(AppColors.surface)
+                : (dotColor ?? Color(AppColors.textSecondary)),
+          ),
+          SizedBox(width: dense ? 4 : 5),
+          Expanded(child: text),
+        ],
+      );
+    }
+    if (dotColor != null) {
+      return Row(
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: selected ? Color(AppColors.surface) : dotColor,
+            ),
+          ),
+          SizedBox(width: dense ? 4 : 5),
+          Expanded(child: text),
+        ],
+      );
+    }
+    return Center(child: text);
   }
 }
 

@@ -1594,8 +1594,14 @@ class _ListingInfoCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final detailAsync = ref.watch(postDetailProvider(listingId));
-    final ListingCategory? category =
-        detailAsync.asData?.value.listing.category;
+    final ListingDetail? detail = detailAsync.asData?.value;
+    final ListingCategory? category = detail?.listing.category;
+    // 卡片图标与 Pin 圆心同源：二级 → 一级 → 通用图钉。
+    // 详情未就绪时 detail 为 null，落到通用图钉（此时文案也在「加载中…」）。
+    final IconData cardIcon =
+        l2CategoryIcon(detail?.leafCategoryId) ??
+        category?.icon ??
+        Icons.place;
 
     return GestureDetector(
       // 整卡可点进详情（PRD §7.5 旅程第 1 步）。整卡而非只给一个小按钮：
@@ -1628,7 +1634,7 @@ class _ListingInfoCard extends ConsumerWidget {
                 shape: BoxShape.circle,
               ),
               child: Icon(
-                category?.icon ?? Icons.place,
+                cardIcon,
                 size: 20,
                 color: Color(AppColors.surface),
               ),

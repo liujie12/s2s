@@ -104,6 +104,18 @@ void main() {
     expect(confirm.onPressed, isNull);
   });
 
+  testWidgets('二级列渲染服务端 icon 名（与文字并排，PRD §6.4.2）', (tester) async {
+    await tester.pumpWidget(
+      _app(repo: repo, prefs: prefs, home: const CategorySelectorScreen()),
+    );
+    await tester.pumpAndSettle();
+
+    // 一级卡片「工作」本就有 Icons.work；二级行「全职招聘」的服务端 icon
+    // 也是 work（V21 迁移口径）⇒ 共 2 枚。改造前二级行只有文字（1 枚），
+    // 故这条断言能识别「icon 名没有进渲染层」。
+    expect(find.byIcon(Icons.work), findsNWidgets(2));
+  });
+
   testWidgets('点选叶子 → 面包屑实时回显 → 确认选择 pop 返回叶子 id',
       (tester) async {
     int? result;

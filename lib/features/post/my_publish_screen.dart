@@ -544,7 +544,8 @@ class _MyPostCard extends StatelessWidget {
     final category = leafId == null ? null : topCategoryOf(leafId);
     final accent = category?.color ?? neutralCategoryColor;
     final deep = category?.deepColor ?? neutralCategoryColor;
-    final icon = category?.icon ?? neutralCategoryIcon;
+    // 二级 → 一级 → 中性：与地图 Pin / 列表卡同一份字形表，三处必须一致。
+    final icon = l2CategoryIcon(leafId) ?? category?.icon ?? neutralCategoryIcon;
     final actions = cardActionsFor(item.status);
 
     return Container(

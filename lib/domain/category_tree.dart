@@ -55,6 +55,7 @@ class CategoryNode {
   const CategoryNode({
     required this.id,
     required this.name,
+    this.icon,
     this.children = const [],
     this.requiredCert = RequiredCert.none,
   });
@@ -68,6 +69,18 @@ class CategoryNode {
 
   /// 类目名，逐字取自 §2.4。
   final String name;
+
+  /// 服务端下发的图标名（`category.icon`，Material Symbols 名；`nullable`）。
+  ///
+  /// 数据链路：DB `category.icon` → `/categories/tree` → 本字段 → 渲染。
+  /// 由 `categoryIconByName` 解析成字形；**本层不持字形**，理由同
+  /// `listing_category_style.dart` 文件头：域模型不该绑 Flutter 的 `IconData`，
+  /// 聚合层还要在纯 Dart 下跑（POC-A 基准）。
+  ///
+  /// 为 null 的两种正常情况：契约本身可缺失；内置常量树不重复登记服务端数据
+  /// （离线兜底走 `l2CategoryIcon`）。渲染层按「服务端名 → 本地二级 → 一级」
+  /// 逐级降级，见 `nodeIconOf`。
+  final String? icon;
 
   /// 子节点。叶子为空列表。
   final List<CategoryNode> children;

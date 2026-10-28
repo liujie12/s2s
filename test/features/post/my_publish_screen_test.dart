@@ -119,6 +119,15 @@ void main() {
     expect(find.text('没有更多了'), findsOneWidget);
   });
 
+  testWidgets('卡片分类块用二级字形（40101 → 401「二手闲置转让」= inventory_2）',
+      (tester) async {
+    await pumpScreen(tester);
+
+    // 一级「生活」是 volunteer_activism；二级 401 才是 inventory_2。
+    // 断言后者在场即可证明卡片读的是二级图标（与地图 Pin / 列表卡同一份映射）。
+    expect(find.byIcon(Icons.inventory_2), findsWidgets);
+  });
+
   testWidgets('点「下架」：调真接口并带列表项的乐观锁版本号', (tester) async {
     await pumpScreen(tester);
 
