@@ -5,11 +5,10 @@
 /// `X-Interaction-Id`，也不返回本项目的信封）。故本服务持有一个**无拦截器**
 /// 的裸 dio 只做字节 PUT。
 ///
-/// **为什么裸 dio 不设读取超时**：技术栈 §9「图片必须走 OSS 直传」的约束是
-/// ECS 仅 3M 带宽；单文件上限见 [NfrMedia.maxSizeBytes]，弱网下单张就可能远超
-/// API 的 [NfrNetwork.readTimeoutSec]。故只设连接超时（引用常量），读写超时
-/// 留空（dio 默认不超时）—— 由用户主动取消/重试兜底，不做自动重试循环
-/// （编码红线「前端全局唯一重试点是 RetryInterceptor」，features 内禁循环重试）。
+/// **为什么裸 dio 不设全局读取超时**：技术栈 §9「图片必须走 OSS 直传」的约束是
+/// ECS 仅 3M 带宽。图已在选图阶段预缩到长边 [NfrMedia.uploadLongEdgePx]，故单次
+/// PUT 只按 [kOssUploadTimeoutSec] 设上限（停滞快速失败、落到「重试」），
+/// 不做自动重试循环（编码红线「前端全局唯一重试点是 RetryInterceptor」）。
 library;
 
 import 'package:dio/dio.dart';
@@ -37,6 +36,14 @@ class UploadedMedia {
   /// 审核状态（`pending`/`pass`/`reject`）。
   final String auditStatus;
 }
+
+/// OSS 直传的发送/接收超时（秒）。
+///
+/// 图在选图阶段已预缩到长边 [NfrMedia.uploadLongEdgePx]（通常 1–3 秒传完）；
+/// 30 秒仍无进展视为停滞。**此前裸 dio 不设读写超时**，一旦对象存储地址不可达
+/// 或链路卡住，缩略图会无限转圈（真机表现为「分钟级等待」），故补此上限，
+/// 让失败落到条目的「重试」入口，而不是永远等下去。
+const int kOssUploadTimeoutSec = 30;
 
 /// 媒体上传编排服务（无实例状态）。
 class MediaUploadService {
@@ -74,6 +81,9 @@ class MediaUploadService {
         headers: {Headers.contentTypeHeader: media.contentType},
         // OSS 对 3xx 不做重定向跟随（PUT 到签名地址是终态）。
         followRedirects: false,
+        // 读写超时见 [kOssUploadTimeoutSec]：正常 1–3 秒，停滞则快速失败可重试。
+        sendTimeout: const Duration(seconds: kOssUploadTimeoutSec),
+        receiveTimeout: const Duration(seconds: kOssUploadTimeoutSec),
       ),
     );
 
