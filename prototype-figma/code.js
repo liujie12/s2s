@@ -1538,6 +1538,86 @@ var ICON_PATHS = {
     vb: ICON_VIEWBOX_20,
     d: '<path fill="#000" d="M10 3a7 7 0 1 0 0 14 7 7 0 0 0 0-14"/>'
   },
+  // ── 二级分类字形（PRD §6.4.2「二级图标映射表」，2026-10-28 定稿）──
+  //
+  // 21 个二级各自锁定一个 Material Symbols 字形，键名 `l2-<二级编码>`。
+  // 路径逐字取自 fonts.gstatic.com 的 fill1/24px 官方产物（单 path、无 defs/渐变/蒙版），
+  // 与 PRD §6.4.2 四步法第 ① 步同源；不手写、不描摹。
+  //
+  // 其中三项与既有字形同形，故不重复贴路径，见本对象之后的别名赋值：
+  // 101 → cat-work、402 → cat-life、403 → search。
+  'l2-102': {
+    vb: ICON_VIEWBOX_MS,
+    d: '<path fill="#000" d="m786-146 28-28-74-74v-112h-40v128l86 86ZM400-720h160v-80H400v80ZM578.5-98.5Q520-157 520-240t58.5-141.5Q637-440 720-440t141.5 58.5Q920-323 920-240T861.5-98.5Q803-40 720-40T578.5-98.5ZM160-120q-33 0-56.5-23.5T80-200v-440q0-33 23.5-56.5T160-720h160v-80q0-33 23.5-56.5T400-880h160q33 0 56.5 23.5T640-800v80h160q33 0 56.5 23.5T880-640v171q-35-25-76-38t-84-13q-116 0-198 82t-82 198q0 31 6.5 61.5T467-120H160Z"/>'
+  },
+  'l2-103': {
+    vb: ICON_VIEWBOX_MS,
+    d: '<path fill="#000" d="M440-480q-66 0-113-47t-47-113q0-66 47-113t113-47q66 0 113 47t47 113q0 66-47 113t-113 47ZM884-20 756-148q-21 12-45 20t-51 8q-75 0-127.5-52.5T480-300q0-75 52.5-127.5T660-480q75 0 127.5 52.5T840-300q0 27-8 51t-20 45L940-76l-56 56ZM731-229q29-29 29-71t-29-71q-29-29-71-29t-71 29q-29 29-29 71t29 71q29 29 71 29t71-29ZM441-440q-42 62-42 140t42 140H120v-111q0-34 17-63t47-44q51-26 115-44t142-18Z"/>'
+  },
+  'l2-201': {
+    vb: ICON_VIEWBOX_MS,
+    d: '<path fill="#000" d="M120-120v-560h160v-160h400v320h160v400H520v-160h-80v160H120Zm80-80h80v-80h-80v80Zm0-160h80v-80h-80v80Zm0-160h80v-80h-80v80Zm160 160h80v-80h-80v80Zm0-160h80v-80h-80v80Zm0-160h80v-80h-80v80Zm160 320h80v-80h-80v80Zm0-160h80v-80h-80v80Zm0-160h80v-80h-80v80Zm160 480h80v-80h-80v80Zm0-160h80v-80h-80v80Z"/>'
+  },
+  'l2-202': {
+    vb: ICON_VIEWBOX_MS,
+    d: '<path fill="#000" d="M280-159v-361h64q7 0 14 1.5t14 3.5l277 103q14 5 22.5 18t8.5 27q0 21-14.5 34T632-320H527q-5 0-7.5-.5T513-323l-64-25-13 39 77 27q2 1 6 1.5t7 .5h274q32 0 56 23t24 57L561-80l-281-79ZM40-80v-440h160v440H40Zm540-560h40v-40h-40v40Zm-80 0h40v-40h-40v40Zm80 80h40v-40h-40v40Zm-80 0h40v-40h-40v40Zm241 160q-14-33-40-58t-64-39L360-600h-80v-100l280-200 280 200v300h-99Z"/>'
+  },
+  'l2-203': {
+    vb: ICON_VIEWBOX_MS,
+    d: '<path fill="#000" d="M40-200v-600h80v400h320v-320h320q66 0 113 47t47 113v360h-80v-120H120v120H40Zm155-275q-35-35-35-85t35-85q35-35 85-35t85 35q35 35 35 85t-35 85q-35 35-85 35t-85-35Z"/>'
+  },
+  'l2-204': {
+    vb: ICON_VIEWBOX_MS,
+    d: '<path fill="#000" d="M440-120v-80h320v-284q0-117-81.5-198.5T480-764q-117 0-198.5 81.5T200-484v244h-40q-33 0-56.5-23.5T80-320v-80q0-21 10.5-39.5T120-469l3-53q8-68 39.5-126t79-101q47.5-43 109-67T480-840q68 0 129 24t109 66.5Q766-707 797-649t40 126l3 52q19 9 29.5 27t10.5 38v92q0 20-10.5 38T840-249v49q0 33-23.5 56.5T760-120H440ZM331.5-411.5Q320-423 320-440t11.5-28.5Q343-480 360-480t28.5 11.5Q400-457 400-440t-11.5 28.5Q377-400 360-400t-28.5-11.5Zm240 0Q560-423 560-440t11.5-28.5Q583-480 600-480t28.5 11.5Q640-457 640-440t-11.5 28.5Q617-400 600-400t-28.5-11.5ZM241-462q-7-106 64-182t177-76q89 0 156.5 56.5T720-519q-91-1-167.5-49T435-698q-16 80-67.5 142.5T241-462Z"/>'
+  },
+  'l2-301': {
+    vb: ICON_VIEWBOX_MS,
+    d: '<path fill="#000" d="M155-235q-35-35-35-85H40v-360q0-33 23.5-56.5T120-760h560l240 240v200h-80q0 50-35 85t-85 35q-50 0-85-35t-35-85H360q0 50-35 85t-85 35q-50 0-85-35Zm445-325h160L640-680h-40v120Zm-240 0h160v-120H360v120Zm-240 0h160v-120H120v120Zm155.5 275.5Q290-299 290-320t-14.5-35.5Q261-370 240-370t-35.5 14.5Q190-341 190-320t14.5 35.5Q219-270 240-270t35.5-14.5Zm480 0Q770-299 770-320t-14.5-35.5Q741-370 720-370t-35.5 14.5Q670-341 670-320t14.5 35.5Q699-270 720-270t35.5-14.5Z"/>'
+  },
+  'l2-302': {
+    vb: ICON_VIEWBOX_MS,
+    d: '<path fill="#000" d="M320-680q-50 0-85-35t-35-85q0-50 35-85t85-35q38 0 69 22.5t45 57.5h326v80h-40v80h-80v-80H434q-14 35-45 57.5T320-680Zm28.5-91.5Q360-783 360-800t-11.5-28.5Q337-840 320-840t-28.5 11.5Q280-817 280-800t11.5 28.5Q303-760 320-760t28.5-11.5Zm40 500Q400-283 400-300t-11.5-28.5Q377-340 360-340t-28.5 11.5Q320-317 320-300t11.5 28.5Q343-260 360-260t28.5-11.5Zm240 0Q640-283 640-300t-11.5-28.5Q617-340 600-340t-28.5 11.5Q560-317 560-300t11.5 28.5Q583-260 600-260t28.5-11.5ZM200-376l66-192q5-14 16.5-23t25.5-9h344q14 0 25.5 9t16.5 23l66 192v264q0 14-9 23t-23 9h-16q-14 0-23-9t-9-23v-48H280v48q0 14-9 23t-23 9h-16q-14 0-23-9t-9-23v-264Zm106-64h348l-28-80H334l-28 80Z"/>'
+  },
+  'l2-303': {
+    vb: ICON_VIEWBOX_MS,
+    d: '<path fill="#000" d="M856-390 570-104q-12 12-27 18t-30 6q-15 0-30-6t-27-18L103-457q-11-11-17-25.5T80-513v-287q0-33 23.5-56.5T160-880h287q16 0 31 6.5t26 17.5l352 353q12 12 17.5 27t5.5 30q0 15-5.5 29.5T856-390ZM260-640q25 0 42.5-17.5T320-700q0-25-17.5-42.5T260-760q-25 0-42.5 17.5T200-700q0 25 17.5 42.5T260-640Z"/>'
+  },
+  'l2-304': {
+    vb: ICON_VIEWBOX_MS,
+    d: '<path fill="#000" d="M160-80v-240h120v240H160Zm200 0v-476q-50 17-65 62.5T280-400h-80q0-128 75-204t205-76q100 0 150-49.5T680-880h80q0 88-37.5 157.5T600-624v544h-80v-240h-80v240h-80Zm120-640q-33 0-56.5-23.5T400-800q0-33 23.5-56.5T480-880q33 0 56.5 23.5T560-800q0 33-23.5 56.5T480-720Z"/>'
+  },
+  'l2-401': {
+    vb: ICON_VIEWBOX_MS,
+    d: '<path fill="#000" d="M200-80q-33 0-56.5-23.5T120-160v-451q-18-11-29-28.5T80-680v-120q0-33 23.5-56.5T160-880h640q33 0 56.5 23.5T880-800v120q0 23-11 40.5T840-611v451q0 33-23.5 56.5T760-80H200Zm-40-600h640v-120H160v120Zm200 280h240v-80H360v80Z"/>'
+  },
+  'l2-404': {
+    vb: ICON_VIEWBOX_MS,
+    d: '<path fill="#000" d="M180-475q-42 0-71-29t-29-71q0-42 29-71t71-29q42 0 71 29t29 71q0 42-29 71t-71 29Zm109-189q-29-29-29-71t29-71q29-29 71-29t71 29q29 29 29 71t-29 71q-29 29-71 29t-71-29Zm240 0q-29-29-29-71t29-71q29-29 71-29t71 29q29 29 29 71t-29 71q-29 29-71 29t-71-29Zm251 189q-42 0-71-29t-29-71q0-42 29-71t71-29q42 0 71 29t29 71q0 42-29 71t-71 29ZM266-75q-45 0-75.5-34.5T160-191q0-52 35.5-91t70.5-77q29-31 50-67.5t50-68.5q22-26 51-43t63-17q34 0 63 16t51 42q28 32 49.5 69t50.5 69q35 38 70.5 77t35.5 91q0 47-30.5 81.5T694-75q-54 0-107-9t-107-9q-54 0-107 9t-107 9Z"/>'
+  },
+  'l2-405': {
+    vb: ICON_VIEWBOX_MS,
+    d: '<path fill="#000" d="M720-440v-80h160v80H720Zm48 280-128-96 48-64 128 96-48 64Zm-80-480-48-64 128-96 48 64-128 96ZM200-200v-160h-40q-33 0-56.5-23.5T80-440v-80q0-33 23.5-56.5T160-600h160l200-120v480L320-360h-40v160h-80Zm360-146v-268q27 24 43.5 58.5T620-480q0 41-16.5 75.5T560-346Z"/>'
+  },
+  'l2-501': {
+    vb: ICON_VIEWBOX_MS,
+    d: '<path fill="#000" d="M120-40v-280q0-83 58.5-141.5T320-520h40v-320q0-33 23.5-56.5T440-920h80q33 0 56.5 23.5T600-840v320h40q83 0 141.5 58.5T840-320v280H120Zm80-80h80v-120q0-17 11.5-28.5T320-280q17 0 28.5 11.5T360-240v120h80v-120q0-17 11.5-28.5T480-280q17 0 28.5 11.5T520-240v120h80v-120q0-17 11.5-28.5T640-280q17 0 28.5 11.5T680-240v120h80v-200q0-50-35-85t-85-35H320q-50 0-85 35t-35 85v200Z"/>'
+  },
+  'l2-502': {
+    vb: ICON_VIEWBOX_MS,
+    d: '<path fill="#000" d="M360-640h240v-80H360v80ZM80-160v-200h160v40h80v-40h320v40h80v-40h160v200H80Zm0-240v-160q0-33 23.5-56.5T160-640h120v-80q0-33 23.5-56.5T360-800h240q33 0 56.5 23.5T680-720v80h120q33 0 56.5 23.5T880-560v160H720v-80h-80v80H320v-80h-80v80H80Z"/>'
+  },
+  'l2-503': {
+    vb: ICON_VIEWBOX_MS,
+    d: '<path fill="#000" d="M840-280v-276L480-360 40-600l440-240 440 240v320h-80ZM480-120 200-272v-200l280 152 280-152v200L480-120Z"/>'
+  },
+  'l2-504': {
+    vb: ICON_VIEWBOX_MS,
+    d: '<path fill="#000" d="M480-80q-94-12-168-48t-125.5-94Q135-280 108-356.5T81-526q110 11 186 40t123.5 82Q438-351 459-271.5T480-80Zm0-337q-23-35-62.5-69T326-548q6-42 20-87t34-88.5q20-43.5 45.5-83.5t54.5-73q29 33 54.5 73t45.5 83.5q20 43.5 34 88.5t20 87q-52 27-91.5 61T480-417Zm80 321q-2-70-10.5-129.5T523-338q47-81 129.5-132T879-526q1 158-84.5 272.5T560-96Z"/>'
+  },
+  'l2-505': {
+    vb: ICON_VIEWBOX_MS,
+    d: '<path fill="#000" d="M520-40v-240l-84-80-40 176-276-56 16-80 192 40 64-324-72 28v136h-80v-188l158-68q35-15 51.5-19.5T480-720q21 0 39 11t29 29l40 64q26 42 70.5 69T760-520v80q-66 0-123.5-27.5T540-540l-24 120 84 80v300h-80Zm-36.5-723.5Q460-787 460-820t23.5-56.5Q507-900 540-900t56.5 23.5Q620-853 620-820t-23.5 56.5Q573-740 540-740t-56.5-23.5Z"/>'
+  },
   // 人像 = person：底部 Tab「我的」键（PRD §10.2）。同上，此前是 emoji 👤。
   // 为什么不用 account_circle（圆底+人像）：24px 下内部头像与圆底边缘粘连
   // 成不可辨色块（probe-tabicon.py 实测），实心人像轮廓在 24px 下留白充足
@@ -1546,6 +1626,14 @@ var ICON_PATHS = {
     d: '<path fill="#000" d="M367-527q-47-47-47-113t47-113q47-47 113-47t113 47q47 47 47 113t-47 113q-47 47-113 47t-113-47ZM160-160v-112q0-34 17.5-62.5T224-378q62-31 126-46.5T480-440q66 0 130 15.5T736-378q29 15 46.5 43.5T800-272v112H160Z"/>'
   }
 };
+
+// 二级图标中三项与既有字形同形，故不重复贴路径（PRD §6.4.2「允许一级母题下沉」）：
+//   101 全职招聘 = 一级「工作」的 work；402 借物/互助 = 一级「生活」的 volunteer_activism；
+//   403 寻物/招领 = 导航栏搜索框的 search。
+// 别名在对象定义后赋值：路径数据只存一份，改一处即三处同步。
+ICON_PATHS['l2-101'] = ICON_PATHS['cat-work'];
+ICON_PATHS['l2-402'] = ICON_PATHS['cat-life'];
+ICON_PATHS['l2-403'] = ICON_PATHS['search'];
 
 /**
  * 把 ICON_PATHS 里的一条图标定义转成 Figma 矢量节点，并把笔画统一染成指定颜色。
@@ -1792,6 +1880,38 @@ function text(content, scale, colorRole) {
   // 字号绑到 size/* 变量（2026-08-26，M3）。行高刻意不绑：它是「字号 × 倍数」
   // 的派生值，绑成独立变量后改字号不会带动行高，反而制造出一处静默不一致。
   bindNum(t, 'fontSize', 'size', s.size);
+  return t;
+}
+
+/**
+ * 往指定容器追加一条会自动折行的长注释文本。
+ *
+ * 2026-08-31 补：T6 板三条长注释（完整度角标注意事项 148 字、图标验收判据、
+ * 去色校验）原先直接走 text()，而 text() 不设 textAutoResize，Figma 默认
+ * WIDTH_AND_HEIGHT —— 文本会横向铺成一整行不折行，把父容器一路撑宽。
+ * 实机量出 _t6-3 宽 1290（溢出 480 的画框 834px）、_t6-5 宽 736（溢出 280px），
+ * 板子右侧内容整片跑到画框外，出图时被裁掉。
+ *
+ * 为什么之前没被发现：这块是四个模态之一，14 页普通页每轮都出图人眼过，
+ * 而模态从建成起从未出过一张渲染图，探针 250 项也只查节点存在与序列，
+ * 没有一条查「子节点是否溢出父画框」。
+ *
+ * 顺序不可换：textAutoResize 要在 appendChild 之前设（否则先按无限宽算一次），
+ * layoutSizingHorizontal = 'FILL' 必须在 appendChild 之后设 ——
+ * 没有自动布局父节点时赋值会抛 requires an auto-layout parent。
+ *
+ * 2026-10-28：从 buildT6Board 内提为顶层 —— 新加的二级图标规格板同样需要，
+ * 复制一份等于把同一段坑再埋一次。
+ *
+ * @param {FrameNode} parent 目标容器（须为自动布局且宽度确定）
+ * @param {string} content 注释文案
+ * @returns {TextNode} 已挂载的文本节点
+ */
+function wrapNote(parent, content) {
+  var t = text(content, 'caption', 'color/text-secondary');
+  t.textAutoResize = 'HEIGHT';
+  parent.appendChild(t);
+  t.layoutSizingHorizontal = 'FILL';
   return t;
 }
 
@@ -2404,9 +2524,13 @@ function bottomTabRaw(active) {
  *                 纯粹在抢辨识带宽，是「无法见图知意」的成因之一。
  *                 故地图上卸掉，完整度改由点击 Marker 后的信息卡承载。
  *                 T6 组件板作为「角标规范说明」仍需展示，故保留开关而非直接删除。
+ * @param {string} [iconKey] 圆心图标的 ICON_PATHS 键。默认按一级分类取 `cat-<catKey>`；
+ *                 二级图标规格板传 `l2-<编码>`（2026-10-28）。**二级必须走 pinRaw
+ *                 而不是 pin()**：pin() 会复用一级的 Component Instance，
+ *                 字形会被带着一起复用成一级图标。
  * @returns {FrameNode} Pin 节点
  */
-function pinRaw(catRole, supplyDemand, completeness, selected, showCompleteness) {
+function pinRaw(catRole, supplyDemand, completeness, selected, showCompleteness, iconKey) {
   var size = selected ? 48 : 40;
   var isDemand = supplyDemand === 'demand';
   var catKey = catRole.replace('category/', '');
@@ -2414,7 +2538,8 @@ function pinRaw(catRole, supplyDemand, completeness, selected, showCompleteness)
   var iconColor = isDemand ? catRole : 'color/surface';
 
   // Pin 外层改用叠层容器：角标需绝对定位到边缘，Auto Layout 无法表达
-  var p = stack('pin/' + catKey + '/' + supplyDemand + (selected ? '/selected' : ''), size, size);
+  var name = 'pin/' + catKey + '/' + (iconKey ? iconKey + '/' : '') + supplyDemand + (selected ? '/selected' : '');
+  var p = stack(name, size, size);
   // 关掉裁剪，否则贴边的角标会被切掉一半
   p.clipsContent = false;
 
@@ -2426,7 +2551,7 @@ function pinRaw(catRole, supplyDemand, completeness, selected, showCompleteness)
     align: 'CENTER', justify: 'CENTER'
   });
   var iconSize = Math.round(size * 0.5);   // 图标占直径一半，四周留白便于识别
-  disc.appendChild(catIcon(catKey, iconColor, iconSize));
+  disc.appendChild(catIcon(iconKey || catKey, iconColor, iconSize));
   p.appendChild(disc);
   disc.x = 0;
   disc.y = 0;
@@ -3878,6 +4003,157 @@ var CAT_TREE = {
     ['代办/跑腿', ['代取快递', '代跑腿']]
   ]
 };
+
+/**
+ * 二级分类图标表（PRD §6.4.2「二级图标映射表」，2026-10-28 定稿）。
+ *
+ * 结构：catKey → [[二级编码, ICON_PATHS 键], ...]，顺序与 CAT_TREE 的二级顺序
+ * 一一对应 —— **名称不在这里再抄一份**，画板一律从 CAT_TREE 取，
+ * 否则同一条「全职招聘」会存在三份（PRD / CAT_TREE / 本表）并各自漂移。
+ *
+ * 编码由 `(一级序号)*100 + (二级序号)` 推出，[assertL2Order] 逐条核对，
+ * 错位当场抛出而不是画出一个「图标配错类目」的板子。
+ */
+var L2_ICONS = {
+  'cat-work': [
+    ['101', 'l2-101'], ['102', 'l2-102'], ['103', 'l2-103']
+  ],
+  'cat-house': [
+    ['201', 'l2-201'], ['202', 'l2-202'], ['203', 'l2-203'], ['204', 'l2-204']
+  ],
+  'cat-vehicle': [
+    ['301', 'l2-301'], ['302', 'l2-302'], ['303', 'l2-303'], ['304', 'l2-304']
+  ],
+  'cat-life': [
+    ['401', 'l2-401'], ['402', 'l2-402'], ['403', 'l2-403'], ['404', 'l2-404'], ['405', 'l2-405']
+  ],
+  'cat-service': [
+    ['501', 'l2-501'], ['502', 'l2-502'], ['503', 'l2-503'], ['504', 'l2-504'], ['505', 'l2-505']
+  ]
+};
+
+/**
+ * 校验二级图标表与分类树、图标路径表三者自洽。
+ *
+ * 防的是「表在但错位」：数量对不上、编码跳号、图标键拼错，
+ * 这三种错都不会让插件报错，只会安静地画出一张错板子 ——
+ * 而图标的整个价值就在「看见即可判断对错」，错板子比没板子更危险。
+ *
+ * @throws {Error} 数量、编码或图标键任一不符时
+ * @returns {void}
+ */
+function assertL2Order() {
+  for (var i = 0; i < CAT_LIST.length; i++) {
+    var famKey = CAT_LIST[i][0];
+    var list = L2_ICONS[famKey];
+    var tree = CAT_TREE[famKey];
+    if (!list || list.length !== tree.length) {
+      throw new Error(
+        'L2_ICONS[' + famKey + '] 有 ' + (list ? list.length : 0)
+        + ' 项，CAT_TREE 有 ' + tree.length + ' 个二级 —— 两处顺序表已漂移'
+      );
+    }
+    for (var j = 0; j < list.length; j++) {
+      var expected = String((i + 1) * 100 + (j + 1));
+      if (list[j][0] !== expected) {
+        throw new Error(
+          'L2_ICONS[' + famKey + '] 第 ' + (j + 1) + ' 项编码应为 ' + expected
+          + '，实为 ' + list[j][0]
+        );
+      }
+      if (!ICON_PATHS[list[j][1]]) {
+        throw new Error('图标键「' + list[j][1] + '」未在 ICON_PATHS 登记');
+      }
+    }
+  }
+}
+
+/**
+ * 生成一族二级图标的一行。
+ *
+ * @param {string} famKey 一级族键（cat-work 等），决定分类色
+ * @param {Array<Array<string>>} l2 该族的 [[编码, 图标键], ...]
+ * @param {Array} names CAT_TREE 的二级节点数组（取名称，不另抄一份）
+ * @param {number} size 40 = 地图 Marker 档；20 = 图层面板；14 = 图例
+ * @param {string|null} supplyDemand 40px 档传 resource / demand；20/14 档传 null 只画裸图标
+ * @param {boolean} withLabel 是否加标注（40px 档标名称、小档标编码）
+ * @param {number} cellW 单元格宽（五列统一，跨族对齐成一列）
+ * @returns {FrameNode} 该行容器
+ */
+function l2IconRow(famKey, l2, names, size, supplyDemand, withLabel, cellW) {
+  var r = box('_l2-row-' + famKey + '-' + size + (supplyDemand ? '-' + supplyDemand : ''), 'HORIZONTAL', {
+    w: cellW * 5 + SPACING.md * 4, gap: SPACING.md, align: 'MIN'
+  });
+  for (var i = 0; i < l2.length; i++) {
+    var cell = box('_l2-cell-' + l2[i][0], 'VERTICAL', { w: cellW, gap: TIGHT_GAP, align: 'CENTER' });
+    if (size === 40) {
+      // 二级必须走 pinRaw：pin() 会复用一级的 Component Instance，字形跟着变成一级
+      cell.appendChild(pinRaw('category/' + famKey, supplyDemand || 'resource', null, false, false, l2[i][1]));
+    } else {
+      // 20/14 档只画裸图标 —— 图层面板与图例是「图标 + 文字」并排，不套圆底；
+      // 这两档也正是「文字旁的真实尺寸」，与 PRD 三档尺寸口径一致
+      cell.appendChild(catIcon(l2[i][1], 'category/' + famKey, size));
+    }
+    if (withLabel) {
+      var label = text(size === 40 ? names[i][0] : l2[i][0], 'caption', 'color/text-secondary');
+      label.textAutoResize = 'HEIGHT';
+      label.textAlignHorizontal = 'CENTER';
+      cell.appendChild(label);
+      label.layoutSizingHorizontal = 'FILL';
+    }
+    r.appendChild(cell);
+  }
+  return r;
+}
+
+/**
+ * 构造「二级分类图标」规格板（PRD §6.4.2 二级图标映射表）。
+ *
+ * 与 T6 板的「⑤ 20px 真实尺寸对照条」分工：那一组验**一级** 5 个字形，
+ * 本板验**二级** 21 个 —— 两组的判据不同（一级要能说出是哪一类，
+ * 二级只要求同族并排不混），故不混在同一组里。
+ *
+ * 每族四行：资源态 40px、需求态 40px（带 ? 角标）、20px 图层档、14px 图例档。
+ * 三档都是 1:1 尺寸，评审时不必放大、也不该放大（PRD 明写放大检视是前两版误判的成因）。
+ *
+ * @returns {FrameNode} 规格板节点
+ */
+function buildL2IconBoard() {
+  assertL2Order();
+  var b = box('board/二级分类图标 [PRD §6.4.2]', 'VERTICAL', {
+    w: 480, pad: SPACING.xl, gap: SPACING.lg, fill: 'color/surface', radius: RADIUS.lg
+  });
+  var innerW = 480 - SPACING.xl * 2;
+  // 五列统一宽：最宽的一族是 5 个二级，其余族也按五列排，跨族对齐成一列
+  var cellW = Math.floor((innerW - SPACING.md * 4) / 5);
+
+  b.appendChild(text('二级分类图标（21 个 · 五族）', 'h2'));
+  wrapNote(b, '依据 PRD §6.4.2「二级图标映射表」（2026-10-28 定稿）。二级不持独立色相：资源态取白、需求态取所属一级的分类色，族内区分只来自字形。');
+  wrapNote(b, '三档均为 1:1 真实尺寸：40px 地图 Marker / 20px 图层面板 / 14px 图例。判据以 20px 为主 —— 同族两两并排、加 Saturation −100 去色后仍可分；需求态叠加右上 ? 角标后字形仍须成立（角标压在右上扇区，故该区域不得承载辨识信息）。');
+
+  for (var fi = 0; fi < CAT_LIST.length; fi++) {
+    var famKey = CAT_LIST[fi][0];
+    var l2 = L2_ICONS[famKey];
+    var names = CAT_TREE[famKey];
+    var g = box('_l2-' + famKey, 'VERTICAL', { w: innerW, gap: SPACING.sm });
+    g.appendChild(text(
+      CAT_LIST[fi][1] + ' · ' + l2.length + ' 个二级（编码 ' + l2[0][0] + '–' + l2[l2.length - 1][0] + '）',
+      'h3', 'color/primary'
+    ));
+    g.appendChild(text('资源态 · 40px（分类色实心 + 白图标）', 'caption', 'color/text-secondary'));
+    g.appendChild(l2IconRow(famKey, l2, names, 40, 'resource', true, cellW));
+    g.appendChild(text('需求态 · 40px（白底 + 分类色图标 + 右上 ?）', 'caption', 'color/text-secondary'));
+    g.appendChild(l2IconRow(famKey, l2, names, 40, 'demand', false, cellW));
+    g.appendChild(text('20px 图层面板档 / 14px 图例档（裸图标，不套圆底）', 'caption', 'color/text-secondary'));
+    g.appendChild(l2IconRow(famKey, l2, names, 20, null, true, cellW));
+    g.appendChild(l2IconRow(famKey, l2, names, 14, null, true, cellW));
+    b.appendChild(g);
+  }
+
+  wrapNote(b, '一级 5 个字形仍在 T6 板的「⑤ 20px 真实尺寸对照条」；本板只管二级。21 行全表与选型理由见 PRD §6.4.2「二级图标映射表」。');
+  return b;
+}
+
 
 /**
  * 演示内容 fixtures（2026-08-25 抽出）：全画布示例数据的唯一真源。
@@ -7173,37 +7449,8 @@ function buildT6Board() {
     w: 480, pad: SPACING.xl, gap: SPACING.xl, fill: 'color/surface', radius: RADIUS.lg
   });
   // 板内可用宽 = 480 - xl 左右内边距。长注释文本必须按这个宽度折行，
-  // 见下方 wrapNote 的说明
+  // 折行由顶层 wrapNote 负责（2026-10-28 从本函数内提出，二级图标板复用）
   var boardInnerW = 480 - SPACING.xl * 2;
-
-  /**
-   * 往指定容器追加一条会自动折行的长注释文本
-   *
-   * 2026-08-31 补：本板三条长注释（完整度角标注意事项 148 字、图标验收判据、
-   * 去色校验）原先直接走 text()，而 text() 不设 textAutoResize，Figma 默认
-   * WIDTH_AND_HEIGHT —— 文本会横向铺成一整行不折行，把父容器一路撑宽。
-   * 实机量出 _t6-3 宽 1290（溢出 480 的画框 834px）、_t6-5 宽 736（溢出 280px），
-   * 板子右侧内容整片跑到画框外，出图时被裁掉。
-   *
-   * 为什么之前没被发现：这块是四个模态之一，14 页普通页每轮都出图人眼过，
-   * 而模态从建成起从未出过一张渲染图，探针 250 项也只查节点存在与序列，
-   * 没有一条查「子节点是否溢出父画框」。
-   *
-   * 顺序不可换：textAutoResize 要在 appendChild 之前设（否则先按无限宽算一次），
-   * layoutSizingHorizontal = 'FILL' 必须在 appendChild 之后设 ——
-   * 没有自动布局父节点时赋值会抛 requires an auto-layout parent。
-   *
-   * @param {FrameNode} parent 目标容器（须为自动布局且宽度确定）
-   * @param {string} content 注释文案
-   * @returns {TextNode} 已挂载的文本节点
-   */
-  function wrapNote(parent, content) {
-    var t = text(content, 'caption', 'color/text-secondary');
-    t.textAutoResize = 'HEIGHT';
-    parent.appendChild(t);
-    t.layoutSizingHorizontal = 'FILL';
-    return t;
-  }
 
   b.appendChild(text('T6 四组件（不在 §10.1 页面清单内）', 'h2'));
 
@@ -7342,11 +7589,14 @@ async function batchModal() {
   await hydrateComponents();
   var reset = await resetSection(SECTION_NAMES.modal, SECTION_Y.modal);
   var page = reset.page;
-  var frames = [buildCategorySelector(), buildMapSelector(), buildCertModal(), buildT6Board()];
+  var frames = [
+    buildCategorySelector(), buildMapSelector(), buildCertModal(),
+    buildT6Board(), buildL2IconBoard()
+  ];
   layout(reset.section, frames, 4, 0);
   var orphans = sweepOrphans(page);
   figma.viewport.scrollAndZoomIntoView(frames);
-  return '批次 4 完成\n生成：category-selector / map-selector / cert-modal\n+ T6 五组规格板（含 20px 真实尺寸对照条）'
+  return '批次 4 完成\n生成：category-selector / map-selector / cert-modal\n+ T6 五组规格板（含 20px 真实尺寸对照条）\n+ 二级分类图标规格板（21 个 × 40/20/14 三档 + 双态）'
     + '\n清空旧内容 ' + reset.cleared + ' 个｜清扫游离零件 ' + orphans + ' 个';
 }
 

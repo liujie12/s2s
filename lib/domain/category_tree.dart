@@ -117,6 +117,17 @@ ListingCategory? _topCategoryOfTopId(int topId) => switch (topId) {
   _ => null,
 };
 
+/// 由叶子类目 ID 取所属二级类目 ID（编号规则见 [CategoryNode.id]）。
+///
+/// 参数 [leafCategoryId] 服务端下发的叶子类目 ID（如 `10101`）。
+/// 返回：二级类目 ID（如 `101`）。**不做合法性校验** —— 未登记的编号由调用方
+///   按「查不到」降级（与 [topCategoryOf] 返回 null 同取向）。
+///
+/// 为什么单独成一个函数而不是各处写 `leaf ~/ 100`：这条整除规则与
+/// [categoryPathOf] 的回溯是同一份契约，散在调用点写就会有一处写错而无人发现
+/// —— 表现是「某个分类的图标不对」，肉眼极难归因。
+int midCategoryIdOf(int leafCategoryId) => leafCategoryId ~/ 100;
+
 /// 由**叶子类目 ID** 反查一级大类（详细设计 §10.4.1 第 2、3 步）。
 ///
 /// 这是 `listingCategoryFromId` 的替代品。后者把服务端下发的叶子类目 ID

@@ -94,6 +94,20 @@ void main() {
       ).cast<SinglePointMarker>().map((m) => m.listingId);
       expect(ids.toSet(), points.map((p) => p.id).toSet());
     });
+
+    test('单点透传叶子类目 ID —— 渲染层靠它取二级字形', () {
+      final points = [
+        const ClusterPoint(
+          id: '10101-0',
+          x: 0,
+          y: 0,
+          leafCategoryId: 10101,
+          topCategory: ListingCategory.work,
+        ),
+      ];
+      final marker = _build(points).single as SinglePointMarker;
+      expect(marker.leafCategoryId, 10101);
+    });
   });
 
   group('聚合 Marker 尺寸三档（PRD §6.4.2）', () {

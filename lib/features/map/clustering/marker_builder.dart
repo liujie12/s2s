@@ -24,7 +24,10 @@ sealed class MapMarker {
   /// 屏幕纵坐标（逻辑像素，Marker 中心）。
   final double y;
 
-  /// 一级大类，渲染层据此取配色与图标。
+  /// 一级大类，渲染层据此取配色。
+  ///
+  /// 圆心字形属二级（见 [SinglePointMarker.leafCategoryId]）；聚合圈只有配色与数字，
+  /// 不需要二级信息。
   ///
   /// 可空：本地分类树版本落后时查不到大类是预期内状态（§16.4），
   /// 渲染层应改用中性配色（`neutralCategoryColor`）而**不是丢弃该 Marker**。
@@ -38,10 +41,18 @@ class SinglePointMarker extends MapMarker {
     required super.y,
     required super.topCategory,
     required this.listingId,
+    this.leafCategoryId,
   });
 
   /// 本地帖子标识。回传服务端前须转 `int`（详细设计 §10.4.3）。
   final String listingId;
+
+  /// 叶子类目 ID（服务端口径，如 `10101`），由 [ClusterPoint.leafCategoryId] 透传。
+  ///
+  /// 渲染层据此取所属**二级**的字形（PRD §6.4.2 二级图标映射表）。
+  /// 只影响绘制、不参与聚合，故不必提升为必填：直接构造 Marker 的测试与
+  /// 降级路径可留空，渲染层会退回一级字形。
+  final int? leafCategoryId;
 }
 
 /// 聚合 Marker，代表多条信息。
@@ -128,6 +139,9 @@ List<MapMarker> buildMarkers(
           y: p.y,
           topCategory: p.topCategory,
           listingId: id,
+          // 二级字形要靠叶子 ID 才能取到：不在这里透传，渲染层就只剩一级大类，
+          // 同族 3–5 个二级在地图上又会长得一模一样（PRD §6.4.2）。
+          leafCategoryId: p.leafCategoryId,
         ),
       );
     }

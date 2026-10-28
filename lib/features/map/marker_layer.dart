@@ -161,7 +161,8 @@ double _radiusOf(MapMarker marker, String? selectedListingId) {
 ///字形映射、度量），成本远高于 `paint()`。原实现每个 Marker 每帧新建一个
 /// TextPainter，5 万点即每帧 5 万次整形 —— 实测单帧 2.48 秒，且每点耗时
 /// 从 1 万点的 25.7µs 反弹到 5 万点的 49.7µs（超线性，来自大量短命对象的
-/// GC 压力）。而实际组合极少：图标只有 5 分类 × 2 配色 × 2 尺寸。
+/// GC 压力）。而实际组合极少：字形 21 个二级 + 中性（未登记时退回一级的 5 个），
+/// 每种 × 2 配色 × 2 尺寸，上界仍只有几十个；聚合数字再多也只是几十个取值。
 ///
 /// **为什么是顶层而非 painter 字段**：`_MarkerPainter` 每帧都是新实例，
 /// 挂在实例上等于没缓存。
@@ -286,7 +287,12 @@ class _MarkerPainter extends CustomPainter {
     final category = marker.topCategory;
     // 同 _paintCluster：查不到大类时降级为中性配色，Pin 仍然画出来。
     final Color pinColor = category?.color ?? neutralCategoryColor;
-    final IconData pinIcon = category?.icon ?? neutralCategoryIcon;
+    // 圆心字形按**二级**取（PRD §6.4.2 二级图标映射表，2026-10-28）：
+    // 一级只有 5 个字形，同族 3–5 个二级共用一个时，密集处读不出「这一片在租什么」。
+    // 两级都查不到才用中性图标 —— 顺序不能反过来，否则一级字形会盖住二级。
+    final IconData pinIcon = category == null
+        ? neutralCategoryIcon
+        : l2CategoryIcon(marker.leafCategoryId) ?? category.icon;
     final isSelected = marker.listingId == selectedListingId;
     final double diameter = isSelected
         ? kSelectedMarkerDiameter

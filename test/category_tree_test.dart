@@ -11,9 +11,11 @@
 /// 这种缺陷在页面上极不显眼，正属机读盲区与人眼盲区的重叠处。
 library;
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zhaoyazhao/domain/category_tree.dart';
 import 'package:zhaoyazhao/domain/listing_category.dart';
+import 'package:zhaoyazhao/domain/listing_category_style.dart';
 
 void main() {
   group('结构规模与层级', () {
@@ -190,6 +192,51 @@ void main() {
           expect(leaf.requiredCert, RequiredCert.none, reason: leaf.name);
         }
       }
+    });
+  });
+
+  group('二级图标映射（PRD §6.4.2 二级图标映射表）', () {
+    /// 每个二级取一个代表叶子（本函数只认叶子 ID，二级 ID 直接传入会查不到）。
+    List<int> leafIds() => [
+      for (final top in categoryTree)
+        for (final mid in top.children) mid.children.first.id,
+    ];
+
+    test('21 个二级全部有字形，且两两不同 —— 同族共用字形等于没做二级区分', () {
+      final ids = leafIds();
+      expect(ids.length, 21);
+      final icons = [for (final id in ids) l2CategoryIcon(id)];
+      expect(
+        icons.where((i) => i == null),
+        isEmpty,
+        reason: '有二级类目没登记字形',
+      );
+      expect(
+        icons.toSet().length,
+        ids.length,
+        reason: '存在两个二级类目共用同一字形，密集处仍读不出差别',
+      );
+    });
+
+    test('叶子 ID 能查到所属二级字形；未知叶子与空值返回 null 由调用方降级', () {
+      for (final leaf in leafCategories) {
+        expect(
+          l2CategoryIcon(leaf.id),
+          isNotNull,
+          reason: '叶子 ${leaf.id}（${leaf.name}）查不到二级字形',
+        );
+      }
+      // 空值与未登记编号必须返回 null 而不是兜底成某个字形：
+      // 兜底会把「分类树落后」伪装成「图标选错了」。
+      expect(l2CategoryIcon(null), isNull);
+      expect(l2CategoryIcon(99999), isNull);
+    });
+
+    test('抽查四条：一级母题下沉与两对易混项按 PRD 表落位', () {
+      expect(l2CategoryIcon(10101), Icons.work); // 101 与一级同形（母题下沉）
+      expect(l2CategoryIcon(40202), Icons.volunteer_activism); // 402 同上
+      expect(l2CategoryIcon(40301), Icons.search); // 403 找物
+      expect(l2CategoryIcon(30401), Icons.hail); // 304 求搭车，与 301 同乘区分
     });
   });
 

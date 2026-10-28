@@ -741,6 +741,10 @@ const wrapped = new Function(
       // 2026-08-31：四个模态从建成起从未出过渲染图，本轮补图时量出 T6 板两组
       // 子节点溢出画框（+834 / +280）。溢出只能真跑量宽，源码看不出
       'buildCategorySelector', 'buildMapSelector', 'buildCertModal', 'buildT6Board',
+      // 2026-10-28：二级图标规格板。21 个二级 × 资源/需求双态 × 三档尺寸，
+      // 数量与字形对应关系只有真跑一遍数得出来；L2_ICONS 导出供断言现算期望名，
+      // 不在探针里手抄一份编码表（原则㊾）
+      'buildL2IconBoard', 'L2_ICONS',
       // 条目 [70-h]（2026-08-31）：过程态六档 / 半径四档 / 权限两态三张表必须由
       // 断言拿真源去核。这三处的病根都是「表里写对了，画面没画出来」——
       // 探针在自己这边手抄一份期望值，验的就是抄本自己，永远绿（原则㊾）
@@ -1404,6 +1408,12 @@ function allText(root) {
   // · `_ai-tag` 原直接写 TIGHT_GAP，回改为读 TAG_SPECS.mark.padV，出现位置从
   //   实处搬到表定义处 —— 行数不变（一进一出），但性质变好了：这一族的
   //   豁免取值现在只在真源表里出现一次，实处不再各写一份。
+  //
+  // 期望值 8 → 9（2026-10-28，二级图标规格板）：
+  // · `l2IconRow` 的「图标 + 下方名称/编码」用 TIGHT_GAP 作纵向间距。这与
+  //   既有 8 处同性质 —— 同一格内两个要素的紧贴，不是单元之间的通用间距；
+  //   若改用 SPACING.xs 会把「图标与它的名称」拉开成两个层级。
+  //   加处即评审一次，正是这条断言的设计目的，故同步登记而非放宽成区间。
   // 刻意不在此处写 code.js 的行号：行号会随改动漂移，上一版注释里的
   // 「:2826 / :4372」两个行号在本轮已双双失效，反而误导人。要定位就搜节点名。
   const tightLines = code
@@ -1411,8 +1421,8 @@ function allText(root) {
     .map((ln, idx) => ({ ln, no: idx + 1 }))
     .filter((x) => x.ln.indexOf('TIGHT_GAP') >= 0 && !/var TIGHT_GAP\s*=/.test(x.ln));
   check(
-    'TIGHT_GAP 用量锁定 8 处（涨了说明它被当通用间距用，豁免理由需重新评审）',
-    tightLines.length === 8,
+    'TIGHT_GAP 用量锁定 9 处（涨了说明它被当通用间距用，豁免理由需重新评审）',
+    tightLines.length === 9,
     '实测 ' + tightLines.length + ' 处调用（行号 ' + tightLines.map((x) => x.no).join('/') + '）'
   );
 
@@ -5236,7 +5246,8 @@ function allText(root) {
         'buildPublish', 'buildContact', 'buildProfile', 'buildMyPublish',
         'buildMyFavorite', 'buildNotification', 'buildTrust', 'buildSettings',
         'buildAiConfirm', 'buildPublishSuccess',
-        'buildCategorySelector', 'buildMapSelector', 'buildCertModal', 'buildT6Board'];
+        'buildCategorySelector', 'buildMapSelector', 'buildCertModal', 'buildT6Board',
+        'buildL2IconBoard'];
       const over = [];
       pageFns.forEach((fn) => {
         if (typeof M[fn] !== 'function') return;
@@ -5256,6 +5267,30 @@ function allText(root) {
         + '（长文案须设 textAutoResize=HEIGHT，否则单行无限横铺把 AUTO 宽容器撑破）',
         over.length === 0,
         over.length ? pj(over) : '已扫 ' + pageFns.length + ' 个构造器，无溢出'
+      );
+    }
+
+    // ---------- 二级图标规格板的双态覆盖（2026-10-28） ----------
+    //
+    // 21 个二级 × 资源/需求 = 42 个 Pin，缺一个的表现只是「板子上少一格」，
+    // 而少的那格恰好可能是「需求态被 ? 角标压糊」的那一行 —— 这正是本板要审的东西。
+    // 编码与图标的对应关系从 L2_ICONS 现算，不在探针里手抄一份（原则㊾）。
+    {
+      const board = M.buildL2IconBoard();
+      const pins = board.findAll((n) => typeof n.name === 'string' && n.name.indexOf('pin/') === 0);
+      const want = [];
+      Object.keys(M.L2_ICONS).forEach((fam) => {
+        M.L2_ICONS[fam].forEach((row) => {
+          want.push('pin/' + fam + '/' + row[1] + '/resource');
+          want.push('pin/' + fam + '/' + row[1] + '/demand');
+        });
+      });
+      const got = pins.map((p) => p.name).sort();
+      const missing = want.filter((w) => got.indexOf(w) === -1);
+      check(
+        '二级图标板：21 个二级 × 资源/需求 = ' + want.length + ' 个 Pin 全部落位',
+        missing.length === 0 && got.length === want.length,
+        missing.length ? '缺 ' + pj(missing.slice(0, 8)) : '共 ' + got.length + ' 个 Pin'
       );
     }
 
