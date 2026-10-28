@@ -80,6 +80,9 @@ class _QualificationFormScreenState extends ConsumerState<QualificationFormScree
   /// 最近一次添加成功的证书名（「已添加」态回显）。
   String? _lastAddedName;
 
+  /// 媒体段重建代数：清空表单时换 key，确保缩略图与内部上传态一并清掉。
+  int _formEpoch = 0;
+
   /// 清空表单（添加成功后再新增一张时复用同一页面）。
   ///
   /// 参数：无。
@@ -95,6 +98,7 @@ class _QualificationFormScreenState extends ConsumerState<QualificationFormScree
     _nameCtrl.clear();
     _applyingOcr = false;
     _error = null;
+    _formEpoch++;
   }
 
   /// 是否编辑态。
@@ -210,9 +214,9 @@ class _QualificationFormScreenState extends ConsumerState<QualificationFormScree
 
   /// 提交（添加走 POST，编辑走 PATCH）。
   ///
-  /// 参数：无。
+  /// 参数：[continueAfterSave] 添加成功后是否留在表单继续添加下一张。
   /// 返回：[Future<void>]。
-  Future<void> _submit() async {
+  Future<void> _submit({bool continueAfterSave = false}) async {
     if (!_isEditing && _mediaIds.isEmpty) {
       setState(() => _error = '请至少上传一张证照图');
       return;
@@ -261,11 +265,16 @@ class _QualificationFormScreenState extends ConsumerState<QualificationFormScree
       // 添加成功：留在本页，可「继续新增资质」，不必返回档案页再进一次。
       setState(() {
         _added = true;
-        _justAdded = true;
         _submitting = false;
         _lastAddedName = name;
         _resetForm();
+        _justAdded = !continueAfterSave;
       });
+      if (continueAfterSave) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('已添加，可继续添加下一张')),
+        );
+      }
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -449,7 +458,9 @@ class _QualificationFormScreenState extends ConsumerState<QualificationFormScree
           ],
           const SizedBox(height: AppSpacing.sm),
           MediaSection(
+            key: ValueKey('cert-media-$_formEpoch'),
             maxCount: NfrMedia.maxMediaCount,
+            simple: true,
             onChanged: _onMediaChanged,
           ),
           if (_ocrLoading)
@@ -515,6 +526,21 @@ class _QualificationFormScreenState extends ConsumerState<QualificationFormScree
                   : const Text('提交'),
             ),
           ),
+          if (!_isEditing) ...[
+            const SizedBox(height: AppSpacing.md),
+            SizedBox(
+              height: 48,
+              child: OutlinedButton(
+                onPressed: busy ? null : () => _submit(continueAfterSave: true),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(AppColors.primary),
+                  side: const BorderSide(color: Color(AppColors.primary)),
+                  shape: const StadiumBorder(),
+                ),
+                child: const Text('继续添加证件'),
+              ),
+            ),
+          ],
           if (_isEditing) ...[
             const SizedBox(height: AppSpacing.md),
             TextButton(

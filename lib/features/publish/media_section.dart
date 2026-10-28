@@ -86,12 +86,15 @@ class MediaSection extends ConsumerStatefulWidget {
   /// 参数：
   /// - [onChanged] 已成功上传的 mediaId 列表变化回调；
   /// - [initialMedia] 既有媒体（编辑/重发态回显），默认空；
-  /// - [maxCount] 上限，默认 [kMaxImageCount]。
+  /// - [maxCount] 上限，默认 [kMaxImageCount]；
+  /// - [simple] 精简模式（资质证照等非帖子媒体）：不显示封面角标、裁剪入口与
+  ///   「第 1 张为详情封面 / 可裁剪」提示，只保留拍摄、相册与计数。
   const MediaSection({
     super.key,
     required this.onChanged,
     this.initialMedia = const <({String mediaId, String url})>[],
     this.maxCount = kMaxImageCount,
+    this.simple = false,
   });
 
   /// 已成功上传的 mediaId 列表变化回调。
@@ -106,6 +109,9 @@ class MediaSection extends ConsumerStatefulWidget {
 
   /// 张数上限。
   final int maxCount;
+
+  /// 精简模式（不显示「封面」角标、裁剪入口与帖子专属提示）。
+  final bool simple;
 
   @override
   ConsumerState<MediaSection> createState() => _MediaSectionState();
@@ -509,13 +515,14 @@ class _MediaSectionState extends ConsumerState<MediaSection>
                 _Thumb(
                   item: _items[i],
                   position: i + 1,
-                  isCover: i == 0,
+                  isCover: i == 0 && !widget.simple,
                   onRemove: () => _remove(_items[i]),
                   onRetry: () => _upload(_items[i]),
                   // 只有仍有本地字节、不在上传中、且没有待重试错误的条目才能裁剪：
                   // 上传中替换会让在途请求的结果落到已丢弃的对象上；失败态整块是
                   // 「重试」按钮，再叠裁剪入口会互相抢点击。
-                  onCrop: _items[i].bytes != null &&
+                  onCrop: !widget.simple &&
+                          _items[i].bytes != null &&
                           !_items[i].uploading &&
                           _items[i].error == null
                       ? () => _crop(_items[i])
@@ -558,7 +565,7 @@ class _MediaSectionState extends ConsumerState<MediaSection>
           ),
         const SizedBox(height: AppSpacing.xs),
         Text(
-          isEmpty
+          isEmpty || widget.simple
               ? '${_items.length} / ${widget.maxCount} · 支持图片'
               : '${_items.length} / ${widget.maxCount} · 第 1 张为详情封面',
           style: TextStyle(
@@ -568,7 +575,7 @@ class _MediaSectionState extends ConsumerState<MediaSection>
         ),
         // 只在存在可裁剪的本地图片时提示：编辑态的远程既有媒体没有本地字节，
         // 提示了也点不了，反而制造「功能坏了」的错觉。
-        if (_items.any((item) => item.bytes != null))
+        if (!widget.simple && _items.any((item) => item.bytes != null))
           Padding(
             padding: const EdgeInsets.only(top: AppSpacing.xs),
             child: Row(
