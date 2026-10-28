@@ -36,7 +36,8 @@
 #   时放行，理由写入发版日志构成留证。判据写得再严，没有调用方消费就不是卡点。
 #
 # 环境变量（可选）：
-#   SITE_DOMAIN            传入 gate-check.sh 的 G6（HTTP→HTTPS 301）判据；缺省 zhaoyazhaoapp.com
+#   SITE_DOMAIN            传入 gate-check.sh 的 G6（HTTP→HTTPS 301）判据；缺省 s2s.build110.com
+#                          （zhaoyazhaoapp.com 待 ICP 备案下号，当前不可用，传它会 G6 FAIL）
 #   GATE_MANUAL_CONFIRMED  人工确认项声明（如 "G5,G7"），透传给 gate-check.sh
 #
 # 退出码：0 成功 / 1 前置校验失败、门禁未通过或任一发版步骤失败
@@ -58,8 +59,8 @@ TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 GIT_PULL_MAX_ATTEMPTS=3
 GIT_PULL_RETRY_DELAY_SECONDS=15
 
-# G6 判据所需域名。允许调用方覆盖，默认取生产域名。
-SITE_DOMAIN="${SITE_DOMAIN:-zhaoyazhaoapp.com}"
+# G6 判据所需域名。允许调用方覆盖，默认取当前线上域名（zhaoyazhaoapp.com 待备案下号后再切换）。
+SITE_DOMAIN="${SITE_DOMAIN:-s2s.build110.com}"
 
 SKIP_PULL=0
 GATE_ALLOW_SKIP=0
