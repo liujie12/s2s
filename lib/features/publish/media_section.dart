@@ -259,6 +259,10 @@ class _MediaSectionState extends ConsumerState<MediaSection>
   /// 参数：[picked] 拍摄结果。
   /// 返回：[_AspectDecision] 使用 / 裁剪 / 重拍。
   Future<_AspectDecision> _aspectDecisionFor(PickedMedia picked) async {
+    // 资质表单（simple）不参与详情页比例约束：不弹「重拍 / 裁剪 / 仍然使用」，
+    // 否则会出现「本次发布不再提示」这类发布语义串场到资质页。
+    if (widget.simple) return _AspectDecision.use;
+
     // 用户已选「本次不再提示」：后续拍摄直接放行，不再逐张确认。
     if (_skipAspectWarn) return _AspectDecision.use;
 

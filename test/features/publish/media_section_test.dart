@@ -259,6 +259,49 @@ void main() {
     expect(find.text('1 / 9 · 第 1 张为详情封面'), findsOneWidget);
     expect(uploader.uploaded.length, 1);
   });
+
+  testWidgets('资质表单（simple）拍超比例图：不弹比例提示，直接入列上传', (tester) async {
+    final uploader = _FakeUploadService();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          mediaPickerProvider.overrideWithValue(
+            _FakePicker(
+              PickedMedia(
+                filename: 'cam.jpg',
+                bytes: _solidJpeg(width: 1200, height: 900),
+                contentType: 'image/jpeg',
+              ),
+            ),
+          ),
+          imageSizeReaderProvider.overrideWithValue(
+            (bytes) async => (width: 1200, height: 900),
+          ),
+          mediaNormalizerProvider.overrideWithValue(
+            (input) async => PickedMedia(
+              filename: input.filename,
+              bytes: input.bytes,
+              contentType: 'image/jpeg',
+            ),
+          ),
+          mediaUploadServiceProvider.overrideWithValue(uploader),
+        ],
+        child: MaterialApp(
+          home: Scaffold(body: MediaSection(onChanged: (_) {}, simple: true)),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('拍照'));
+    await tester.pumpAndSettle();
+
+    // 资质页不参与详情页比例约束：三选一与「本次发布不再提示」都不应出现。
+    expect(find.text('这张照片的比例和详情页不一致'), findsNothing);
+    expect(find.text('本次发布不再提示'), findsNothing);
+    expect(find.text('1 / 9 · 支持图片'), findsOneWidget);
+    expect(uploader.uploaded.length, 1);
+  });
 }
 
 /// 假选图器：固定返回一张图。
