@@ -2,12 +2,9 @@
 ///
 /// 口径（帖子凭证方案 R1/R6/R7）：
 ///   - 默认「本次不展示」，不阻断发布、不产生 precheck 阻断码；
-///   - 候选只列本人当前有效（`approved` 且未过期）的资质；
+///   - 候选只列本人已添加（`approved`）的资质；
 ///   - 没有候选时不显示「本次不展示」——不选就是等价的表达，多一个同名选项
 ///     只是多一次点击（原型说明 §7）。
-///
-/// 候选数据只走 `GET /cert/status`，不在客户端按 `expire_at` 二次推算：
-/// 到期由服务端每日任务写 `expired`，客户端再算一遍会产生两个真源。
 library;
 
 import 'package:flutter/material.dart';
@@ -20,7 +17,7 @@ import '../../router/app_router.dart';
 import 'cert_models.dart';
 import 'cert_repository.dart';
 
-/// 可挂载候选（`approved` 且未过期）。
+/// 可挂载候选（`approved`）。
 final certCandidatesProvider = FutureProvider<List<CertQualification>>((ref) async {
   final status = await ref.watch(certRepositoryProvider).fetchCertStatus();
   return status.attachableQualifications;
@@ -91,7 +88,6 @@ class CertMountSection extends ConsumerWidget {
                 for (final item in items)
                   _PickRow(
                     label: item.displayName,
-                    meta: item.archiveStatusLabel,
                     selected: certId == item.certId,
                     enabled: enabled,
                     onTap: () => onChanged(item.certId),
@@ -156,7 +152,6 @@ Future<CertPickResult> showCertPickerSheet(
           for (final item in candidates)
             ListTile(
               title: Text(item.displayName),
-              subtitle: Text(item.archiveStatusLabel),
               onTap: () => Navigator.pop(
                 sheetContext,
                 (confirmed: true, certId: item.certId),
@@ -177,15 +172,14 @@ Future<CertPickResult> showCertPickerSheet(
   return result ?? (confirmed: false, certId: null);
 }
 
-/// 候选行（单选圆点 + 名称 + 有效期）。
+/// 候选行（单选圆点 + 名称）。
 class _PickRow extends StatelessWidget {
   /// 构造候选行。
   ///
-  /// 参数：[label] 名称；[meta] 有效期文案（可空）；[selected] 是否选中；
+  /// 参数：[label] 名称；[selected] 是否选中；
   ///   [enabled] 是否可点；[onTap] 点按回调。
   const _PickRow({
     required this.label,
-    this.meta,
     required this.selected,
     required this.enabled,
     required this.onTap,
@@ -193,9 +187,6 @@ class _PickRow extends StatelessWidget {
 
   /// 名称。
   final String label;
-
-  /// 有效期文案。
-  final String? meta;
 
   /// 是否选中。
   final bool selected;
@@ -229,14 +220,6 @@ class _PickRow extends StatelessWidget {
                 ),
               ),
             ),
-            if (meta != null)
-              Text(
-                meta!,
-                style: TextStyle(
-                  fontSize: AppTypeScale.small.size,
-                  color: const Color(AppColors.textSecondary),
-                ),
-              ),
           ],
         ),
       ),

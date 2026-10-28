@@ -852,8 +852,8 @@ U2 浏览时按分类筛选：首页一级分类 Tab → 列表页二级筛选 �
 |---|---|
 | 二要素 3 次失败 | 锁 24h，需人工申诉 |
 | 同一身份多账号 | 一个身份证最多绑定 2 个账号 |
-| OCR 识别失败 | 证名与有效期留空并提示手动填写，不阻断提交 |
-| 资质有效期 | 到期由每日任务置为失效，档案显示"已于 YYYY-MM 过期"，已挂载的信息保留主行并追加一行中性说明；到期前 30 天提醒见通知中心（本轮不做） |
+| OCR 识别失败 | 证名留空并提示手动填写，不阻断提交 |
+| 资质有效期 | **本轮不采集有效期**（2026-10-28 简化）：无到期流转、无过期态、无提醒；资质只有「证书名 + 证照图」 |
 | 累计风险分 ≥60 触发复核 | 自动下架 + 推送通知给本人 + 运营待审列表（唯一口径见 §9.10.3） |
 
 ---
@@ -2424,11 +2424,11 @@ POC 拆为**算法级（POC-A）与定标级（POC-B）两级**，二者回答�
 | 方法 | 路径 | 说明 | 关键出入参 | 来源 |
 |---|---|---|---|---|
 | POST | `/cert/realname` | 实名二要素核验 | in: `real_name`,`id_card`,`agreement_accepted`；out: `status` | §4 二要素核验接口 |
-| POST | `/cert/qualification` | 新增资质（提交即生效，见 §4.7） | in: `cert_type`,`media_ids[]`,`cert_name`,`name_source`,`expire_type`,`expire_at`；out: `cert_id`,`status` | §4 |
-| PATCH | `/cert/qualification/{cert_id}` | 编辑资质（改名/改有效期/换图） | in: 同新增字段但全部可选；out: `cert_id`,`status` | §4 |
+| POST | `/cert/qualification` | 新增资质（提交即生效，见 §4.7） | in: `media_ids[]`,`cert_name`,`name_source`；out: `cert_id`,`status` | §4 |
+| PATCH | `/cert/qualification/{cert_id}` | 编辑资质（改名/换图） | in: 同新增字段但全部可选；out: `cert_id`,`status` | §4 |
 | DELETE | `/cert/qualification/{cert_id}` | 删除资质（连同证照原件） | out: `data=null` | §4 |
-| POST | `/cert/ocr` | 证照图抽取证名与有效期（预填） | in: `media_id`；out: `cert_name`,`expire_at`（均可空） | §4 |
-| GET | `/cert/status` | 认证状态与资质档案 | out: `realname{status}`,`qualifications[]{cert_id,cert_type,cert_name,name_source,status,expire_type,expire_at,image_url}` | §4 |
+| POST | `/cert/ocr` | 证照图抽取证书名（预填） | in: `media_id`；out: `cert_name`（可空） | §4 |
+| GET | `/cert/status` | 认证状态与资质档案 | out: `realname{status}`,`qualifications[]{cert_id,cert_name,name_source,status,image_url}` | §4 |
 
 - 响应**只回状态与脱敏值**，身份证号一律返回 `****后4位`，姓名返回掩码（§4.7 / §9.6 同一口径）。
 

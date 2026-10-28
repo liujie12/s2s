@@ -9,7 +9,11 @@ import java.time.LocalDateTime;
  * 帖级凭证声明实体（V22 新表 {@code post_cert_declaration}）。
  *
  * <p>职责：一条帖子最多一条声明记录，携带发布/补挂瞬间的资质快照。快照列只在写入时落值，
- * 之后换证、续期、改名都不回溯——详情页主行恒为「发布时事实」。</p>
+ * 之后换证、改名都不回溯——详情页主行恒为「发布时事实」。</p>
+ *
+ * <p><b>V23</b>：资质取消「类型 + 有效期」，本表随之删除 {@code cert_type}、
+ * {@code expire_at_snapshot}、{@code expire_type_snapshot}、{@code cert_status_snapshot}，
+ * 只留证名快照。</p>
  *
  * <p>为什么独立成表而不是给 {@code post} 加可空列：补挂不能改 {@code post} 行，否则
  * 「补挂不改帖子时间」只能靠约定守住；一帖一证由 {@code uk_post} 在结构上保证。</p>
@@ -27,20 +31,8 @@ public class PostCertDeclarationEntity {
     /** 引用的 cert ID；证书被删除后行内保留原值，读取侧按「记录不存在」判为已失效。 */
     private Long certId;
 
-    /** 证件类型快照（不含个人实名）。 */
-    private String certType;
-
     /** 证名快照（永不改写）。 */
     private String certNameSnapshot;
-
-    /** 有效期快照；长期有效为 {@code null}。 */
-    private LocalDateTime expireAtSnapshot;
-
-    /** 有效期类型快照（{@code dated}/{@code permanent}）。 */
-    private String expireTypeSnapshot;
-
-    /** 关联瞬间的凭证状态（{@code approved}/{@code expired}）；{@code expired} 表示脏数据，展示侧整块不渲染。 */
-    private String certStatusSnapshot;
 
     /** 声明时间（发布时或补挂时）。 */
     private LocalDateTime declaredAt;
@@ -103,24 +95,6 @@ public class PostCertDeclarationEntity {
     }
 
     /**
-     * 返回证件类型快照。
-     *
-     * @return 证件类型快照
-     */
-    public String getCertType() {
-        return certType;
-    }
-
-    /**
-     * 设置证件类型快照。
-     *
-     * @param certType 证件类型快照
-     */
-    public void setCertType(String certType) {
-        this.certType = certType;
-    }
-
-    /**
      * 返回证名快照。
      *
      * @return 证名快照
@@ -136,60 +110,6 @@ public class PostCertDeclarationEntity {
      */
     public void setCertNameSnapshot(String certNameSnapshot) {
         this.certNameSnapshot = certNameSnapshot;
-    }
-
-    /**
-     * 返回有效期快照。
-     *
-     * @return 有效期快照（长期有效为 {@code null}）
-     */
-    public LocalDateTime getExpireAtSnapshot() {
-        return expireAtSnapshot;
-    }
-
-    /**
-     * 设置有效期快照。
-     *
-     * @param expireAtSnapshot 有效期快照
-     */
-    public void setExpireAtSnapshot(LocalDateTime expireAtSnapshot) {
-        this.expireAtSnapshot = expireAtSnapshot;
-    }
-
-    /**
-     * 返回有效期类型快照。
-     *
-     * @return 有效期类型快照（{@code dated}/{@code permanent}）
-     */
-    public String getExpireTypeSnapshot() {
-        return expireTypeSnapshot;
-    }
-
-    /**
-     * 设置有效期类型快照。
-     *
-     * @param expireTypeSnapshot 有效期类型快照
-     */
-    public void setExpireTypeSnapshot(String expireTypeSnapshot) {
-        this.expireTypeSnapshot = expireTypeSnapshot;
-    }
-
-    /**
-     * 返回关联瞬间的凭证状态。
-     *
-     * @return 凭证状态快照（{@code approved}/{@code expired}）
-     */
-    public String getCertStatusSnapshot() {
-        return certStatusSnapshot;
-    }
-
-    /**
-     * 设置关联瞬间的凭证状态。
-     *
-     * @param certStatusSnapshot 凭证状态快照
-     */
-    public void setCertStatusSnapshot(String certStatusSnapshot) {
-        this.certStatusSnapshot = certStatusSnapshot;
     }
 
     /**

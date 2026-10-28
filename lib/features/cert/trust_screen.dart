@@ -2,7 +2,7 @@
 ///
 /// 结构（对齐设计稿 `buildTrust`）：
 ///   ① 第一层 · 个人实名（成功描边卡，通过态 doneTag；未通过则给「去完成实名」入口）
-///   ② 第二层 · 资质认证 —— **资质档案列表**（每张证一行：证名 + 有效期状态 + 编辑 ›，
+///   ② 第二层 · 资质认证 —— **资质档案列表**（每张证一行：证名 + 已添加 + 编辑 ›，
 ///      底部「＋ 添加资质」）
 ///   ③ 我的信任指标（实名 / 资质 N 项 / 完整度 + 在架信息完整度分布 + T4 红线注）
 ///
@@ -174,8 +174,7 @@ class _Layer1Card extends StatelessWidget {
 }
 
 /// 第二层卡（资质档案列表）。
-class _Layer2Card extends StatelessWidget {
-  /// 构造第二层卡。
+class _Layer2Card extends StatelessWidget {  /// 构造第二层卡。
   ///
   /// 参数：[cert] 认证状态；[onEdit] 编辑某张资质；[onAdd] 添加资质。
   const _Layer2Card({
@@ -216,7 +215,7 @@ class _Layer2Card extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.xs),
           Text(
-            '由你自行提供，平台未核验；不添加也不影响发布',
+            '由你自行提供；不添加也不影响发布',
             style: TextStyle(
               fontSize: AppTypeScale.small.size,
               color: Color(AppColors.textSecondary),
@@ -256,7 +255,7 @@ class _Layer2Card extends StatelessWidget {
   }
 }
 
-/// 资质档案行（证名 + 有效期状态 + 编辑 ›）。
+/// 资质档案行（证名 + 已添加 + 编辑 ›）。
 class _CertRow extends StatelessWidget {
   /// 构造资质档案行。
   ///
@@ -271,14 +270,6 @@ class _CertRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 过期是事实不是过错：沿用中性灰（与详情页说明行同一口径），不用红色。
-    final (int dotColor, int textColor) = switch (item.status) {
-      CertQualification.statusApproved => (AppColors.success, AppColors.successText),
-      CertQualification.statusExpired => (AppColors.textSecondary, AppColors.textSecondary),
-      CertQualification.statusRejected => (AppColors.error, AppColors.errorText),
-      _ => (AppColors.warning, AppColors.warningText),
-    };
-
     return Row(
       children: [
         Expanded(
@@ -293,22 +284,12 @@ class _CertRow extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: AppSpacing.xs),
-              Row(
-                children: [
-                  Container(
-                    width: 9,
-                    height: 9,
-                    decoration: BoxDecoration(color: Color(dotColor), shape: BoxShape.circle),
-                  ),
-                  const SizedBox(width: AppSpacing.xs),
-                  Text(
-                    item.archiveStatusLabel,
-                    style: TextStyle(
-                      fontSize: AppTypeScale.small.size,
-                      color: Color(textColor),
-                    ),
-                  ),
-                ],
+              Text(
+                '已添加',
+                style: TextStyle(
+                  fontSize: AppTypeScale.small.size,
+                  color: Color(AppColors.textSecondary),
+                ),
               ),
             ],
           ),

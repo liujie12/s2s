@@ -27,9 +27,6 @@ import com.s2s.server.common.crypto.Pepper;
 import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
 import com.s2s.server.post.MediaService;
-import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.temporal.ChronoUnit;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -38,8 +35,8 @@ import org.mockito.ArgumentCaptor;
 /**
  * {@link CertService} 测试。
  *
- * <p>覆盖实名认证全链路、资质提交即生效（approved/expired/长期有效）、有效期缺失校验、
- * 档案列表、证照图抽取（成功/上游不可用）、编辑续期回 approved、删除清理证照原件。</p>
+ * <p>覆盖实名认证全链路、资质提交即生效（提交即 approved、证名/来源/长度校验）、
+ * 档案列表、证照图抽取（成功/上游不可用）、编辑改名、删除清理证照原件。</p>
  */
 class CertServiceTest {
 
@@ -82,32 +79,27 @@ class CertServiceTest {
     }
 
     /**
-     * 构造资质提交请求（有到期日）。
+     * 构造资质提交请求（V23：只传证照图 + 证名 + 来源）。
      *
-     * @param expireAt 有效期至（UTC）
      * @return {@link QualificationSubmitRequest} 资质提交请求
      */
-    private QualificationSubmitRequest qualification(Instant expireAt) {
-        return new QualificationSubmitRequest("personal_qualification", List.of("m1"),
-                "家政服务资质", "ocr", "dated", expireAt);
+    private QualificationSubmitRequest qualification() {
+        return new QualificationSubmitRequest(List.of("m1"), "家政服务资质", "ocr");
     }
 
     /**
      * 构造一条已存在的资质记录。
      *
-     * @param status    状态
-     * @param expireAt  到期时间（可空）
-     * @param expireType 有效期类型
+     * @param status 状态
      * @return {@link CertEntity} 资质记录
      */
-    private CertEntity existingCert(String status, LocalDateTime expireAt, String expireType) {
+    private CertEntity existingCert(String status) {
         CertEntity entity = new CertEntity();
         entity.setId(9L);
         entity.setUserId(1L);
         entity.setCertType("personal_qualification");
+        entity.setCertName("家政服务资质");
         entity.setStatus(status);
-        entity.setExpireType(expireType);
-        entity.setExpireAt(expireAt);
         entity.setOcrImageRef("m1");
         return entity;
     }
@@ -173,58 +165,34 @@ class CertServiceTest {
     @Test
     void 未实名提交资质回40302() {
         when(userService.realnameStatusOf(1L)).thenReturn(CertService.REALNAME_STATUS_NONE);
-        assertThatThrownBy(() -> service.submitQualification(1L,
-                qualification(Instant.now().plus(30, ChronoUnit.DAYS))))
+        assertThatThrownBy(() -> service.submitQualification(1L, qualification()))
                 .isInstanceOf(BizException.class)
                 .extracting(e -> ((BizException) e).getErrorCode())
                 .isEqualTo(ErrorCode.QUALIFICATION_NEEDED);
     }
 
     @Test
-    void 提交资质即approved并落证名与有效期() {
+    void 提交资质即approved并落证名() {
         when(userService.realnameStatusOf(1L)).thenReturn(CertService.REALNAME_STATUS_PASSED);
-        QualificationSubmitResult result = service.submitQualification(1L,
-                qualification(Instant.now().plus(30, ChronoUnit.DAYS)));
+        QualificationSubmitResult result = service.submitQualification(1L, qualification());
 
         ArgumentCaptor<CertEntity> captor = ArgumentCaptor.forClass(CertEntity.class);
         verify(certMapper).insert(captor.capture());
         CertEntity saved = captor.getValue();
         assertThat(result.status()).isEqualTo("approved");
         assertThat(saved.getStatus()).isEqualTo("approved");
+        assertThat(saved.getCertType()).isEqualTo("personal_qualification");
         assertThat(saved.getCertName()).isEqualTo("家政服务资质");
         assertThat(saved.getNameSource()).isEqualTo("ocr");
-        assertThat(saved.getExpireType()).isEqualTo("dated");
-        assertThat(saved.getExpireAt()).isNotNull();
         assertThat(saved.getApprovedAt()).isNotNull();
         verify(mediaService).ensureOwned(1L, "m1");
     }
 
     @Test
-    void 提交已过有效期直接expired() {
-        when(userService.realnameStatusOf(1L)).thenReturn(CertService.REALNAME_STATUS_PASSED);
-        QualificationSubmitResult result = service.submitQualification(1L,
-                qualification(Instant.now().minus(1, ChronoUnit.DAYS)));
-        assertThat(result.status()).isEqualTo(CertService.CERT_STATUS_EXPIRED);
-    }
-
-    @Test
-    void 长期有效不写到期时间() {
+    void 证照图为空回40001() {
         when(userService.realnameStatusOf(1L)).thenReturn(CertService.REALNAME_STATUS_PASSED);
         QualificationSubmitRequest request = new QualificationSubmitRequest(
-                "personal_qualification", List.of("m1"), "养老护理员证", "manual", "permanent", null);
-        service.submitQualification(1L, request);
-
-        ArgumentCaptor<CertEntity> captor = ArgumentCaptor.forClass(CertEntity.class);
-        verify(certMapper).insert(captor.capture());
-        assertThat(captor.getValue().getStatus()).isEqualTo("approved");
-        assertThat(captor.getValue().getExpireAt()).isNull();
-    }
-
-    @Test
-    void 有到期日但缺有效期回40001() {
-        when(userService.realnameStatusOf(1L)).thenReturn(CertService.REALNAME_STATUS_PASSED);
-        QualificationSubmitRequest request = new QualificationSubmitRequest(
-                "personal_qualification", List.of("m1"), "证", "manual", "dated", null);
+                List.of(" "), "家政服务资质", "ocr");
         assertThatThrownBy(() -> service.submitQualification(1L, request))
                 .isInstanceOf(BizException.class)
                 .extracting(e -> ((BizException) e).getErrorCode())
@@ -232,10 +200,21 @@ class CertServiceTest {
     }
 
     @Test
-    void 个人实名不能作为资质提交() {
+    void 证名超64字回40001() {
         when(userService.realnameStatusOf(1L)).thenReturn(CertService.REALNAME_STATUS_PASSED);
         QualificationSubmitRequest request = new QualificationSubmitRequest(
-                "personal_realname", List.of("m1"), null, null, "permanent", null);
+                List.of("m1"), "证".repeat(65), "manual");
+        assertThatThrownBy(() -> service.submitQualification(1L, request))
+                .isInstanceOf(BizException.class)
+                .extracting(e -> ((BizException) e).getErrorCode())
+                .isEqualTo(ErrorCode.PARAM_INVALID);
+    }
+
+    @Test
+    void 证名来源非法回40001() {
+        when(userService.realnameStatusOf(1L)).thenReturn(CertService.REALNAME_STATUS_PASSED);
+        QualificationSubmitRequest request = new QualificationSubmitRequest(
+                List.of("m1"), "家政服务资质", "guess");
         assertThatThrownBy(() -> service.submitQualification(1L, request))
                 .isInstanceOf(BizException.class)
                 .extracting(e -> ((BizException) e).getErrorCode())
@@ -245,7 +224,7 @@ class CertServiceTest {
     @Test
     void 查询认证状态返回实名与资质条目() {
         when(userService.realnameStatusOf(1L)).thenReturn(CertService.REALNAME_STATUS_PASSED);
-        CertEntity row = existingCert("approved", LocalDateTime.now().plusDays(1), "dated");
+        CertEntity row = existingCert("approved");
         row.setOcrImageRef(null);
         when(certMapper.selectList(any())).thenReturn(List.of(row));
 
@@ -256,16 +235,14 @@ class CertServiceTest {
     }
 
     @Test
-    void 抽取成功返回证名与有效期() {
-        Instant expire = Instant.now().plus(30, ChronoUnit.DAYS);
+    void 抽取成功返回证名() {
         when(mediaService.signAiReadAccess(1L, "m1"))
                 .thenReturn(new MediaService.AiMediaAccess("https://signed", "image/jpeg"));
         when(aiProvider.extractCertProfile(eq(1L), eq("https://signed"), eq("image/jpeg")))
-                .thenReturn(new CertProfileGuess("家政服务资质", expire));
+                .thenReturn(new CertProfileGuess("家政服务资质"));
 
         CertOcrResult result = service.extractCertProfile(1L, "m1");
         assertThat(result.certName()).isEqualTo("家政服务资质");
-        assertThat(result.expireAt()).isEqualTo(expire);
     }
 
     @Test
@@ -277,7 +254,6 @@ class CertServiceTest {
 
         CertOcrResult result = service.extractCertProfile(1L, "m1");
         assertThat(result.certName()).isNull();
-        assertThat(result.expireAt()).isNull();
     }
 
     @Test
@@ -294,14 +270,12 @@ class CertServiceTest {
     }
 
     @Test
-    void 编辑续期把expired改回approved() {
-        CertEntity row = existingCert(CertService.CERT_STATUS_EXPIRED,
-                LocalDateTime.now().minusDays(10), "dated");
+    void 编辑只改证名不动状态() {
+        CertEntity row = existingCert("approved");
         when(certMapper.selectById(9L)).thenReturn(row);
 
         QualificationSubmitResult result = service.updateQualification(1L, 9L,
-                new QualificationUpdateRequest(null, null, null, "dated",
-                        Instant.now().plus(60, ChronoUnit.DAYS)));
+                new QualificationUpdateRequest(null, "养老护理员证", "manual"));
 
         assertThat(result.status()).isEqualTo("approved");
         verify(certMapper).update(eq(null), any());
@@ -309,10 +283,9 @@ class CertServiceTest {
 
     @Test
     void 编辑空载荷回40001() {
-        when(certMapper.selectById(9L))
-                .thenReturn(existingCert("approved", LocalDateTime.now().plusDays(1), "dated"));
+        when(certMapper.selectById(9L)).thenReturn(existingCert("approved"));
         assertThatThrownBy(() -> service.updateQualification(1L, 9L,
-                new QualificationUpdateRequest(null, null, null, null, null)))
+                new QualificationUpdateRequest(null, null, null)))
                 .isInstanceOf(BizException.class)
                 .extracting(e -> ((BizException) e).getErrorCode())
                 .isEqualTo(ErrorCode.PARAM_INVALID);
@@ -320,8 +293,7 @@ class CertServiceTest {
 
     @Test
     void 删除资质清理证照并删记录() {
-        when(certMapper.selectById(9L))
-                .thenReturn(existingCert("approved", LocalDateTime.now().plusDays(1), "dated"));
+        when(certMapper.selectById(9L)).thenReturn(existingCert("approved"));
 
         service.deleteQualification(1L, 9L);
 
@@ -331,7 +303,7 @@ class CertServiceTest {
 
     @Test
     void 非本人资质编辑与删除回40001() {
-        CertEntity row = existingCert("approved", LocalDateTime.now().plusDays(1), "dated");
+        CertEntity row = existingCert("approved");
         row.setUserId(2L);
         when(certMapper.selectById(9L)).thenReturn(row);
 

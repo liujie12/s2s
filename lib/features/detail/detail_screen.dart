@@ -38,8 +38,6 @@ import '../../domain/listing_category.dart';
 import '../../domain/listing_category_style.dart';
 import '../../domain/listing_detail.dart';
 import '../auth/auth_repository.dart';
-import '../cert/cert_models.dart';
-import '../cert/cert_type_option.dart';
 import '../favorite/favorite_state.dart';
 import '../post/post_repository.dart';
 import 'media_carousel.dart';
@@ -598,7 +596,7 @@ class _PublisherCard extends StatelessWidget {
                 // 不再展示 `publisher.qualificationLabel`，避免同一语义两处重复。
                 const SizedBox(height: AppSpacing.xs),
                 _CompletenessLine(level: completeness),
-                if (credential != null) ...[
+                if (credential != null && credential!.isEffective) ...[
                   const SizedBox(height: AppSpacing.sm),
                   Divider(height: 1, color: Color(AppColors.border)),
                   const SizedBox(height: AppSpacing.sm),
@@ -613,10 +611,7 @@ class _PublisherCard extends StatelessWidget {
   }
 }
 
-/// 帖级资质块：主行（快照）+ 归属行（恒显示）+ 状态说明行（仅失效）。
-///
-/// 口径见方案 R4：主行永不改写、不因失效降级；归属行固定「由发布者提供，
-/// 平台未核验」；说明行 caption 字号 + 次级文字色，无图标/色点/删除线。
+/// 帖级资质块：只显示证书名（2026-10-28 起没有有效期与归属说明行）。
 class _CredentialBlock extends StatelessWidget {
   /// 构造资质块。
   ///
@@ -628,7 +623,6 @@ class _CredentialBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final stateLine = _stateLineOf(credential);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -639,61 +633,17 @@ class _CredentialBlock extends StatelessWidget {
             color: Color(AppColors.textPrimary),
           ),
         ),
-        const SizedBox(height: 2),
-        Text(
-          '由发布者提供，平台未核验',
-          style: TextStyle(
-            fontSize: AppTypeScale.caption.size,
-            color: Color(AppColors.textSecondary),
-          ),
-        ),
-        if (stateLine != null) ...[
-          const SizedBox(height: 2),
-          Text(
-            stateLine,
-            style: TextStyle(
-              fontSize: AppTypeScale.caption.size,
-              color: Color(AppColors.textSecondary),
-            ),
-          ),
-        ],
       ],
     );
   }
 
-  /// 主行：`证名 · 有效期至 YYYY-MM` / `证名 · 长期有效`。
-  ///
-  /// 证名为空快照回落到类型展示名（不臆造证名）。
+  /// 主行：只显示证名；空快照回落「资质认证」。
   ///
   /// 参数：[credential] 凭证块。
   /// 返回：[String]。
   static String _mainLineOf(PostCredential credential) {
     final name = credential.certName.trim();
-    final title = name.isEmpty
-        ? (CertTypeOption.fromApi(credential.certType)?.label ?? credential.certType)
-        : name;
-    if (credential.isPermanent) return '$title · 长期有效';
-    final at = credential.expireAt;
-    if (at == null) return title;
-    return '$title · 有效期至 ${formatYearMonth(at)}';
-  }
-
-  /// 状态说明行；有效态返回 null（不显示）。
-  ///
-  /// 契约未下发撤销时间，故 `revoked` 只能给不带月份的中性文案（本轮审核未开，
-  /// 该态不可达）；到期月份取快照 `expire_at`，不取「当前月」。
-  ///
-  /// 参数：[credential] 凭证块。
-  /// 返回：[String?]。
-  static String? _stateLineOf(PostCredential credential) {
-    return switch (credential.state) {
-      PostCredential.stateExpired => credential.expireAt == null
-          ? '该资质已到期'
-          : '该资质已于 ${formatYearMonth(credential.expireAt!)} 到期',
-      PostCredential.stateRevoked => '该资质已失效',
-      PostCredential.stateDeleted => '该资质已不再有效',
-      _ => null,
-    };
+    return name.isEmpty ? '资质认证' : name;
   }
 }
 

@@ -64,54 +64,44 @@ class CertRepository {
 
   /// 提交资质（`POST /cert/qualification`，高敏类目前置实名）。
   ///
-  /// 本轮服务端**提交即 `approved`**，不落 `pending`、不返回 SLA。
+  /// 本轮服务端**提交即 `approved`**，不落 `pending`；2026-10-28 起不再有
+  /// 证件类型与有效期，载荷只有证照图与可选的证书名称。
   ///
   /// 参数：
-  ///   [certType] 契约 `CertTypeEnum`（`personal_qualification`/`enterprise`/`vehicle`）；
   ///   [mediaIds] 证照图 media_id 列表（**必填**，须先走上传链路拿到）；
   ///   [certName] 证书名称（可空：抽取失败且用户未填）；
   ///   [nameSource] 证名来源（`ocr`=原样提交抽取值，`manual`=用户改过）；
-  ///   [expireType] 有效期类型（`dated`/`permanent`）；
-  ///   [expireAt] 有效期至 wire 值（`dated` 时必填，见
-  ///     [expireAtWireFromYearMonth]；`permanent` 时忽略）；
   ///   [interactionId] 交互 ID，null 由拦截器兜底。
   /// 返回：[QualificationSubmitResult]（cert_id + status）。
   /// 抛出：[ApiException] 信封业务错误（40302 未实名提交资质 / 40001 参数 / 50302 认证服务不可用）。
   Future<QualificationSubmitResult> submitQualification({
-    required String certType,
     required List<String> mediaIds,
     String? certName,
     String? nameSource,
-    required String expireType,
-    String? expireAt,
     String? interactionId,
   }) async {
     final response = await _dio.post<Object?>(
       '/cert/qualification',
       data: {
-        'cert_type': certType,
         'media_ids': mediaIds,
         'cert_name': ?certName,
         'name_source': ?nameSource,
-        'expire_type': expireType,
-        if (expireType != CertQualification.expireTypePermanent && expireAt != null)
-          'expire_at': expireAt,
       },
       options: _interactionOptions(interactionId),
     );
     return QualificationSubmitResult.fromJson(response.data);
   }
 
-  /// 从证照图抽取证名与有效期（`POST /cert/ocr`，纯读不写库）。
+  /// 从证照图抽取证书名称（`POST /cert/ocr`，纯读不写库）。
   ///
-  /// 抽取失败不是错误：仍返回 200/code=0，两个字段为 null。
+  /// 抽取失败不是错误：仍返回 200/code=0，`cert_name` 为 null。
   ///
   /// 参数：
   ///   [mediaId] 已 commit 的证照图 media_id（须属本人，否则 40001）；
   ///   [interactionId] 交互 ID，null 由拦截器兜底。
   /// 返回：[CertOcrResult]。
   /// 抛出：[ApiException] 信封业务错误（40001 媒体不存在/非本人 / 50301 模型不可用）。
-  Future<CertOcrResult> extractCertProfile({
+  Future<CertOcrResult> ocrQualification({
     required String mediaId,
     String? interactionId,
   }) async {
@@ -125,8 +115,8 @@ class CertRepository {
 
   /// 编辑资质（`PATCH /cert/qualification/{cert_id}`）。
   ///
-  /// 只改传入项；**换图不重新抽取**（抽取由客户端换图后先调 [extractCertProfile]）。
-  /// 新有效期在未来 → `approved`，已过去 → 直接 `expired`，改完立即生效。
+  /// 只改传入项；**换图不重新抽取**（抽取由客户端换图后先调 [ocrQualification]）。
+  /// 2026-10-28 起没有有效期，改完立即生效。
   ///
   /// 参数：
   ///   [certId] 资质档案 ID；
@@ -149,8 +139,8 @@ class CertRepository {
 
   /// 删除资质（`DELETE /cert/qualification/{cert_id}`）。
   ///
-  /// 用户显式删除：服务端删记录并清理证照原件；已挂载帖子的主行保留、
-  /// 说明行变为「该资质已不再有效」。
+  /// 用户显式删除：服务端删记录并清理证照原件；已挂载帖子的凭证块保留快照，
+  /// 但 `state` 变为 `deleted`（前端整块不渲染）。
   ///
   /// 参数：
   ///   [certId] 资质档案 ID；

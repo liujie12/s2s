@@ -120,10 +120,7 @@ ListingDetail postDetailToListingDetail(PostDetailDto dto) {
 PostCredential? _credentialFromDto(PostCredentialDto? dto) {
   if (dto == null) return null;
   return PostCredential(
-    certType: dto.certType,
     certName: dto.certName,
-    expireType: dto.expireType,
-    expireAt: dto.expireAt,
     state: dto.state,
   );
 }

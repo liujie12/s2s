@@ -6,11 +6,6 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.s2s.server.ai.dto.CertProfileGuess;
 import com.s2s.server.common.constants.NfrAi;
-import java.time.Instant;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.LocalTime;
-import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -97,22 +92,16 @@ public class QwenAiProvider implements AiProvider {
      * 证照图抽取指令（资质档案预填）。
      *
      * <p>只允许读证件上的既有信息，读不出就省略字段——与「抽取失败不阻断」口径一致，
-     * 也避免模型为凑结构而编造证名或有效期。</p>
+     * 也避免模型为凑结构而编造证名。</p>
      */
     private static final String CERT_OCR_INSTRUCTION =
             "你是证件信息读取器，只输出一个 JSON 对象，不要任何解释或 Markdown 代码块。"
             + "读取这张证件照片，输出："
-            + "{\"cert_name\":字符串（证件名称，如「家政服务资质」「养老护理员证」）,"
-            + "\"expire_at\":字符串（有效期至，格式 YYYY-MM-DD 或 YYYY-MM；"
-            + "证件写「长期有效」则省略）}。"
-            + "读不出的字段直接省略，禁止猜测。";
+            + "{\"cert_name\":字符串（证件名称，如「家政服务资质」「养老护理员证」）}。"
+            + "读不出就省略该字段，禁止猜测。";
 
     /** 证名截断上限（对齐 {@code cert.cert_name} VARCHAR(64)）。 */
     private static final int CERT_NAME_MAX_LENGTH = 64;
-
-    /** 证照有效期解析正则：取年、月与可选日，忽略「年/月/日」「-」「.」等分隔符。 */
-    private static final Pattern CERT_EXPIRE_PATTERN =
-            Pattern.compile("(\\d{4})\\D{0,3}(\\d{1,2})(?:\\D{0,3}(\\d{1,2}))?");
 
     /**
      * 音频 MIME → 上游 {@code input_audio.format} 映射。
@@ -315,16 +304,16 @@ public class QwenAiProvider implements AiProvider {
     }
 
     /**
-     * 从证照图抽取证名与有效期（资质档案预填）。
+     * 从证照图抽取证名（资质档案预填）。
      *
      * <p>dry-run 返回空结果（桩不做 OCR，前端按「读不出来」处理，用户手填）；
-     * 真实通道把证照图交多模态模型，取回 JSON 后逐字段宽松解析——读不出即留空，
+     * 真实通道把证照图交多模态模型，取回 JSON 后宽松解析——读不出即留空，
      * 不抛异常，避免「图糊了」把添加资质整条流程挡死。</p>
      *
      * @param userId      发起调用的用户 ID（真实通道记账）
      * @param imageUrl    证照图只读短时效 URL
      * @param contentType 图片 MIME 类型（多模态入参只用 URL，保留以便换供应商时使用）
-     * @return {@link CertProfileGuess} 证名与有效期（均可空）
+     * @return {@link CertProfileGuess} 证名（可空）
      * @throws IllegalStateException 未配置 Key / 上游异常 / 响应结构非法
      */
     @Override
@@ -386,10 +375,10 @@ public class QwenAiProvider implements AiProvider {
     }
 
     /**
-     * 解析证照抽取的模型输出（宽松解析：任何字段读不出都留空，不抛异常）。
+     * 解析证照抽取的模型输出（宽松解析：读不出证名就留空，不抛异常）。
      *
      * @param content 模型输出原文（可含代码块包裹）
-     * @return {@link CertProfileGuess} 证名与有效期（均可空）
+     * @return {@link CertProfileGuess} 证名（可空）
      */
     private CertProfileGuess parseCertProfile(String content) {
         if (content == null || content.isBlank()) {
@@ -405,52 +394,7 @@ public class QwenAiProvider implements AiProvider {
         if (certName.length() > CERT_NAME_MAX_LENGTH) {
             certName = certName.substring(0, CERT_NAME_MAX_LENGTH);
         }
-        String expireRaw = node.path("expire_at").asText("").strip();
-        return new CertProfileGuess(certName.isBlank() ? null : certName,
-                parseCertExpireAt(expireRaw));
-    }
-
-    /**
-     * 解析证照上的有效期文本为到期时刻。
-     *
-     * <p>证件只给年月时落**当月最后一天 23:59:59**（该月内仍有效，与额度/到期任务
-     * 的「已过即失效」口径一致）；给了具体日期则落当日 23:59:59。时区取 JVM 默认，
-     * 与库内 {@code DATETIME} 的写入基准一致。</p>
-     *
-     * @param raw 模型给出的有效期文本（如 {@code 2027-06}、{@code 2027年6月30日}）
-     * @return {@link Instant} 到期时刻；无法解析返回 {@code null}
-     */
-    private Instant parseCertExpireAt(String raw) {
-        if (raw == null || raw.isBlank()) {
-            return null;
-        }
-        Matcher matcher = CERT_EXPIRE_PATTERN.matcher(raw);
-        if (!matcher.find()) {
-            return null;
-        }
-        try {
-            int year = Integer.parseInt(matcher.group(1));
-            int month = Integer.parseInt(matcher.group(2));
-            if (month < 1 || month > 12) {
-                return null;
-            }
-            LocalDate date = LocalDate.of(year, month, 1);
-            String dayText = matcher.group(3);
-            if (dayText != null) {
-                int day = Integer.parseInt(dayText);
-                if (day < 1 || day > date.lengthOfMonth()) {
-                    return null;
-                }
-                date = date.withDayOfMonth(day);
-            } else {
-                date = date.withDayOfMonth(date.lengthOfMonth());
-            }
-            return LocalDateTime.of(date, LocalTime.of(23, 59, 59))
-                    .atZone(ZoneId.systemDefault()).toInstant();
-        } catch (RuntimeException e) {
-            // 年份越界等非法值 → 视为读不出（不抛，流程不阻断）
-            return null;
-        }
+        return new CertProfileGuess(certName.isBlank() ? null : certName);
     }
 
     /**

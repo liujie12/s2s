@@ -19,7 +19,6 @@ import 'home_shell.dart';
 import '../domain/category_tree.dart';
 import '../features/auth/login_screen.dart';
 import '../features/cert/cert_models.dart';
-import '../features/cert/cert_type_option.dart';
 import '../features/cert/qualification_form_screen.dart';
 import '../features/cert/realname_form_screen.dart';
 import '../features/cert/trust_screen.dart';
@@ -278,9 +277,8 @@ final List<RouteBase> _routes = [
   GoRoute(
     path: AppRoutes.trustQualification,
     // 资质添加 / 编辑共用本页：`extra` 传 `CertQualification` 即编辑态（回填），
-    // 传空为添加态（类型由 `?type=` 预选，未知/缺失按「未选」处理）。
+    // 传空为添加态（2026-10-28 起没有证件类型，不再需要 `?type=` 预选）。
     builder: (context, state) => QualificationFormScreen(
-      initialType: CertTypeOption.fromApi(state.uri.queryParameters['type']),
       initialQualification: state.extra is CertQualification
           ? state.extra! as CertQualification
           : null,

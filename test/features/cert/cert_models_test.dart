@@ -1,7 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zhaoyazhao/core/network/api_exception.dart';
 import 'package:zhaoyazhao/features/cert/cert_models.dart';
-import 'package:zhaoyazhao/features/cert/cert_type_option.dart';
 
 void main() {
   group('CertStatus.fromJson（认证状态解析）', () {
@@ -12,6 +11,8 @@ void main() {
       });
 
       expect(status.realnameStatus, 'passed');
+      expect(status.isRealnamePassed, isTrue);
+      expect(status.qualifications, isEmpty);
     });
 
     test('data 非 Map 抛 ApiException(parseError)', () {
@@ -28,12 +29,12 @@ void main() {
       );
     });
 
-    test('资质项缺 cert_id / expire_type 抛 ApiException(parseError)', () {
+    test('资质项缺 cert_id 抛 ApiException(parseError)', () {
       expect(
         () => CertStatus.fromJson({
           'realname': {'status': 'none'},
           'qualifications': [
-            {'cert_type': 'vehicle', 'status': 'approved'},
+            {'cert_name': '营业执照', 'status': 'approved'},
           ],
         }),
         throwsA(isA<ApiException>()),
@@ -42,77 +43,55 @@ void main() {
   });
 
   group('资质档案（QualificationItem）', () {
-    test('passedQualificationCount 只数 approved，混入实名的 passed 不计', () {
+    test('解析 cert_name / name_source / image_url', () {
+      final item = CertQualification.fromJson(_item(
+        certId: 7,
+        certName: '养老护理员证',
+        nameSource: CertQualification.nameSourceOcr,
+        imageUrl: 'https://cdn.example.com/a.jpg',
+      ));
+
+      expect(item.certId, 7);
+      expect(item.certName, '养老护理员证');
+      expect(item.nameSource, CertQualification.nameSourceOcr);
+      expect(item.status, CertQualification.statusApproved);
+      expect(item.imageUrl, 'https://cdn.example.com/a.jpg');
+    });
+
+    test('passedQualificationCount 等于资质档案条数（提交即 approved）', () {
       final status = CertStatus.fromJson({
         'realname': {'status': 'passed'},
         'qualifications': [
-          _item(certId: 1, type: 'enterprise', status: 'approved'),
-          _item(certId: 2, type: 'vehicle', status: 'pending'),
-          _item(certId: 3, type: 'personal_qualification', status: 'rejected'),
-          _item(certId: 4, type: 'enterprise', status: 'passed'),
+          _item(certId: 1),
+          _item(certId: 2),
         ],
       });
 
-      expect(status.passedQualificationCount, 1);
+      expect(status.passedQualificationCount, 2);
     });
 
-    test('qualificationOf 按 cert_type 取记录、解析 expire_at，未提交返回 null', () {
-      final status = CertStatus.fromJson({
-        'realname': {'status': 'none'},
-        'qualifications': [
-          _item(
-            certId: 7,
-            type: 'vehicle',
-            status: 'expired',
-            expireAt: '2026-01-31T23:59:59+08:00',
-          ),
-        ],
-      });
-
-      expect(status.qualificationOf('vehicle')?.status, CertQualification.statusExpired);
-      expect(status.qualificationOf('vehicle')?.expireAt, isNotNull);
-      expect(status.qualificationOf('enterprise'), isNull);
-    });
-
-    test('attachableQualifications 只取 approved（到期由服务端置 expired）', () {
+    test('attachableQualifications 只取 approved', () {
       final status = CertStatus.fromJson({
         'realname': {'status': 'passed'},
         'qualifications': [
-          _item(certId: 1, type: 'enterprise', status: 'approved'),
-          _item(certId: 2, type: 'vehicle', status: 'expired'),
+          _item(certId: 1),
+          _item(certId: 2, status: 'revoked'),
         ],
       });
 
       expect(status.attachableQualifications.map((e) => e.certId), [1]);
     });
 
-    test('档案状态文案：有效期至 / 长期有效 / 已于 YYYY-MM 过期', () {
-      final dated = CertQualification.fromJson(
-        _item(certId: 1, type: 'enterprise', expireAt: '2027-06-30T23:59:59+08:00'),
-      );
-      final permanent = CertQualification.fromJson(
-        _item(certId: 2, type: 'enterprise', expireType: 'permanent'),
-      );
-      final expired = CertQualification.fromJson(
-        _item(
-          certId: 3,
-          type: 'enterprise',
-          status: 'expired',
-          expireAt: '2026-08-31T23:59:59+08:00',
-        ),
-      );
+    test('证名为空回落「未命名证书」，不臆造证名', () {
+      final item = CertQualification.fromJson(_item(certId: 1, certName: '  '));
 
-      expect(dated.archiveStatusLabel, '有效期至 2027-06');
-      expect(permanent.archiveStatusLabel, '长期有效');
-      expect(expired.archiveStatusLabel, '已于 2026-08 过期');
+      expect(item.displayName, '未命名证书');
     });
 
-    test('证名为空回落类型展示名，不臆造证名', () {
-      final item = CertQualification.fromJson(
-        _item(certId: 1, type: 'personal_qualification', certName: '  '),
-      );
+    test('证名存在时 displayName 用去空白后的证名', () {
+      final item = CertQualification.fromJson(_item(certId: 1, certName: ' 月嫂证 '));
 
-      expect(item.displayName, '家政资质');
+      expect(item.displayName, '月嫂证');
     });
   });
 
@@ -133,35 +112,18 @@ void main() {
   });
 
   group('CertOcrResult.fromJson（POST /cert/ocr）', () {
-    test('两字段可为 null，不算错误', () {
-      final result = CertOcrResult.fromJson({'cert_name': null, 'expire_at': null});
+    test('cert_name 为 null 时 isEmpty 为真，不算错误', () {
+      final result = CertOcrResult.fromJson({'cert_name': null});
 
+      expect(result.certName, isNull);
       expect(result.isEmpty, isTrue);
     });
 
-    test('解析证名与有效期', () {
-      final result = CertOcrResult.fromJson({
-        'cert_name': '养老护理员证',
-        'expire_at': '2027-06-30T23:59:59+08:00',
-      });
+    test('解析证名', () {
+      final result = CertOcrResult.fromJson({'cert_name': '养老护理员证'});
 
       expect(result.certName, '养老护理员证');
-      expect(yearMonthOf(result.expireAt!), (year: 2027, month: 6));
-    });
-  });
-
-  group('有效期 wire 值（含本日口径）', () {
-    test('2027-06 → 当月最后一天 23:59:59 +08:00', () {
-      expect(expireAtWireFromYearMonth(2027, 6), '2027-06-30T23:59:59+08:00');
-    });
-
-    test('闰年 2 月 → 29 日', () {
-      expect(expireAtWireFromYearMonth(2028, 2), '2028-02-29T23:59:59+08:00');
-    });
-
-    test('formatYearMonth 不随设备时区漂移', () {
-      final at = DateTime.parse('2027-06-30T23:59:59+08:00');
-      expect(formatYearMonth(at), '2027-06');
+      expect(result.isEmpty, isFalse);
     });
   });
 
@@ -170,61 +132,51 @@ void main() {
       final json = const QualificationUpdateRequest(certName: '家政服务资质').toJson();
 
       expect(json.keys, ['cert_name']);
+      expect(json['cert_name'], '家政服务资质');
     });
 
-    test('permanent 显式带 expire_at: null（清掉旧到期日）', () {
+    test('未传字段不进载荷（null 等价于不传）', () {
+      final json = const QualificationUpdateRequest(certName: null).toJson();
+
+      expect(json.containsKey('cert_name'), isFalse);
+      expect(json, isEmpty);
+      expect(const QualificationUpdateRequest().hasAny, isFalse);
+    });
+
+    test('media_ids 原样上送', () {
       final json = const QualificationUpdateRequest(
-        expireType: CertQualification.expireTypePermanent,
+        mediaIds: ['m-1', 'm-2'],
+        nameSource: CertQualification.nameSourceManual,
       ).toJson();
 
-      expect(json['expire_at'], isNull);
-      expect(json.containsKey('expire_at'), isTrue);
+      expect(json['media_ids'], ['m-1', 'm-2']);
+      expect(json['name_source'], 'manual');
     });
 
-    test('dated 时上送 wire 值', () {
-      final json = QualificationUpdateRequest(
-        expireType: CertQualification.expireTypeDated,
-        expireAt: expireAtWireFromYearMonth(2027, 8),
-      ).toJson();
-
-      expect(json['expire_at'], '2027-08-31T23:59:59+08:00');
-    });
-  });
-
-  group('CertTypeOption.fromApi（契约类型值 ↔ 展示名）', () {
-    test('三类可提交资质可反查', () {
-      expect(CertTypeOption.fromApi('enterprise'), CertTypeOption.enterprise);
-      expect(CertTypeOption.fromApi('personal_qualification'), CertTypeOption.personalQualification);
-      expect(CertTypeOption.fromApi('vehicle'), CertTypeOption.vehicle);
-    });
-
-    test('实名类型与未知值/空值返回 null，不猜默认', () {
-      // personal_realname 是「第一层」实名的类型，不属可提交资质选项。
-      expect(CertTypeOption.fromApi('personal_realname'), isNull);
-      expect(CertTypeOption.fromApi('unknown'), isNull);
-      expect(CertTypeOption.fromApi(null), isNull);
+    test('hasAny 判断是否至少一项', () {
+      expect(const QualificationUpdateRequest().hasAny, isFalse);
+      expect(const QualificationUpdateRequest(certName: '月嫂证').hasAny, isTrue);
+      expect(const QualificationUpdateRequest(mediaIds: []).hasAny, isTrue);
     });
   });
 }
 
 /// 构造一条契约 `QualificationItem` JSON。
 ///
-/// 参数：[certId] 档案 ID；[type] 契约类型；[status] 状态；
-///   [certName] 证名；[expireType] 有效期类型；[expireAt] 有效期 wire 值。
+/// 参数：[certId] 档案 ID；[certName] 证名；[nameSource] 证名来源；
+///   [status] 状态；[imageUrl] 证照地址。
 /// 返回：Map。
 Map<String, Object?> _item({
   required int certId,
-  required String type,
-  String status = 'approved',
   String? certName,
-  String expireType = 'dated',
-  String? expireAt,
+  String? nameSource,
+  String status = 'approved',
+  String? imageUrl,
 }) =>
     {
       'cert_id': certId,
-      'cert_type': type,
       'cert_name': certName,
+      'name_source': nameSource,
       'status': status,
-      'expire_type': expireType,
-      'expire_at': expireAt,
+      'image_url': imageUrl,
     };

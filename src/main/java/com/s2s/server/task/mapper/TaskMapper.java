@@ -171,16 +171,4 @@ public interface TaskMapper {
      */
     int deletePostViewsBefore(@Param("threshold") java.time.LocalDate threshold,
             @Param("limit") int limit);
-
-    /**
-     * 到期资质流转（每日任务：{@code status=approved} 且已过有效期 → {@code expired}）。
-     *
-     * <p>「长期有效」（{@code expire_type=permanent}）不参与流转；到期只改状态，
-     * 不删记录、不删证照图、不改已挂载帖子的快照。</p>
-     *
-     * @param now   当前时刻（时间基准由任务侧统一取一次）
-     * @param limit 单批上限（分批收敛，避免长事务持锁）
-     * @return int 实际更新行数
-     */
-    int expireCerts(@Param("now") LocalDateTime now, @Param("limit") int limit);
 }

@@ -96,23 +96,17 @@ typedef TemplateField = ({String label, String value});
 
 /// 帖级凭证声明块（对应契约 `PostCredential`）。
 ///
-/// 主行字段是**发布/补挂时的冻结快照**，永不改写；[state] 是读取时的实时状态，
-/// 只决定是否追加说明行（R3/R4）。未关联凭证时详情页整块不渲染。
+/// 只有证书名与实时状态：[certName] 是发布/补挂时的冻结快照，永不改写；
+/// [state] 是读取时的实时状态。未关联凭证时详情页整块不渲染。
 class PostCredential {
   /// 构造凭证块。
   const PostCredential({
-    required this.certType,
     required this.certName,
-    required this.expireType,
-    this.expireAt,
     required this.state,
   });
 
-  /// 状态：有效（不显示说明行）。
+  /// 状态：有效（正常展示）。
   static const String stateValid = 'valid';
-
-  /// 状态：关联的资质已到期。
-  static const String stateExpired = 'expired';
 
   /// 状态：关联的资质被撤销。
   static const String stateRevoked = 'revoked';
@@ -120,26 +114,11 @@ class PostCredential {
   /// 状态：关联的资质已被用户删除。
   static const String stateDeleted = 'deleted';
 
-  /// 有效期类型：长期有效。
-  static const String expireTypePermanent = 'permanent';
-
-  /// 资质类型（契约 `CertTypeEnum`）。
-  final String certType;
-
   /// 证名快照；历史行可能为空串。
   final String certName;
 
-  /// 有效期类型快照（`dated`/`permanent`）。
-  final String expireType;
-
-  /// 有效期快照；`permanent` 时为 null。
-  final DateTime? expireAt;
-
-  /// 实时展示状态（`valid`/`expired`/`revoked`/`deleted`）。
+  /// 实时展示状态（`valid`/`revoked`/`deleted`）。
   final String state;
-
-  /// 是否长期有效。
-  bool get isPermanent => expireType == expireTypePermanent;
 
   /// 是否当前有效。
   bool get isEffective => state == stateValid;

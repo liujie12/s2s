@@ -65,7 +65,7 @@ public class CertController {
     /**
      * 新增资质（{@code POST /cert/qualification}）。
      *
-     * @param request 资质提交请求（类型/证照图/证名/有效期，经 @Valid 校验）
+     * @param request 资质提交请求（证照图/证名/证名来源，经 @Valid 校验）
      * @param http    当前 HTTP 请求（取登录态 userId）
      * @return {@link QualificationSubmitResult} 新记录 ID + 生效状态
      */
@@ -81,7 +81,7 @@ public class CertController {
      * @param certId  资质 ID
      * @param request 编辑载荷（字段全部可选）
      * @param http    当前 HTTP 请求（取登录态 userId）
-     * @return {@link QualificationSubmitResult} 记录 ID + 重算后的状态
+     * @return {@link QualificationSubmitResult} 记录 ID + 当前状态（恒 {@code approved}）
      */
     @PatchMapping("/qualification/{cert_id}")
     public QualificationSubmitResult updateQualification(@PathVariable("cert_id") long certId,
@@ -104,11 +104,11 @@ public class CertController {
     }
 
     /**
-     * 从证照图抽取证名与有效期（{@code POST /cert/ocr}）。
+     * 从证照图抽取证名（{@code POST /cert/ocr}）。
      *
      * @param request 抽取请求（media_id，经 @Valid 校验）
      * @param http    当前 HTTP 请求（取登录态 userId）
-     * @return {@link CertOcrResult} 证名与有效期（均可空）
+     * @return {@link CertOcrResult} 证名（可空）
      */
     @PostMapping("/ocr")
     public CertOcrResult extractCertProfile(@Valid @RequestBody CertOcrRequest request,

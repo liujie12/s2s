@@ -1226,7 +1226,7 @@ paths:
 
         - 不修改 `post` 行，不改 `updated_at` / `expire_at` / `version`，不进入任何排序权重。
         - 已有声明记录时按替换处理：快照重取、`declared_at` 与 `updated_at` 刷新。
-        - 候选只接受本人 `status=approved` 且在有效期内的资质；否则回 `40001`。
+        - 候选只接受本人 `status=approved` 的资质；否则回 `40001`。
         - 非本人帖子回 `40001`（沿用既有归属收敛口径，不新增错误码）。
       parameters:
         - $ref: '#/components/parameters/XInteractionId'
@@ -2105,14 +2105,16 @@ paths:
       x-batch: Batch2
       x-domain: cert
       description: |
-        提交资质认证（个人资质 / 企业 / 车辆）。本轮**取消人工审核，提交即 `approved`**，
-        不落 `pending`、不返回 SLA；`pending` / `rejected` 保留在枚举里，本轮不写入。
+        提交资质认证，只上传**证照图 + 证书名**（不再选择证件类型、不再有有效期）。
+        本轮**取消人工审核，提交即 `approved`**，不落 `pending`、不返回 SLA；
+        `pending` / `rejected` 保留在枚举里，本轮不写入。
         未实名用户提交资质回 `40302`（高敏类目前置实名），不新增错误码。
 
-        证名与有效期由 `/cert/ocr` 预填，用户确认后随本接口提交：
-        - `cert_name` 可空（抽取失败且用户未填时留空）；
-        - `expire_type=dated` 时 `expire_at` 必填，`expire_type=permanent` 时忽略 `expire_at`；
-        - 同一用户同类型可有多张（`cert` 无唯一约束）。
+        证书名由 `/cert/ocr` 预填，用户确认后随本接口提交：
+        - `media_ids` 必填（至少 1 张，首张作为证照图）；
+        - `cert_name` 可空（抽取失败且用户未填时留空），最长 64 字，超出回 `40001`；
+        - `name_source` 取 `ocr` / `manual`，其他值回 `40001`；
+        - 同一用户可有多张资质（`cert` 无唯一约束）。
       parameters:
         - $ref: '#/components/parameters/XInteractionId'
         - $ref: '#/components/parameters/XDeviceId'
@@ -2144,14 +2146,14 @@ paths:
   /cert/ocr:
     post:
       tags: [cert]
-      summary: 从证照图抽取证名与有效期（预填用）
+      summary: 从证照图抽取证书名（预填用）
       operationId: extractCertProfile
       x-batch: Batch2
       x-domain: cert
       description: |
-        上传证照图后、正式提交前调用一次，为添加/编辑表单预填「证书名称」与「有效期至」。
+        上传证照图后、正式提交前调用一次，为添加/编辑表单预填「证书名称」。
 
-        **抽取失败不是错误**：仍返回 200 / `code=0`，`cert_name` 与 `expire_at` 为 `null`，
+        **抽取失败不是错误**：仍返回 200 / `code=0`，`cert_name` 为 `null`，
         客户端提示「没读出来，请手动填写」，流程不阻断。
 
         抽取结果只是预填。用户改写后以提交值为准，`name_source` 由客户端在提交时显式回传
@@ -2196,17 +2198,18 @@ paths:
   /cert/qualification/{cert_id}:
     patch:
       tags: [cert]
-      summary: 编辑资质（改名 / 改有效期 / 换图）
+      summary: 编辑资质（改名 / 换图）
       operationId: updateQualification
       x-batch: Batch2
       x-domain: cert
       description: |
-        同一张证的原记录更新，不新建记录。字段全部可选，只改传入项：
+        同一张证的原记录更新，不新建记录。字段全部可选，只改传入项，但至少传一项，
+        全部缺失回 `40001`：
 
-        - **只有换图才重新抽取**；只改名或只改有效期时，不覆盖用户已确认的另一个字段。
-        - 状态流转：新有效期在未来 → `approved`；新有效期已过 → 直接 `expired`；
-          改完立即生效，不等次日任务。
-        - 已生成的帖级凭证快照**不回溯**（详情页主行仍为发布时事实）。
+        - `media_ids` 非空时替换证照图引用，不覆盖未传的另一个字段；
+        - 只改名时不动证照图，反之亦然；
+        - 不涉及状态流转（资质提交即 `approved`，无有效期概念）。
+        - 已生成的帖级凭证快照**不回溯**（详情页仍为发布时证名）。
         - 非本人或记录不存在回 `40001`（不区分成因，不新增错误码）。
       parameters:
         - $ref: '#/components/parameters/XInteractionId'
@@ -2246,7 +2249,7 @@ paths:
       x-domain: cert
       description: |
         用户显式删除。删记录的同时清理 OSS 原件。
-        已挂载该证的帖子**主行保留**，说明行变为「该资质已不再有效」（快照不回溯）。
+        已挂载该证的帖子不再展示凭证块（快照不回溯）。
         非本人或记录不存在回 `40001`。
       parameters:
         - $ref: '#/components/parameters/XInteractionId'
@@ -2277,9 +2280,9 @@ paths:
       description: |
         查询当前用户实名状态与资质档案（本人视角）。
 
-        - `qualifications` 返回全部资质：`approved` / `expired`（`pending` / `rejected` 本轮不写入）。
-        - 每条带证名、证名来源、有效期类型与到期时间，档案列表与编辑页回填均取自本接口。
-        - 发布表单的候选列表 = 本接口中 `status=approved` 且在有效期内的条目，由客户端过滤。
+        - `qualifications` 返回全部资质，`status` 恒为 `approved`（`pending` / `rejected` 本轮不写入）。
+        - 每条带证名、证名来源与证照图地址，档案列表与编辑页回填均取自本接口。
+        - 发布表单的候选列表 = 本接口返回的条目。
       parameters:
         - $ref: '#/components/parameters/XInteractionId'
         - $ref: '#/components/parameters/XDeviceId'
@@ -4304,11 +4307,6 @@ components:
           description: 被写入的 `device` 行 ID（新增或命中同一指纹）
         platform: { $ref: '#/components/schemas/DevicePlatformEnum' }
 
-    CertTypeEnum:
-      type: string
-      description: 认证类型。对应 `cert.cert_type` 列
-      enum: [personal_realname, personal_qualification, enterprise, vehicle]
-
     RealnameSubmitRequest:
       type: object
       required: [real_name, id_card, agreement_accepted]
@@ -4336,82 +4334,56 @@ components:
       description: 证名来源。`ocr` = 自动读取未改动；`manual` = 用户手填或改写
       enum: [ocr, manual]
 
-    CertExpireTypeEnum:
-      type: string
-      description: 有效期类型。`dated` = 有到期日；`permanent` = 长期有效（不参与到期流转）
-      enum: [dated, permanent]
-
     CertOcrResult:
       type: object
       description: |
-        证照图抽取结果。两个字段都可为 `null`，抽取失败不改 HTTP 状态、不报错。
+        证照图抽取结果。`cert_name` 可为 `null`，抽取失败不改 HTTP 状态、不报错。
       properties:
         cert_name:
           type: string
           nullable: true
           maxLength: 64
           description: 抽取到的证书名称；未读出为 `null`
-        expire_at:
-          type: string
-          format: date-time
-          nullable: true
-          description: |
-            抽取到的有效期至。证件只给年月时落**当月最后一天 23:59:59**
-            （例「2027-06」→ `2027-06-30T23:59:59+08:00`），保证该月内仍有效；
-            未读出为 `null`。
 
     QualificationSubmitRequest:
       type: object
-      required: [cert_type, media_ids, expire_type]
+      required: [media_ids]
       properties:
-        cert_type:
-          $ref: '#/components/schemas/CertTypeEnum'
         media_ids:
           type: array
-          description: 证照图 media_id 列表（首张参与 OCR 预填）
+          minItems: 1
+          description: 证照图 media_id 列表（首张作为证照图）
           items: { type: string }
         cert_name:
           type: string
           nullable: true
           maxLength: 64
-          description: 证书名称。可空（抽取失败且用户未填）
+          description: 证书名称。可空（抽取失败且用户未填）；超出 64 字回 `40001`
         name_source:
-          $ref: '#/components/schemas/CertNameSourceEnum'
-        expire_type:
-          $ref: '#/components/schemas/CertExpireTypeEnum'
-        expire_at:
-          type: string
-          format: date-time
+          allOf:
+            - $ref: '#/components/schemas/CertNameSourceEnum'
           nullable: true
-          description: |
-            有效期至（含本日）。「有效期至 2027-06」提交 `2027-06-30T23:59:59+08:00`；
-            落库后 `expire_at` 已过即视为到期。`expire_type=dated` 时必填（缺失回 `40001`），
-            `permanent` 时忽略。
+          description: 证名来源；非 `ocr` / `manual` 回 `40001`
 
     QualificationUpdateRequest:
       type: object
       description: |
         编辑载荷，字段全部可选但至少传一项，否则回 `40001`。
-        `media_ids` 传入即视为换图：只替换证照图，**本接口不重复抽取**——抽取由客户端
-        在换图后先调 `/cert/ocr` 完成，再连同 `cert_name` / `expire_at` 一并提交。
+        `media_ids` 传入即视为换图：只替换证照图引用，**本接口不重复抽取**——抽取由客户端
+        在换图后先调 `/cert/ocr` 完成，再连同 `cert_name` 一并提交。
       properties:
         media_ids:
           type: array
-          description: 替换证照图（只换图，不触发抽取）；不传保留原图
+          description: 替换证照图（只换引用，不触发抽取）；不传保留原图
           items: { type: string }
         cert_name:
           type: string
           nullable: true
           maxLength: 64
         name_source:
-          $ref: '#/components/schemas/CertNameSourceEnum'
-        expire_type:
-          $ref: '#/components/schemas/CertExpireTypeEnum'
-        expire_at:
-          type: string
-          format: date-time
+          allOf:
+            - $ref: '#/components/schemas/CertNameSourceEnum'
           nullable: true
-          description: 有效期至。改为 `dated` 时必须可解析，否则回 `40001`
 
     QualificationSubmitResult:
       type: object
@@ -4424,32 +4396,24 @@ components:
         status:
           type: string
           description: 提交后状态（本轮恒 approved）
-          enum: [approved, expired]
+          enum: [approved]
 
     QualificationItem:
       type: object
-      required: [cert_id, cert_type, status, expire_type]
+      required: [cert_id, cert_name, name_source, status]
       properties:
         cert_id: { type: integer, format: int64 }
-        cert_type: { $ref: '#/components/schemas/CertTypeEnum' }
         cert_name:
           type: string
-          nullable: true
           maxLength: 64
-          description: 证书名称；历史行可能为空，空时档案行只显示类型
+          description: 证书名称（详情页凭证块只显示该字段）
         name_source:
           allOf:
             - $ref: '#/components/schemas/CertNameSourceEnum'
           nullable: true
         status:
           type: string
-          enum: [pending, approved, rejected, expired]
-        expire_type: { $ref: '#/components/schemas/CertExpireTypeEnum' }
-        expire_at:
-          type: string
-          format: date-time
-          nullable: true
-          description: 有效期至；`permanent` 时为 `null`
+          enum: [approved]
         image_url:
           type: string
           nullable: true
@@ -4466,7 +4430,7 @@ components:
             status: { $ref: '#/components/schemas/RealnameStatusEnum' }
         qualifications:
           type: array
-          description: 本人全部资质（approved / expired）
+          description: 本人全部资质（status 恒为 approved）
           items:
             $ref: '#/components/schemas/QualificationItem'
 
@@ -5064,8 +5028,8 @@ components:
               nullable: true
               description: |
                 可选挂载的资质档案 ID（一帖一证）。缺省或 `null` = 本次不展示，不阻断发布、
-                不进 precheck 阻断项。只接受本人 `status=approved` 且在有效期内的资质，
-                否则回 `40001`。写入时冻结快照，之后换证/续期不回溯。
+                不进 precheck 阻断项。只接受本人 `status=approved` 的资质，
+                否则回 `40001`。写入时冻结证名快照，之后换证不回溯。
 
     PostUpdateRequest:
       allOf:
@@ -5151,44 +5115,25 @@ components:
     PostCredentialStateEnum:
       type: string
       description: |
-        凭证展示状态，决定详情页是否追加说明行（说明行文案由客户端按本枚举渲染）：
-        - `valid`：有效，无说明行
-        - `expired`：关联的资质已到期 → 「该资质已于 YYYY-MM 到期」
-        - `revoked`：关联的资质被撤销 → 「该资质已于 YYYY-MM 失效」
-        - `deleted`：关联的资质已被用户删除 → 「该资质已不再有效」
-      enum: [valid, expired, revoked, deleted]
+        凭证状态。只有 `valid` 会返回 `PostCredential` 对象（详情页凭证块只显示证书名）；
+        `revoked` / `deleted` 时整块不渲染，取值保留以备日志与统计口径。
+        - `valid`：关联的资质有效
+        - `revoked`：关联的资质被撤销
+        - `deleted`：关联的资质已被用户删除
+      enum: [valid, revoked, deleted]
 
     PostCredential:
       type: object
       description: |
-        帖级凭证声明块（详情页资质行）。**主行字段全取自写入时的冻结快照，永不改写**；
-        `state` 为读取时按凭证当前状态计算的实时值。
-
-        三行渲染口径：
-        1. 主行：`cert_name · 有效期至 YYYY-MM`（`expire_type=permanent` 时为
-           `cert_name · 长期有效`）；`cert_name` 为空时只显示类型名；
-        2. 归属行：**恒显示**，固定文案「由发布者提供，平台未核验」；
-        3. 状态说明行：仅 `state != valid` 时显示，caption 字号与次级文字色。
-
-        未关联凭证时不返回本对象（整块不渲染）；关联瞬间凭证已失效的记录也不返回（避免残句）。
-      required: [cert_type, cert_name, expire_type, state]
+        帖级凭证声明块（详情页资质行）。**证名取自写入时的冻结快照，永不改写**。
+        详情只显示证书名；未关联凭证时不返回本对象（整块不渲染）。
+      required: [cert_name, state]
       properties:
-        cert_type: { $ref: '#/components/schemas/CertTypeEnum' }
         cert_name:
           type: string
           maxLength: 64
           description: 证名快照；历史行可能为空串
-        expire_type: { $ref: '#/components/schemas/CertExpireTypeEnum' }
-        expire_at:
-          type: string
-          format: date-time
-          nullable: true
-          description: 有效期快照；`permanent` 时为 `null`
         state: { $ref: '#/components/schemas/PostCredentialStateEnum' }
-        declared_at:
-          type: string
-          format: date-time
-          description: 声明时间（发布时或补挂时），不参与排序
 
     PostDetail:
       type: object

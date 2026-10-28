@@ -10,7 +10,9 @@ import java.time.LocalDateTime;
  *
  * <p>职责：承载 {@code cert} 表一行——每次实名/资质申请的原始记录；{@code user} 表存
  * 最新聚合态（{@code realname_status}），本表存每次申请（含失败计数与防刷锁定）。字段与
- * {@code V1__init_schema.sql} 第 306–322 行<b>逐列</b>对齐（编码规范 §4.2 entity 层口径）。</p>
+ * {@code V1__init_schema.sql} 第 306–322 行<b>逐列</b>对齐后，再经
+ * {@code V23__cert_drop_type_and_expire.sql} 删除 {@code expire_type}/{@code expire_at}
+ * （资质取消有效期概念），故当前不含有效期字段（编码规范 §4.2 entity 层口径）。</p>
  *
  * <p>类型映射（详设 §7）：{@code ENUM} → {@link String}、{@code DATETIME} →
  * {@link LocalDateTime}、{@code TINYINT} → {@link Integer}、{@code BIGINT} → {@link Long}。</p>
@@ -39,7 +41,7 @@ public class CertEntity {
     /** 证名来源：{@code ocr}=自动读取；{@code manual}=用户手填或改写（可空）。 */
     private String nameSource;
 
-    /** 认证状态：{@code pending/approved/rejected/expired}。 */
+    /** 认证状态：{@code pending/approved/rejected}（V23 起取消 {@code expired}）。 */
     private String status;
 
     /** 提交时间（数据库默认 CURRENT_TIMESTAMP）。 */
@@ -47,12 +49,6 @@ public class CertEntity {
 
     /** 审核通过时间（可空）。 */
     private LocalDateTime approvedAt;
-
-    /** 认证到期时间（可空，资质年审用）。 */
-    private LocalDateTime expireAt;
-
-    /** 有效期类型：{@code dated}=有到期日；{@code permanent}=长期有效（不参与到期流转）。 */
-    private String expireType;
 
     /** 审核拒绝原因（可空）。 */
     private String rejectReason;
@@ -159,7 +155,7 @@ public class CertEntity {
     /**
      * 返回认证状态。
      *
-     * @return 认证状态（{@code pending/approved/rejected/expired}）
+     * @return 认证状态（{@code pending/approved/rejected}）
      */
     public String getStatus() {
         return status;
@@ -208,42 +204,6 @@ public class CertEntity {
      */
     public void setApprovedAt(LocalDateTime approvedAt) {
         this.approvedAt = approvedAt;
-    }
-
-    /**
-     * 返回认证到期时间。
-     *
-     * @return 认证到期时间（可空）
-     */
-    public LocalDateTime getExpireAt() {
-        return expireAt;
-    }
-
-    /**
-     * 设置认证到期时间。
-     *
-     * @param expireAt 认证到期时间
-     */
-    public void setExpireAt(LocalDateTime expireAt) {
-        this.expireAt = expireAt;
-    }
-
-    /**
-     * 返回有效期类型。
-     *
-     * @return 有效期类型（{@code dated}/{@code permanent}）
-     */
-    public String getExpireType() {
-        return expireType;
-    }
-
-    /**
-     * 设置有效期类型。
-     *
-     * @param expireType 有效期类型（{@code dated}/{@code permanent}）
-     */
-    public void setExpireType(String expireType) {
-        this.expireType = expireType;
     }
 
     /**

@@ -26,12 +26,9 @@ import com.s2s.server.common.crypto.Pepper;
 import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
 import com.s2s.server.post.MediaService;
-import java.time.Instant;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -42,7 +39,7 @@ import org.springframework.transaction.annotation.Transactional;
  * {@code user.realname_status} 落库）、{@code GET /cert/status}（实名状态 + 资质档案）、
  * {@code POST /cert/qualification}（新增资质，提交即 {@code approved}）、
  * {@code PATCH/DELETE /cert/qualification/{id}}（编辑/删除）、
- * {@code POST /cert/ocr}（证照图抽取证名与有效期）。同时保留
+ * {@code POST /cert/ocr}（证照图抽取证名）。同时保留
  * {@link #getRealnameStatus} 供 post 域查询实名状态（详设 §1.3 域间只调 service）。</p>
  *
  * <p><b>域边界</b>：读写 {@code user} 表实名列经 {@link UserService}（auth 域 service）、
@@ -51,8 +48,8 @@ import org.springframework.transaction.annotation.Transactional;
  * {@code cert} 表经本域 {@link CertMapper}。</p>
  *
  * <p><b>审核口径（2026-10-28 裁定）</b>：取消人工审核，提交即 {@code approved}；
- * {@code pending}/{@code rejected} 保留在枚举里，本轮不写入。到期由每日任务
- * 写 {@code expired}（{@code CertExpireTask}），编辑为新有效期时立即回 {@code approved}。</p>
+ * {@code pending}/{@code rejected} 保留在枚举里，本轮不写入。资质同时取消「证件类型 + 有效期」，
+ * 只保留「证书名 + 证照图」：{@code expired} 状态与每日过期任务一并移除（V23）。</p>
  *
  * <p><b>手机号一致性（DEC-30 ③）</b>：复用已登录手机号这一事实（短信验证码登录即证明
  * 手机号归本人），<b>不向供应商传手机号、不解密 {@code user_identity}</b>，故本类不调
@@ -76,9 +73,8 @@ public class CertService {
     /** 认证类型：企业认证（举报风险分的举报方权重据此判定 ×1.5，PRD §9.10.3）。 */
     public static final String CERT_TYPE_ENTERPRISE = "enterprise";
 
-    /** 可提交的资质类型（个人实名不是资质，提交时拒绝）。 */
-    private static final Set<String> QUALIFICATION_CERT_TYPES =
-            Set.of("personal_qualification", "enterprise", "vehicle");
+    /** 认证类型：个人资质（资质提交内部固定写该值；不出现在任何请求/响应）。 */
+    public static final String CERT_TYPE_QUALIFICATION = "personal_qualification";
 
     /** 认证状态：审核中（历史枚举值；本轮不写入，仅供 {@link CertFailureRecorder} 复用）。 */
     public static final String CERT_STATUS_PENDING = "pending";
@@ -86,20 +82,14 @@ public class CertService {
     /** 认证状态：已通过（实名核验通过 / 资质提交即生效）。 */
     private static final String CERT_STATUS_APPROVED = "approved";
 
-    /** 认证状态：已过期（每日任务到期流转 / 编辑为已过有效期时写入）。 */
-    public static final String CERT_STATUS_EXPIRED = "expired";
+    /** 证书名最大长度（与契约 {@code maxLength: 64} 对齐）。 */
+    private static final int CERT_NAME_MAX_LENGTH = 64;
 
     /** 证名来源：自动读取（用户未改动抽取结果）。 */
     private static final String NAME_SOURCE_OCR = "ocr";
 
     /** 证名来源：手工填写（用户手填或改写）。 */
     private static final String NAME_SOURCE_MANUAL = "manual";
-
-    /** 有效期类型：有到期日。 */
-    private static final String EXPIRE_TYPE_DATED = "dated";
-
-    /** 有效期类型：长期有效（不参与到期流转）。 */
-    private static final String EXPIRE_TYPE_PERMANENT = "permanent";
 
     /** 审计动作：提交实名认证。 */
     private static final String AUDIT_ACTION_REALNAME_SUBMIT = "realname.submit";
@@ -140,7 +130,7 @@ public class CertService {
     /** 媒体服务（证照图归属校验、签名地址、OSS 原件清理）。 */
     private final MediaService mediaService;
 
-    /** 大模型供应商（证照图抽取证名与有效期）。 */
+    /** 大模型供应商（证照图抽取证名）。 */
     private final AiProvider aiProvider;
 
     /**
@@ -283,6 +273,7 @@ public class CertService {
         List<CertEntity> rows = certMapper.selectList(new QueryWrapper<CertEntity>()
                 .eq("user_id", userId)
                 .ne("cert_type", CERT_TYPE_PERSONAL_REALNAME)
+                .eq("status", CERT_STATUS_APPROVED)
                 .orderByDesc("submitted_at"));
         List<QualificationItem> items = new ArrayList<>(rows.size());
         for (CertEntity row : rows) {
@@ -295,12 +286,13 @@ public class CertService {
     /**
      * 提交资质认证（{@code POST /cert/qualification}）。
      *
-     * <p>本轮取消人工审核：落库即 {@code approved}（有效期已过则直接 {@code expired}）；
-     * 未实名用户提交资质回 {@code 40302}（高敏类目前置实名）。</p>
+     * <p>本轮取消人工审核：落库即 {@code approved}。资质只收「证照图 + 证书名」，
+     * 证件类型内部固定为 {@link #CERT_TYPE_QUALIFICATION}；未实名用户提交资质回
+     * {@code 40302}（高敏类目前置实名）。</p>
      *
      * @param userId  当前登录用户 ID
-     * @param request 资质提交请求（类型/证照图/证名/有效期）
-     * @return {@link QualificationSubmitResult} 新记录 ID + 生效状态
+     * @param request 资质提交请求（证照图/证名/证名来源）
+     * @return {@link QualificationSubmitResult} 新记录 ID + 生效状态（恒 {@code approved}）
      * @throws BizException {@code 40302} 未实名 / {@code 40001} 参数非法或媒体非本人
      */
     @Transactional
@@ -309,39 +301,42 @@ public class CertService {
         if (!REALNAME_STATUS_PASSED.equals(getRealnameStatus(userId))) {
             throw BizException.of(ErrorCode.QUALIFICATION_NEEDED);
         }
-        requireQualificationType(request.certType());
-        String expireType = requireExpireType(request.expireType());
-        LocalDateTime expireAt = resolveExpireAt(expireType, request.expireAt(), null);
+        if (request.mediaIds() == null || request.mediaIds().isEmpty()) {
+            throw BizException.of(ErrorCode.PARAM_INVALID);
+        }
         String imageRef = request.mediaIds().get(0);
+        if (imageRef == null || imageRef.isBlank()) {
+            throw BizException.of(ErrorCode.PARAM_INVALID);
+        }
+        String certName = requireCertName(request.certName());
+        String nameSource = requireNameSource(request.nameSource());
         mediaService.ensureOwned(userId, imageRef);
 
+        LocalDateTime now = LocalDateTime.now();
         CertEntity entity = new CertEntity();
         entity.setUserId(userId);
-        entity.setCertType(request.certType());
-        entity.setCertName(normalizeCertName(request.certName()));
-        entity.setNameSource(requireNameSource(request.nameSource()));
-        entity.setExpireType(expireType);
-        entity.setExpireAt(expireAt);
-        entity.setStatus(statusFor(expireType, expireAt, LocalDateTime.now()));
-        entity.setSubmittedAt(LocalDateTime.now());
-        entity.setApprovedAt(CERT_STATUS_APPROVED.equals(entity.getStatus())
-                ? LocalDateTime.now() : null);
+        entity.setCertType(CERT_TYPE_QUALIFICATION);
+        entity.setCertName(certName);
+        entity.setNameSource(nameSource);
+        entity.setStatus(CERT_STATUS_APPROVED);
+        entity.setSubmittedAt(now);
+        entity.setApprovedAt(now);
         entity.setOcrImageRef(imageRef);
         certMapper.insert(entity);
         auditLogWriter.write(AuditEntry.minimal(userId, OperatorRole.USER,
                 AUDIT_ACTION_QUALIFICATION_SUBMIT, AUDIT_TARGET_USER, userId));
-        return new QualificationSubmitResult(entity.getId(), entity.getStatus());
+        return new QualificationSubmitResult(entity.getId(), CERT_STATUS_APPROVED);
     }
 
     /**
-     * 从证照图抽取证名与有效期（{@code POST /cert/ocr}）。
+     * 从证照图抽取证名（{@code POST /cert/ocr}）。
      *
-     * <p>抽取失败不是错误：返回两字段为 {@code null} 的结果，由客户端提示手填。
+     * <p>抽取失败不是错误：返回 {@code certName} 为 {@code null} 的结果，由客户端提示手填。
      * 只有媒体非本人（40001）与上游不可用（50301）才抛业务异常。</p>
      *
      * @param userId  当前登录用户 ID
      * @param mediaId 已 commit 的证照图 media_id
-     * @return {@link CertOcrResult} 证名与有效期（均可空）
+     * @return {@link CertOcrResult} 证名（可空）
      * @throws BizException 媒体不存在/非本人 → 40001；上游不可用 → 50301
      */
     public CertOcrResult extractCertProfile(Long userId, String mediaId) {
@@ -349,7 +344,7 @@ public class CertService {
         try {
             CertProfileGuess guess = aiProvider.extractCertProfile(userId, access.accessUrl(),
                     access.contentType());
-            return new CertOcrResult(guess.certName(), guess.expireAt());
+            return new CertOcrResult(guess.certName());
         } catch (RuntimeException e) {
             // 不打印 URL（含签名）与图片内容；仅映射错误码
             throw BizException.of(ErrorCode.AI_UNAVAILABLE);
@@ -359,14 +354,13 @@ public class CertService {
     /**
      * 编辑资质（{@code PATCH /cert/qualification/{cert_id}}）。
      *
-     * <p>只改传入项：换图只替换证照图、不重复抽取；改有效期时立即重算状态——
-     * 新有效期在前 → {@code approved}，已过 → {@code expired}（当日生效，不等次日任务）。
-     * 已生成的帖级快照不回溯。</p>
+     * <p>只改传入项：换图只替换证照图引用、不重复抽取；改名只改证名。资质无有效期概念，
+     * 编辑不涉及状态流转。已生成的帖级快照不回溯。</p>
      *
      * @param userId  当前登录用户 ID
      * @param certId  资质 ID
      * @param request 编辑载荷（字段全部可选，至少一项）
-     * @return {@link QualificationSubmitResult} 记录 ID + 重算后的状态
+     * @return {@link QualificationSubmitResult} 记录 ID + 当前状态（恒 {@code approved}）
      * @throws BizException {@code 40001} 记录不存在/非本人/参数非法
      */
     @Transactional
@@ -377,47 +371,24 @@ public class CertService {
             throw BizException.of(ErrorCode.PARAM_INVALID);
         }
         UpdateWrapper<CertEntity> update = new UpdateWrapper<CertEntity>().eq("id", certId);
-        boolean statusChanged = false;
-        String expireType = existing.getExpireType();
-        LocalDateTime expireAt = existing.getExpireAt();
 
         if (request.mediaIds() != null) {
             if (request.mediaIds().isEmpty()) {
                 throw BizException.of(ErrorCode.PARAM_INVALID);
             }
             String imageRef = request.mediaIds().get(0);
+            if (imageRef == null || imageRef.isBlank()) {
+                throw BizException.of(ErrorCode.PARAM_INVALID);
+            }
             mediaService.ensureOwned(userId, imageRef);
             update.set("ocr_image_ref", imageRef);
         }
         if (request.certName() != null) {
-            update.set("cert_name", normalizeCertName(request.certName()));
+            update.set("cert_name", requireCertName(request.certName()));
         }
         if (request.nameSource() != null) {
             update.set("name_source", requireNameSource(request.nameSource()));
         }
-        if (request.expireType() != null || request.expireAt() != null) {
-            if (request.expireAt() != null && request.expireType() == null
-                    && EXPIRE_TYPE_PERMANENT.equals(existing.getExpireType())) {
-                // 原证「长期有效」却只改到期日：口径冲突，要求显式改为 dated
-                throw BizException.of(ErrorCode.PARAM_INVALID);
-            }
-            expireType = request.expireType() != null
-                    ? requireExpireType(request.expireType()) : existing.getExpireType();
-            expireAt = resolveExpireAt(expireType,
-                    request.expireAt() != null ? request.expireAt() : null, existing.getExpireAt());
-            update.set("expire_type", expireType);
-            update.set("expire_at", expireAt);
-            statusChanged = true;
-        }
-        if (statusChanged) {
-            String status = statusFor(expireType, expireAt, LocalDateTime.now());
-            update.set("status", status);
-            update.set("approved_at",
-                    CERT_STATUS_APPROVED.equals(status) ? LocalDateTime.now() : null);
-            existing.setStatus(status);
-        }
-        existing.setExpireType(expireType);
-        existing.setExpireAt(expireAt);
         certMapper.update(null, update);
         auditLogWriter.write(AuditEntry.minimal(userId, OperatorRole.USER,
                 AUDIT_ACTION_QUALIFICATION_UPDATE, AUDIT_TARGET_USER, userId));
@@ -428,7 +399,7 @@ public class CertService {
      * 删除资质（{@code DELETE /cert/qualification/{cert_id}}）。
      *
      * <p>用户显式删除：先清证照原件（媒体已挂到帖子时跳过，避免帖子裂图），再删记录。
-     * 已挂载该证的帖子主行保留，说明行由详情侧按「凭证被删除」渲染。</p>
+     * 已挂载该证的帖子不再展示凭证块（快照不回溯）。</p>
      *
      * @param userId 当前登录用户 ID
      * @param certId 资质 ID
@@ -462,9 +433,8 @@ public class CertService {
                 imageUrl = null;
             }
         }
-        return new QualificationItem(row.getId(), row.getCertType(), row.getCertName(),
-                row.getNameSource(), row.getStatus(), row.getExpireType(),
-                toInstant(row.getExpireAt()), imageUrl);
+        return new QualificationItem(row.getId(), row.getCertName(),
+                row.getNameSource(), row.getStatus(), imageUrl);
     }
 
     /**
@@ -485,29 +455,18 @@ public class CertService {
     }
 
     /**
-     * 校验资质类型（个人实名不是资质）。
+     * 归一化并校验证名长度（去首尾空白；空白视为未填）。
      *
-     * @param certType 认证类型
-     * @throws BizException {@code 40001} 不在可提交集合内
+     * @param certName 证名（可空）
+     * @return {@link String} 归一化后的证名；空白返回 {@code null}
+     * @throws BizException {@code 40001} 超过 {@value #CERT_NAME_MAX_LENGTH} 字
      */
-    private void requireQualificationType(String certType) {
-        if (certType == null || !QUALIFICATION_CERT_TYPES.contains(certType)) {
+    private String requireCertName(String certName) {
+        String normalized = normalizeCertName(certName);
+        if (normalized != null && normalized.length() > CERT_NAME_MAX_LENGTH) {
             throw BizException.of(ErrorCode.PARAM_INVALID);
         }
-    }
-
-    /**
-     * 校验有效期类型。
-     *
-     * @param expireType 有效期类型
-     * @return {@link String} 合法值
-     * @throws BizException {@code 40001} 非法值
-     */
-    private String requireExpireType(String expireType) {
-        if (!EXPIRE_TYPE_DATED.equals(expireType) && !EXPIRE_TYPE_PERMANENT.equals(expireType)) {
-            throw BizException.of(ErrorCode.PARAM_INVALID);
-        }
-        return expireType;
+        return normalized;
     }
 
     /**
@@ -542,55 +501,6 @@ public class CertService {
     }
 
     /**
-     * 解析到期时间：长期有效恒 {@code null}；有到期日时优先用本次传入值，否则回落到原值。
-     *
-     * @param expireType 有效期类型
-     * @param incoming   本次请求的到期时刻（可空）
-     * @param fallback   原记录的到期时间（可空）
-     * @return {@link LocalDateTime} 到期时间；长期有效返回 {@code null}
-     * @throws BizException {@code 40001} 有到期日但两端都无值
-     */
-    private LocalDateTime resolveExpireAt(String expireType, Instant incoming,
-            LocalDateTime fallback) {
-        if (EXPIRE_TYPE_PERMANENT.equals(expireType)) {
-            return null;
-        }
-        if (incoming != null) {
-            return LocalDateTime.ofInstant(incoming, ZoneId.systemDefault());
-        }
-        if (fallback == null) {
-            throw BizException.of(ErrorCode.PARAM_INVALID);
-        }
-        return fallback;
-    }
-
-    /**
-     * 计算提交/编辑后的状态：长期有效或未到期 → {@code approved}；已到期 → {@code expired}。
-     *
-     * @param expireType 有效期类型
-     * @param expireAt   到期时间（长期有效为 {@code null}）
-     * @param now        当前时刻（与库内 DATETIME 同一时区基准）
-     * @return {@link String} 状态值
-     */
-    private String statusFor(String expireType, LocalDateTime expireAt, LocalDateTime now) {
-        if (EXPIRE_TYPE_PERMANENT.equals(expireType) || expireAt == null
-                || expireAt.isAfter(now)) {
-            return CERT_STATUS_APPROVED;
-        }
-        return CERT_STATUS_EXPIRED;
-    }
-
-    /**
-     * 库内时间转 API 时间（UTC 时刻，与契约 {@code date-time} 对齐）。
-     *
-     * @param time 库内时间
-     * @return {@link Instant} UTC 时刻；入参 {@code null} 返回 {@code null}
-     */
-    private Instant toInstant(LocalDateTime time) {
-        return time == null ? null : time.atZone(ZoneId.systemDefault()).toInstant();
-    }
-
-    /**
      * 取资质当前快照（供 post 域详情读取凭证当前状态；不存在返回 {@code null}）。
      *
      * <p>跨域只暴露本方法与本域 DTO，post 域不接触 {@code cert} 表（编码规范 §4.2）。</p>
@@ -609,8 +519,8 @@ public class CertService {
     /**
      * 校验资质可被帖子挂载，并返回挂载快照（发布与补挂共用）。
      *
-     * <p>只接受本人、{@code approved} 且在有效期内的资质；否则一律 {@code 40001}
-     * （不区分「不存在/非本人/已失效」，不按 id 探测归属）。</p>
+     * <p>只接受本人、{@code approved} 且证名非空的资质；否则一律 {@code 40001}
+     * （不区分「不存在/非本人/已失效」，不按 id 探测归属）。资质无有效期概念，不做到期判断。</p>
      *
      * @param userId 当前登录用户 ID
      * @param certId 资质 ID
@@ -624,11 +534,8 @@ public class CertService {
         CertEntity row = certMapper.selectById(certId);
         if (row == null || !userId.equals(row.getUserId())
                 || CERT_TYPE_PERSONAL_REALNAME.equals(row.getCertType())
-                || !CERT_STATUS_APPROVED.equals(row.getStatus())) {
-            throw BizException.of(ErrorCode.PARAM_INVALID);
-        }
-        if (EXPIRE_TYPE_DATED.equals(row.getExpireType()) && row.getExpireAt() != null
-                && !row.getExpireAt().isAfter(LocalDateTime.now())) {
+                || !CERT_STATUS_APPROVED.equals(row.getStatus())
+                || row.getCertName() == null || row.getCertName().isBlank()) {
             throw BizException.of(ErrorCode.PARAM_INVALID);
         }
         return toSnapshot(row);
@@ -641,8 +548,7 @@ public class CertService {
      * @return {@link CertSnapshot} 快照
      */
     private CertSnapshot toSnapshot(CertEntity row) {
-        return new CertSnapshot(row.getId(), row.getCertType(), row.getCertName(),
-                row.getExpireType(), row.getExpireAt(), row.getStatus());
+        return new CertSnapshot(row.getId(), row.getCertName(), row.getStatus());
     }
 
     /**
@@ -655,7 +561,6 @@ public class CertService {
         entity.setUserId(userId);
         entity.setCertType(CERT_TYPE_PERSONAL_REALNAME);
         entity.setStatus(CERT_STATUS_APPROVED);
-        entity.setExpireType(EXPIRE_TYPE_PERMANENT);
         entity.setApprovedAt(LocalDateTime.now());
         entity.setFailCount(0);
         certMapper.insert(entity);
