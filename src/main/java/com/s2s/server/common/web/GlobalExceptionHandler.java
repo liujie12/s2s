@@ -8,6 +8,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -112,6 +113,29 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleUnreadableBody(
             HttpMessageNotReadableException exception) {
         log.warn("请求体解析失败，映射 40001（{}；异常消息含原始报文故不落堆栈）",
+                exception.getClass().getSimpleName());
+        return ResponseEntity.status(ErrorCode.PARAM_INVALID.getHttpStatus())
+                .body(errorBody(ErrorCode.PARAM_INVALID));
+    }
+
+    /**
+     * 请求体 Content-Type 不被支持时映射 {@code 40001}（而不是兜底 {@code 50001}）。
+     *
+     * <p><b>为什么单独处理（2026-10-29 线上实测）</b>：客户端把 JSON 以
+     * {@code application/octet-stream} 发出时，Spring 抛
+     * {@link HttpMediaTypeNotSupportedException}，原先落到兜底分支回 {@code 50001}，
+     * 前端按「可自动重试」重试 2 次后仍失败，最终呈现为「网络异常」——把客户端的
+     * 错误归成了服务端故障。该异常本质是请求参数非法，按 {@code 40001} 返回更准确，
+     * 也避免无意义重试。</p>
+     *
+     * @param exception Content-Type 不支持异常
+     * @return {@link ResponseEntity}：HTTP 400，响应体
+     *         {@code ApiResponse(40001, ErrorCode.PARAM_INVALID.message, null, requestId)}
+     */
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleUnsupportedMediaType(
+            HttpMediaTypeNotSupportedException exception) {
+        log.warn("请求 Content-Type 不支持，映射 40001（{}）",
                 exception.getClass().getSimpleName());
         return ResponseEntity.status(ErrorCode.PARAM_INVALID.getHttpStatus())
                 .body(errorBody(ErrorCode.PARAM_INVALID));

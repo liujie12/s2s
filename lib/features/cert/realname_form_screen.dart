@@ -5,6 +5,7 @@
 /// B2-11「我的页实装」补入，本轮不展开（人工审核未上线）。
 library;
 
+import 'package:dio/dio.dart' show DioException, DioExceptionType;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -90,7 +91,23 @@ class _RealnameFormScreenState extends ConsumerState<RealnameFormScreen> {
   /// 返回：[String] 用户可读文案。
   String _messageOf(Object error) {
     final api = error is ApiException ? error : null;
-    if (api == null) return '网络异常，请稍后重试';
+    if (api == null) {
+      // 传输层失败（无响应、无 request_id）：按异常类型给出可执行提示。
+      // 一律回「网络异常」会让用户分不清「该重试」还是「该重新登录/换网络」，
+      // 2026-10-29 真机反馈即卡在这句含糊文案上。
+      if (error is DioException) {
+        return switch (error.type) {
+          DioExceptionType.connectionTimeout ||
+          DioExceptionType.sendTimeout ||
+          DioExceptionType.receiveTimeout =>
+            '请求超时，请检查网络后重试',
+          DioExceptionType.connectionError => '网络连接失败，请检查网络后重试',
+          DioExceptionType.badCertificate => '安全连接失败，请检查网络环境',
+          _ => '网络异常（${error.type.name}），请稍后重试',
+        };
+      }
+      return '网络异常，请稍后重试';
+    }
     final text = switch (api.code) {
       ApiErrorCode.agreementRequired => '请先勾选并同意实名认证相关协议',
       ApiErrorCode.certUnavailable => '认证服务暂时不可用，请稍后重试',
