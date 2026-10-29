@@ -19,6 +19,7 @@ import com.s2s.server.post.dto.PostUpdateRequest;
 import com.s2s.server.post.dto.RepostDraft;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
