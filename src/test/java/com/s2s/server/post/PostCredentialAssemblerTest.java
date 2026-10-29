@@ -65,7 +65,7 @@ class PostCredentialAssemblerTest {
      * @return {@link CertSnapshot} 快照
      */
     private CertSnapshot cert(long certId, String certName, String status) {
-        return new CertSnapshot(certId, certName, status);
+        return new CertSnapshot(certId, certName, status, null);
     }
 
     @Test
@@ -79,7 +79,8 @@ class PostCredentialAssemblerTest {
         when(declarationMapper.selectList(any())).thenReturn(List.of(
                 declaration(1L, 9L, "家政服务资质"),
                 declaration(2L, 10L, "企业营业执照")));
-        when(certService.findSnapshot(9L)).thenReturn(cert(9L, "家政服务资质", "approved"));
+        when(certService.findSnapshot(9L)).thenReturn(
+                new CertSnapshot(9L, "家政服务资质", "approved", "https://oss.example/a.jpg"));
         when(certService.findSnapshot(10L)).thenReturn(cert(10L, "企业营业执照", "approved"));
 
         List<PostCredential> credentials = assembler.of(100L);
@@ -88,6 +89,7 @@ class PostCredentialAssemblerTest {
         assertThat(credentials.get(0).certId()).isEqualTo(9L);
         assertThat(credentials.get(0).certName()).isEqualTo("家政服务资质");
         assertThat(credentials.get(0).state()).isEqualTo("valid");
+        assertThat(credentials.get(0).imageUrl()).isEqualTo("https://oss.example/a.jpg");
         assertThat(credentials.get(1).certId()).isEqualTo(10L);
     }
 

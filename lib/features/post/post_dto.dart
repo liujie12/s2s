@@ -214,6 +214,7 @@ class PostCredentialDto {
   /// 构造凭证块 DTO。
   const PostCredentialDto({
     this.certId,
+    this.imageUrl,
     required this.certName,
     required this.state,
   });
@@ -227,6 +228,7 @@ class PostCredentialDto {
     final map = requireMap(json, 'PostCredential');
     return PostCredentialDto(
       certId: optInt(map, 'cert_id', 'PostCredential'),
+      imageUrl: optString(map, 'image_url', 'PostCredential'),
       certName: requireString(map, 'cert_name', 'PostCredential'),
       state: requireString(map, 'state', 'PostCredential'),
     );
@@ -234,6 +236,9 @@ class PostCredentialDto {
 
   /// 资质档案 ID（凭证被删除后历史行可为 null）。
   final int? certId;
+
+  /// 证照图只读签名 URL（null = 未上传或被清理，客户端按无图渲染）。
+  final String? imageUrl;
 
   /// 证名快照；历史行可能为空串。
   final String certName;

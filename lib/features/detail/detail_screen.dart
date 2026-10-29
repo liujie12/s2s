@@ -621,6 +621,9 @@ class _CredentialBlock extends StatelessWidget {
   /// 凭证列表。
   final List<PostCredential> credentials;
 
+  /// 大图最大放大倍数（只读证照，给足看清细节的空间）。
+  static const double _maxImageScale = 4;
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -628,28 +631,106 @@ class _CredentialBlock extends StatelessWidget {
       children: [
         for (final credential in credentials)
           Padding(
-            padding: const EdgeInsets.only(bottom: AppSpacing.xs),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.workspace_premium_outlined,
-                  size: 16,
-                  color: Color(AppColors.textSecondary),
-                ),
-                const SizedBox(width: AppSpacing.xs),
-                Expanded(
-                  child: Text(
-                    _mainLineOf(credential),
-                    style: TextStyle(
-                      fontSize: AppTypeScale.body.size,
-                      color: Color(AppColors.textPrimary),
+            padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+            child: InkWell(
+              onTap: credential.imageUrl == null
+                  ? null
+                  : () => _openImage(context, credential),
+              child: Row(
+                children: [
+                  _thumb(credential),
+                  const SizedBox(width: AppSpacing.sm),
+                  Expanded(
+                    child: Text(
+                      _mainLineOf(credential),
+                      style: TextStyle(
+                        fontSize: AppTypeScale.body.size,
+                        color: Color(AppColors.textPrimary),
+                      ),
                     ),
                   ),
-                ),
-              ],
+                  if (credential.imageUrl != null)
+                    Icon(
+                      Icons.zoom_in,
+                      size: 16,
+                      color: Color(AppColors.textSecondary),
+                    ),
+                ],
+              ),
             ),
           ),
+        Text(
+          '资质由发布者提供，平台未核验；点击可查看证照图',
+          style: TextStyle(
+            fontSize: AppTypeScale.caption.size,
+            color: Color(AppColors.textSecondary),
+          ),
+        ),
       ],
+    );
+  }
+
+  /// 证照图缩略图（无图时退化为图标，保持行高一致）。
+  ///
+  /// 参数：[credential] 凭证块。
+  /// 返回：左侧缩略图或图标。
+  static Widget _thumb(PostCredential credential) {
+    final url = credential.imageUrl;
+    if (url == null) {
+      return Icon(
+        Icons.workspace_premium_outlined,
+        size: 16,
+        color: Color(AppColors.textSecondary),
+      );
+    }
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(AppRadius.sm),
+      child: Image.network(
+        url,
+        width: 56,
+        height: 56,
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => Container(
+          width: 56,
+          height: 56,
+          color: Color(AppColors.primaryLight),
+          child: Icon(
+            Icons.image_not_supported_outlined,
+            size: 18,
+            color: Color(AppColors.textSecondary),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 打开证照大图（可双指缩放，点任意处关闭）。
+  ///
+  /// 参数：[context] 构建上下文；[credential] 凭证块（须有 imageUrl）。
+  /// 返回：[Future<void>]。
+  static Future<void> _openImage(
+    BuildContext context,
+    PostCredential credential,
+  ) async {
+    final url = credential.imageUrl;
+    if (url == null) return;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(AppSpacing.lg),
+        child: GestureDetector(
+          onTap: () => Navigator.of(dialogContext).pop(),
+          child: InteractiveViewer(
+            maxScale: _maxImageScale,
+            child: Image.network(
+              url,
+              fit: BoxFit.contain,
+              errorBuilder: (_, _, _) => const SizedBox.shrink(),
+            ),
+          ),
+        ),
+      ),
     );
   }
 

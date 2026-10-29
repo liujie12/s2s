@@ -13,10 +13,12 @@ import com.fasterxml.jackson.databind.annotation.JsonNaming;
  * @param certId   资质档案 ID（编辑态回显勾选用；凭证被删除后历史行可为 {@code null}）
  * @param certName 证名快照（可空串；历史行为空）
  * @param state    展示状态（{@code valid}；非有效项在组装阶段已剔除）
+ * @param imageUrl 证照图只读签名 URL（可空：未上传证照或媒体行已清理）
  */
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public record PostCredential(
         Long certId,
         String certName,
-        String state) {
+        String state,
+        String imageUrl) {
 }

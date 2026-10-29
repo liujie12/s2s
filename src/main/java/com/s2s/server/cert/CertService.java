@@ -609,7 +609,29 @@ public class CertService {
      * @return {@link CertSnapshot} 快照
      */
     private CertSnapshot toSnapshot(CertEntity row) {
-        return new CertSnapshot(row.getId(), row.getCertName(), row.getStatus());
+        return new CertSnapshot(row.getId(), row.getCertName(), row.getStatus(),
+                signCertImage(row.getOcrImageRef()));
+    }
+
+    /**
+     * 为证照图签发公开只读 URL（详情页资质栏展示用）。
+     *
+     * <p>2026-10-29 用户裁定：详情页展示证照图（缩略图 + 可点开大图，暂不打码），
+     * 详情对游客开放，故用公开签名（{@code MediaService.signPublicReadUrl}）。
+     * 媒体行已被清理或未上传证照时返回 {@code null}，展示侧按无图处理。</p>
+     *
+     * @param ocrImageRef 证照图媒体 ID（可空）
+     * @return {@link String} 只读签名 URL；无图/已清理返回 {@code null}
+     */
+    private String signCertImage(String ocrImageRef) {
+        if (ocrImageRef == null || ocrImageRef.isBlank()) {
+            return null;
+        }
+        try {
+            return mediaService.signPublicReadUrl(ocrImageRef);
+        } catch (BizException e) {
+            return null;
+        }
     }
 
     /**

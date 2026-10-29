@@ -103,6 +103,7 @@ class PostCredential {
   const PostCredential({
     required this.certName,
     required this.state,
+    this.imageUrl,
   });
 
   /// 状态：有效（正常展示）。
@@ -119,6 +120,9 @@ class PostCredential {
 
   /// 实时展示状态（`valid`/`revoked`/`deleted`）。
   final String state;
+
+  /// 证照图只读签名 URL（null = 无图）。
+  final String? imageUrl;
 
   /// 是否当前有效。
   bool get isEffective => state == stateValid;

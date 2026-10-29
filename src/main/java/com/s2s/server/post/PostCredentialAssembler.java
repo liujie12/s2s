@@ -101,7 +101,7 @@ public class PostCredentialAssembler {
                 continue;
             }
             result.add(new PostCredential(declaration.getCertId(),
-                    declaration.getCertNameSnapshot(), STATE_VALID));
+                    declaration.getCertNameSnapshot(), STATE_VALID, cert.imageUrl()));
         }
         return result;
     }

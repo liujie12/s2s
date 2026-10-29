@@ -121,6 +121,7 @@ PostCredential _credentialFromDto(PostCredentialDto dto) {
   return PostCredential(
     certName: dto.certName,
     state: dto.state,
+    imageUrl: dto.imageUrl,
   );
 }
 

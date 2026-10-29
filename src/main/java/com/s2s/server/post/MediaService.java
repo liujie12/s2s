@@ -191,6 +191,24 @@ public class MediaService {
     }
 
     /**
+     * 为媒体签发「任意登录/游客可读」的普通只读 GET 签名 URL（证照图公开展示用）。
+     *
+     * <p><b>为什么不做归属校验</b>：2026-10-29 用户裁定详情页资质栏展示证照图
+     * （缩略图 + 可点开大图，暂不打码），详情页对游客开放，故该 URL 不做归属判断。
+     * 其余场景仍必须走 {@link #signOwnedReadUrl} 防 IDOR。</p>
+     *
+     * @param mediaId 媒体 ID
+     * @return {@link String} 只读签名 URL；媒体行不存在返回 {@code null}
+     */
+    public String signPublicReadUrl(String mediaId) {
+        if (mediaId == null || mediaId.isBlank()) {
+            return null;
+        }
+        PostMediaEntity media = mediaMapper.selectById(mediaId);
+        return media == null ? null : ossClient.signAccessUrl(readableKeyOf(media));
+    }
+
+    /**
      * 删除「本人媒体」的 OSS 对象与登记行（资质删除时清理证照原件）。
      *
      * <p>只清理尚未挂到帖子上的媒体（{@code post_id IS NULL}）：一旦被帖子引用，

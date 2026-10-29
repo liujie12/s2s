@@ -5180,6 +5180,13 @@ components:
           type: string
           maxLength: 64
           description: 证名快照；历史行可能为空串
+        image_url:
+          type: string
+          nullable: true
+          description: |
+            证照图只读签名 URL（2026-10-29 用户裁定：详情页展示缩略图并可点开大图，暂不打码）。
+            未上传证照、或媒体行已被清理时为 `null`，客户端按无图渲染。
+            签名为公开只读（详情页游客可见），有效期由对象存储签名策略决定。
         state: { $ref: '#/components/schemas/PostCredentialStateEnum' }
 
     PostDetail:
