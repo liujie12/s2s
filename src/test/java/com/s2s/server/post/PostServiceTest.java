@@ -381,7 +381,7 @@ class PostServiceTest {
     private static PostUpdateRequest updateReq(String contactValue) {
         return new PostUpdateRequest(4L, "resource", 10101, "新标题", 60.0, "小时", "新描述",
                 Map.of("k", "v"), 120.15, 30.28, null, false, List.of(),
-                contactValue == null ? null : "phone", contactValue);
+                contactValue == null ? null : "phone", contactValue, null);
     }
 
     /**

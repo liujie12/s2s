@@ -225,15 +225,11 @@ final List<RouteBase> _routes = [
   ),
   GoRoute(
     path: AppRoutes.publishSuccess,
-    // extra 兼容两种：`PublishSuccessArgs`（表单快照 + 新帖 ID，本轮补挂入口）
-    // 与裸 `PublishFormState?`（历史调用/深链）；为空时按 🔴 档展示。
-    builder: (context, state) {
-      final extra = state.extra;
-      if (extra is PublishSuccessArgs) {
-        return PublishSuccessScreen(form: extra.form, postId: extra.postId);
-      }
-      return PublishSuccessScreen(form: extra as PublishFormState?);
-    },
+    // extra 为提交时的表单快照（`PublishFormState?`），用于算 §9.8 档位；
+    // 为空时按 🔴 档展示。
+    builder: (context, state) => PublishSuccessScreen(
+      form: state.extra as PublishFormState?,
+    ),
   ),
   GoRoute(
     path: AppRoutes.contact,

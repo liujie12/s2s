@@ -35,6 +35,7 @@ import java.util.Map;
  * @param mediaIds       媒体 ID 列表（maxItems 9）
  * @param contactType    联系方式渠道（可空 = 保留原渠道）
  * @param contactValue   联系方式值（可空 = 保留原密文不改）
+ * @param certIds        资质栏挂载结果（{@code null} = 本次不改动；空列表 = 取消全部挂载）
  */
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public record PostUpdateRequest(
@@ -52,5 +53,6 @@ public record PostUpdateRequest(
         Boolean addressPrecise,
         @Size(max = 9) List<String> mediaIds,
         String contactType,
-        @Size(max = 64) String contactValue) {
+        @Size(max = 64) String contactValue,
+        List<Long> certIds) {
 }

@@ -141,7 +141,7 @@ class ListingDetail {
     this.mediaUrls = const [],
     this.aiAssisted = false,
     this.favorited,
-    this.credential,
+    this.credentials = const [],
   });
 
   /// 复用列表模型承载共有字段，避免同一条信息在两个类里各存一份标题与坐标。
@@ -222,8 +222,8 @@ class ListingDetail {
   /// `favoriteStateProvider`）。
   final bool? favorited;
 
-  /// 帖级凭证声明块（资质行）；null = 未关联，整块不渲染。
-  final PostCredential? credential;
+  /// 帖级凭证声明列表（资质栏；一帖多证，空列表 = 整栏不渲染）。
+  final List<PostCredential> credentials;
 
   /// 剩余有效期天数（向上取整）。
   ///

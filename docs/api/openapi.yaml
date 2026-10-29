@@ -1217,15 +1217,16 @@ paths:
   /posts/{post_id}/cert:
     put:
       tags: [post]
-      summary: 发布后补挂 / 替换凭证声明
+      summary: 发布后补挂 / 替换凭证声明（一帖多证）
       operationId: upsertPostCert
       x-batch: Batch2
       x-domain: post
       description: |
-        把本人资质挂到已有帖子上（一帖一证）。**只写声明记录与其快照**：
+        把本人资质挂到已有帖子上（**一帖多证，整体替换**；2026-10-29 由一帖一证扩展）。
 
         - 不修改 `post` 行，不改 `updated_at` / `expire_at` / `version`，不进入任何排序权重。
-        - 已有声明记录时按替换处理：快照重取、`declared_at` 与 `updated_at` 刷新。
+        - `cert_ids` 为该帖最终的资质集合：已有声明按集合差异重写，快照重取、
+          `declared_at` 刷新；空数组表示**取消全部挂载**。
         - 候选只接受本人 `status=approved` 的资质；否则回 `40001`。
         - 非本人帖子回 `40001`（沿用既有归属收敛口径，不新增错误码）。
       parameters:
@@ -1239,15 +1240,16 @@ paths:
           application/json:
             schema:
               type: object
-              required: [cert_id]
+              required: [cert_ids]
               properties:
-                cert_id:
-                  type: integer
-                  format: int64
-                  description: 本人资质档案 ID
+                cert_ids:
+                  type: array
+                  uniqueItems: true
+                  items: { type: integer, format: int64 }
+                  description: 本人资质档案 ID 列表（空数组 = 取消全部挂载）
       responses:
         '200':
-          description: 补挂成功（返回最新声明块，供页面即时刷新）
+          description: 替换成功（返回最新声明列表，供页面即时刷新）
           content:
             application/json:
               schema:
@@ -1256,7 +1258,9 @@ paths:
                   - type: object
                     properties:
                       data:
-                        $ref: '#/components/schemas/PostCredential'
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/PostCredential'
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '500': { $ref: '#/components/responses/InternalError' }
@@ -5050,14 +5054,15 @@ components:
             （`l2_category_id` / `completeness_level` / `grid_id` / `expire_at` / `version`）
             **由服务端生成，客户端传了也被忽略**。
           properties:
-            cert_id:
-              type: integer
-              format: int64
-              nullable: true
+            cert_ids:
+              type: array
+              uniqueItems: true
+              items: { type: integer, format: int64 }
               description: |
-                可选挂载的资质档案 ID（一帖一证）。缺省或 `null` = 本次不展示，不阻断发布、
-                不进 precheck 阻断项。只接受本人 `status=approved` 的资质，
-                否则回 `40001`。写入时冻结证名快照，之后换证不回溯。
+                可选挂载的资质档案 ID 列表（一帖多证，2026-10-29 由 `cert_id` 扩展而来）。
+                缺省或空数组 = 本次不展示，不阻断发布、不进 precheck 阻断项。
+                只接受本人 `status=approved` 的资质，否则回 `40001`。
+                写入时逐张冻结证名快照，之后换证不回溯；详情按挂载顺序展示全部证名。
 
     PostUpdateRequest:
       allOf:
@@ -5071,6 +5076,15 @@ components:
               description: |
                 乐观锁版本号（须取自 `GET /posts/mine` 或 `GET /posts/{id}` 的 `version`）。
                 不符、非本人、行不存在或非在架一律回 `40903`（0 行不区分成因）。
+            cert_ids:
+              type: array
+              uniqueItems: true
+              items: { type: integer, format: int64 }
+              description: |
+                编辑窗口「资质栏」的挂载结果，**整体替换**该帖现有声明（2026-10-29）。
+                缺省 = 本次不改动；空数组 = 取消全部挂载。只接受本人 `status=approved`
+                的资质，否则回 `40001`。声明写在不修改 `post` 行的独立表内，
+                不影响 `version` / `updated_at` / `expire_at`。
           description: |
             [B2-8] 编辑载荷。字段集与 `PostCreateRequest` 一致，**但 `contact_type`/`contact_value`
             可空**——`contact_value` 为 `null` 表示**保留原密文不改**（完整联系方式明文唯一出口是
@@ -5153,10 +5167,15 @@ components:
     PostCredential:
       type: object
       description: |
-        帖级凭证声明块（详情页资质行）。**证名取自写入时的冻结快照，永不改写**。
-        详情只显示证书名；未关联凭证时不返回本对象（整块不渲染）。
-      required: [cert_name, state]
+        帖级凭证声明块（详情页资质栏的一项）。**证名取自写入时的冻结快照，永不改写**。
+        详情只显示证书名；凭证被删除或撤销时不返回该项（整项不渲染）。
+      required: [cert_id, cert_name, state]
       properties:
+        cert_id:
+          type: integer
+          format: int64
+          nullable: true
+          description: 资质档案 ID（供编辑态回显勾选；凭证被删除后历史行可为 `null`）
         cert_name:
           type: string
           maxLength: 64
@@ -5237,13 +5256,13 @@ components:
             不下发收藏数：计数仅帖主可见（PRD §8.3.1）。
         author:
           $ref: '#/components/schemas/AuthorBrief'
-        credential:
-          allOf:
-            - $ref: '#/components/schemas/PostCredential'
-          nullable: true
+        credentials:
+          type: array
+          items:
+            $ref: '#/components/schemas/PostCredential'
           description: |
-            帖级凭证声明块。未关联凭证、或声明记录为脏数据（关联瞬间已失效）时为 `null`，
-            客户端整块不渲染。
+            帖级凭证声明块列表（一帖多证，2026-10-29）。按挂载顺序返回全部**当前有效**的
+            证名快照；未关联凭证、或全部凭证均已删除/撤销时为空数组，客户端整栏不渲染。
 
     AuthorBrief:
       type: object

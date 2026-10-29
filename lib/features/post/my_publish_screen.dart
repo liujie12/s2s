@@ -41,7 +41,6 @@ import '../../domain/listing.dart';
 import '../../domain/listing_category_style.dart';
 import '../../domain/listing_detail.dart';
 import '../../router/app_router.dart';
-import '../cert/cert_picker.dart';
 import '../publish/draft_store.dart';
 import '../publish/publish_form_state.dart';
 import '../publish/publish_screen_args.dart';
@@ -221,29 +220,6 @@ class _MyPublishScreenState extends ConsumerState<MyPublishScreen> {
     }
   }
 
-  /// 补挂资质（`PUT /posts/{post_id}/cert`，帖子凭证方案 R7/F2）。
-  ///
-  /// 只写声明记录与快照，不改帖子时间；成功后详情页即时生效。
-  ///
-  /// 参数：[item] 目标列表项。
-  /// 返回：[Future<void>]。
-  Future<void> _attachCert(MyPostItemDto item) async {
-    try {
-      final candidates = await ref.read(certCandidatesProvider.future);
-      if (!mounted) return;
-      if (candidates.isEmpty) {
-        _showMessage('还没有可用的资质，请先在「信任与认证」添加');
-        return;
-      }
-      final picked = await showCertPickerSheet(context, candidates: candidates);
-      if (!mounted || !picked.confirmed || picked.certId == null) return;
-      await ref.read(postRepositoryProvider).attachCert(item.id, picked.certId!);
-      if (mounted) _showMessage('已添加，详情页立即生效');
-    } catch (e) {
-      if (mounted) _showMessage(asApiException(e).uiMessage);
-    }
-  }
-
   /// 打开页内搜索（本地筛选）：输入关键词并按标题/类目名过滤已加载列表。
   ///
   /// 返回：[Future<void>]。
@@ -291,6 +267,11 @@ class _MyPublishScreenState extends ConsumerState<MyPublishScreen> {
       description: detail.description ?? '',
       templateValues: _stringAttributes(detail.attributes),
       mediaIds: [for (final media in detail.media) media.mediaId],
+      // 编辑态回显已挂载资质（一帖多证）：只带 cert_id，勾选态由发布页资质栏渲染。
+      certIds: [
+        for (final credential in detail.credentials)
+          if (credential.certId != null) credential.certId!,
+      ],
       contact: '',
     );
   }
@@ -436,10 +417,6 @@ class _MyPublishScreenState extends ConsumerState<MyPublishScreen> {
           return _MyPostCard(
             item: item,
             onAction: (action) => _onAction(action, item),
-            // 补挂只对在架帖开放：下架/过期的帖子补挂后没人能看到，先不给入口。
-            onAttachCert: item.status == PostApiStatus.active
-                ? () => _attachCert(item)
-                : null,
           );
         },
       ),
@@ -560,7 +537,6 @@ class _MyPostCard extends StatelessWidget {
   const _MyPostCard({
     required this.item,
     required this.onAction,
-    this.onAttachCert,
   });
 
   /// 列表项（契约 `MyPostItem`）。
@@ -568,9 +544,6 @@ class _MyPostCard extends StatelessWidget {
 
   /// 动作回调。
   final ValueChanged<MyPostCardAction> onAction;
-
-  /// 「加一份资质」回调（null = 不展示该入口）。
-  final VoidCallback? onAttachCert;
 
   @override
   Widget build(BuildContext context) {
@@ -665,11 +638,6 @@ class _MyPostCard extends StatelessWidget {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                if (onAttachCert != null)
-                  TextButton(
-                    onPressed: onAttachCert,
-                    child: const Text('加一份资质'),
-                  ),
                 for (final action in actions)
                   Padding(
                     padding: const EdgeInsets.only(left: AppSpacing.sm),

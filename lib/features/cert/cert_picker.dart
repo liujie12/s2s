@@ -1,10 +1,9 @@
-/// 资质挂载选择（发布表单挂载位 + 「我的发布」补挂入口共用）。
+/// 资质挂载选择（发布/编辑窗口的「资质栏」）。
 ///
-/// 口径（帖子凭证方案 R1/R6/R7）：
-///   - 默认「本次不展示」，不阻断发布、不产生 precheck 阻断码；
-///   - 候选只列本人已添加（`approved`）的资质；
-///   - 没有候选时不显示「本次不展示」——不选就是等价的表达，多一个同名选项
-///     只是多一次点击（原型说明 §7）。
+/// 口径（帖子凭证方案 R1/R6/R7；2026-10-29 一帖多证）：
+///   - 默认不勾选，不阻断发布、不产生 precheck 阻断码；
+///   - 候选只列本人已添加（`approved`）的资质，可多选；
+///   - 一个都不勾等价于「本次不展示」，故不再单列「本次不展示」选项。
 library;
 
 import 'package:flutter/material.dart';
@@ -23,29 +22,26 @@ final certCandidatesProvider = FutureProvider<List<CertQualification>>((ref) asy
   return status.attachableQualifications;
 });
 
-/// 选证结果：`confirmed=false` 表示用户取消（不改变现状）。
-typedef CertPickResult = ({bool confirmed, int? certId});
-
-/// 发布表单的资质挂载位（内联单选）。
+/// 发布窗口的资质栏（内联多选）。
 class CertMountSection extends ConsumerWidget {
-  /// 构造挂载位。
+  /// 构造资质栏。
   ///
   /// 参数：
-  ///   [certId] 当前选中（null = 本次不展示）；
-  ///   [onChanged] 选择变化回调（null 表示不展示）；
+  ///   [certIds] 当前已勾选的资质 ID 集合（空集 = 本次不展示）；
+  ///   [onChanged] 勾选变化回调（返回新集合，调用方负责落到表单）；
   ///   [enabled] 是否可交互（提交中禁用）。
   const CertMountSection({
     super.key,
-    required this.certId,
+    required this.certIds,
     required this.onChanged,
     this.enabled = true,
   });
 
-  /// 当前选中的资质 ID。
-  final int? certId;
+  /// 当前已勾选的资质 ID 集合。
+  final Set<int> certIds;
 
-  /// 选择变化回调。
-  final ValueChanged<int?> onChanged;
+  /// 勾选变化回调。
+  final ValueChanged<Set<int>> onChanged;
 
   /// 是否可交互。
   final bool enabled;
@@ -57,7 +53,7 @@ class CertMountSection extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          '不影响发布；默认不展示',
+          '可多选；不影响发布，不选则不展示',
           style: TextStyle(
             fontSize: AppTypeScale.small.size,
             color: const Color(AppColors.textSecondary),
@@ -88,22 +84,28 @@ class CertMountSection extends ConsumerWidget {
                 for (final item in items)
                   _PickRow(
                     label: item.displayName,
-                    selected: certId == item.certId,
+                    selected: certIds.contains(item.certId),
                     enabled: enabled,
-                    onTap: () => onChanged(item.certId),
+                    onTap: () => onChanged(_toggle(item.certId)),
                   ),
-                _PickRow(
-                  label: '本次不展示',
-                  selected: certId == null,
-                  enabled: enabled,
-                  onTap: () => onChanged(null),
-                ),
               ],
             );
           },
         ),
       ],
     );
+  }
+
+  /// 切换某张资质的勾选态。
+  ///
+  /// 参数：[certId] 资质 ID。
+  /// 返回：新集合（保持原有勾选顺序，新增追加在末尾）。
+  Set<int> _toggle(int certId) {
+    final next = <int>{...certIds};
+    if (!next.remove(certId)) {
+      next.add(certId);
+    }
+    return next;
   }
 
   /// 跳「添加资质」表单，返回后刷新候选。
@@ -116,67 +118,11 @@ class CertMountSection extends ConsumerWidget {
   }
 }
 
-/// 底部选证面板（「我的发布」补挂用）。
-///
-/// 参数：
-///   [context] 构建上下文；
-///   [candidates] 候选资质（调用方已从 [certCandidatesProvider] 取得）。
-/// 返回：[CertPickResult]（取消时 `confirmed=false`）。
-Future<CertPickResult> showCertPickerSheet(
-  BuildContext context, {
-  required List<CertQualification> candidates,
-}) async {
-  final result = await showModalBottomSheet<CertPickResult>(
-    context: context,
-    builder: (sheetContext) => SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              AppSpacing.lg,
-              AppSpacing.lg,
-              AppSpacing.lg,
-              AppSpacing.sm,
-            ),
-            child: Text(
-              '挂哪一张资质',
-              style: TextStyle(
-                fontSize: AppTypeScale.h3.size,
-                fontWeight: FontWeight.w600,
-                color: const Color(AppColors.textPrimary),
-              ),
-            ),
-          ),
-          for (final item in candidates)
-            ListTile(
-              title: Text(item.displayName),
-              onTap: () => Navigator.pop(
-                sheetContext,
-                (confirmed: true, certId: item.certId),
-              ),
-            ),
-          ListTile(
-            title: const Text('本次不展示'),
-            onTap: () => Navigator.pop(
-              sheetContext,
-              (confirmed: true, certId: null),
-            ),
-          ),
-          const SizedBox(height: AppSpacing.sm),
-        ],
-      ),
-    ),
-  );
-  return result ?? (confirmed: false, certId: null);
-}
-
-/// 候选行（单选圆点 + 名称）。
+/// 候选行（复选框 + 名称）。
 class _PickRow extends StatelessWidget {
   /// 构造候选行。
   ///
-  /// 参数：[label] 名称；[selected] 是否选中；
+  /// 参数：[label] 名称；[selected] 是否勾选；
   ///   [enabled] 是否可点；[onTap] 点按回调。
   const _PickRow({
     required this.label,
@@ -188,7 +134,7 @@ class _PickRow extends StatelessWidget {
   /// 名称。
   final String label;
 
-  /// 是否选中。
+  /// 是否勾选。
   final bool selected;
 
   /// 是否可点。
@@ -206,7 +152,7 @@ class _PickRow extends StatelessWidget {
         child: Row(
           children: [
             Icon(
-              selected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+              selected ? Icons.check_box : Icons.check_box_outline_blank,
               size: 18,
               color: const Color(AppColors.primary),
             ),

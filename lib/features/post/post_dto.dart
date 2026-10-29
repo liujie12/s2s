@@ -205,30 +205,35 @@ class PostAuthorDto {
   final List<String> qualificationBadges;
 }
 
-/// 帖级凭证声明块 DTO（openapi `PostCredential`；本轮帖级资质行）。
+/// 帖级凭证声明块 DTO（openapi `PostCredential`；详情页资质栏的一项）。
 ///
-/// 只有证书名与实时状态：`cert_name` 取写入时的冻结快照，永不改写；
-/// `state` 是读取时按凭证当前状态计算的实时值。未关联凭证时详情不返回
-/// 本对象（整块不渲染）。
+/// `cert_id` 供编辑态回显勾选（一帖多证，2026-10-29）；`cert_name` 取写入时的
+/// 冻结快照永不改写；`state` 是读取时按凭证当前状态计算的实时值
+/// （服务端只下发有效项，失效项在组装阶段已剔除）。
 class PostCredentialDto {
   /// 构造凭证块 DTO。
   const PostCredentialDto({
+    this.certId,
     required this.certName,
     required this.state,
   });
 
-  /// 由信封 data 内的 credential 对象构造。
+  /// 由信封 data 内的 credentials 数组元素构造。
   ///
-  /// 参数：[json] `PostDetail.credential` 对象。
+  /// 参数：[json] `PostCredential` 对象。
   /// 返回：[PostCredentialDto]。
   /// 抛出：[ApiException.parse] required 字段缺失/类型不符时。
   factory PostCredentialDto.fromJson(Object? json) {
     final map = requireMap(json, 'PostCredential');
     return PostCredentialDto(
+      certId: optInt(map, 'cert_id', 'PostCredential'),
       certName: requireString(map, 'cert_name', 'PostCredential'),
       state: requireString(map, 'state', 'PostCredential'),
     );
   }
+
+  /// 资质档案 ID（凭证被删除后历史行可为 null）。
+  final int? certId;
 
   /// 证名快照；历史行可能为空串。
   final String certName;
@@ -264,7 +269,7 @@ class PostDetailDto {
     required this.expireAt,
     required this.author,
     this.media = const [],
-    this.credential,
+    this.credentials = const [],
     this.contactMask,
     this.aiAssisted = false,
     this.favorited,
@@ -312,7 +317,12 @@ class PostDetailDto {
       expireAt: _requireDateTime(map, 'expire_at', 'PostDetail'),
       author: PostAuthorDto.fromJson(map['author']),
       media: media,
-      credential: map['credential'] == null ? null : PostCredentialDto.fromJson(map['credential']),
+      credentials: map['credentials'] is List
+          ? [
+              for (final item in map['credentials']! as List)
+                PostCredentialDto.fromJson(item),
+            ]
+          : const [],
       contactMask: optString(map, 'contact_mask', 'PostDetail'),
       aiAssisted: optBool(map, 'ai_assisted', 'PostDetail') ?? false,
       // favorited：登录用户恒 true/false；游客为 null（详情页据此区分「未收藏」与「未知」）。
@@ -369,8 +379,8 @@ class PostDetailDto {
   /// 缺失/JSON null 均为空列表）。
   final List<MediaItemDto> media;
 
-  /// 帖级凭证声明块（契约 `credential`；未关联时为 null，整块不渲染）。
-  final PostCredentialDto? credential;
+  /// 帖级凭证声明列表（契约 `credentials`；一帖多证，空列表 = 整栏不渲染）。
+  final List<PostCredentialDto> credentials;
 
   /// 脱敏联系方式（`contact_mask`；[147] DEC-13）。
   ///

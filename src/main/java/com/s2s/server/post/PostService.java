@@ -33,8 +33,10 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -199,10 +201,9 @@ public class PostService {
         // 关联媒体（post_media.post_id 落位）
         linkMedia(userId, post.getId(), req.mediaIds());
 
-        // 帖级凭证声明（可选，不阻断发布）：写入即冻结快照，之后换证/续期不回溯
-        if (req.certId() != null) {
-            CertSnapshot snapshot = certService.requireAttachable(userId, req.certId());
-            credentialAssembler.upsert(post.getId(), snapshot);
+        // 帖级凭证声明（可选，不阻断发布）：一帖多证，写入即冻结快照，之后换证/续期不回溯
+        if (req.certIds() != null && !req.certIds().isEmpty()) {
+            credentialAssembler.replaceAll(post.getId(), requireSnapshots(userId, req.certIds()));
         }
 
         // [B2-4] AI 配额扣减点：仅 ai_assisted=true 的发布扣 1 次（PRD §5.9「仅确认发布才计 1 次」）
@@ -353,6 +354,12 @@ public class PostService {
             throw BizException.of(ErrorCode.VERSION_CONFLICT);
         }
         reLinkMedia(userId, postId, req.mediaIds());
+
+        // 资质栏整体替换（2026-10-29 一帖多证）：null = 本次不动；空列表 = 取消全部挂载。
+        // 声明写独立表，不影响 post 行的 version / updated_at / expire_at。
+        if (req.certIds() != null) {
+            credentialAssembler.replaceAll(postId, requireSnapshots(userId, req.certIds()));
+        }
 
         PostEntity saved = postMapper.selectById(postId);
         return assemble(saved, req.attributes(), req.mediaIds());
@@ -547,27 +554,48 @@ public class PostService {
     }
 
     /**
-     * 发布后补挂 / 替换凭证声明（{@code PUT /posts/{post_id}/cert}）。
+     * 发布后补挂 / 替换凭证声明（{@code PUT /posts/{post_id}/cert}；一帖多证）。
      *
      * <p><b>只写声明记录</b>：不修改 {@code post} 行，不改 {@code updated_at}/{@code expire_at}/
-     * {@code version}，不进入任何排序权重（PRD §8 补挂口径）。已有声明时按替换处理，
-     * 快照重取、声明时间刷新。</p>
+     * {@code version}，不进入任何排序权重（PRD §8 补挂口径）。{@code certIds} 为该帖最终集合，
+     * 整体替换；空列表表示取消全部挂载。</p>
      *
-     * @param userId 当前登录用户 ID
-     * @param postId 帖子 ID
-     * @param certId 本人资质 ID（须为 approved 且在有效期内）
-     * @return {@link PostCredential} 最新声明块（供页面即时刷新）
+     * @param userId  当前登录用户 ID
+     * @param postId  帖子 ID
+     * @param certIds 本人资质 ID 列表（须为 approved 且在有效期内；可为空）
+     * @return {@link List} 最新声明列表（供页面即时刷新）
      * @throws BizException {@code 40001} 帖子不存在/非本人、资质不可挂载
      */
     @Transactional
-    public PostCredential attachCert(Long userId, Long postId, Long certId) {
+    public List<PostCredential> attachCert(Long userId, Long postId, List<Long> certIds) {
         PostEntity post = postMapper.selectById(postId);
         if (post == null || !post.getUserId().equals(userId)) {
             throw BizException.of(ErrorCode.PARAM_INVALID);
         }
-        CertSnapshot snapshot = certService.requireAttachable(userId, certId);
-        credentialAssembler.upsert(postId, snapshot);
+        credentialAssembler.replaceAll(postId, requireSnapshots(userId, certIds));
         return credentialAssembler.of(postId);
+    }
+
+    /**
+     * 逐张校验资质可挂载并取冻结快照（同参去重、保持入参顺序）。
+     *
+     * <p>任一 {@code certId} 不可挂载（非本人 / 非 approved / 已删除）即抛 {@code 40001}，
+     * 由调用方事务整体回滚 —— 不做「部分成功」，避免用户看到与勾选不一致的结果。</p>
+     *
+     * @param userId  当前登录用户 ID
+     * @param certIds 资质 ID 列表（可含 {@code null}，将被跳过）
+     * @return {@link List} 与入参同序的快照列表（去重后）
+     */
+    private List<CertSnapshot> requireSnapshots(Long userId, List<Long> certIds) {
+        Set<Long> seen = new LinkedHashSet<>();
+        List<CertSnapshot> snapshots = new ArrayList<>(certIds.size());
+        for (Long certId : certIds) {
+            if (certId == null || !seen.add(certId)) {
+                continue;
+            }
+            snapshots.add(certService.requireAttachable(userId, certId));
+        }
+        return snapshots;
     }
 
     /**

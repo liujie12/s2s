@@ -108,17 +108,16 @@ ListingDetail postDetailToListingDetail(PostDetailDto dto) {
     aiAssisted: dto.aiAssisted,
     // 收藏态：登录用户 true/false；游客 null（详情页把游客映射为可收藏空心态）。
     favorited: dto.favorited,
-    // 帖级资质行（本轮）：主行取自快照，state 只决定是否追加说明行。
-    credential: _credentialFromDto(dto.credential),
+    // 帖级资质栏（一帖多证）：逐项搬运快照，空列表时详情页整栏不渲染。
+    credentials: [for (final item in dto.credentials) _credentialFromDto(item)],
   );
 }
 
-/// 契约凭证块 → 域模型（只搬运快照与实时状态，不做文案拼装）。
+/// 契约凭证项 → 域模型（只搬运快照与实时状态，不做文案拼装）。
 ///
-/// 参数：[dto] 契约 `PostCredential`（未关联为 null）。
-/// 返回：[PostCredential]?。
-PostCredential? _credentialFromDto(PostCredentialDto? dto) {
-  if (dto == null) return null;
+/// 参数：[dto] 契约 `PostCredential`。
+/// 返回：[PostCredential]。
+PostCredential _credentialFromDto(PostCredentialDto dto) {
   return PostCredential(
     certName: dto.certName,
     state: dto.state,

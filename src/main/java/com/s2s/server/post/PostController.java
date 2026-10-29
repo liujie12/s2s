@@ -149,22 +149,23 @@ public class PostController {
     }
 
     /**
-     * 发布后补挂 / 替换凭证声明（{@code PUT /posts/{post_id}/cert}）。
+     * 发布后补挂 / 替换凭证声明（{@code PUT /posts/{post_id}/cert}；一帖多证）。
      *
-     * <p>只写声明记录与快照：不改帖子时间、版本与排序权重；一帖一证，已存在则替换。</p>
+     * <p>只写声明记录与快照：不改帖子时间、版本与排序权重；{@code cert_ids} 为该帖最终集合，
+     * 整体替换，空数组表示取消全部挂载。</p>
      *
      * @param postId      帖子 ID
-     * @param request     挂载入参（{@code cert_id}）
+     * @param request     挂载入参（{@code cert_ids}）
      * @param httpRequest 当前请求（取登录用户 ID）
-     * @return {@link PostCredential} 最新声明块
+     * @return {@link List} 最新声明列表
      */
     @PutMapping("/posts/{post_id}/cert")
     @Idempotent
-    public PostCredential attachCert(@PathVariable("post_id") Long postId,
+    public List<PostCredential> attachCert(@PathVariable("post_id") Long postId,
             @Valid @RequestBody PostCertAttachRequest request,
             HttpServletRequest httpRequest) {
         Long userId = requireUserId(httpRequest);
-        return postService.attachCert(userId, postId, request.certId());
+        return postService.attachCert(userId, postId, request.certIds());
     }
 
     /**

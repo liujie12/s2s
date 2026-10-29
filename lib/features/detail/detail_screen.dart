@@ -228,7 +228,7 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
         _PublisherCard(
           publisher: detail.publisher,
           completeness: detail.completeness,
-          credential: detail.credential,
+          credentials: detail.credentials,
         ),
         if (detail.listing.supplyDemand == SupplyDemand.demand)
           const _DemandHelpEntry(),
@@ -546,14 +546,14 @@ class _PublisherCard extends StatelessWidget {
   const _PublisherCard({
     required this.publisher,
     required this.completeness,
-    this.credential,
+    this.credentials = const [],
   });
 
   final Publisher publisher;
   final CompletenessLevel completeness;
 
-  /// 帖级凭证块（null = 未关联，整块不渲染）。
-  final PostCredential? credential;
+  /// 帖级凭证列表（一帖多证；空列表 = 整栏不渲染）。
+  final List<PostCredential> credentials;
 
   @override
   Widget build(BuildContext context) {
@@ -596,11 +596,11 @@ class _PublisherCard extends StatelessWidget {
                 // 不再展示 `publisher.qualificationLabel`，避免同一语义两处重复。
                 const SizedBox(height: AppSpacing.xs),
                 _CompletenessLine(level: completeness),
-                if (credential != null && credential!.isEffective) ...[
+                if (credentials.isNotEmpty) ...[
                   const SizedBox(height: AppSpacing.sm),
                   Divider(height: 1, color: Color(AppColors.border)),
                   const SizedBox(height: AppSpacing.sm),
-                  _CredentialBlock(credential: credential!),
+                  _CredentialBlock(credentials: credentials),
                 ],
               ],
             ),
@@ -615,24 +615,40 @@ class _PublisherCard extends StatelessWidget {
 class _CredentialBlock extends StatelessWidget {
   /// 构造资质块。
   ///
-  /// 参数：[credential] 凭证块。
-  const _CredentialBlock({required this.credential});
+  /// 参数：[credentials] 凭证列表（按挂载顺序，一帖多证）。
+  const _CredentialBlock({required this.credentials});
 
-  /// 凭证块。
-  final PostCredential credential;
+  /// 凭证列表。
+  final List<PostCredential> credentials;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          _mainLineOf(credential),
-          style: TextStyle(
-            fontSize: AppTypeScale.body.size,
-            color: Color(AppColors.textPrimary),
+        for (final credential in credentials)
+          Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.xs),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.workspace_premium_outlined,
+                  size: 16,
+                  color: Color(AppColors.textSecondary),
+                ),
+                const SizedBox(width: AppSpacing.xs),
+                Expanded(
+                  child: Text(
+                    _mainLineOf(credential),
+                    style: TextStyle(
+                      fontSize: AppTypeScale.body.size,
+                      color: Color(AppColors.textPrimary),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
       ],
     );
   }

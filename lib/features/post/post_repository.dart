@@ -176,30 +176,6 @@ class PostRepository {
     return PostDetailDto.fromJson(response.data);
   }
 
-  /// 发布后补挂 / 替换凭证声明（`PUT /posts/{post_id}/cert`）。
-  ///
-  /// 只写声明记录与其快照：不改 `post` 行、不改 `updated_at`/`expire_at`/`version`，
-  /// 不进入排序权重（方案 R5/R7）。已有声明时按替换处理。
-  ///
-  /// 参数：
-  ///   [postId] 帖子 ID（须为本人帖子，否则 40001）；
-  ///   [certId] 本人 `approved` 且在有效期内的资质档案 ID（其他状态 40001）；
-  ///   [interactionId] 交互 ID，null 由拦截器兜底。
-  /// 返回：[PostCredentialDto] 最新声明块（供页面即时刷新）。
-  /// 抛出：[ApiException] 信封业务错误（40001 候选非法/非本人）。
-  Future<PostCredentialDto> attachCert(
-    int postId,
-    int certId, {
-    String? interactionId,
-  }) async {
-    final response = await _dio.put<Object?>(
-      '/posts/$postId/cert',
-      data: {'cert_id': certId},
-      options: _interactionOptions(interactionId),
-    );
-    return PostCredentialDto.fromJson(response.data);
-  }
-
   /// 上报一次详情浏览（`POST /posts/{post_id}/view`）。
   ///
   /// 客户端 fire-and-forget：失败静默，不阻塞详情展示；自动重试由全局

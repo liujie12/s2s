@@ -99,7 +99,7 @@ Map<String, Object?> _formToJson(PublishFormState form) => <String, Object?>{
   'description': form.description,
   'template_values': form.templateValues,
   'media_ids': form.mediaIds,
-  'cert_id': form.certId,
+  'cert_ids': form.certIds,
   'contact': form.contact,
   'agreed': form.agreed,
 };
@@ -131,6 +131,11 @@ PublishFormState _formFromJson(Object? raw) {
     orElse: () => PublishKind.supply,
   );
 
+  final certRaw = map['cert_ids'];
+  final certIds = certRaw is List
+      ? <int>[for (final item in certRaw) if (item is int) item]
+      : const <int>[];
+
   return PublishFormState(
     kind: kind,
     leafCategoryId: map['leaf_category_id'] as int?,
@@ -145,7 +150,7 @@ PublishFormState _formFromJson(Object? raw) {
     description: (map['description'] as String?) ?? '',
     templateValues: templateValues,
     mediaIds: mediaIds,
-    certId: map['cert_id'] as int?,
+    certIds: certIds,
     contact: (map['contact'] as String?) ?? '',
     agreed: (map['agreed'] as bool?) ?? false,
     // loadedTemplate 刻意不恢复：见文件头说明，由页面重新拉取。

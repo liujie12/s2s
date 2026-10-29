@@ -21,14 +21,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../core/network/api_exception.dart';
 import '../../design_tokens.dart';
 import '../../domain/listing_detail.dart';
 import '../../domain/publish_completeness.dart';
 import '../../router/app_router.dart';
-import '../cert/cert_picker.dart';
 import '../notify/push_service.dart';
-import '../post/post_repository.dart';
 import 'publish_form_state.dart';
 
 /// 发布完成页。
@@ -36,18 +33,12 @@ import 'publish_form_state.dart';
 /// 参数 [form] 提交时的表单快照，用于算 §9.8 档位。为空时按 🔴 档展示 ——
 /// **不默认成 🟢**：拿不到数据就说「完整」，等于把最坏情况显示成最好情况。
 ///
-/// 参数 [postId] 新建成功后的帖子 ID（null = 无补挂入口）：帖子凭证方案 R7
-/// 要求完成页提供「加一份资质」补挂，补挂只写声明记录，不改帖子时间。
-///
 /// 本页同时是**通知权限申请点**（详设 §10.2.2「首次产生被通知预期的交互点」，
 /// 2026-10-20 产品确认取「发布成功后」）：不在冷启动首屏弹窗。
 class PublishSuccessScreen extends ConsumerStatefulWidget {
-  const PublishSuccessScreen({super.key, this.form, this.postId});
+  const PublishSuccessScreen({super.key, this.form});
 
   final PublishFormState? form;
-
-  /// 新建成功后的帖子 ID（补挂入口用；null 表示不展示）。
-  final int? postId;
 
   @override
   ConsumerState<PublishSuccessScreen> createState() =>
@@ -63,37 +54,6 @@ class _PublishSuccessScreenState extends ConsumerState<PublishSuccessScreen> {
       if (!mounted) return;
       unawaited(ref.read(pushServiceProvider).requestPermission());
     });
-  }
-
-  /// 补挂资质（`PUT /posts/{post_id}/cert`，方案 R7）。
-  ///
-  /// 参数：无。
-  /// 返回：[Future<void>]。
-  Future<void> _attachCert() async {
-    final postId = widget.postId;
-    if (postId == null) return;
-    try {
-      final candidates = await ref.read(certCandidatesProvider.future);
-      if (!mounted) return;
-      if (candidates.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('还没有可用的资质，请先在「信任与认证」添加')),
-        );
-        return;
-      }
-      final picked = await showCertPickerSheet(context, candidates: candidates);
-      if (!mounted || !picked.confirmed || picked.certId == null) return;
-      await ref.read(postRepositoryProvider).attachCert(postId, picked.certId!);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('已添加，详情页立即生效')),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(asApiException(e).uiMessage)),
-      );
-    }
   }
 
   @override
@@ -145,29 +105,6 @@ class _PublishSuccessScreenState extends ConsumerState<PublishSuccessScreen> {
             _CompletenessCard(assessment: assessment),
             const SizedBox(height: AppSpacing.lg),
             const _ValidityNote(),
-            if (widget.postId != null) ...[
-              const SizedBox(height: AppSpacing.md),
-              OutlinedButton.icon(
-                onPressed: _attachCert,
-                icon: const Icon(Icons.workspace_premium_outlined, size: 18),
-                label: const Text('加一份资质'),
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(44),
-                  side: const BorderSide(color: Color(AppColors.primary)),
-                  foregroundColor: const Color(AppColors.primary),
-                  shape: const StadiumBorder(),
-                ),
-              ),
-              const SizedBox(height: AppSpacing.xs),
-              Text(
-                '资质由你自行提供，平台未核验',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: AppTypeScale.caption.size,
-                  color: const Color(AppColors.textSecondary),
-                ),
-              ),
-            ],
             const SizedBox(height: AppSpacing.lg),
             Row(
               children: [
