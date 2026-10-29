@@ -17,6 +17,8 @@ import java.util.TreeMap;
 import java.util.UUID;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * 阿里云「信息核验 - 身份二要素核验」（{@code Id2MetaVerify}）OpenAPI 客户端。
@@ -25,7 +27,9 @@ import javax.crypto.spec.SecretKeySpec;
  * 新增 SDK 依赖需要连带拉取一整串 aliyun-java-sdk 传递依赖，发版风险远大于收益；
  * 该接口只用到一个 POST + ACS3-HMAC-SHA256 签名，JDK 自带 {@link HttpClient} 即可。</p>
  *
- * <p><b>安全红线</b>：本类不写任何日志——入参是姓名与身份证号明文（编码规范 §4.11）。</p>
+ * <p><b>安全红线</b>：本类<b>不记录任何入参</b>（姓名与身份证号明文，编码规范 §4.11）；
+ * 仅在调用失败时记录阿里云返回的 {@code Code}/{@code Message}/{@code RequestId} 与
+ * HTTP 状态码，用于区分「签名/权限问题」与「网络问题」——这些字段不含个人信息。</p>
  *
  * <p>接口口径（2026-10-29 官方文档）：Endpoint 通用 {@code cloudauth.aliyuncs.com}，
  * Action {@code Id2MetaVerify}，Version {@code 2019-03-07}；请求参数
@@ -34,6 +38,9 @@ import javax.crypto.spec.SecretKeySpec;
  * {@code 1} 一致、{@code 2} 不一致。</p>
  */
 public class CloudAuthId2MetaClient {
+
+    /** 诊断日志（只记阿里云返回的码值与 requestId，不记入参）。 */
+    private static final Logger LOG = LoggerFactory.getLogger(CloudAuthId2MetaClient.class);
 
     /** 接口动作名（固定值，参与签名头 x-acs-action）。 */
     private static final String ACTION = "Id2MetaVerify";
@@ -120,6 +127,9 @@ public class CloudAuthId2MetaClient {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("信息核验调用被中断", exception);
         } catch (Exception exception) {
+            // 只记异常类型与系统级描述（连接超时/TLS 失败等），不含任何入参
+            LOG.warn("信息核验调用异常 type={} message={}",
+                    exception.getClass().getSimpleName(), exception.getMessage());
             throw new IllegalStateException("信息核验调用失败", exception);
         }
 
@@ -183,18 +193,23 @@ public class CloudAuthId2MetaClient {
      * @throws IllegalStateException 非 200 / Code 非 200 / 结构非法
      */
     private boolean parseVerdict(int statusCode, String responseBody) {
-        if (statusCode != 200) {
-            throw new IllegalStateException("信息核验 HTTP 状态异常: " + statusCode);
-        }
         final JsonNode root;
         try {
             root = MAPPER.readTree(responseBody);
         } catch (Exception exception) {
+            LOG.warn("信息核验响应非 JSON status={} bodyLength={}",
+                    statusCode, responseBody == null ? 0 : responseBody.length());
             throw new IllegalStateException("信息核验响应不是 JSON", exception);
         }
         final String code = root.path("Code").asText("");
-        if (!"200".equals(code)) {
-            throw new IllegalStateException("信息核验接口调用失败，Code=" + code);
+        if (statusCode != 200 || !"200".equals(code)) {
+            // 排查用：只记阿里云码值与 requestId（无姓名/证件号）
+            LOG.warn("信息核验调用失败 status={} code={} message={} requestId={}",
+                    statusCode, code,
+                    root.path("Message").asText(""),
+                    root.path("RequestId").asText(""));
+            throw new IllegalStateException(
+                    "信息核验接口调用失败，HTTP=" + statusCode + "，Code=" + code);
         }
         final String bizCode = root.path("ResultObject").path("BizCode").asText("");
         if (BIZ_CODE_MATCH.equals(bizCode)) {
