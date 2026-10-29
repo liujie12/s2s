@@ -103,7 +103,13 @@ class _RealnameFormScreenState extends ConsumerState<RealnameFormScreen> {
   /// 参数：[error] catch 到的对象（ApiException 或传输层异常）。
   /// 返回：[String] 用户可读文案。
   String _messageOf(Object error) {
-    final api = error is ApiException ? error : null;
+    // 重试耗尽时 RetryInterceptor 把真实原因装进 DioException.error（ApiException），
+    // 只看外层只能看到 type=unknown；先取出内层业务异常，才能显示真实原因与 request_id。
+    final api = error is ApiException
+        ? error
+        : (error is DioException && error.error is ApiException
+            ? error.error! as ApiException
+            : null);
     if (api == null) {
       // 传输层失败（无响应、无 request_id）：按异常类型给出可执行提示。
       // 一律回「网络异常」会让用户分不清「该重试」还是「该重新登录/换网络」，
