@@ -20,6 +20,7 @@ import '../../core/ui/list_states.dart';
 import '../../design_tokens.dart';
 import '../../domain/listing_detail.dart';
 import '../../router/app_router.dart';
+import '../auth/auth_repository.dart';
 import 'cert_models.dart';
 import 'cert_provider.dart';
 
@@ -66,6 +67,7 @@ class TrustScreen extends ConsumerWidget {
             children: [
               _Layer1Card(
                 cert: overview.cert,
+                showRealnameEntry: ref.watch(isLoggedInProvider),
                 onGoRealname: () => context.push(AppRoutes.trustRealname),
               ),
               const SizedBox(height: AppSpacing.md),
@@ -108,11 +110,22 @@ class TrustScreen extends ConsumerWidget {
 class _Layer1Card extends StatelessWidget {
   /// 构造第一层卡。
   ///
-  /// 参数：[cert] 认证状态；[onGoRealname] 未通过时的「去完成实名」回调。
-  const _Layer1Card({required this.cert, required this.onGoRealname});
+  /// 参数：
+  ///   [cert] 认证状态；
+  ///   [showRealnameEntry] 是否展示「去完成实名」入口（**未登录时不展示**：
+  ///     未登录点进去提交只会得到 40101，用户却看到「网络异常」，属误导）；
+  ///   [onGoRealname] 未通过时的「去完成实名」回调。
+  const _Layer1Card({
+    required this.cert,
+    required this.showRealnameEntry,
+    required this.onGoRealname,
+  });
 
   /// 认证状态。
   final CertStatus cert;
+
+  /// 是否展示「去完成实名」入口（登录后才展示）。
+  final bool showRealnameEntry;
 
   /// 去完成实名回调。
   final VoidCallback onGoRealname;
@@ -156,7 +169,7 @@ class _Layer1Card extends StatelessWidget {
               color: Color(AppColors.textSecondary),
             ),
           ),
-          if (!passed) ...[
+          if (!passed && showRealnameEntry) ...[
             const SizedBox(height: AppSpacing.sm),
             TextButton(
               onPressed: onGoRealname,
