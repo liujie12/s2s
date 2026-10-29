@@ -8,10 +8,13 @@ library;
 import 'package:dio/dio.dart' show DioException, DioExceptionType;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/network/api_error_code.dart';
 import '../../core/network/api_exception.dart';
 import '../../design_tokens.dart';
+import '../../router/app_router.dart';
+import '../auth/auth_repository.dart';
 import 'cert_repository.dart';
 import 'realname_agreement_screen.dart';
 
@@ -59,6 +62,16 @@ class _RealnameFormScreenState extends ConsumerState<RealnameFormScreen> {
     if (name.isEmpty || !_idCardPattern.hasMatch(idCard)) {
       setState(() => _error = '请填写姓名与 18 位身份证号');
       return;
+    }
+    // 未登录先引导登录：无 Token 时请求必得 40101，经「单飞续期失败 →
+    // 传输层归一」后只剩一句含糊的「网络异常」，用户无从得知要登录
+    // （2026-10-29 真机反馈「也没提示未登录」）。
+    if (!ref.read(isLoggedInProvider)) {
+      final ok = await GoRouter.of(context).push<bool>(AppRoutes.login);
+      if (!mounted || ok != true) {
+        setState(() => _error = '请先登录后再提交实名认证');
+        return;
+      }
     }
     setState(() {
       _submitting = true;
