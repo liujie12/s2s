@@ -68,7 +68,7 @@ class TrustScreen extends ConsumerWidget {
               _Layer1Card(
                 cert: overview.cert,
                 showRealnameEntry: ref.watch(isLoggedInProvider),
-                onGoRealname: () => context.push(AppRoutes.trustRealname),
+                onGoRealname: () => _openRealname(context, ref),
               ),
               const SizedBox(height: AppSpacing.md),
               _Layer2Card(
@@ -83,6 +83,23 @@ class TrustScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  /// 打开实名认证页；返回后刷新状态总览。
+  ///
+  /// 为什么必须刷新：实名结果在返回本页时才可见，若不重拉总览，
+  /// 「第一层 · 个人实名」会一直停在「未完成」并继续展示「去完成实名」入口。
+  ///
+  /// 参数：
+  ///   [context] 构建上下文；[ref] Provider 容器。
+  /// 返回：[Future<void>]。
+  static Future<void> _openRealname(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    await context.push(AppRoutes.trustRealname);
+    if (!context.mounted) return;
+    await ref.read(trustOverviewProvider.notifier).refresh();
   }
 
   /// 打开资质表单（添加或编辑）；提交/删除成功返回后刷新状态总览。
