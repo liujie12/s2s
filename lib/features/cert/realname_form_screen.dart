@@ -12,6 +12,7 @@ import '../../core/network/api_error_code.dart';
 import '../../core/network/api_exception.dart';
 import '../../design_tokens.dart';
 import 'cert_repository.dart';
+import 'realname_agreement_screen.dart';
 
 /// 实名认证表单页。
 class RealnameFormScreen extends ConsumerStatefulWidget {
@@ -100,6 +101,18 @@ class _RealnameFormScreenState extends ConsumerState<RealnameFormScreen> {
     return api.requestId == null ? text : '$text（${api.requestId}）';
   }
 
+  /// 打开《实名认证服务协议》静态页。
+  ///
+  /// 参数：无。
+  /// 返回：[Future] 页面关闭后完成。
+  Future<void> _openAgreement() {
+    return Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => const RealnameAgreementScreen(),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -135,7 +148,20 @@ class _RealnameFormScreenState extends ConsumerState<RealnameFormScreen> {
                   onChanged: (value) =>
                       setState(() => _agreed = value ?? false),
                 ),
-                const Expanded(child: _Text('同意《实名认证服务协议》')),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: _openAgreement,
+                    behavior: HitTestBehavior.opaque,
+                    child: Text(
+                      '同意《实名认证服务协议》',
+                      style: TextStyle(
+                        fontSize: AppTypeScale.body.size,
+                        color: const Color(AppColors.primary),
+                        decoration: TextDecoration.underline,
+                      ),
+                    ),
+                  ),
+                ),
               ],
             ),
             if (_error != null) ...[
