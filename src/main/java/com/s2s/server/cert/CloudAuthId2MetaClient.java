@@ -179,7 +179,14 @@ public class CloudAuthId2MetaClient {
                         + ",SignedHeaders=" + signedHeaders
                         + ",Signature=" + signature)
                 .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8));
-        signed.forEach(builder::header);
+        // host 必须参与签名，但 JDK HttpClient 禁止手工设置受限头（会抛
+        // IllegalArgumentException: restricted header name: "host"）——它按 URI
+        // 自动补 Host，值与本处签名用的 uri.getHost() 一致，故发送时跳过。
+        signed.forEach((name, value) -> {
+            if (!"host".equals(name)) {
+                builder.header(name, value);
+            }
+        });
 
         return builder.build();
     }
