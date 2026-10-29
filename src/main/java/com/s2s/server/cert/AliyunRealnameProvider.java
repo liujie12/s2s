@@ -8,7 +8,7 @@ import org.springframework.stereotype.Component;
  *
  * <p>两种运行形态：</p>
  * <ul>
- *   <li><b>dry-run</b>（{@code cert.provider.dry-run=true}，当前生产默认）：不调外部，
+ *   <li><b>dry-run</b>（{@code s2s.cert.provider.dry-run=true}，当前生产默认）：不调外部，
  *       只按「身份证末 4 位是否 {@value #DRY_RUN_ID_CARD_SUFFIX}」判定，用于无 AK 阶段跑通全链；</li>
  *   <li><b>真实核验</b>（{@code false}）：经 {@link CloudAuthId2MetaClient} 调用阿里云，
  *       密钥缺失时<b>启动即失败</b>——宁可发版失败，也不让线上怀着空配置跑。</li>
@@ -33,18 +33,18 @@ public class AliyunRealnameProvider implements RealnameProvider {
     /**
      * 构造实名核验实现。
      *
-     * @param dryRun          是否走 dry-run mock（{@code cert.provider.dry-run}，默认 true）
-     * @param endpoint        信息核验服务地址（{@code cert.provider.endpoint}）
-     * @param accessKeyId     RAM 用户 AccessKeyId（{@code cert.provider.access-key-id}）
-     * @param accessKeySecret RAM 用户 AccessKeySecret（{@code cert.provider.access-key-secret}）
+     * @param dryRun          是否走 dry-run mock（{@code s2s.cert.provider.dry-run}，默认 true）
+     * @param endpoint        信息核验服务地址（{@code s2s.cert.provider.endpoint}）
+     * @param accessKeyId     RAM 用户 AccessKeyId（{@code s2s.cert.provider.access-key-id}）
+     * @param accessKeySecret RAM 用户 AccessKeySecret（{@code s2s.cert.provider.access-key-secret}）
      * @throws IllegalStateException 非 dry-run 且 AK 未配置（启动期快速失败）
      */
     public AliyunRealnameProvider(
-            @Value("${cert.provider.dry-run:true}") boolean dryRun,
-            @Value("${cert.provider.endpoint:https://cloudauth.cn-beijing.aliyuncs.com}")
+            @Value("${s2s.cert.provider.dry-run:true}") boolean dryRun,
+            @Value("${s2s.cert.provider.endpoint:https://cloudauth.cn-beijing.aliyuncs.com}")
             String endpoint,
-            @Value("${cert.provider.access-key-id:}") String accessKeyId,
-            @Value("${cert.provider.access-key-secret:}") String accessKeySecret) {
+            @Value("${s2s.cert.provider.access-key-id:}") String accessKeyId,
+            @Value("${s2s.cert.provider.access-key-secret:}") String accessKeySecret) {
         this.dryRun = dryRun;
         if (dryRun) {
             this.client = null;
@@ -53,7 +53,7 @@ public class AliyunRealnameProvider implements RealnameProvider {
         if (accessKeyId == null || accessKeyId.isBlank()
                 || accessKeySecret == null || accessKeySecret.isBlank()) {
             throw new IllegalStateException(
-                    "cert.provider.dry-run=false 但未配置 CLOUDAUTH_ACCESS_KEY_ID / "
+                    "CERT_PROVIDER_DRY_RUN=false 但未配置 CLOUDAUTH_ACCESS_KEY_ID / "
                             + "CLOUDAUTH_ACCESS_KEY_SECRET：拒绝以空凭据启动");
         }
         this.client = new CloudAuthId2MetaClient(endpoint, accessKeyId, accessKeySecret);
