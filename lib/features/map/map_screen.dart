@@ -525,6 +525,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   child: FilterPanel(
                     key: _filterPanelKey,
                     measureLayerSwitch: true,
+                    // 选好位置后收回面板，让用户立刻看到新圆心与半径圈。
+                    onAnchorApplied: () =>
+                        ref.read(filterPanelExpandedProvider.notifier).close(),
                   ),
                 ),
               if (_selectedListingId != null)

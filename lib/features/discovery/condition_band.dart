@@ -22,6 +22,12 @@ import 'search_conditions.dart';
 /// 取值与设计稿一致（8s）；放成命名常量，避免在 widget 里散落魔法数字。
 const Duration _noUnderstandToastDuration = Duration(seconds: 8);
 
+/// chip 文案的最大展示字数（超出省略）。
+///
+/// 地点锚点的 label 可能是一整条逆地理地址，不加限制会把 chip 行挤满，
+/// 用户看不到其它筛选 chip，反而以为筛选没生效。8 个字足够辨认地点来源。
+const int _kChipLabelMaxChars = 8;
+
 /// 固定搜索栏 + 动态 chip 栏。
 class ConditionBand extends ConsumerStatefulWidget {
   /// 构造条件带。
@@ -426,11 +432,19 @@ class _FilterChip extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 6),
-                Text(
-                  chip.label,
-                  style: TextStyle(
-                    fontSize: AppTypeScale.small.size,
-                    color: Color(AppColors.textPrimary),
+                ConstrainedBox(
+                  // 长地点名只占 8 个字宽，给同一行的其它 chip 留出空间。
+                  constraints: BoxConstraints(
+                    maxWidth: AppTypeScale.small.size * _kChipLabelMaxChars,
+                  ),
+                  child: Text(
+                    chip.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: AppTypeScale.small.size,
+                      color: Color(AppColors.textPrimary),
+                    ),
                   ),
                 ),
                 if (onDelete != null)

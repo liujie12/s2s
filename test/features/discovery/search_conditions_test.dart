@@ -109,6 +109,49 @@ void main() {
       expect(container.read(searchIntentProvider).intent, isNotNull);
       expect(container.read(discoveryFilterProvider), before);
     });
+
+    test('无搜索态设置锚点：新建带锚点的槽位卡，持久筛选不动', () {
+      final container = containerWith();
+      final DiscoveryFilter before = container.read(discoveryFilterProvider);
+
+      container.read(searchConditionsProvider.notifier).setAnchor(
+        lat: 30.28,
+        lng: 120.16,
+        name: '望江路商圈',
+        source: 'manual',
+      );
+
+      final SearchIntent? next = container.read(searchIntentProvider).intent;
+      expect(next?.anchorLat, 30.28);
+      expect(next?.anchorLng, 120.16);
+      expect(next?.anchorName, '望江路商圈');
+      expect(next?.anchorSource, 'manual');
+      expect(container.read(discoveryFilterProvider), before,
+          reason: '锚点没有持久来源，写进持久筛选会让清除搜索后仍被拽住');
+    });
+
+    test('搜索态设置锚点：保留其它槽位，只改锚点字段', () {
+      final intent = SearchIntent(
+        queryText: '合租',
+        radius: '3',
+        radiusMeters: 3000,
+        postType: 'resource',
+      );
+      final container = containerWith(intent: intent);
+
+      container.read(searchConditionsProvider.notifier).setAnchor(
+        lat: 30.2,
+        lng: 120.1,
+        name: '文三路',
+        source: 'poi',
+      );
+
+      final SearchIntent? next = container.read(searchIntentProvider).intent;
+      expect(next?.radius, '3');
+      expect(next?.postType, 'resource');
+      expect(next?.anchorName, '文三路');
+      expect(next?.anchorSource, 'poi');
+    });
   });
 
   group('删除与撤销', () {

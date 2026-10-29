@@ -16,15 +16,31 @@ import 'package:go_router/go_router.dart';
 import 'package:x_amap_base/x_amap_base.dart';
 
 import '../../design_tokens.dart';
+import '../discovery/discovery_filter.dart';
 import '../location/location_center.dart';
 import '../location/location_permission.dart';
 import '../location/reverse_geocode.dart';
 import '../map/amap_init_guard.dart';
 import '../privacy/privacy_consent.dart';
 
+/// 选点页的用途：同一套「拖图移动准星」，底部面板按用途切换。
+enum MapSelectorPurpose {
+  /// 发布：填门牌号，确认后回传坐标 + 门牌。
+  publish,
+
+  /// 发现：选半径档 + 「以此为中心搜索」，确认后回传坐标 + 半径。
+  discovery,
+}
+
 /// 打开地图选点页的入参。
 class MapSelectorArgs {
-  const MapSelectorArgs({this.lat, this.lng, this.doorNumber = ''});
+  const MapSelectorArgs({
+    this.lat,
+    this.lng,
+    this.doorNumber = '',
+    this.purpose = MapSelectorPurpose.publish,
+    this.radius = '5',
+  });
 
   /// 已选位置纬度（GCJ-02）；null 表示尚未选点。
   final double? lat;
@@ -34,6 +50,12 @@ class MapSelectorArgs {
 
   /// 已填门牌号（回填输入框）。
   final String doorNumber;
+
+  /// 选点用途（发布 / 发现）。
+  final MapSelectorPurpose purpose;
+
+  /// 发现用途的当前半径档（契约值 1/3/5/10/city）。
+  final String radius;
 }
 
 /// 地图选点结果。
@@ -43,6 +65,7 @@ class MapPickResult {
     required this.lng,
     required this.doorNumber,
     this.address = '',
+    this.radius = '',
   });
 
   /// 选点纬度（GCJ-02）。
@@ -56,6 +79,9 @@ class MapPickResult {
 
   /// 逆地理得到的地址文案（可能为空：系统逆地理不可用）。
   final String address;
+
+  /// 发现用途确认时的半径档（契约值）；发布用途为空串。
+  final String radius;
 }
 
 /// 选点页缩放级别：门牌级微调，过大看不到参照物、过小对不准楼栋。
@@ -63,7 +89,14 @@ const double _kPickerZoom = 17;
 
 /// 地图选点页（全屏模态）。
 class MapSelectorScreen extends ConsumerStatefulWidget {
-  const MapSelectorScreen({super.key, this.initialLat, this.initialLng, this.initialDoorNumber = ''});
+  const MapSelectorScreen({
+    super.key,
+    this.initialLat,
+    this.initialLng,
+    this.initialDoorNumber = '',
+    this.purpose = MapSelectorPurpose.publish,
+    this.initialRadius = '5',
+  });
 
   /// 打开时的初始纬度（GCJ-02），null 时退回会话最优点/默认中心。
   final double? initialLat;
@@ -73,6 +106,12 @@ class MapSelectorScreen extends ConsumerStatefulWidget {
 
   /// 打开时回填的门牌号。
   final String initialDoorNumber;
+
+  /// 选点用途（发布填门牌号 / 发现选半径档）。
+  final MapSelectorPurpose purpose;
+
+  /// 发现用途的初始半径档（契约值）。
+  final String initialRadius;
 
   @override
   ConsumerState<MapSelectorScreen> createState() => _MapSelectorScreenState();
@@ -97,14 +136,34 @@ class _MapSelectorScreenState extends ConsumerState<MapSelectorScreen> {
   /// 逆地理请求序号：拖动地图会连续触发，只接受最后一次的结果。
   int _addressSeq = 0;
 
+  /// 发现用途的半径档（发布用途不渲染，保持默认值即可）。
+  late SearchRadius _radius;
+
   @override
   void initState() {
     super.initState();
     _doorCtrl = TextEditingController(text: widget.initialDoorNumber);
     _selected = _initialTarget();
+    _radius = _radiusFromApi(widget.initialRadius);
     // 首帧后取一次地址，让用户一进来就能核对该点是否正确。
     WidgetsBinding.instance.addPostFrameCallback((_) => _refreshAddress());
   }
+
+  /// 契约半径值 → 本地档位。
+  ///
+  /// 入参来自应用内常量，正常情况下必然命中；这里不抛错（选点页是模态，
+  /// 为一条脏入参把整页打成异常不值得），未知值回落默认 5km。
+  ///
+  /// 参数：[raw] 契约值 1/3/5/10/city。
+  /// 返回：本地半径档位。
+  SearchRadius _radiusFromApi(String raw) => switch (raw) {
+    '1' => SearchRadius.km1,
+    '3' => SearchRadius.km3,
+    '5' => SearchRadius.km5,
+    '10' => SearchRadius.km10,
+    'city' => SearchRadius.city,
+    _ => SearchRadius.km5,
+  };
 
   /// 计算初始准星位置：入参坐标 → 会话最优点 → 默认城市中心。
   ///
@@ -138,6 +197,9 @@ class _MapSelectorScreenState extends ConsumerState<MapSelectorScreen> {
         lng: _selected.longitude,
         doorNumber: _doorCtrl.text.trim(),
         address: _addressLabel,
+        radius: widget.purpose == MapSelectorPurpose.discovery
+            ? toApiRadius(_radius)
+            : '',
       ),
     );
   }
@@ -196,7 +258,7 @@ class _MapSelectorScreenState extends ConsumerState<MapSelectorScreen> {
         leadingWidth: 64,
         centerTitle: true,
         title: Text(
-          '选择位置',
+          widget.purpose == MapSelectorPurpose.discovery ? '选择搜索位置' : '选择位置',
           style: TextStyle(
             fontSize: AppTypeScale.h3.size,
             fontWeight: FontWeight.w600,
@@ -301,6 +363,9 @@ class _MapSelectorScreenState extends ConsumerState<MapSelectorScreen> {
   ///
   /// 返回：面板控件。
   Widget _buildBottomPanel({required bool useRealMap}) {
+    if (widget.purpose == MapSelectorPurpose.discovery) {
+      return _buildDiscoveryPanel(useRealMap: useRealMap);
+    }
     return Container(
       width: double.infinity,
       color: const Color(AppColors.surface),
@@ -391,6 +456,165 @@ class _MapSelectorScreenState extends ConsumerState<MapSelectorScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// 发现用途的底部面板：地址核对 + 半径档 + 「以此为中心搜索」。
+  ///
+  /// 参数：[useRealMap] 是否可回传选点（false 时主按钮禁用）。
+  /// 返回：面板控件。
+  Widget _buildDiscoveryPanel({required bool useRealMap}) {
+    return Container(
+      width: double.infinity,
+      color: const Color(AppColors.surface),
+      padding: EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.md,
+        AppSpacing.lg,
+        AppSpacing.md + MediaQuery.of(context).padding.bottom,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            useRealMap ? '拖动地图，把准星对准搜索中心' : '地图不可用，暂时无法选点',
+            style: TextStyle(
+              fontSize: AppTypeScale.body.size,
+              color: const Color(AppColors.textSecondary),
+            ),
+          ),
+          if (useRealMap) ...[
+            const SizedBox(height: AppSpacing.xs),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(
+                  Icons.location_on_outlined,
+                  size: 18,
+                  color: Color(AppColors.primary),
+                ),
+                const SizedBox(width: AppSpacing.xs),
+                Expanded(
+                  child: Text(
+                    _resolvingAddress
+                        ? '正在获取位置信息…'
+                        : (_addressLabel.isEmpty
+                              ? '暂时无法获取位置名称'
+                              : _addressLabel),
+                    style: TextStyle(
+                      fontSize: AppTypeScale.body.size,
+                      fontWeight: FontWeight.w600,
+                      color: _addressLabel.isEmpty && !_resolvingAddress
+                          ? const Color(AppColors.textSecondary)
+                          : const Color(AppColors.textPrimary),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+          const SizedBox(height: AppSpacing.sm),
+          Row(
+            children: [
+              Text(
+                '半径',
+                style: TextStyle(
+                  fontSize: AppTypeScale.small.size,
+                  color: const Color(AppColors.textSecondary),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Wrap(
+                  spacing: AppSpacing.sm,
+                  runSpacing: AppSpacing.xs,
+                  children: [
+                    for (final SearchRadius option in SearchRadius.values)
+                      _RadiusPill(
+                        label: option.label,
+                        selected: option == _radius,
+                        onTap: () => setState(() => _radius = option),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.md),
+          SizedBox(
+            width: double.infinity,
+            height: 44,
+            child: ElevatedButton(
+              onPressed: useRealMap ? _confirm : null,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(AppColors.primary),
+                disabledBackgroundColor: const Color(AppColors.border),
+                foregroundColor: const Color(AppColors.surface),
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppRadius.full),
+                ),
+              ),
+              child: Text(
+                '以此为中心搜索',
+                style: TextStyle(
+                  fontSize: AppTypeScale.body.size,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 半径档胶囊（选点页发现用途）。
+class _RadiusPill extends StatelessWidget {
+  const _RadiusPill({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  /// 档位文案（1km/3km/5km/10km/全城）。
+  final String label;
+
+  /// 是否选中。
+  final bool selected;
+
+  /// 点按回调。
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        // 宽度交给内容决定：Wrap 里若用固定高度 + Center，胶囊会撑满整行，
+        // 五档被排成五行（2026-10-30 真机验收发现）。
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.md,
+          vertical: 7,
+        ),
+        decoration: BoxDecoration(
+          color: selected
+              ? const Color(AppColors.primary)
+              : const Color(AppColors.background),
+          borderRadius: BorderRadius.circular(AppRadius.full),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: AppTypeScale.small.size,
+            color: selected
+                ? const Color(AppColors.surface)
+                : const Color(AppColors.textPrimary),
+          ),
+        ),
       ),
     );
   }

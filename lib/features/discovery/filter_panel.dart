@@ -20,6 +20,7 @@ import '../perf/layer_switch_recorder.dart';
 import 'discovery_filter.dart';
 import 'effective_filter.dart';
 import 'effective_filter_provider.dart';
+import 'location_panel.dart';
 import 'search_conditions.dart';
 
 /// 面板最大高度（逻辑像素）。
@@ -33,6 +34,8 @@ class FilterPanel extends ConsumerStatefulWidget {
     super.key,
     this.elevated = true,
     this.measureLayerSwitch = false,
+    this.initialLocationView = false,
+    this.onAnchorApplied,
   });
 
   /// 是否自带阴影。
@@ -46,6 +49,14 @@ class FilterPanel extends ConsumerStatefulWidget {
   /// 端到端耗时；列表页没有 Pin 渲染终点，计时会永远收不了尾。
   final bool measureLayerSwitch;
 
+  /// 打开时是否直接显示位置视图（列表空态「换个位置找」用）。
+  final bool initialLocationView;
+
+  /// 锚点写入成功后的回调。
+  ///
+  /// 地图页传「收起面板」，列表页传「关闭弹层」；不传则只切回筛选视图。
+  final VoidCallback? onAnchorApplied;
+
   @override
   ConsumerState<FilterPanel> createState() => _FilterPanelState();
 }
@@ -53,6 +64,15 @@ class FilterPanel extends ConsumerStatefulWidget {
 class _FilterPanelState extends ConsumerState<FilterPanel> {
   /// 重置计数：变化时用新 Key 重建分类区，把三级下钻退回一级。
   int _resetEpoch = 0;
+
+  /// 是否正显示位置视图（同一面板就地切换，不叠第二层）。
+  late bool _showLocation;
+
+  @override
+  void initState() {
+    super.initState();
+    _showLocation = widget.initialLocationView;
+  }
 
   /// 重置筛选条件并把分类区退回一级。
   ///
@@ -63,61 +83,151 @@ class _FilterPanelState extends ConsumerState<FilterPanel> {
     setState(() => _resetEpoch++);
   }
 
+  /// 锚点写入成功：交给承载方关闭，未提供时只切回筛选视图。
+  ///
+  /// 参数：无；返回：无。
+  void _handleAnchorApplied() {
+    final VoidCallback? external = widget.onAnchorApplied;
+    if (external != null) {
+      external();
+      return;
+    }
+    setState(() => _showLocation = false);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final double height = math.min(
-      _kPanelMaxHeight,
-      MediaQuery.sizeOf(context).height * 0.72,
-    );
-    return SizedBox(
-      height: height,
-      child: Container(
-        decoration: BoxDecoration(
-          color: Color(AppColors.surface),
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-          boxShadow: widget.elevated
-              ? const [
-                  BoxShadow(
-                    color: Color(0x2A000000),
-                    blurRadius: 20,
-                    offset: Offset(0, -4),
-                  ),
-                ]
-              : null,
-        ),
-        child: Column(
-          children: [
-            const _SheetHandle(),
-            _PanelHeader(onReset: _reset),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.lg,
-                  AppSpacing.xs,
-                  AppSpacing.lg,
-                  AppSpacing.md,
+    // 宿主可用高度优先：地图页弹键盘时 Scaffold 会收缩 body，
+    // 固定 500 的面板在矮屏上会顶出视口、把标题行裁掉。
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final double hostMax = constraints.maxHeight.isFinite
+            ? constraints.maxHeight
+            : double.infinity;
+        final double height = math.min(
+          math.min(_kPanelMaxHeight, MediaQuery.sizeOf(context).height * 0.72),
+          hostMax,
+        );
+        return SizedBox(
+          height: height,
+          child: Container(
+            decoration: BoxDecoration(
+              color: Color(AppColors.surface),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(24),
+              ),
+              boxShadow: widget.elevated
+                  ? const [
+                      BoxShadow(
+                        color: Color(0x2A000000),
+                        blurRadius: 20,
+                        offset: Offset(0, -4),
+                      ),
+                    ]
+                  : null,
+            ),
+            child: Column(
+              children: [
+                const _SheetHandle(),
+                _buildHeader(),
+                Expanded(
+                  child: _showLocation
+                      ? LocationPanel(onDone: _handleAnchorApplied)
+                      : SingleChildScrollView(
+                          padding: const EdgeInsets.fromLTRB(
+                            AppSpacing.lg,
+                            AppSpacing.xs,
+                            AppSpacing.lg,
+                            AppSpacing.md,
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const _RadiusRow(),
+                              const SizedBox(height: AppSpacing.md),
+                              const _SupplyDemandRow(),
+                              const SizedBox(height: AppSpacing.lg),
+                              const _PriceSection(),
+                              const SizedBox(height: AppSpacing.lg),
+                              _CategorySection(
+                                key: ValueKey<int>(_resetEpoch),
+                                measureLayerSwitch: widget.measureLayerSwitch,
+                              ),
+                              const SizedBox(height: AppSpacing.lg),
+                              const _LegendRow(),
+                            ],
+                          ),
+                        ),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const _RadiusRow(),
-                    const SizedBox(height: AppSpacing.md),
-                    const _SupplyDemandRow(),
-                    const SizedBox(height: AppSpacing.lg),
-                    const _PriceSection(),
-                    const SizedBox(height: AppSpacing.lg),
-                    _CategorySection(
-                      key: ValueKey<int>(_resetEpoch),
-                      measureLayerSwitch: widget.measureLayerSwitch,
-                    ),
-                    const SizedBox(height: AppSpacing.lg),
-                    const _LegendRow(),
-                  ],
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// 面板标题行：位置头（位置视图下换成标题 + 关闭）。
+  ///
+  /// 参数：无；返回：标题行控件。
+  Widget _buildHeader() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.xs,
+        AppSpacing.md,
+        AppSpacing.xs,
+      ),
+      child: Row(
+        children: [
+          if (_showLocation) ...[
+            Text(
+              '选择位置',
+              style: TextStyle(
+                fontSize: AppTypeScale.h3.size,
+                fontWeight: FontWeight.w600,
+                color: Color(AppColors.textPrimary),
+              ),
+            ),
+            const Spacer(),
+            GestureDetector(
+              onTap: () => setState(() => _showLocation = false),
+              behavior: HitTestBehavior.opaque,
+              child: const Padding(
+                padding: EdgeInsets.all(AppSpacing.sm),
+                child: Icon(
+                  Icons.close,
+                  size: 18,
+                  color: Color(AppColors.textSecondary),
                 ),
               ),
             ),
+          ] else ...[
+            // 位置头占满「重置」以外的全部宽度：地名较长时尽量多显示，
+            // 到边界才省略（此前用 Flexible + Spacer，两者各分一半，
+            // 「安徽…」还没用完可用宽度就被截断）。
+            Expanded(
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: LocationHeader(
+                  onTap: () => setState(() => _showLocation = true),
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: _reset,
+              style: TextButton.styleFrom(
+                foregroundColor: Color(AppColors.primaryDark),
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+                minimumSize: const Size(44, 44),
+              ),
+              child: Text(
+                '重置',
+                style: TextStyle(fontSize: AppTypeScale.small.size),
+              ),
+            ),
           ],
-        ),
+        ],
       ),
     );
   }
@@ -138,50 +248,6 @@ class _SheetHandle extends StatelessWidget {
           color: const Color(0xFFD1D5DB),
           borderRadius: BorderRadius.circular(2),
         ),
-      ),
-    );
-  }
-}
-
-/// 面板标题行：标题 + 重置。
-class _PanelHeader extends StatelessWidget {
-  const _PanelHeader({required this.onReset});
-
-  final VoidCallback onReset;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.lg,
-        AppSpacing.xs,
-        AppSpacing.md,
-        AppSpacing.xs,
-      ),
-      child: Row(
-        children: [
-          Text(
-            '筛选条件',
-            style: TextStyle(
-              fontSize: AppTypeScale.h3.size,
-              fontWeight: FontWeight.w600,
-              color: Color(AppColors.textPrimary),
-            ),
-          ),
-          const Spacer(),
-          TextButton(
-            onPressed: onReset,
-            style: TextButton.styleFrom(
-              foregroundColor: Color(AppColors.primaryDark),
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
-              minimumSize: const Size(44, 44),
-            ),
-            child: Text(
-              '重置',
-              style: TextStyle(fontSize: AppTypeScale.small.size),
-            ),
-          ),
-        ],
       ),
     );
   }

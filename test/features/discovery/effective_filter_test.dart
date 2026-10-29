@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zhaoyazhao/core/text/location_label.dart';
 import 'package:zhaoyazhao/domain/listing_category.dart';
 import 'package:zhaoyazhao/features/discovery/condition_slots.dart';
 import 'package:zhaoyazhao/features/discovery/discovery_filter.dart';
@@ -156,5 +157,46 @@ void main() {
     expect(after.anchorLat, isNull);
     expect(after.communityId, isNull);
     expect(after.chips.any((c) => c.slot == ConditionSlot.anchor), isFalse);
+  });
+
+  group('地址展示压缩', () {
+    test('连续剥掉省/市/区/镇前缀，只留能定位的短名', () {
+      expect(
+        shortLocationLabel('安徽省合肥市长丰县双墩镇北城世纪城鑫徽苑'),
+        '北城世纪城鑫徽苑',
+      );
+      expect(
+        shortLocationLabel('安徽省合肥市瑶海区瑶海区工业园河东路博通创意园'),
+        '工业园河东路博通创意园',
+      );
+      expect(shortLocationLabel('浙江省杭州市西湖区文三路'), '文三路');
+      expect(shortLocationLabel('内蒙古自治区呼和浩特市新城区'), '新城区',
+          reason: '剥到只剩 2 个字时保留最后一层，避免剥空');
+    });
+
+    test('没有行政前缀/空值原样返回', () {
+      expect(shortLocationLabel('博通创意园'), '博通创意园');
+      expect(shortLocationLabel('  '), '');
+      expect(shortLocationLabel(null), '');
+      expect(shortLocationLabel('人民路市场'), '人民路市场',
+          reason: '剥完只剩 1 个字时不剥，避免误伤普通地名');
+    });
+
+    test('地点 chip 用短名，位置头与锚点仍保存完整地址', () {
+      final intent = SearchIntent(
+        queryText: '北城',
+        anchorLat: 32.27,
+        anchorLng: 117.09,
+        anchorName: '安徽省合肥市长丰县双墩镇北城世纪城鑫徽苑',
+        anchorSource: 'manual',
+      );
+      final result = effectiveFilterOf(persistent, intent);
+      final ConditionChip chip = result.chips.firstWhere(
+        (c) => c.slot == ConditionSlot.anchor,
+      );
+      expect(chip.label, '北城世纪城鑫徽苑');
+      expect(result.anchorName, '安徽省合肥市长丰县双墩镇北城世纪城鑫徽苑',
+          reason: '压缩只影响展示，投影里的锚点名保持完整');
+    });
   });
 }

@@ -8,6 +8,7 @@
 /// 也让「投影之外还有没有第二处回落」变成可被门禁扫描的判断题。
 library;
 
+import '../../core/text/location_label.dart';
 import '../../domain/category_tree.dart';
 import '../../domain/listing_category.dart';
 import 'condition_slots.dart';
@@ -360,10 +361,12 @@ EffectiveFilter effectiveFilterOf(
   final String? anchorSource = anchorCleared ? null : intent?.anchorSource;
   final String? communityName = anchorCleared ? null : intent?.communityName;
   if (anchorName != null || anchorLat != null) {
+    // 省市区前缀在本地没有信息量，chip 只展示能帮助定位的短名。
+    final String anchorLabel = shortLocationLabel(anchorName);
     chips.add(
       ConditionChip(
         slot: ConditionSlot.anchor,
-        label: anchorName ?? '地图选点',
+        label: anchorLabel.isEmpty ? '地图选点' : anchorLabel,
         source: ConditionSource.intent,
       ),
     );

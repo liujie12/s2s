@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ideation：用户位置校准与指定位置搜索</title>
+<style>
+  :root {
+    --bg: #fbfaf8;
+    --surface: #ffffff;
+    --ink: #1d1c1a;
+    --ink-2: #55524d;
+    --ink-3: #7d7872;
+    --rule: #e4e0d8;
+    --accent: #1f6f5c;
+    --accent-soft: #e6f2ee;
+    --warn: #8a5a12;
+    --warn-soft: #f8efdf;
+    --danger: #8c3b32;
+    --danger-soft: #f8e9e6;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.72 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+          "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 940px; margin: 0 auto; padding: 56px 28px 80px; }
+  header.doc { border-bottom: 1px solid var(--rule); padding-bottom: 28px; margin-bottom: 40px; }
+  .eyebrow {
+    font-size: 12px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--ink-3); margin: 0 0 12px;
+  }
+  h1 { font-size: 30px; line-height: 1.32; margin: 0 0 16px; font-weight: 700; letter-spacing: -.01em; }
+  .meta { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 13px; color: var(--ink-2); }
+  .meta b { font-weight: 600; color: var(--ink); }
+  h2 {
+    font-size: 19px; margin: 52px 0 16px; padding-bottom: 8px;
+    border-bottom: 1px solid var(--rule); font-weight: 650; letter-spacing: -.005em;
+  }
+  h3 { font-size: 17px; margin: 0 0 4px; font-weight: 650; }
+  p { margin: 0 0 12px; max-width: 72ch; }
+  code {
+    font-family: var(--mono); font-size: .89em; background: #f2efe9;
+    padding: 1px 5px; border-radius: 4px; color: #3a3733;
+  }
+  ul, ol { margin: 0 0 14px; padding-left: 22px; max-width: 72ch; }
+  li { margin-bottom: 6px; }
+  .lede { font-size: 15px; color: var(--ink-2); }
+  .stat-strip {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 10px; margin: 22px 0 0;
+  }
+  .stat {
+    background: var(--surface); border: 1px solid var(--rule);
+    border-radius: 10px; padding: 12px 14px;
+  }
+  .stat .k { font-size: 12px; color: var(--ink-3); letter-spacing: .04em; }
+  .stat .v { font-size: 17px; font-weight: 650; margin-top: 2px; }
+  .axes { margin: 0; padding-left: 20px; }
+  .axes li { color: var(--ink-2); }
+  .axes li b { color: var(--ink); font-weight: 600; }
+
+  .jump {
+    background: var(--surface); border: 1px solid var(--rule); border-radius: 10px;
+    padding: 12px 16px; margin: 18px 0 26px;
+  }
+  .jump ol { margin: 0; padding-left: 20px; }
+  .jump a { color: var(--accent); text-decoration: none; }
+  .jump a:hover { text-decoration: underline; }
+
+  article.idea {
+    background: var(--surface); border: 1px solid var(--rule); border-radius: 12px;
+    padding: 22px 24px 18px; margin-bottom: 20px;
+  }
+  article.idea .id {
+    display: inline-block; font-family: var(--mono); font-size: 12px;
+    background: var(--accent-soft); color: var(--accent);
+    padding: 2px 8px; border-radius: 999px; margin-bottom: 10px;
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 14px; }
+  .chip {
+    font-size: 12px; padding: 3px 10px; border-radius: 999px;
+    background: #f2efe9; color: var(--ink-2); border: 1px solid var(--rule);
+  }
+  .chip.axis { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+  dl.fields { margin: 0; }
+  dl.fields dt {
+    font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--ink-3); margin-top: 14px;
+  }
+  dl.fields dd { margin: 4px 0 0; }
+  .basis-direct { border-left: 2px solid var(--accent); padding-left: 12px; }
+  .basis-external { border-left: 2px solid #4a6fa5; padding-left: 12px; }
+  .basis-reasoned { border-left: 2px solid #8a6ea8; padding-left: 12px; }
+
+  .callout {
+    border-radius: 10px; padding: 14px 16px; margin: 16px 0;
+    background: var(--warn-soft);
+  }
+  .callout .label {
+    font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--warn); font-weight: 700; display: block; margin-bottom: 4px;
+  }
+  .callout p { margin: 0; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; margin: 8px 0 4px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { font-size: 12px; letter-spacing: .06em; color: var(--ink-3); font-weight: 600; text-transform: uppercase; }
+  td.num { font-family: var(--mono); color: var(--ink-3); width: 34px; }
+  tr.gap td { background: var(--danger-soft); }
+
+  figure { margin: 22px 0 8px; }
+  figcaption { font-size: 12.5px; color: var(--ink-3); margin-top: 8px; }
+  svg { max-width: 100%; height: auto; display: block; }
+
+  footer.composition-signal {
+    margin-top: 60px; padding-top: 16px; border-top: 1px solid var(--rule);
+    font-size: 12.5px; color: var(--ink-3);
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc">
+  <p class="eyebrow">Ideation · 发现侧位置校准 · v2</p>
+  <h1>用户位置不准，或者想换个地方找：圆心该由谁说了算</h1>
+  <div class="meta">
+    <span><b>2026-10-29</b></span>
+    <span>topic：<b>location-recalibration</b></span>
+    <span>焦点：<b>自动定位错误 / 指定地图位置附近寻找资源或需求时的重新校准</b></span>
+    <span>范围：<b>仓库内（Flutter 前端 · 发现侧）</b></span>
+    <span>版本：<b>v2 并入美团位置选择截图参考</b></span>
+  </div>
+  <p class="lede" style="margin-top:18px">
+    结论先说：缺的不是一个「重新定位」按钮，而是<strong>三种位置语义没有被区分</strong>——系统观测到的我、我此刻在看的地方、我亲手指定的地方，现在共用同一个 <code>locationCenterProvider</code>，谁后写谁赢。下面 6 条幸存想法各自只需要一处很小的改动，但会改变用户对「这块地图上有什么」的信任。
+  </p>
+  <div class="stat-strip">
+    <div class="stat"><div class="k">生成候选</div><div class="v">43</div></div>
+    <div class="stat"><div class="k">去重后</div><div class="v">12</div></div>
+    <div class="stat"><div class="k">依据复核</div><div class="v">5 sound / 5 weak / 2 refuted</div></div>
+    <div class="stat"><div class="k">幸存</div><div class="v">6（覆盖 5 条轴）</div></div>
+  </div>
+</header>
+
+<section id="grounding">
+  <h2>Grounding Context</h2>
+  <p class="lede">这一轮判断所依据的仓库事实（均已在源码中核对）：</p>
+  <ul>
+    <li><strong>只有一个中心点。</strong><code>locationCenterProvider</code> 默认杭州；另有会话最优点 <code>locationFixProvider</code>，只保留 accuracy 最小的一次。两者语义分开，但都叫「位置」。<span style="color:var(--ink-3)">（location_center.dart:36-55、:82-103）</span></li>
+    <li><strong>首点即冻结。</strong>首个有效定位写入中心，之后只有「手选城市」能改写；后续更准的点只进 fix、不回写圆心。<span style="color:var(--ink-3)">（map_screen.dart:865-886）</span></li>
+    <li><strong>拖动地图不产生任何状态。</strong>拖动只改本地 <code>_centerLat/_centerLng</code>，不写 Provider；查询圆心是 <code>anchorLat ?? 视口中心</code>。<span style="color:var(--ink-3)">（map_screen.dart:905-918、:256-257）</span></li>
+    <li><strong>列表与地图的圆心来源不同。</strong>地图取视口中心，列表取 <code>anchorLat ?? locationCenterProvider</code>——同一屏数据可能建立在两个不同的「附近」上。<span style="color:var(--ink-3)">（list_screen.dart:49-52）</span></li>
+    <li><strong>「回到我的位置」回到的是历史点。</strong>按钮只在偏离视口短边 20% 时出现，点击只读 <code>locationFixProvider</code>，没有任何重新取点动作。<span style="color:var(--ink-3)">（map_screen.dart:100-105、:1067-1078）</span></li>
+    <li><strong>「以任意点为圆心」只差一个入口。</strong><code>anchorSource</code> 枚举早已包含 <code>long_press</code>，但长按地图目前只唤起语音搜索并传锚点，不改圆心。<span style="color:var(--ink-3)">（search_intent.dart:190-200、map_screen.dart:815-820）</span></li>
+    <li><strong>定位精度对用户不可见。</strong><code>isUsableLocationFix</code> 是布尔判据；accuracy 只在内部做比大小。首点常是 30–100m 的网络粗定位，但界面从不说「约 80m」。<span style="color:var(--ink-3)">（location_center.dart:121-149）</span></li>
+    <li><strong>兜底不具名。</strong>C 态横幅只写「已切换到默认位置」，默认值其实是杭州；PRD 要求的是「基站+商圈兜底，不用城市中心假值」。<span style="color:var(--ink-3)">（map_screen.dart:1942-1949、location_center.dart:13-19、PRD §6.4.4 L1314）</span></li>
+    <li><strong>发布侧已经有一套更靠谱的取点。</strong><code>HighAccuracyLocator</code>（geolocator，WGS84→GCJ-02，5s 超时，20m 门槛）只服务发布流程，发现侧未复用。<span style="color:var(--ink-3)">（high_accuracy_locator.dart:32-64）</span></li>
+    <li><strong>PRD 的空白是真实的。</strong>全文未覆盖「重新定位 / 校准位置 / 回到当前位置 / 以任意点为圆心 / 视野内搜索」；搜索坐标口径一律绑定「用户定位」。所以这一轮不是补实现，而是先定口径。</li>
+  </ul>
+  <p class="lede" style="margin-top:16px">外部参考（2026-10-29 用户提供的美团截图，仅取截图可见事实）：位置选择页把状态拆成四层——只读的「当前选择」摘要、「当前定位」+ 右侧「重新定位」、收货地址簿、「最近使用」；「地图选点」是搜索框右侧的一级蓝色按钮。首页顶部另有一条常驻、可点的当前地址条。</p>
+</section>
+
+<section id="axes">
+  <h2>Topic Axes</h2>
+  <ol class="axes">
+    <li><b>A1 校准入口与手势</b> —— 用户用什么动作表达「不对，是这里」。</li>
+    <li><b>A2 圆心与状态模型</b> —— center / fix / anchor / city 四者谁是真相、谁能覆盖谁。</li>
+    <li><b>A3 精度与信任反馈</b> —— 误差如何被看见，以及看见之后界面怎么说话。</li>
+    <li><b>A4 半径与结果解释</b> —— 换了圆心之后，范围、排序、空结果怎么解释。</li>
+    <li><b>A5 权限、降级与合规</b> —— 未授权、C 态、默认中心披露、工程红线。</li>
+  </ol>
+</section>
+
+<section id="ideas">
+  <h2>Ranked Ideas</h2>
+
+  <div class="jump">
+    <ol>
+      <li><a href="#idea-1">此点即圆心：给「我在看的地方」一个显式入口</a></li>
+      <li><a href="#idea-2">常驻圆心条：永远回答「现在按哪里算」</a></li>
+      <li><a href="#idea-3">「重新定位」只作用在「当前定位」那一行</a></li>
+      <li><a href="#idea-4">显式优先：用户说过的位置，自动定位不许静默改写</a></li>
+      <li><a href="#idea-5">精度必须可见，并且参与决策</a></li>
+      <li><a href="#idea-6">空结果有两个假设：范围太小，还是圆心不对</a></li>
+    </ol>
+  </div>
+
+  <article class="idea" id="idea-1">
+    <span class="id">IDEA 1</span>
+    <h3>此点即圆心：给「我在看的地方」一个显式入口</h3>
+    <div class="chips">
+      <span class="chip axis">轴 A2 圆心与状态模型</span>
+      <span class="chip">信心 80%</span>
+      <span class="chip">复杂度 中</span>
+    </div>
+    <dl class="fields">
+      <dt>Description</dt>
+      <dd>
+        在地图页放一个<strong>常驻的「地图选点」入口</strong>（搜索/条件带右侧，图标 + 文字），进入后用与发布侧一致的拖图准星选点，确认即把该点写成搜索意图的锚点（<code>anchorSource = manual</code>）；拖动地图松手后追加一个「查这里」的即时操作，长按只作为快捷方式。半径圈围绕新圆心重算，地图与列表此后同读这一份圆心。锚点只在本次搜索有效，清空即回落到真实定位。
+      </dd>
+      <dt>Basis</dt>
+      <dd class="basis-direct">
+        <code>direct:</code> 拖动只改本地坐标、不写 Provider（map_screen.dart:905-918）；查询圆心已是 <code>anchorLat ?? 视口中心</code>（:256-257）；<code>anchorSource</code> 枚举已预留 <code>long_press</code>（search_intent.dart:190-200）；列表页本来就读 <code>anchorLat</code> 优先（list_screen.dart:49-52）。
+        <br><code>external:</code> 美团位置选择页把「地图选点」做成搜索框右侧的一级按钮，而不是藏在长按里——指定位置是主要动作，必须有可发现的入口。
+      </dd>
+      <dt>Rationale</dt>
+      <dd>「指定位置附近找」的最小实现不是新地图页，而是把已经存在但没人写入的锚点字段补上一个入口。因为列表已经优先读锚点，只要写进去，地图与列表就自动同源，不需要新增状态对象，也不碰单源约束（只有四个文件可同时读持久筛选与槽位）。而入口做成显式按钮而非手势，是因为长按属于「知道的人才会用」的隐藏操作。</dd>
+      <dt>Downsides</dt>
+      <dd>需要产品先裁定「锚点算不算搜索意图」以及它的生命周期（本次搜索 / 本次会话）；选点页与发布侧选点页需要收敛成同一份交互，否则会出现两个准星页；锚点生效后，「全城」档的语义要重新解释。</dd>
+    </dl>
+  </article>
+
+  <figure>
+    <svg viewBox="0 0 880 260" role="img" aria-label="现状与建议对比：现状拖动地图不产生圆心，列表仍用旧圆心；建议由显式入口或拖动松手产生带来源的圆心，地图与列表同源">
+      <rect x="0" y="0" width="880" height="260" fill="#ffffff" stroke="#e4e0d8" rx="10"/>
+      <text x="24" y="30" font-size="12" fill="#7d7872" letter-spacing="1.4">现状</text>
+      <rect x="24" y="46" width="220" height="64" rx="8" fill="#f2efe9" stroke="#e4e0d8"/>
+      <text x="40" y="72" font-size="13" fill="#1d1c1a">拖动地图</text>
+      <text x="40" y="92" font-size="11.5" fill="#7d7872">只改本地 _centerLat</text>
+      <rect x="24" y="150" width="220" height="64" rx="8" fill="#f2efe9" stroke="#e4e0d8"/>
+      <text x="40" y="176" font-size="13" fill="#1d1c1a">列表页</text>
+      <text x="40" y="196" font-size="11.5" fill="#7d7872">仍用旧圆心 → 两个「附近」</text>
+      <path d="M 134 110 L 134 150" stroke="#8c3b32" stroke-width="1.6" fill="none"/>
+      <text x="146" y="136" font-size="11.5" fill="#8c3b32">未写入</text>
+
+      <line x1="300" y1="24" x2="300" y2="236" stroke="#e4e0d8"/>
+
+      <text x="336" y="30" font-size="12" fill="#1f6f5c" letter-spacing="1.4">建议</text>
+      <rect x="336" y="46" width="220" height="64" rx="8" fill="#e6f2ee" stroke="#cfe3dc"/>
+      <text x="352" y="72" font-size="13" fill="#1d1c1a">「地图选点」按钮 / 松手</text>
+      <text x="352" y="92" font-size="11.5" fill="#3a5b52">确认 → 写 anchor（带来源）</text>
+      <rect x="336" y="150" width="220" height="64" rx="8" fill="#e6f2ee" stroke="#cfe3dc"/>
+      <text x="352" y="176" font-size="13" fill="#1d1c1a">地图 + 列表</text>
+      <text x="352" y="196" font-size="11.5" fill="#3a5b52">同读一份圆心 + 圆心条披露</text>
+      <path d="M 446 110 L 446 150" stroke="#1f6f5c" stroke-width="1.6" fill="none"/>
+      <text x="458" y="136" font-size="11.5" fill="#1f6f5c">写入锚点</text>
+
+      <rect x="616" y="46" width="236" height="168" rx="8" fill="#f8efdf"/>
+      <text x="634" y="72" font-size="12" fill="#8a5a12" letter-spacing="1.2">为什么不是新对象</text>
+      <text x="634" y="98" font-size="12" fill="#55524d">锚点字段已存在且列表已优先读它，</text>
+      <text x="634" y="118" font-size="12" fill="#55524d">补入口即可同源；新建圆心值对象</text>
+      <text x="634" y="138" font-size="12" fill="#55524d">会与既有投影规则重叠，属过度抽象。</text>
+      <text x="634" y="166" font-size="12" fill="#55524d">入口用按钮而非纯手势，是因为</text>
+      <text x="634" y="186" font-size="12" fill="#55524d">长按只有「知道的人」才会用。</text>
+    </svg>
+    <figcaption>概念对比：现状「拖了但不生效」，建议由显式入口产生一次可撤销的指定。</figcaption>
+  </figure>
+
+  <article class="idea" id="idea-2">
+    <span class="id">IDEA 2</span>
+    <h3>常驻圆心条：永远回答「现在按哪里算」</h3>
+    <div class="chips">
+      <span class="chip axis">轴 A3 精度与信任反馈</span>
+      <span class="chip">信心 82%</span>
+      <span class="chip">复杂度 低</span>
+    </div>
+    <dl class="fields">
+      <dt>Description</dt>
+      <dd>
+        地图页与列表页顶部常驻一条只读摘要：<strong>「当前：我的位置 · 文三路 ›」/「当前：地图选点 · 某某商圈 ›」/「当前：杭州（未校准）›」</strong>，点进去就是选点页。来源与地名始终可见，兜底时直接写「未校准」，不再只在定位失败 3 次后才说一句「已切换到默认位置」。
+      </dd>
+      <dt>Basis</dt>
+      <dd class="basis-direct">
+        <code>direct:</code> C 态横幅文案不含地名（map_screen.dart:1942-1949）；默认中心是杭州、注释自称符合 PRD §6.4.4，但 PRD 要的是基站+商圈兜底而非城市中心假值（location_center.dart:13-19、PRD L1314）；两页圆心来源本就不同（list_screen.dart:49-52 vs map_screen.dart:256-257），用户却没有任何地方能看到「现在按哪算」。
+        <br><code>external:</code> 美团把「当前选择：某某酒店」做成独立只读摘要行，并在首页顶部常驻一条可点的地址条——生效中的位置是需要被持续告知的状态，不是一次性动作。
+      </dd>
+      <dt>Rationale</dt>
+      <dd>这一条的成本几乎只是文案与一个只读组件，但它同时修掉三个问题：兜底不具名、两页圆心分叉无从察觉、「定位不准」被误读成「这附近没内容」。它也是想法 1 的展示面——没有圆心条，用户选完点后仍然不知道自己现在按哪里搜。</dd>
+      <dt>Downsides</dt>
+      <dd>需要在首页地图与列表各加一个只读控件，涉及一次视觉排布（顶部空间与搜索入口竞争）；地名依赖逆地理能力，不可用时需退化为「地图选点 · 30.27,120.15」这类坐标兜底文案；默认兜底究竟是城市中心还是商圈，仍需产品定口径。</dd>
+    </dl>
+  </article>
+
+  <article class="idea" id="idea-3">
+    <span class="id">IDEA 3</span>
+    <h3>「重新定位」只作用在「当前定位」那一行</h3>
+    <div class="chips">
+      <span class="chip axis">轴 A1 校准入口与手势</span>
+      <span class="chip">信心 82%</span>
+      <span class="chip">复杂度 中</span>
+    </div>
+    <dl class="fields">
+      <dt>Description</dt>
+      <dd>
+        把现在的浮动 recenter 改成选点页/圆心面板里的两行：上行是<strong>当前圆心（不可在此处改）</strong>，下行是<strong>「当前定位 · 某某路」+ 右侧「重新定位」</strong>。点「重新定位」触发一次现场取点，复用发布侧的 <code>HighAccuracyLocator</code>（同一组超时与精度常量）；成功只更新「当前定位」这一行的值，<strong>不动用户已指定的圆心</strong>；失败保持原值并明说失败。地图上仍保留一个纯相机动作（回到当前定位、不改圆心），与「重新定位」区分。
+      </dd>
+      <dt>Basis</dt>
+      <dd class="basis-direct">
+        <code>direct:</code> recenter 只 <code>read(locationFixProvider)</code> 并保持 zoom，全程无取点动作（map_screen.dart:1067-1078）；而 <code>locationFixProvider</code> 是「会话内精度最优的历史点」，不是当前点（location_center.dart:57-63）；发现侧从未调用已存在的 <code>HighAccuracyLocator</code>（high_accuracy_locator.dart:32-64）。
+        <br><code>external:</code> 美团把「重新定位」做成「当前定位」这一行右侧的小动作，文案是「重新定位」而非「回到我的位置」，且它不改动上方已选的「当前选择」。
+      </dd>
+      <dt>Rationale</dt>
+      <dd>用户点「回到我的位置」时的心理预期是「重新问我一次 GPS」，但实现给的是「回忆上次」。这不是缺功能，而是文案与行为不一致；把重取接到已有的高精度取点器上，是唯一不依赖地图插件回调、不加接口的校准落点。把它锚定在「当前定位」行还有一个好处：用户不会误以为重取会改掉自己刚选的地方。</dd>
+      <dt>Downsides</dt>
+      <dd>一次高精度取点要等最多 5s，弱网/室内可能超时；会与地图页蓝点定位形成两套取点并行的既有问题（短期可接受，长期应收敛）；需要一个「重新定位」的具体落点页面，否则两行结构无处安放。</dd>
+    </dl>
+  </article>
+
+  <article class="idea" id="idea-4">
+    <span class="id">IDEA 4</span>
+    <h3>显式优先：用户说过的位置，自动定位不许静默改写</h3>
+    <div class="chips">
+      <span class="chip axis">轴 A5 权限、降级与合规</span>
+      <span class="chip">信心 80%</span>
+      <span class="chip">复杂度 低</span>
+    </div>
+    <dl class="fields">
+      <dt>Description</dt>
+      <dd>
+        给圆心加一个来源优先级：<strong>用户显式指定（手选城市 / 地图选点 / 校准）&gt; 自动定位 &gt; 默认兜底</strong>。只有用户点「用我的位置」才解除显式态。蓝点旁提供「这不是我」一键改走指定位置，并把「本会话不再把设备点当默认圆心」记住。
+      </dd>
+      <dt>Basis</dt>
+      <dd class="basis-direct">
+        <code>direct:</code> 手选城市只 <code>moveTo</code>，<code>_located</code> 仍为 false，随后首个有效定位会再 <code>moveTo</code> 覆盖用户刚选的城市（map_screen.dart:876-886、:892-896）；现有降级只处理「取不到 ≥3 次」，不处理「取到了但是错的」（PRD L1314、L1404）。
+        <br><code>external:</code> 美团把「当前选择」与「当前定位」并列展示，选择不被定位结果改写——两条状态在同一个页面上共存，而不是后写覆盖先写。
+      </dd>
+      <dt>Rationale</dt>
+      <dd>这是竞态而非功能缺失：判定条件改一处即可，但它决定用户是否相信「手动选择」有用。位置类产品最伤信任的不是失败，而是「你说了算数，两秒后又被系统改回去」。</dd>
+      <dt>Downsides</dt>
+      <dd>显式锁定会让「我搬家了」这类真实位置变化需要用户主动释放；「本会话记住」与跨会话持久之间涉及隐私取舍，需产品定口径；「这不是我」是新入口，需要可发现性设计。</dd>
+    </dl>
+  </article>
+
+  <article class="idea" id="idea-5">
+    <span class="id">IDEA 5</span>
+    <h3>精度必须可见，并且参与决策</h3>
+    <div class="chips">
+      <span class="chip axis">轴 A3 精度与信任反馈</span>
+      <span class="chip">信心 72%</span>
+      <span class="chip">复杂度 中</span>
+    </div>
+    <dl class="fields">
+      <dt>Description</dt>
+      <dd>
+        把布尔的可用性判据升级为<strong>精度分级</strong>（可信 / 较粗 / 兜底），蓝点旁显示「约 45m」，粗定位时用误差圈代替尖针；分级同时驱动默认半径（粗定位时不默认 1km）与空态用语。当半径 ≤1km 且精度劣于门限时，条件带显式标注「圆心可能有 ±80m 误差」。
+      </dd>
+      <dt>Basis</dt>
+      <dd class="basis-direct">
+        <code>direct:</code> 现有判据只回答真假、不回答多准（location_center.dart:121-149）；accuracy 只在内部比大小、界面上完全不可见（同文件 :97-102）；半径档是 1/3/5/10/全城（discovery_filter.dart:21-37），1km 档下 80m 误差会整圈错格。
+        <br><code>external:</code> 系统地图的定位精度圈（iOS/高德）是同类问题的标准解法：把不可知误差直接画出来，而不是画一个假装精确的针。
+      </dd>
+      <dt>Rationale</dt>
+      <dd>小半径是「精确找」的语义。误差不标注时，用户会把「没找到」归因为平台没内容，而不是「圆心偏了 80 米」——这是内容型产品最不该背的锅。</dd>
+      <dt>Downsides</dt>
+      <dd>精度分级要定义门限，而现有常量只有 20m 一个点，其余需补口径（不得写死数字）；误差圈会增加视觉噪音；「默认半径随精度变」与「默认 5km」的既定口径需要产品确认优先级。</dd>
+    </dl>
+  </article>
+
+  <article class="idea" id="idea-6">
+    <span class="id">IDEA 6</span>
+    <h3>空结果有两个假设：范围太小，还是圆心不对</h3>
+    <div class="chips">
+      <span class="chip axis">轴 A4 半径与结果解释</span>
+      <span class="chip">信心 65%</span>
+      <span class="chip">复杂度 低</span>
+    </div>
+    <dl class="fields">
+      <dt>Description</dt>
+      <dd>
+        空态并列两个出口：「放宽到 5km / 全城」与「换个位置找（回定位 / 在地图上选点）」。同时让半径跟随视野：拖动结束按视口短边推荐最接近的档位并回显，用户不必先猜 1/3/5/10。切换圆心时列表按条目 key 锚定，不把用户甩回顶部。
+      </dd>
+      <dt>Basis</dt>
+      <dd class="basis-direct">
+        <code>direct:</code> 空态唯一出口是「扩大到全城」，等于替用户认定「范围太小」（list_screen.dart:640-646、:124）；地图页已经算过视口短边（map_screen.dart:100-105），但只用它判断是否显示 recenter，没有用于半径。
+      </dd>
+      <dt>Rationale</dt>
+      <dd>错误归因直接决定用户下一步动作：圆心错的时候「扩到全城」能出结果，反而坐实了「这附近什么都没有」。把两个假设摆出来，成本极低，却把一次失败的搜索变成一次可解释的搜索。</dd>
+      <dt>Downsides</dt>
+      <dd>半径跟视野联动会与「范围条」既有交互冲突，需要明确谁优先；自动改档可能让用户觉得「我自己选的 1km 被改了」；列表锚定是体验优化，不解决根因。</dd>
+    </dl>
+  </article>
+</section>
+
+<section id="rejections">
+  <h2>Rejection Summary</h2>
+  <table>
+    <thead>
+      <tr><th class="num">#</th><th>被放弃的想法</th><th>原因</th></tr>
+    </thead>
+    <tbody>
+      <tr><td class="num">1</td><td>SearchCenter 值对象：把 center / fix / anchor / city 折叠成一个不可变对象 + resolveCenter()</td><td>与想法 1 重叠，且属过度抽象——现有锚点投影规则已能承载；先加对象会扩大改动面</td></tr>
+      <tr><td class="num">2</td><td>复用发布选点页做校准面板，并支持「无地图时用文字 / POI 选点」</td><td>依据被证伪：选点页在没有真地图时明确禁用「确认」（map_selector_screen.dart:317），文字/POI 选点并不存在</td></tr>
+      <tr><td class="num">3</td><td>校准后派生新的请求指纹，确保旧缓存不命中</td><td>已经实现：缓存键已含 gridId，圆心变化天然换键（pin_cache_key.dart:73）</td></tr>
+      <tr><td class="num">4</td><td>拖动语义对齐播放器 seek：拖动期间不换结果，松手才提交</td><td>主张已基本满足：拖动期间本就不取数，松手才触发请求</td></tr>
+      <tr><td class="num">5</td><td>双圆心并集：家一圈、公司一圈，结果按 id 去重</td><td>接口只收单个 lat/lng，PRD 无覆盖，属新功能立项而非本轮校准；且「距离以哪个点算」未定</td></tr>
+      <tr><td class="num">6</td><td>照搬美团的收货地址簿（楼栋/单元/房号 + 姓名 + 脱敏手机）</td><td>那是送货运维的长期资产；s2s 的圆心是「看一眼这一带」的临时视图，搬过来只会引入地址管理与隐私面</td></tr>
+      <tr><td class="num">7</td><td>照搬美团的「最近使用」POI 记忆与清空</td><td>思路成立但需本地持久化与隐私口径，价值低于想法 1/2；记为后续可选增强，不进本轮</td></tr>
+      <tr><td class="num">8</td><td>空态只并列两个出口的文案增强</td><td>并入想法 6，与半径跟随视野、列表锚定一起做才成立</td></tr>
+      <tr><td class="num">9</td><td>删掉「首点居中一次」，定位不再写圆心</td><td>推翻 2026-10-08 既有裁定，成本高于想法 1/3 的组合，且会让首次开图失去定位价值</td></tr>
+      <tr><td class="num">10</td><td>半径消失：只给「最近 N 条」，删掉 1/3/5/10 档位</td><td>与契约里 radius 枚举（1/3/5/10/city）冲突；稀疏地区「最近」会拉到 50km，排序口径未定</td></tr>
+      <tr><td class="num">11</td><td>把圆心语义升格为「本次发现的地理上下文」并改名</td><td>纯命名重构，不改变任何行为，价值低于其改动面</td></tr>
+      <tr><td class="num">12</td><td>城市降级为「圆心标签」，重定义 city 档为「有锚点用锚点」</td><td>改动的是契约语义（radius=city 现表示不做距离过滤），需后端与契约同步变更，超出本轮范围</td></tr>
+      <tr><td class="num">13</td><td>零定位：首屏一次都不自动取点，圆心只来自手放的针</td><td>与「就近」首屏价值直接冲突；作为极端反转有价值，但作为产品默认会显著抬高首次使用成本</td></tr>
+      <tr class="gap"><td class="num">—</td><td>轴覆盖说明</td><td>五条轴均有幸存想法，无空轴、未触发补充派发</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="note">
+  <h2>读这份文档时的两个提醒</h2>
+  <div class="callout">
+    <span class="label">口径缺口</span>
+    <p>PRD 没有「重新定位 / 校准 / 以任意点为圆心」的条款，默认兜底中心实际用的是城市中心，与 §6.4.4「不用城市中心假值」存在冲突。这几条都不是代码能自行决定的，先定口径再落实现。</p>
+  </div>
+  <div class="callout" style="background:var(--accent-soft)">
+    <span class="label" style="color:var(--accent)">如果只做一件事</span>
+    <p>做想法 1。它同时覆盖「定位错了」与「想在别处找」两类诉求，复用已存在但没人写入的锚点字段，改动面最小，且立刻消除地图与列表两个「附近」的分叉。如果连这个都排不进本轮，就先做想法 2 的圆心条——成本最低，却能把「现在按哪算」这件事从猜变成看见。</p>
+  </div>
+</section>
+
+<footer class="composition-signal">
+  Composed 2026-10-29 by ce-ideate · 依据：s2s 仓库现状（lib/features/location、map、discovery、city）与 docs/PRD.md；v2 并入用户提供的美团位置选择截图
+</footer>
+
+</div>
+</body>
+</html>

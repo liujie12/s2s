@@ -303,6 +303,8 @@ final List<RouteBase> _routes = [
           initialLat: args?.lat,
           initialLng: args?.lng,
           initialDoorNumber: args?.doorNumber ?? '',
+          purpose: args?.purpose ?? MapSelectorPurpose.publish,
+          initialRadius: args?.radius ?? '5',
         ),
       );
     },

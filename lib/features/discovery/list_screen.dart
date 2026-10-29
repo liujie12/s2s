@@ -33,6 +33,7 @@ import 'discovery_query.dart';
 import 'effective_filter_provider.dart';
 import 'filter_panel.dart';
 import 'listing_sort.dart';
+import 'location_panel.dart';
 import 'map_dto.dart';
 import 'search_conditions.dart';
 import 'voice_search_sheet.dart';
@@ -69,16 +70,30 @@ class ListScreen extends ConsumerWidget {
 
     /// 打开底部筛选面板（与地图页同一份 [FilterPanel]）。
     ///
-    /// 参数：无；返回：无（面板由底部弹层承载）。
-    void openFilter() {
+    /// 参数：[locationView] 是否直接进入位置视图（空态「换个位置找」）。
+    /// 返回：无（面板由底部弹层承载）。
+    void openFilter({bool locationView = false}) {
       showModalBottomSheet<void>(
         context: context,
         isScrollControlled: true,
         backgroundColor: Colors.transparent,
         // 与地图页浮层一致：不压暗背后内容，用户仍能看见当前结果。
         barrierColor: Colors.transparent,
-        builder: (_) =>
-            SafeArea(top: false, child: FilterPanel(elevated: false)),
+        builder: (sheetContext) => Padding(
+          // 弹层默认不随键盘避让：位置视图有输入框，不抬起来会被键盘盖住。
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.viewInsetsOf(sheetContext).bottom,
+          ),
+          child: SafeArea(
+            top: false,
+            child: FilterPanel(
+              elevated: false,
+              initialLocationView: locationView,
+              // 选好位置就关掉弹层，结果区立刻按新圆心刷新。
+              onAnchorApplied: () => Navigator.of(sheetContext).pop(),
+            ),
+          ),
+        ),
       );
     }
 
@@ -96,7 +111,7 @@ class ListScreen extends ConsumerWidget {
               AppSpacing.xs,
             ),
             child: ConditionBand(
-              onFilter: openFilter,
+              onFilter: () => openFilter(),
               onVoice: () =>
                   showVoiceSearchSheet(context, anchorLat: lat, anchorLng: lng),
               onSubmit: (text) => ref
@@ -112,7 +127,14 @@ class ListScreen extends ConsumerWidget {
           ),
           _SortBar(count: pageAsync.asData?.value.total),
           const Divider(height: 1),
-          Expanded(child: _buildBody(ref, pageAsync, query)),
+          Expanded(
+            child: _buildBody(
+              ref,
+              pageAsync,
+              query,
+              onChangeCenter: () => openFilter(locationView: true),
+            ),
+          ),
         ],
       ),
     );
@@ -125,8 +147,9 @@ class ListScreen extends ConsumerWidget {
   Widget _buildBody(
     WidgetRef ref,
     AsyncValue<SearchPageState> async,
-    SearchQuery query,
-  ) {
+    SearchQuery query, {
+    required VoidCallback onChangeCenter,
+  }) {
     if (async.hasError && !async.isLoading) {
       return _LoadFailedState(
         onRetry: () => ref.invalidate(searchPagerProvider(query)),
@@ -136,7 +159,9 @@ class ListScreen extends ConsumerWidget {
     if (page == null) {
       return const Center(child: CircularProgressIndicator());
     }
-    if (page.items.isEmpty) return const _EmptyState();
+    if (page.items.isEmpty) {
+      return _EmptyState(onChangeCenter: onChangeCenter);
+    }
     return _ListingList(
       cards: page.items,
       hasMore: page.hasMore,
@@ -600,12 +625,27 @@ class _CategoryBadge extends StatelessWidget {
 /// Batch2，此处不实现 —— 做半套（比如只做自动扩圈不做兜底文案）会让用户
 /// 看到范围莫名其妙变了却没有任何解释。
 class _EmptyState extends ConsumerWidget {
-  const _EmptyState();
+  const _EmptyState({required this.onChangeCenter});
+
+  /// 「换个位置找」：打开位置视图。
+  final VoidCallback onChangeCenter;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final effective = ref.watch(effectiveFilterProvider);
+    final bool hasFix = ref.watch(locationFixProvider) != null;
     final String summary = effective.chips.map((c) => c.label).join(' · ');
+    // 放宽一档：1/3km 先到 5km（最常见的一步），再往上只能到全城。
+    final (String widenLabel, SearchRadius? widenTarget) = switch (
+      effective.radius
+    ) {
+      SearchRadius.km1 || SearchRadius.km3 => ('放宽到 5km', SearchRadius.km5),
+      SearchRadius.km5 || SearchRadius.km10 => ('扩大到全城', SearchRadius.city),
+      SearchRadius.city => ('', null),
+    };
+    final String title = effective.radius == SearchRadius.city
+        ? '全城也没有找到'
+        : '${effective.radius.label} 内没有找到';
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.xl),
@@ -619,7 +659,7 @@ class _EmptyState extends ConsumerWidget {
             ),
             const SizedBox(height: AppSpacing.md),
             Text(
-              '这个范围内暂时没有信息',
+              title,
               style: TextStyle(
                 fontSize: AppTypeScale.body.size,
                 color: Color(AppColors.textSecondary),
@@ -627,23 +667,65 @@ class _EmptyState extends ConsumerWidget {
             ),
             const SizedBox(height: AppSpacing.xs),
             Text(
-              // 回显当前条件：空结果最常见的原因是筛窄了，而用户往往
-              // 不记得自己选了什么。只说「没有信息」会让人以为平台没内容。
-              '当前筛选：$summary',
+              // 空结果最常见的原因是范围太小或圆心不准；只说「没有信息」
+              // 会让用户以为平台没内容。
+              '可能是这一带确实没有，也可能是圆心不够准。两个都试试：',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: AppTypeScale.caption.size,
+                color: Color(AppColors.textSecondary),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (widenTarget != null) ...[
+                  OutlinedButton(
+                    onPressed: () => ref
+                        .read(searchConditionsProvider.notifier)
+                        .setRadius(widenTarget),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Color(AppColors.primary),
+                      side: const BorderSide(color: Color(AppColors.primary)),
+                    ),
+                    child: Text(widenLabel),
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                ],
+                ElevatedButton.icon(
+                  onPressed: onChangeCenter,
+                  icon: const Icon(Icons.place_outlined, size: 16),
+                  label: const Text('换个位置找'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Color(AppColors.primary),
+                    foregroundColor: Color(AppColors.surface),
+                    elevation: 0,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.md),
+            Text(
+              // 回显圆心：空结果时用户最需要知道「到底在按哪里搜」。
+              '当前圆心：${currentCenterLabel(effective: effective, hasFix: hasFix)}',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: AppTypeScale.caption.size,
                 color: Color(AppColors.textPlaceholder),
               ),
             ),
-            const SizedBox(height: AppSpacing.lg),
-            if (effective.radius != SearchRadius.city)
-              TextButton(
-                onPressed: () => ref
-                    .read(searchConditionsProvider.notifier)
-                    .setRadius(SearchRadius.city),
-                child: const Text('扩大到全城看看'),
+            if (summary.isNotEmpty) ...[
+              const SizedBox(height: AppSpacing.xs),
+              Text(
+                '当前筛选：$summary',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: AppTypeScale.caption.size,
+                  color: Color(AppColors.textPlaceholder),
+                ),
               ),
+            ],
           ],
         ),
       ),

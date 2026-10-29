@@ -222,6 +222,44 @@ class SearchConditionsNotifier extends Notifier<SearchConditionsState> {
     ref.read(searchIntentProvider.notifier).clear();
   }
 
+  /// 设置地点锚点（搜索地点、地图选点、重新定位采用）。
+  ///
+  /// 无搜索态时创建一张只带锚点的槽位卡，而不是退回持久筛选 —— 锚点没有
+  /// 持久来源可写，写进持久筛选会让「清空搜索」之后圆心仍然被改过的点拽住。
+  ///
+  /// 参数：[lat]/[lng] 锚点坐标（GCJ-02）；[name] 地点名（可空）；
+  /// [source] 来源（current=我的位置 / manual=地图选点 / poi=搜索地点）。
+  /// 返回：无。
+  void setAnchor({
+    required double lat,
+    required double lng,
+    String? name,
+    required String source,
+  }) {
+    _recordSnapshot();
+    final SearchIntent? intent = _intent;
+    if (intent == null) {
+      _writeIntent(
+        SearchIntent(
+          queryText: state.queryText,
+          anchorLat: lat,
+          anchorLng: lng,
+          anchorName: name,
+          anchorSource: source,
+        ),
+      );
+      return;
+    }
+    _writeIntent(
+      intent.copyWith(
+        anchorLat: lat,
+        anchorLng: lng,
+        anchorName: name,
+        anchorSource: source,
+      ),
+    );
+  }
+
   /// 设置价格区间；任一侧传 null 即取消该侧（R23）。
   ///
   /// 价格无论有无搜索态都写持久筛选 —— 它是持久条件，不随一次搜索结束而消失。

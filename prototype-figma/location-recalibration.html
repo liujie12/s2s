@@ -1,0 +1,1037 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>找丫找 · 位置校准与指定位置搜索 原型 v1</title>
+<style>
+/* ============================================================
+   位置校准 / 指定位置搜索 · 设计稿
+   基准：390 × 844（逻辑像素），颜色与圆角取自 lib/design_tokens.dart
+   primary #0B7C8C / primary-light #E6F6F8 / accent #B4531A
+   ============================================================ */
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --primary:#0B7C8C;
+  --primary-dark:#075E6B;
+  --primary-light:#E6F6F8;
+  --accent:#B4531A;
+  --warn:#F59E0B;
+  --warn-text:#B45309;
+  --warn-bg:rgba(245,158,11,.12);
+  --warn-line:rgba(245,158,11,.34);
+  --text:#1F2937;
+  --text-2:#6B7280;
+  --text-3:#9CA3AF;
+  --border:#E5E7EB;
+  --bg:#F8FAFC;
+  --surface:#FFFFFF;
+  --work:#326FD1;
+  --house:#8055E2;
+  --vehicle:#B85510;
+  --life:#0B825A;
+  --service:#C63C81;
+  --mono:"JetBrains Mono","SFMono-Regular",Consolas,"Liberation Mono",monospace;
+}
+html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+body{
+  font-family:"HarmonyOS Sans SC","PingFang SC","Noto Sans SC","Microsoft YaHei",sans-serif;
+  color:var(--text);
+  padding:44px 32px 72px;
+  background:
+    radial-gradient(1100px 620px at 8% -8%, #E2EEE7 0%, rgba(226,238,231,0) 62%),
+    radial-gradient(900px 520px at 98% 2%, #F2E7DA 0%, rgba(242,231,218,0) 58%),
+    #F4F5F1;
+}
+body::before{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+  background-image:
+    linear-gradient(rgba(31,41,55,.04) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(31,41,55,.04) 1px,transparent 1px);
+  background-size:34px 34px;
+  -webkit-mask-image:radial-gradient(circle at 50% 24%,#000 22%,transparent 82%);
+  mask-image:radial-gradient(circle at 50% 24%,#000 22%,transparent 82%);
+}
+.doc-head{position:relative;z-index:1;max-width:1180px;margin:0 auto 40px}
+.kicker{font-family:var(--mono);font-size:11px;letter-spacing:.18em;color:var(--primary);margin-bottom:12px}
+.doc-head h1{font-size:34px;line-height:1.22;letter-spacing:-.02em;font-weight:700;color:#16232E;max-width:900px}
+.lede{margin-top:14px;max-width:820px;font-size:14px;line-height:1.8;color:#4B5563}
+.meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+.tag{font-size:11px;line-height:1;padding:7px 11px;border-radius:999px;background:#fff;border:1px solid #E2E5DE;color:#4B5563}
+.tag.primary{background:var(--primary);border-color:var(--primary);color:#fff}
+.tag.warn{background:#FDF3E7;border-color:#F0D9BF;color:#8A4A17}
+
+/* ---------- 画框 ---------- */
+.stage{position:relative;z-index:1;max-width:884px;margin:0 auto;display:flex;flex-wrap:wrap;gap:34px 40px;align-items:flex-start}
+.frame-wrap{width:408px}
+.frame-cap{display:flex;align-items:baseline;gap:8px;margin-bottom:10px;padding:0 4px}
+.idx{font-family:var(--mono);font-size:11px;color:var(--primary);letter-spacing:.06em}
+.frame-cap b{font-size:13.5px;font-weight:600;color:#1F2937}
+.frame-cap em{font-style:normal;font-size:11px;color:var(--text-2);margin-left:auto}
+.phone{
+  width:408px;height:862px;padding:9px;border-radius:46px;background:#101820;
+  box-shadow:0 28px 64px -20px rgba(15,23,42,.48),0 0 0 1px rgba(15,23,42,.10),inset 0 0 0 1px rgba(255,255,255,.08);
+}
+.screen{position:relative;width:390px;height:844px;border-radius:38px;overflow:hidden;background:#EFF2EA}
+.map{position:absolute;inset:0;z-index:0}
+.map svg{display:block;width:100%;height:100%}
+
+/* ---------- 状态栏 ---------- */
+.statusbar{position:absolute;top:0;left:0;right:0;height:44px;z-index:9;display:flex;align-items:center;justify-content:space-between;padding:10px 24px 0;color:#1F2937}
+.statusbar .time{font-size:13px;font-weight:600;letter-spacing:.02em;font-variant-numeric:tabular-nums}
+.sysicons{display:flex;align-items:center;gap:5px}
+.top-scrim{position:absolute;top:0;left:0;right:0;height:178px;z-index:2;pointer-events:none;
+  background:linear-gradient(180deg,rgba(244,246,240,.94) 0%,rgba(244,246,240,.62) 48%,rgba(244,246,240,0) 100%)}
+
+/* ---------- 筛选面板左上角位置（点开可改） ---------- */
+.locbar{display:flex;align-items:center;gap:6px;max-width:252px;height:32px;padding:0;
+  font-size:14px;font-weight:600;color:var(--text)}
+.locbar .pin{width:15px;height:15px;stroke:var(--primary);stroke-width:1.9;fill:none;flex:0 0 auto}
+.locbar .src{font-size:11px;font-weight:500;color:var(--text-2)}
+.locbar .txt{max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.locbar .caret{font-size:13px;color:var(--text-3);line-height:1;margin-top:-1px}
+.locbar.warn .pin{stroke:var(--warn-text)}
+.locbar.warn .txt{color:var(--warn-text)}
+.locbar.warn .src{color:var(--warn-text);opacity:.82}
+.panel-head{display:flex;align-items:center;gap:10px;padding:6px 0 0}
+.panel-head .reset{margin-left:auto}
+
+/* ---------- 搜索栏 ---------- */
+.searchbar{
+  position:absolute;top:52px;left:16px;right:16px;height:48px;z-index:7;
+  display:flex;align-items:center;padding:0 6px 0 15px;border-radius:24px;background:#fff;
+  box-shadow:0 10px 26px -10px rgba(15,23,42,.22),0 2px 6px rgba(15,23,42,.06);
+}
+.icon-search{width:18px;height:18px;flex:0 0 auto;stroke:#6B7280;stroke-width:1.9;fill:none;stroke-linecap:round}
+.search-hint{flex:1;min-width:0;margin-left:10px;font-size:14px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.filter-entry{width:32px;height:32px;flex:0 0 auto;margin-right:2px;border-radius:16px;background:#F3F5F1;display:grid;place-items:center}
+.filter-entry svg{width:16px;height:16px;stroke:#4B5563;stroke-width:1.9;fill:none;stroke-linecap:round}
+.mic{width:36px;height:36px;flex:0 0 auto;border:0;border-radius:18px;background:var(--primary-light);display:grid;place-items:center}
+.mic svg{width:18px;height:18px;stroke:var(--primary);stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round}
+
+/* ---------- 条件栏：位置条永远排第一 ---------- */
+.chipbar{position:absolute;top:108px;left:16px;right:16px;height:32px;z-index:7;display:flex;align-items:center;gap:8px}
+.chips{flex:1;min-width:0;display:flex;align-items:center;gap:6px;overflow:hidden;
+  -webkit-mask-image:linear-gradient(90deg,#000 0,#000 91%,transparent 100%);
+  mask-image:linear-gradient(90deg,#000 0,#000 91%,transparent 100%);}
+.chip{height:32px;flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;padding:0 10px;border-radius:999px;
+  background:rgba(255,255,255,.97);border:1px solid var(--border);font-size:12.5px;color:var(--text);
+  box-shadow:0 2px 8px -2px rgba(15,23,42,.12);white-space:nowrap}
+.chip .dot{width:6px;height:6px;border-radius:50%;background:#94A3B8;flex:0 0 auto}
+
+/* 位置条：常驻、可点、带来源 */
+.center-chip{
+  flex:0 0 auto;height:32px;display:inline-flex;align-items:center;gap:6px;padding:0 9px 0 10px;
+  border-radius:999px;background:var(--primary-light);border:1px solid rgba(11,124,140,.34);
+  font-size:12.5px;font-weight:600;color:var(--primary-dark);white-space:nowrap;
+  box-shadow:0 2px 10px -3px rgba(11,124,140,.35);max-width:250px;
+}
+.center-chip .pin{width:14px;height:14px;flex:0 0 auto;stroke:var(--primary);stroke-width:1.9;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.center-chip .txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.center-chip .src{font-weight:500;color:#3E7C86;font-size:11px;margin-right:1px}
+.center-chip .caret{font-size:12px;color:#5E98A1;line-height:1;margin-top:-1px}
+.center-chip.warn{background:var(--warn-bg);border-color:var(--warn-line);color:#8A4A17;box-shadow:0 2px 10px -3px rgba(180,83,9,.28)}
+.center-chip.warn .pin{stroke:#8A4A17}
+.center-chip.warn .src{color:#A9711F}
+
+/* ---------- 提示条（未校准） ---------- */
+.notice{
+  position:absolute;top:186px;left:16px;right:16px;height:36px;z-index:6;display:flex;align-items:center;gap:8px;
+  padding:0 12px;border-radius:10px;background:rgba(253,243,231,.97);border:1px solid var(--warn-line);
+  font-size:11.5px;color:#8A4A17;box-shadow:0 6px 16px -10px rgba(15,23,42,.3);
+}
+.notice svg{width:14px;height:14px;stroke:#B45309;stroke-width:1.9;fill:none;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}
+.notice b{font-weight:600}
+.notice .act{margin-left:auto;font-weight:600;color:#8A4A17;text-decoration:underline;text-underline-offset:2px;flex:0 0 auto}
+
+/* ---------- 右侧浮钮 ---------- */
+.rail{position:absolute;right:16px;top:152px;z-index:6;display:flex;flex-direction:column;gap:10px}
+.rail-btn{width:40px;height:40px;border-radius:20px;background:#fff;display:grid;place-items:center;
+  box-shadow:0 8px 20px -8px rgba(15,23,42,.28),0 1px 3px rgba(15,23,42,.06)}
+.rail-btn svg{width:19px;height:19px;stroke:#374151;stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.rail-btn.on{background:var(--primary);box-shadow:0 10px 22px -8px rgba(11,124,140,.7)}
+.rail-btn.on svg{stroke:#fff}
+.rail-label{position:absolute;right:46px;top:50%;transform:translateY(-50%);font-size:10px;color:#4B5563;
+  background:rgba(255,255,255,.95);padding:2px 7px;border-radius:6px;white-space:nowrap;box-shadow:0 2px 8px -4px rgba(15,23,42,.3)}
+
+/* ---------- 命中数胶囊 ---------- */
+.map-count{position:absolute;left:16px;bottom:98px;z-index:6;height:32px;padding:0 12px;border-radius:999px;
+  display:inline-flex;align-items:center;gap:7px;background:rgba(255,255,255,.95);
+  box-shadow:0 8px 20px -8px rgba(15,23,42,.26),0 1px 3px rgba(15,23,42,.06);
+  font-size:11.5px;color:#4B5563}
+.map-count i{width:6px;height:6px;border-radius:50%;background:var(--primary);box-shadow:0 0 0 3px rgba(11,124,140,.12)}
+.map-count b{font-family:var(--mono);font-weight:600;color:var(--primary);margin:0 2px}
+
+/* ---------- 半径圈 / 图钉 ---------- */
+.ring{position:absolute;inset:0;z-index:1;pointer-events:none}
+.ring svg{display:block;width:100%;height:100%}
+.pin{position:absolute;z-index:3;width:20px;height:20px;border-radius:50%;border:2px solid #fff;
+  box-shadow:0 3px 8px -2px rgba(15,23,42,.45);transform:translate(-50%,-50%)}
+.pin::after{content:"";position:absolute;left:50%;top:50%;width:6px;height:6px;border-radius:50%;background:#fff;transform:translate(-50%,-50%);opacity:.9}
+.pin.me{z-index:4;width:16px;height:16px;background:var(--primary);box-shadow:0 0 0 5px rgba(11,124,140,.16),0 3px 8px -2px rgba(15,23,42,.4)}
+.pin.me::after{display:none}
+.ring-label{position:absolute;z-index:3;font-size:10px;color:#3E7C86;background:rgba(255,255,255,.9);
+  padding:1px 6px;border-radius:6px;transform:translate(-50%,-50%);white-space:nowrap}
+
+/* ---------- 底部 Tab ---------- */
+.tabbar{position:absolute;left:0;right:0;bottom:0;height:76px;z-index:8;display:flex;align-items:flex-start;padding:9px 0 0;
+  background:rgba(255,255,255,.97);border-top:1px solid rgba(31,41,55,.07);
+  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+.tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:10.5px;color:#9CA3AF}
+.tab svg{width:21px;height:21px;stroke:currentColor;stroke-width:1.7;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.tab.active{color:var(--primary);font-weight:600}
+.tab.publish svg{width:32px;height:32px;stroke:none;fill:initial}
+.tab.publish span{color:var(--primary);font-weight:500}
+
+/* ---------- 位置面板（底部 sheet） ---------- */
+.sheet{position:absolute;left:0;right:0;bottom:0;z-index:10;display:flex;flex-direction:column;
+  padding:0 16px;background:#fff;border-radius:24px 24px 0 0;
+  box-shadow:0 -18px 46px -12px rgba(15,23,42,.28),0 -1px 0 rgba(15,23,42,.05)}
+.sheet.pos{height:352px}
+.handle{width:36px;height:4px;border-radius:2px;background:#D5DAE0;margin:8px auto 6px;flex:0 0 auto}
+.sheet-head{display:flex;align-items:center;justify-content:space-between;padding:6px 0 0}
+.sheet-title{font-size:16px;font-weight:600;letter-spacing:.01em}
+.sheet-close{width:28px;height:28px;display:grid;place-items:center;color:#9CA3AF;font-size:18px;line-height:1}
+.block{padding:14px 0;border-bottom:1px solid #F1F3EE}
+.block:last-of-type{border-bottom:0}
+.block-label{font-size:11px;color:var(--text-3);letter-spacing:.04em;margin-bottom:5px}
+.block-value{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:600;color:var(--text)}
+.block-value .sub{font-size:11px;font-weight:500;color:var(--text-2);padding:1px 7px;border-radius:999px;background:#F3F5F1}
+.block-value .sub.em{background:var(--primary-light);color:var(--primary-dark)}
+.block-note{margin-top:5px;font-size:11px;line-height:1.6;color:var(--text-2)}
+.relocate{margin-left:auto;display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600;color:var(--primary);padding:4px 2px}
+.relocate svg{width:14px;height:14px;stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.relocate.busy{color:var(--text-3)}
+.relocate.busy svg{animation:spin 1s linear infinite;stroke:var(--text-3)}
+@keyframes spin{to{transform:rotate(360deg)}}
+.btn-primary{margin-top:14px;height:48px;border-radius:24px;background:var(--primary);color:#fff;
+  display:flex;align-items:center;justify-content:center;gap:8px;font-size:14px;font-weight:600;
+  box-shadow:0 12px 24px -12px rgba(11,124,140,.8)}
+.btn-primary svg{width:17px;height:17px;stroke:#fff;stroke-width:1.9;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.btn-primary.ghost{background:#fff;color:var(--primary);border:1.5px solid rgba(11,124,140,.36);box-shadow:none}
+.btn-primary.ghost svg{stroke:var(--primary)}
+
+/* ---------- 筛选面板（位置区置顶 + 条件） ---------- */
+.sheet.filter{height:600px}
+.sheet-sub{margin-top:4px;font-size:11px;color:var(--text-3)}
+.sheet-sub b{color:var(--primary);font-weight:600}
+.sheet-body{flex:1;display:flex;flex-direction:column;gap:12px;padding:14px 0 10px;overflow:hidden}
+.loc-group{background:#F8FAFC;border:1px solid #EAEFF3;border-radius:12px;padding:11px 12px 12px}
+.loc-label{font-size:11px;color:var(--text-3);letter-spacing:.04em}
+.loc-sel{display:flex;align-items:center;gap:7px;margin-top:4px;font-size:14px;font-weight:600}
+.loc-sel .sub{font-size:10.5px;font-weight:500;color:var(--primary-dark);background:var(--primary-light);padding:1px 7px;border-radius:999px}
+.loc-note{margin-top:3px;font-size:10.5px;color:var(--text-2);line-height:1.5}
+.loc-row{display:flex;align-items:center;gap:8px;margin-top:9px;padding-top:9px;border-top:1px solid #E9EDF1}
+.loc-row .k{font-size:11px;color:var(--text-3);flex:0 0 auto}
+.loc-row .v{flex:1;min-width:0;font-size:12.5px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.loc-pick{margin-top:10px;height:40px;border-radius:20px;background:#fff;border:1.5px solid rgba(11,124,140,.36);
+  color:var(--primary);display:flex;align-items:center;justify-content:center;gap:7px;font-size:13px;font-weight:600}
+.loc-pick svg{width:15px;height:15px;stroke:currentColor;stroke-width:1.9;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.row{display:flex;align-items:center;gap:8px}
+.row.top{align-items:flex-start}
+.row.top .row-label{padding-top:9px}
+.row-label{flex:0 0 34px;font-size:12px;color:var(--text-2)}
+.pill-lg{height:34px;min-width:80px;justify-content:center;padding:0 13px;border-radius:17px;background:#F2F4F1;
+  display:inline-flex;align-items:center;gap:7px;font-size:12px;color:#374151}
+.pill-lg.on{background:var(--primary);color:#fff;font-weight:600;box-shadow:0 8px 16px -8px rgba(11,124,140,.8)}
+.legend-mark{width:9px;height:9px;border-radius:50%;border:1.6px solid currentColor;display:inline-block;flex:0 0 auto}
+.legend-mark.solid{background:currentColor}
+.price-control{flex:1;min-width:0;display:flex;flex-direction:column;gap:7px}
+.price-head{display:flex;align-items:center;gap:6px}
+.price-input{width:70px;height:30px;border:1px solid var(--border);border-radius:8px;background:#fff;
+  display:flex;align-items:center;justify-content:center;gap:2px;font-family:var(--mono);font-size:12px;font-weight:600}
+.price-input i{font-style:normal;font-size:10px;color:var(--text-3)}
+.price-sep{font-size:11px;color:var(--text-3)}
+.price-clear{margin-left:auto;font-size:11px;color:var(--primary)}
+.range{position:relative;height:22px;margin:0 9px;display:flex;align-items:center}
+.range .track{width:100%;height:4px;border-radius:2px;background:#E7EBE5}
+.range .fill{position:absolute;left:16.7%;width:16.6%;height:4px;border-radius:2px;background:var(--primary)}
+.range .thumb{position:absolute;top:50%;width:16px;height:16px;border-radius:50%;background:#fff;
+  border:2px solid var(--primary);transform:translate(-50%,-50%);box-shadow:0 2px 6px rgba(15,23,42,.18)}
+.cat-grid{flex:1;min-width:0;display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:32px;gap:6px}
+.cat{height:32px;padding:0 6px;border-radius:16px;background:#F2F4F1;display:inline-flex;align-items:center;
+  justify-content:center;gap:5px;font-size:11.5px;color:#374151;white-space:nowrap}
+.cat .cdot{width:6px;height:6px;border-radius:50%;background:var(--cat)}
+.cat .cat-chevron{margin-left:1px;font-size:11px;opacity:.45}
+.cat.on{background:var(--cat);color:#fff;font-weight:600}
+.cat.on .cdot{background:#fff;opacity:.9}
+
+/* ---------- 位置面板：搜索地点 + 地图选点 ---------- */
+.sheet.loc{height:470px}
+.loc-search{display:flex;align-items:center;gap:8px;margin-top:10px}
+.loc-input{flex:1;min-width:0;height:40px;border-radius:20px;background:#F3F5F1;display:flex;align-items:center;gap:8px;
+  padding:0 14px;font-size:13px;color:var(--text-3);white-space:nowrap;overflow:hidden}
+.loc-input svg{width:16px;height:16px;stroke:var(--text-2);stroke-width:1.9;fill:none;stroke-linecap:round;flex:0 0 auto}
+.loc-input.filled{background:#fff;border:1px solid rgba(11,124,140,.4);box-shadow:0 0 0 3px rgba(11,124,140,.09);color:var(--text)}
+.loc-map-btn{flex:0 0 auto;height:40px;padding:0 13px;border-radius:20px;background:var(--primary);color:#fff;
+  display:inline-flex;align-items:center;gap:5px;font-size:12.5px;font-weight:600;box-shadow:0 8px 18px -8px rgba(11,124,140,.75)}
+.loc-map-btn svg{width:15px;height:15px;stroke:#fff;stroke-width:1.9;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.loc-cur{margin-top:14px;padding:10px 12px;border-radius:12px;background:#F8FAFC;border:1px solid #EAEFF3}
+.loc-cur .k{font-size:10.5px;color:var(--text-3)}
+.loc-cur .v{display:flex;align-items:center;gap:6px;margin-top:3px;font-size:13.5px;font-weight:600}
+.loc-cur .v .sub{font-size:10px;font-weight:500;color:var(--primary-dark);background:var(--primary-light);padding:1px 6px;border-radius:999px}
+.loc-cur .note{margin-top:3px;font-size:10.5px;color:var(--text-2)}
+.sec-title{margin:16px 0 4px;font-size:11px;color:var(--text-3);letter-spacing:.04em;display:flex;align-items:center;justify-content:space-between}
+.sec-title .clr{color:var(--text-3);font-size:11px}
+.res-item{display:flex;align-items:center;gap:9px;padding:9px 2px;border-bottom:1px solid #F1F3EE}
+.res-item:last-child{border-bottom:0}
+.res-item svg{width:15px;height:15px;stroke:var(--text-3);stroke-width:1.8;fill:none;flex:0 0 auto;stroke-linecap:round;stroke-linejoin:round}
+.res-item .t{flex:1;min-width:0}
+.res-item .t b{display:block;font-size:12.5px;font-weight:600;color:var(--text)}
+.res-item .t b em{font-style:normal;color:var(--primary)}
+.res-item .t span{display:block;font-size:10.5px;color:var(--text-2);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.res-item .d{font-size:10.5px;color:var(--text-3);flex:0 0 auto}
+.res-empty{padding:26px 0;text-align:center;font-size:11.5px;color:var(--text-3)}
+
+/* ---------- 选点页 ---------- */
+.appbar{position:absolute;top:44px;left:0;right:0;height:48px;z-index:7;display:flex;align-items:center;padding:0 8px;
+  background:#fff;border-bottom:1px solid #EEF1EC}
+.appbar .txt-btn{font-size:14px;color:var(--text-2);padding:6px 10px}
+.appbar .title{flex:1;text-align:center;font-size:16px;font-weight:600}
+.appbar .txt-btn.strong{color:var(--primary);font-weight:600}
+.crosshair{position:absolute;left:50%;top:46%;z-index:5;transform:translate(-50%,-100%)}
+.crosshair svg{width:40px;height:40px;filter:drop-shadow(0 4px 8px rgba(15,23,42,.35))}
+.picker-panel{position:absolute;left:0;right:0;bottom:0;z-index:8;background:#fff;border-radius:24px 24px 0 0;
+  padding:8px 16px 22px;box-shadow:0 -18px 46px -12px rgba(15,23,42,.28)}
+.picker-addr{display:flex;align-items:flex-start;gap:8px;padding:8px 0 12px;border-bottom:1px solid #F1F3EE}
+.picker-addr svg{width:16px;height:16px;stroke:var(--primary);stroke-width:1.9;fill:none;margin-top:2px;flex:0 0 auto}
+.picker-addr .t{font-size:14px;font-weight:600;line-height:1.4}
+.picker-addr .s{margin-top:3px;font-size:11px;color:var(--text-2)}
+.radius-row{display:flex;align-items:center;gap:8px;padding:14px 0 4px}
+.radius-row .lb{flex:0 0 34px;font-size:12px;color:var(--text-2)}
+.seg{flex:1;display:flex;gap:5px}
+.seg .pill{flex:1;height:34px;border-radius:17px;background:#F2F4F1;display:grid;place-items:center;font-size:12px;color:#374151}
+.seg .pill.on{background:var(--primary);color:#fff;font-weight:600;box-shadow:0 8px 16px -8px rgba(11,124,140,.8)}
+.picker-hint{margin-top:10px;font-size:11px;color:var(--text-3);text-align:center}
+
+/* ---------- toast ---------- */
+.toast{position:absolute;left:50%;transform:translateX(-50%);z-index:12;height:32px;display:inline-flex;align-items:center;gap:6px;
+  padding:0 13px;border-radius:999px;background:rgba(7,94,107,.95);color:#fff;font-size:11.5px;white-space:nowrap;
+  box-shadow:0 8px 20px -8px rgba(7,94,107,.55)}
+.toast svg{width:13px;height:13px;stroke:#9FE3EA;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}
+
+/* ---------- 列表页 ---------- */
+.list-appbar{position:absolute;top:44px;left:0;right:0;height:48px;z-index:7;display:flex;align-items:center;
+  padding:0 12px;background:#fff;border-bottom:1px solid #EEF1EC}
+.list-title{font-size:16px;font-weight:600;margin-left:2px;flex:1}
+.map-action{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--primary);padding:6px 4px}
+.map-action svg{width:16px;height:16px;stroke:currentColor;stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.list-search{top:100px}
+.list-chipbar{top:156px}
+.empty-wrap{position:absolute;left:0;right:0;top:204px;bottom:0;z-index:5;background:var(--bg);padding:28px 20px 0;text-align:center}
+.empty-icon{width:64px;height:64px;margin:8px auto 14px;border-radius:32px;background:var(--primary-light);display:grid;place-items:center}
+.empty-icon svg{width:28px;height:28px;stroke:var(--primary);stroke-width:1.7;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.empty-title{font-size:15px;font-weight:600;margin-bottom:6px}
+.empty-sub{font-size:12px;line-height:1.7;color:var(--text-2);max-width:280px;margin:0 auto}
+.empty-sub b{color:var(--text);font-weight:600}
+.empty-actions{margin-top:18px;display:flex;flex-direction:column;gap:10px;padding:0 8px}
+.empty-actions .btn-primary{margin-top:0;height:44px;font-size:13.5px}
+.empty-divider{margin:16px auto 0;font-size:10.5px;color:var(--text-3)}
+
+/* ---------- 规格说明 ---------- */
+.specs{position:relative;z-index:1;max-width:1180px;margin:64px auto 0}
+.section-head{display:flex;align-items:flex-end;gap:14px;border-top:1px solid rgba(31,41,55,.12);padding-top:22px;margin-bottom:20px}
+.section-head .no{font-family:var(--mono);font-size:11px;color:var(--primary);letter-spacing:.12em}
+.section-head h2{font-size:20px;font-weight:700;letter-spacing:-.01em}
+.section-head p{margin-left:auto;font-size:12px;color:var(--text-2)}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+.card{background:#fff;border:1px solid #E7EAE3;border-radius:16px;padding:20px 22px;box-shadow:0 10px 30px -24px rgba(15,23,42,.4)}
+.card h3{font-size:13px;font-weight:700;letter-spacing:.02em;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.card h3::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--primary)}
+.card p{font-size:12.5px;line-height:1.75;color:#4B5563}
+.card p + p{margin-top:8px}
+.card ul{list-style:none;display:flex;flex-direction:column;gap:9px}
+.card li{position:relative;padding-left:14px;font-size:12.5px;line-height:1.65;color:#4B5563}
+.card li::before{content:"";position:absolute;left:0;top:8px;width:4px;height:4px;border-radius:50%;background:#B9C2CC}
+.card li b{color:#1F2937;font-weight:600}
+code{font-family:var(--mono);font-size:11.5px;background:#F3F5F1;border:1px solid #E7EAE3;border-radius:5px;padding:1px 5px;color:#334155}
+.table{width:100%;border-collapse:collapse;font-size:12px}
+.table th{text-align:left;font-weight:600;color:var(--text-2);padding:0 0 8px;border-bottom:1px solid #EDEFEA;font-size:11px;letter-spacing:.04em}
+.table td{padding:9px 0;border-bottom:1px solid #F1F3EE;color:#4B5563;line-height:1.55;vertical-align:top}
+.table tr:last-child td{border-bottom:0}
+.table td:first-child{white-space:nowrap;color:#1F2937;font-weight:600;padding-right:14px}
+.table th:not(:last-child),.table td:not(:last-child){padding-right:16px}
+.swatches{display:flex;flex-wrap:wrap;gap:10px}
+.swatch{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--text-2)}
+.swatch i{width:18px;height:18px;border-radius:6px;display:block;border:1px solid rgba(31,41,55,.06)}
+.note{max-width:1180px;margin:26px auto 0;font-size:11.5px;line-height:1.8;color:#7A8390}
+.note b{color:#4B5563}
+
+/* ---------- 评审卡 ---------- */
+.decision{background:#fff;border:1px solid #E7EAE3;border-radius:16px;padding:18px 20px}
+.decision .dno{font-family:var(--mono);font-size:10.5px;color:var(--primary);letter-spacing:.1em}
+.decision h3{font-size:14px;font-weight:700;margin:6px 0 10px}
+.decision .q{font-size:12.5px;line-height:1.7;color:#4B5563;margin-bottom:10px}
+.opt{display:flex;gap:9px;padding:9px 11px;border-radius:10px;background:#F8FAF7;border:1px solid #EDEFEA;margin-bottom:7px;font-size:12px;line-height:1.6;color:#4B5563}
+.opt .k{font-family:var(--mono);font-size:11px;color:#8A93A0;flex:0 0 auto}
+.opt.pick{background:var(--primary-light);border-color:rgba(11,124,140,.34);color:#1F3F45}
+.opt.pick .k{color:var(--primary-dark);font-weight:600}
+.opt b{color:#1F2937;font-weight:600}
+.verdict{margin-top:10px;font-size:12px;line-height:1.65;color:#3E7C86;background:var(--primary-light);border-radius:9px;padding:9px 11px}
+.verdict b{font-weight:700}
+
+@media (max-width:920px){
+  body{padding:28px 16px 52px}
+  .doc-head h1{font-size:26px}
+  .stage{justify-content:center;gap:28px}
+  .grid{grid-template-columns:1fr}
+  .section-head p{display:none}
+}
+</style>
+</head>
+<body>
+
+<header class="doc-head">
+  <div class="kicker">S2S · DISCOVERY / LOCATION CALIBRATION · PROTOTYPE V1</div>
+  <h1>位置校准与「以这里为中心搜索」：筛选面板左上角位置、搜索地点与地图选点</h1>
+  <p class="lede">
+    现状是一个浮动「回到我的位置」按钮，它只把相机拉回本次会话精度最优的历史点，既不改圆心，也不重新取点；拖动地图不产生任何状态，列表仍按旧圆心取数。
+    本稿把「我现在在哪」与「我按哪里搜」拆成两件事：位置信息放在<b>底部筛选面板的左上角</b>（面板标题位），显示「我的位置 · 文三路 ›」/「地图选点 · 望江路商圈 ›」/「未校准 · 杭州 ›」；
+    点它，面板就地切成<b>位置视图</b>：搜索地点与地图选点两条路并列，下面是当前搜索位置、当前定位（带重新定位）与最近使用。
+    地图页本身不多占一行，条件栏只放筛选 chip；确认后位置换来源，半径圈重算，列表同源。
+  </p>
+  <div class="meta">
+    <span class="tag primary">390 × 844</span>
+    <span class="tag">主色 #0B7C8C</span>
+    <span class="tag">间距 / 圆角取 design_tokens</span>
+    <span class="tag">位置条 + 位置面板 + 选点页</span>
+    <span class="tag">对应 ideation 想法 1 / 2 / 3</span>
+    <span class="tag warn">本稿只做设计，未改代码</span>
+  </div>
+</header>
+
+<!-- 01 地图页默认 -->
+<section class="stage">
+  <figure class="frame-wrap">
+    <figcaption class="frame-cap"><span class="idx">01</span><b>地图页 · 默认</b><em>左上角是位置，条件栏只放筛选</em></figcaption>
+    <div class="phone"><div class="screen">
+      <div class="map"></div>
+      <div class="ring"><svg viewBox="0 0 390 844"><circle cx="196" cy="430" r="126" fill="rgba(11,124,140,.065)" stroke="#0B7C8C" stroke-opacity=".42" stroke-width="1.4" stroke-dasharray="5 5"/></svg></div>
+      <div class="pin me" style="left:196px;top:430px"></div>
+      <div class="ring-label" style="left:196px;top:558px">5km</div>
+      <div class="pin" style="left:120px;top:352px;background:var(--work)"></div>
+      <div class="pin" style="left:262px;top:372px;background:var(--house)"></div>
+      <div class="pin" style="left:286px;top:496px;background:var(--life)"></div>
+      <div class="pin" style="left:142px;top:512px;background:var(--vehicle)"></div>
+      <div class="pin" style="left:224px;top:300px;background:var(--service)"></div>
+      <div class="top-scrim"></div>
+      <div class="statusbar"><span class="time">8:41</span><span class="sysicons"></span></div>
+      <div class="searchbar">
+        <svg class="icon-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5 21 21"/></svg>
+        <span class="search-hint">搜资源、需求或一句话</span>
+        <span class="filter-entry"><svg viewBox="0 0 24 24"><path d="M3 5h18M6 12h12M10 19h4"/></svg></span>
+        <span class="mic"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></span>
+      </div>
+      <div class="chipbar"><div class="chips">
+        <span class="chip"><span class="dot"></span>5km</span>
+        <span class="chip"><span class="dot"></span>资源 + 需求</span>
+      </div></div>
+      <div class="rail">
+        <span class="rail-btn"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg></span>
+        <span class="rail-btn"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg><span class="rail-label">回到我的位置</span></span>
+      </div>
+      <div class="map-count"><i></i>附近 <b>6</b> 条</div>
+      <div class="tabbar">
+        <span class="tab active"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12h8M12 8v8"/></svg>发现</span>
+        <span class="tab"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z"/><path d="M4 10h16"/></svg>消息</span>
+        <span class="tab publish"><span style="font-size:26px">🦆</span><span>发布</span></span>
+        <span class="tab"><svg viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-9a4 4 0 0 1 7-2.6A4 4 0 0 1 19 11c0 4.6-7 9-7 9z"/></svg>收藏</span>
+        <span class="tab"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c1.6-3.6 4-5.4 7-5.4S17.4 16.4 19 20"/></svg>我的</span>
+      </div>
+    </div></div>
+  </figure>
+
+  <!-- 02 底部筛选面板：左上角位置 -->
+  <figure class="frame-wrap">
+    <figcaption class="frame-cap"><span class="idx">02</span><b>底部筛选面板 · 左上角是位置</b><em>点位置可改</em></figcaption>
+    <div class="phone"><div class="screen">
+      <div class="map"></div>
+      <div class="ring"><svg viewBox="0 0 390 844"><circle cx="196" cy="430" r="126" fill="rgba(11,124,140,.065)" stroke="#0B7C8C" stroke-opacity=".42" stroke-width="1.4" stroke-dasharray="5 5"/></svg></div>
+      <div class="pin me" style="left:196px;top:430px"></div>
+      <div class="pin" style="left:120px;top:352px;background:var(--work)"></div>
+      <div class="pin" style="left:262px;top:372px;background:var(--house)"></div>
+      <div class="pin" style="left:286px;top:496px;background:var(--life)"></div>
+      <div class="top-scrim"></div>
+      <div class="statusbar"><span class="time">8:41</span><span class="sysicons"></span></div>
+      <div class="searchbar">
+        <svg class="icon-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5 21 21"/></svg>
+        <span class="search-hint">搜资源、需求或一句话</span>
+        <span class="filter-entry"><svg viewBox="0 0 24 24"><path d="M3 5h18M6 12h12M10 19h4"/></svg></span>
+        <span class="mic"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></span>
+      </div>
+      <div class="chipbar"><div class="chips">
+        <span class="chip"><span class="dot"></span>5km</span>
+        <span class="chip"><span class="dot"></span>资源 + 需求</span>
+      </div></div>
+      <div class="sheet" style="height:500px">
+        <div class="handle"></div>
+        <div class="panel-head">
+          <span class="locbar"><svg class="pin" viewBox="0 0 24 24"><path d="M12 21s7-5.6 7-11a7 7 0 1 0-14 0c0 5.4 7 11 7 11z"/><circle cx="12" cy="10" r="2.4"/></svg><span class="src">我的位置</span><span class="txt">· 文三路</span><span class="caret">›</span></span>
+          <span style="margin-left:auto;font-size:12px;color:var(--text-2)">重置</span>
+        </div>
+        <div class="sheet-sub">改动<b>即时生效</b>，关闭后保留在条件栏</div>
+        <div class="sheet-body">
+          <div class="row">
+            <span class="row-label">范围</span>
+            <div class="seg"><span class="pill">1km</span><span class="pill">3km</span><span class="pill on">5km</span><span class="pill">10km</span><span class="pill">全城</span></div>
+          </div>
+          <div class="row">
+            <span class="row-label">供需</span>
+            <span class="pill-lg on"><i class="legend-mark solid"></i>资源</span>
+            <span class="pill-lg on"><i class="legend-mark"></i>需求</span>
+          </div>
+          <div class="row top">
+            <span class="row-label">价格</span>
+            <div class="price-control">
+              <div class="price-head"><span class="price-input"><i>¥</i>500</span><span class="price-sep">—</span><span class="price-input"><i>¥</i>1,000</span><span class="price-clear">不限</span></div>
+              <div class="range"><span class="track"></span><span class="fill"></span><span class="thumb" style="left:16.7%"></span><span class="thumb" style="left:33.3%"></span></div>
+            </div>
+          </div>
+          <div class="row top">
+            <span class="row-label">分类</span>
+            <div class="cat-grid">
+              <span class="cat on" style="--cat:var(--primary)">全部</span>
+              <span class="cat" style="--cat:var(--work)"><i class="cdot"></i>工作<span class="cat-chevron">›</span></span>
+              <span class="cat" style="--cat:var(--house)"><i class="cdot"></i>房屋<span class="cat-chevron">›</span></span>
+              <span class="cat" style="--cat:var(--vehicle)"><i class="cdot"></i>车辆<span class="cat-chevron">›</span></span>
+              <span class="cat" style="--cat:var(--life)"><i class="cdot"></i>生活<span class="cat-chevron">›</span></span>
+              <span class="cat" style="--cat:var(--service)"><i class="cdot"></i>服务<span class="cat-chevron">›</span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div></div>
+  </figure>
+
+  <!-- 03 位置面板 -->
+  <figure class="frame-wrap">
+    <figcaption class="frame-cap"><span class="idx">03</span><b>面板内 · 位置视图</b><em>搜索 / 地图选点 两条路</em></figcaption>
+    <div class="phone"><div class="screen">
+      <div class="map"></div>
+      <div class="ring"><svg viewBox="0 0 390 844"><circle cx="196" cy="430" r="126" fill="rgba(11,124,140,.065)" stroke="#0B7C8C" stroke-opacity=".42" stroke-width="1.4" stroke-dasharray="5 5"/></svg></div>
+      <div class="pin me" style="left:196px;top:430px"></div>
+      <div class="pin" style="left:120px;top:352px;background:var(--work)"></div>
+      <div class="pin" style="left:262px;top:372px;background:var(--house)"></div>
+      <div class="top-scrim"></div>
+      <div class="statusbar"><span class="time">8:41</span><span class="sysicons"></span></div>
+      <div class="searchbar">
+        <svg class="icon-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5 21 21"/></svg>
+        <span class="search-hint">搜资源、需求或一句话</span>
+        <span class="filter-entry"><svg viewBox="0 0 24 24"><path d="M3 5h18M6 12h12M10 19h4"/></svg></span>
+        <span class="mic"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></span>
+      </div>
+      <div class="chipbar"><div class="chips">
+        <span class="chip"><span class="dot"></span>5km</span>
+      </div></div>
+      <div class="sheet loc">
+        <div class="handle"></div>
+        <div class="sheet-head">
+          <span class="sheet-title">选择位置</span>
+          <span class="sheet-close">×</span>
+        </div>
+        <div class="sheet-sub">选中后半径沿用当前档位（5km）</div>
+        <div class="sheet-body">
+          <div class="loc-search">
+            <span class="loc-input"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.2 4.2"/></svg>搜索小区、商圈、地标</span>
+            <span class="loc-map-btn"><svg viewBox="0 0 24 24"><path d="M12 21s7-5.6 7-11a7 7 0 1 0-14 0c0 5.4 7 11 7 11z"/><circle cx="12" cy="10" r="2.4"/></svg>地图选点</span>
+          </div>
+          <div class="loc-cur">
+            <div class="k">当前搜索位置</div>
+            <div class="v">文三路 <span class="sub">我的位置</span></div>
+            <div class="note">半径 5km 以该点为准，列表与地图共用</div>
+          </div>
+          <div class="loc-row" style="margin-top:12px;padding-top:0;border-top:0">
+            <span class="k">当前定位</span>
+            <span class="v">博通创意园</span>
+            <span class="relocate"><svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 5v6h-6"/></svg>重新定位</span>
+          </div>
+          <div class="sec-title"><span>最近使用</span><span class="clr">清空</span></div>
+          <div class="res-item"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3 2"/></svg><div class="t"><b>望江路商圈</b><span>上城区 · 距此 2.1km</span></div></div>
+          <div class="res-item"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3 2"/></svg><div class="t"><b>文三路地铁站</b><span>西湖区 · 距此 480m</span></div></div>
+          <div class="res-item"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3 2"/></svg><div class="t"><b>博通创意园</b><span>滨江区 · 距此 6.4km</span></div></div>
+        </div>
+      </div>
+    </div></div>
+  </figure>
+
+  <!-- 03 重新定位中 -->
+  <figure class="frame-wrap">
+    <figcaption class="frame-cap"><span class="idx">04</span><b>面板内 · 搜索地点</b><em>输入即搜，结果按距离</em></figcaption>
+    <div class="phone"><div class="screen">
+      <div class="map"></div>
+      <div class="ring"><svg viewBox="0 0 390 844"><circle cx="196" cy="430" r="126" fill="rgba(11,124,140,.065)" stroke="#0B7C8C" stroke-opacity=".42" stroke-width="1.4" stroke-dasharray="5 5"/></svg></div>
+      <div class="pin me" style="left:196px;top:430px"></div>
+      <div class="top-scrim"></div>
+      <div class="statusbar"><span class="time">8:41</span><span class="sysicons"></span></div>
+      <div class="searchbar">
+        <svg class="icon-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5 21 21"/></svg>
+        <span class="search-hint">搜资源、需求或一句话</span>
+        <span class="filter-entry"><svg viewBox="0 0 24 24"><path d="M3 5h18M6 12h12M10 19h4"/></svg></span>
+        <span class="mic"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></span>
+      </div>
+      <div class="chipbar"><div class="chips">
+        <span class="chip"><span class="dot"></span>5km</span>
+      </div></div>
+      <div class="sheet loc">
+        <div class="handle"></div>
+        <div class="sheet-head">
+          <span class="sheet-title">选择位置</span>
+          <span class="sheet-close">×</span>
+        </div>
+        <div class="sheet-sub">选中后半径沿用当前档位（5km）</div>
+        <div class="sheet-body">
+          <div class="loc-search">
+            <span class="loc-input filled"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.2 4.2"/></svg><span style="flex:1">望江</span><span style="color:var(--text-3);font-size:14px">×</span></span>
+            <span class="loc-map-btn"><svg viewBox="0 0 24 24"><path d="M12 21s7-5.6 7-11a7 7 0 1 0-14 0c0 5.4 7 11 7 11z"/><circle cx="12" cy="10" r="2.4"/></svg>地图选点</span>
+          </div>
+          <div class="sec-title"><span>找到 3 个地点</span><span class="clr">按距离</span></div>
+          <div class="res-item"><svg viewBox="0 0 24 24"><path d="M12 21s7-5.6 7-11a7 7 0 1 0-14 0c0 5.4 7 11 7 11z"/><circle cx="12" cy="10" r="2.4"/></svg><div class="t"><b><em>望江</em>路商圈</b><span>上城区 · 距此 2.1km</span></div><span class="d">›</span></div>
+          <div class="res-item"><svg viewBox="0 0 24 24"><path d="M12 21s7-5.6 7-11a7 7 0 1 0-14 0c0 5.4 7 11 7 11z"/><circle cx="12" cy="10" r="2.4"/></svg><div class="t"><b><em>望江</em>家园</b><span>上城区 · 距此 2.6km</span></div><span class="d">›</span></div>
+          <div class="res-item"><svg viewBox="0 0 24 24"><path d="M12 21s7-5.6 7-11a7 7 0 1 0-14 0c0 5.4 7 11 7 11z"/><circle cx="12" cy="10" r="2.4"/></svg><div class="t"><b><em>望江</em>地铁站 C 口</b><span>上城区 · 距此 3.0km</span></div><span class="d">›</span></div>
+          <div class="res-empty">没有想找的？用「地图选点」自己定</div>
+        </div>
+      </div>
+    </div></div>
+  </figure>
+
+  <!-- 04 地图选点页 -->
+  <figure class="frame-wrap">
+    <figcaption class="frame-cap"><span class="idx">05</span><b>地图选点</b><em>拖图移动准星，确认即圆心</em></figcaption>
+    <div class="phone"><div class="screen">
+      <div class="map"></div>
+      <div class="pin" style="left:120px;top:300px;background:var(--work)"></div>
+      <div class="pin" style="left:286px;top:352px;background:var(--life)"></div>
+      <div class="pin" style="left:96px;top:520px;background:var(--house)"></div>
+      <div class="top-scrim" style="height:110px"></div>
+      <div class="statusbar"><span class="time">8:42</span><span class="sysicons"></span></div>
+      <div class="appbar">
+        <span class="txt-btn">取消</span>
+        <span class="title">选择搜索位置</span>
+        <span class="txt-btn strong">确认</span>
+      </div>
+      <div class="crosshair">
+        <svg viewBox="0 0 48 48"><path d="M24 4c-6.6 0-12 5.4-12 12 0 8.6 12 24 12 24s12-15.4 12-24c0-6.6-5.4-12-12-12z" fill="#0B7C8C" stroke="#fff" stroke-width="2"/><circle cx="24" cy="16" r="4.4" fill="#fff"/></svg>
+      </div>
+      <div class="picker-panel">
+        <div class="picker-addr">
+          <svg viewBox="0 0 24 24"><path d="M12 21s7-5.6 7-11a7 7 0 1 0-14 0c0 5.4 7 11 7 11z"/><circle cx="12" cy="10" r="2.4"/></svg>
+          <div><div class="t">望江路 · 近地铁 1 号线</div><div class="s">拖动地图移动准星，松手后更新地址</div></div>
+        </div>
+        <div class="radius-row"><span class="lb">半径</span><div class="seg">
+          <span class="pill">1km</span><span class="pill">3km</span><span class="pill on">5km</span><span class="pill">10km</span><span class="pill">全城</span>
+        </div></div>
+        <div class="btn-primary">以此为中心搜索</div>
+        <div class="picker-hint">本次搜索有效；清空后回到「我的位置」</div>
+      </div>
+    </div></div>
+  </figure>
+
+  <!-- 05 回到地图：圆心变为指定点 -->
+  <figure class="frame-wrap">
+    <figcaption class="frame-cap"><span class="idx">06</span><b>确认后 · 位置已切换</b><em>半径圈重算，列表同源</em></figcaption>
+    <div class="phone"><div class="screen">
+      <div class="map"></div>
+      <div class="ring"><svg viewBox="0 0 390 844"><circle cx="248" cy="392" r="126" fill="rgba(11,124,140,.065)" stroke="#0B7C8C" stroke-opacity=".42" stroke-width="1.4" stroke-dasharray="5 5"/></svg></div>
+      <div class="pin me" style="left:248px;top:392px"></div>
+      <div class="ring-label" style="left:248px;top:520px">5km</div>
+      <div class="pin" style="left:206px;top:330px;background:var(--work)"></div>
+      <div class="pin" style="left:304px;top:352px;background:var(--life)"></div>
+      <div class="pin" style="left:326px;top:430px;background:var(--house)"></div>
+      <div class="pin" style="left:214px;top:452px;background:var(--vehicle)"></div>
+      <div class="pin" style="left:280px;top:470px;background:var(--service)"></div>
+      <div class="pin" style="left:186px;top:398px;background:var(--work)"></div>
+      <div class="pin" style="left:262px;top:300px;background:var(--life)"></div>
+      <div class="top-scrim"></div>
+      <div class="statusbar"><span class="time">8:43</span><span class="sysicons"></span></div>
+      <div class="searchbar">
+        <svg class="icon-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5 21 21"/></svg>
+        <span class="search-hint">搜资源、需求或一句话</span>
+        <span class="filter-entry"><svg viewBox="0 0 24 24"><path d="M3 5h18M6 12h12M10 19h4"/></svg></span>
+        <span class="mic"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></span>
+      </div>
+      <div class="chipbar"><div class="chips">
+        <span class="chip"><span class="dot"></span>5km</span>
+        <span class="chip"><span class="dot"></span>资源 + 需求</span>
+      </div></div>
+      <div class="rail">
+        <span class="rail-btn"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg></span>
+        <span class="rail-btn"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg><span class="rail-label">回到我的位置</span></span>
+      </div>
+      <div class="map-count"><i></i>附近 <b>7</b> 条</div>
+      <div class="toast" style="bottom:110px"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>已按望江路商圈搜索 · 撤销</div>
+    </div></div>
+  </figure>
+
+  <!-- 06 未校准态 -->
+  <figure class="frame-wrap">
+    <figcaption class="frame-cap"><span class="idx">07</span><b>未校准 · 兜底具名</b><em>面板左上角直接说「未校准」</em></figcaption>
+    <div class="phone"><div class="screen">
+      <div class="map"></div>
+      <div class="ring"><svg viewBox="0 0 390 844"><circle cx="195" cy="430" r="132" fill="rgba(180,83,9,.04)" stroke="#B45309" stroke-opacity=".35" stroke-width="1.4" stroke-dasharray="5 5"/></svg></div>
+      <div class="pin" style="left:118px;top:352px;background:#9CA3AF"></div>
+      <div class="pin" style="left:264px;top:374px;background:#9CA3AF"></div>
+      <div class="pin" style="left:288px;top:492px;background:#9CA3AF"></div>
+      <div class="pin" style="left:146px;top:508px;background:#9CA3AF"></div>
+      <div class="pin" style="left:222px;top:302px;background:#9CA3AF"></div>
+      <div class="top-scrim" style="height:220px"></div>
+      <div class="statusbar"><span class="time">8:44</span><span class="sysicons"></span></div>
+      <div class="searchbar">
+        <svg class="icon-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5 21 21"/></svg>
+        <span class="search-hint">搜资源、需求或一句话</span>
+        <span class="filter-entry"><svg viewBox="0 0 24 24"><path d="M3 5h18M6 12h12M10 19h4"/></svg></span>
+        <span class="mic"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></span>
+      </div>
+      <div class="chipbar"><div class="chips">
+        <span class="chip"><span class="dot"></span>5km</span>
+      </div></div>
+      <div class="rail">
+        <span class="rail-btn"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg></span>
+        <span class="rail-btn"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg><span class="rail-label">回到我的位置</span></span>
+      </div>
+      <div class="map-count" style="color:#8A4A17"><i style="background:#B45309;box-shadow:0 0 0 3px rgba(180,83,9,.12)"></i>附近 <b style="color:#B45309">5</b> 条</div>
+      <div class="sheet" style="height:500px">
+        <div class="handle"></div>
+        <div class="panel-head">
+          <span class="locbar warn"><svg class="pin" viewBox="0 0 24 24"><path d="M12 21s7-5.6 7-11a7 7 0 1 0-14 0c0 5.4 7 11 7 11z"/><circle cx="12" cy="10" r="2.4"/></svg><span class="src">未校准</span><span class="txt">· 杭州</span><span class="caret">›</span></span>
+          <span style="margin-left:auto;font-size:12px;color:var(--text-2)">重置</span>
+        </div>
+        <div class="sheet-sub">未取得定位，暂按杭州搜索；点左上角可自己选</div>
+        <div class="sheet-body">
+          <div class="row">
+            <span class="row-label">范围</span>
+            <div class="seg"><span class="pill">1km</span><span class="pill">3km</span><span class="pill">5km</span><span class="pill">10km</span><span class="pill on">全城</span></div>
+          </div>
+          <div class="row">
+            <span class="row-label">供需</span>
+            <span class="pill-lg on"><i class="legend-mark solid"></i>资源</span>
+            <span class="pill-lg on"><i class="legend-mark"></i>需求</span>
+          </div>
+          <div class="row top">
+            <span class="row-label">分类</span>
+            <div class="cat-grid">
+              <span class="cat on" style="--cat:var(--primary)">全部</span>
+              <span class="cat" style="--cat:var(--work)"><i class="cdot"></i>工作<span class="cat-chevron">›</span></span>
+              <span class="cat" style="--cat:var(--house)"><i class="cdot"></i>房屋<span class="cat-chevron">›</span></span>
+              <span class="cat" style="--cat:var(--vehicle)"><i class="cdot"></i>车辆<span class="cat-chevron">›</span></span>
+              <span class="cat" style="--cat:var(--life)"><i class="cdot"></i>生活<span class="cat-chevron">›</span></span>
+              <span class="cat" style="--cat:var(--service)"><i class="cdot"></i>服务<span class="cat-chevron">›</span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div></div>
+  </figure>
+
+  <!-- 07 列表页空态 -->
+  <figure class="frame-wrap">
+    <figcaption class="frame-cap"><span class="idx">08</span><b>列表页 · 空态两假设</b><em>范围太小 / 圆心不对</em></figcaption>
+    <div class="phone"><div class="screen" style="background:#F8FAFC">
+      <div class="statusbar" style="background:#fff"><span class="time">8:45</span><span class="sysicons"></span></div>
+      <div class="list-appbar">
+        <span style="width:36px;display:grid;place-items:center;color:#1F2937">
+          <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:currentColor;stroke-width:1.9;fill:none;stroke-linecap:round;stroke-linejoin:round"><path d="M15 5l-7 7 7 7"/></svg>
+        </span>
+        <span class="list-title">附近信息</span>
+        <span class="map-action"><svg viewBox="0 0 24 24"><path d="M9 4 3 7v13l6-3 6 3 6-3V4l-6 3z"/></svg>地图</span>
+      </div>
+      <div class="searchbar list-search">
+        <svg class="icon-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5 21 21"/></svg>
+        <span class="search-hint">搜资源、需求或一句话</span>
+        <span class="filter-entry"><svg viewBox="0 0 24 24"><path d="M3 5h18M6 12h12M10 19h4"/></svg></span>
+        <span class="mic"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></span>
+      </div>
+      <div class="chipbar list-chipbar"><div class="chips">
+        <span class="chip"><span class="dot"></span>1km</span>
+      </div></div>
+      <div class="empty-wrap">
+        <div class="empty-icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5 21 21"/><path d="M8.5 11h5"/></svg></div>
+        <div class="empty-title">1km 内没有找到</div>
+        <div class="empty-sub">可能是这一带确实没有，也可能是<b>圆心不够准</b>。两个都试试：</div>
+        <div class="empty-actions">
+          <div class="btn-primary ghost">放宽到 5km</div>
+          <div class="btn-primary"><svg viewBox="0 0 24 24"><path d="M12 21s7-5.6 7-11a7 7 0 1 0-14 0c0 5.4 7 11 7 11z"/><circle cx="12" cy="10" r="2.4"/></svg>换个位置找</div>
+        </div>
+        <div class="empty-divider">当前圆心：地图选点 · 望江路商圈</div>
+      </div>
+    </div></div>
+  </figure>
+</section>
+
+<!-- ============================================================
+     规格
+     ============================================================ -->
+<section class="specs">
+
+  <div class="section-head">
+    <span class="no">SPEC 01</span>
+    <h2>结构变化</h2>
+    <p>与当前实现对照</p>
+  </div>
+  <div class="grid">
+    <div class="card">
+      <h3>位置放筛选面板左上角（美团式面板标题位）</h3>
+      <ul>
+        <li><b>位置</b>：<code>sheet-head</code> 的左侧，替代原来的「筛选条件」标题；右侧保留「重置」。面板高仍 500，不额外加行。</li>
+        <li><b>内容</b>：来源 + 地名，如「我的位置 · 文三路」「地图选点 · 望江路商圈」「未校准 · 杭州」，超长省略。</li>
+        <li><b>状态</b>：正常用主色图钉 + 深色文字；未校准换 <code>color/warning-text</code>（#B45309）+ 警示图钉，底色由 <code>color/warning</code> 12% 透明度派生，不引入新色值。</li>
+        <li><b>点击</b>：面板<b>就地切换</b>为位置视图（同一底部面板，不叠第二层），可用「搜索地点」或「地图选点」两条路改。</li>
+        <li><b>地图页不多占一行</b>：搜索栏/条件栏保持原位（52 / 108），位置只在需要改的时候出现。</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>位置面板：搜索 + 地图选点两条路</h3>
+      <ul>
+        <li><b>第一行</b>：搜索框（占位「搜索小区、商圈、地标」）+ 右侧主色按钮「地图选点」——两种改法在同一行并列，和美团位置页一致。</li>
+        <li><b>搜索路</b>：输入即搜，结果为 POI / 小区候选（复用 <code>POST /search/resolve</code> 已返回的 <code>anchor_*</code> 与 <code>community_candidates</code>），按距离排序，点一行即选中并关闭面板。</li>
+        <li><b>地图路</b>：点「地图选点」进全屏准星页，拖到位后确认。</li>
+        <li><b>当前搜索位置</b>（只读卡片）：地名 + 来源标签 + 「半径 5km 以该点为准，列表与地图共用」。</li>
+        <li><b>当前定位</b>行：值 + 「重新定位」，只刷新这一行；<b>最近使用</b>：最多 5 条，可清空。</li>
+        <li><b>与筛选面板的关系</b>：两者分开。筛选项属于「看什么」，位置属于「在哪看」；位置再放回筛选面板会让面板涨到 600 且语义混杂（上一版已推翻）。</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>重新定位：一次取点，只改一行</h3>
+      <ul>
+        <li><b>取点</b>：复用发布侧 <code>HighAccuracyLocator</code>（5s 超时、20m 门槛），不新增接口。</li>
+        <li><b>进行态</b>：「当前定位」值变「定位中…」，按钮变「重新定位中」并禁用，防连点。</li>
+        <li><b>成功</b>：只更新该行值；若圆心来源仍是「我的位置」，圆心随新点移动；若已是「地图选点」，圆心<b>不动</b>。</li>
+        <li><b>失败</b>：保持原值 + 行下提示「这次没取到，可去系统设置检查定位权限」，不弹错误码。</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>选点页：复用发布侧准星</h3>
+      <ul>
+        <li><b>复用</b>：<code>map_selector_screen</code> 的拖图准星 + 逆地理回显（同一份交互，不新做一个）。</li>
+        <li><b>入口</b>：位置面板第一行的「地图选点」按钮（与搜索框并列）。</li>
+        <li><b>差异</b>：底部把「门牌号输入」换成「半径档 1/3/5/10/全城」+ 主按钮「以此为中心搜索」。</li>
+        <li><b>确认</b>：写 <code>searchIntent.anchorLat/Lng</code> + <code>anchorSource = manual</code>，地图与列表同源。</li>
+        <li><b>撤销</b>：回到地图后 3 秒内的 toast 可「撤销」，回落到「我的位置」。</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="section-head" style="margin-top:44px">
+    <span class="no">SPEC 02</span>
+    <h2>交互规则</h2>
+    <p>10 条，可直接作为验收项</p>
+  </div>
+  <div class="grid">
+    <div class="card" style="grid-column:1 / -1">
+      <table class="table">
+        <thead><tr><th style="width:44px">#</th><th style="width:190px">触发</th><th>行为</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>打开底部筛选面板</td><td>面板左上角是位置（来源 + 地名），右侧「重置」；定位失败时为「未校准 · 杭州」。</td></tr>
+          <tr><td>2</td><td>点面板左上角位置</td><td>同一面板就地切到位置视图：搜索框 + 「地图选点」+ 当前搜索位置 + 当前定位 + 最近使用。</td></tr>
+          <tr><td>2b</td><td>输入关键词</td><td>调 <code>POST /search/resolve</code>（已集成的 POI 解析），取 <code>anchor_*</code>/<code>community_candidates</code> 作候选，按距离排序；点一行即选中（写锚点、关面板、半径沿当前档位）。</td></tr>
+          <tr><td>3</td><td>点「重新定位」</td><td>行内进入进行态并禁用；成功只刷新「当前定位」行，圆心仅在来源为「我的位置」时跟随。</td></tr>
+          <tr><td>4</td><td>重新定位失败</td><td>保持原值，行下提示原因；「地图选点」仍可用，不阻断搜索。</td></tr>
+          <tr><td>5</td><td>面板内点「地图选点」</td><td>进全屏选点页，准星初始落在当前圆心；地址随拖动实时更新（沿用逆地理去抖）。</td></tr>
+          <tr><td>6</td><td>选点页确认</td><td>写锚点 + 半径，回地图：左上角位置条切「地图选点 · 地名」，半径圈重算，命中数刷新，列表同源。</td></tr>
+          <tr><td>7</td><td>确认后 3 秒内点「撤销」</td><td>清空锚点，圆心回落到真实定位；3 秒后 toast 消失，锚点保留到本次搜索结束。</td></tr>
+          <tr><td>8</td><td>拖动地图</td><td>不产生圆心状态（维持现状）；松手后右侧出现「查这里」次级入口，点了才写锚点。</td></tr>
+          <tr><td>9</td><td>定位失败 ≥ 3 次</td><td>位置条转警示态「未校准 · 杭州」；不再额外挂提示条，也不弹全屏，不阻断列表。</td></tr>
+          <tr><td>10</td><td>列表页</td><td>复用同一位置条与半径档（AppBar 下、搜索栏上）；空态并列「放宽到 5km」与「换个位置找」两个出口。</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="section-head" style="margin-top:44px">
+    <span class="no">SPEC 03</span>
+    <h2>组件规格</h2>
+    <p>全部来自现有 Token</p>
+  </div>
+  <div class="grid">
+    <div class="card">
+      <h3>尺寸与层级</h3>
+      <table class="table">
+        <tbody>
+          <tr><td>面板位置头</td><td>高 32，图钉 15，主行 14/600，来源 11/500；与「重置」同排</td></tr>
+          <tr><td>筛选面板</td><td>高 500（与现状一致），圆角 24 24 0 0，内边距 16</td></tr>
+          <tr><td>位置视图</td><td>同一面板高度；搜索框 40 圆角 20，地图选点 40 主色胶囊</td></tr>
+          <tr><td>搜索结果行</td><td>高 44，上 9 下 9，图标 15，主行 12.5/600，副行 10.5</td></tr>
+          <tr><td>半径档</td><td>5 段等分，高 34，圆角 17，间距 5</td></tr>
+          <tr><td>选点准星</td><td>40 × 40，底尖对准屏幕中心（与发布侧一致）</td></tr>
+          <tr><td>未校准提示条</td><td>高 36，圆角 10，top 148（条件栏下方 8）</td></tr>
+          <tr><td>空态按钮</td><td>高 44，两枚纵向排列，间距 10</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="card">
+      <h3>颜色 · 阴影 · 字阶</h3>
+      <div class="swatches" style="margin-bottom:14px">
+        <span class="swatch"><i style="background:#0B7C8C"></i>primary</span>
+        <span class="swatch"><i style="background:#E6F6F8"></i>primary-light</span>
+        <span class="swatch"><i style="background:#FDF3E7"></i>warn-bg</span>
+        <span class="swatch"><i style="background:#B45309"></i>warn-text</span>
+        <span class="swatch"><i style="background:#1F2937"></i>text</span>
+        <span class="swatch"><i style="background:#9CA3AF"></i>placeholder</span>
+      </div>
+      <ul>
+        <li>位置条阴影：<code>0 2 10 -3 rgba(11,124,140,.35)</code>；警示态换 <code>rgba(180,83,9,.28)</code></li>
+        <li>面板阴影：<code>0 -18 46 -12 rgba(15,23,42,.28)</code></li>
+        <li>字号：位置条 12.5/600（来源 11/500）；面板标题 16/600；行值 15/600；说明 11</li>
+        <li>半径圈：填充 <code>rgba(11,124,140,.065)</code>，描边 <code>#0B7C8C</code> 42% + 5/5 虚线</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="section-head" style="margin-top:44px">
+    <span class="no">SPEC 04</span>
+    <h2>状态矩阵</h2>
+    <p>设计稿未画全的边界态</p>
+  </div>
+  <div class="grid">
+    <div class="card" style="grid-column:1 / -1">
+      <table class="table">
+        <thead><tr><th style="width:150px">状态</th><th style="width:210px">位置条</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td>已授权 · 定位成功</td><td>「我的位置 · 某路」</td><td>圆心 = 首点；蓝点与圆心重合，半径圈以圆心画。</td></tr>
+          <tr><td>已授权 · 精度粗（&gt; 门限）</td><td>「我的位置 · 某路」+ 精度脚注</td><td>半径圈换为主色虚线圈，圈下标注「约 80m」；1km 档时额外提示误差。</td></tr>
+          <tr><td>定位失败 ≥ 3 次</td><td>警示态「未校准 · 杭州」</td><td>提示条可点「选择位置」；半径圈改警示色虚线。</td></tr>
+          <tr><td>未授权（A/B 态）</td><td>警示态「未校准 · 杭州」</td><td>不进全屏引导页，直接在条件栏告知并给出口（与现有 A/B 引导页二选一，见评审 Q4）。</td></tr>
+          <tr><td>手动选过城市</td><td>「手选城市 · 合肥」</td><td>锁定优先级高于自动定位；只有点「用我的位置」才释放。</td></tr>
+          <tr><td>已地图选点</td><td>「地图选点 · 某商圈」</td><td>设备定位继续更新「当前定位」行，但不改圆心。</td></tr>
+          <tr><td>重新定位进行中</td><td>不变</td><td>面板行内进度；面板关闭则静默继续，成功后位置条按来源决定是否变化。</td></tr>
+          <tr><td>重新定位失败</td><td>不变</td><td>行下灰字提示；不弹窗、不改圆心。</td></tr>
+          <tr><td>锚点已过期（新搜索）</td><td>回落「我的位置」</td><td>锚点生命周期到本次搜索结束；跨会话不保留。</td></tr>
+          <tr><td>无结果</td><td>不变</td><td>空态并列两个出口，末尾回显当前圆心，避免用户忘了自己选过哪。</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 评审 -->
+  <div class="section-head" style="margin-top:44px">
+    <span class="no">REVIEW 01</span>
+    <h2>评审要点</h2>
+    <p>6 个需要拍板的问题，其余按稿执行</p>
+  </div>
+  <div class="grid">
+    <div class="decision">
+      <div class="dno">Q0</div>
+      <h3>位置放筛选面板左上角，还是地图页顶部？</h3>
+      <p class="q">本轮按「底部筛选面板左上角」出稿。</p>
+      <div class="opt pick"><span class="k">A</span><span><b>筛选面板左上角（本稿）</b>：改位置与改条件在同一处，地图页不多占一行；看不到位置时说明也不需要改。</span></div>
+      <div class="opt"><span class="k">B</span><span>地图页顶部常驻位置条：位置随时可见，但顶部多一层、地图可用区少约 38px。</span></div>
+      <div class="opt"><span class="k">C</span><span>两处都放：可发现性最好，但同一状态两个入口，容易一处改了另一处没刷新。</span></div>
+      <div class="verdict"><b>建议 A。</b>代价是「当前在哪」不再一眼可见，需打开面板；换来地图页更干净，且位置与筛选共用一次开合。</div>
+    </div>
+    <div class="decision">
+      <div class="dno">Q1</div>
+      <h3>面板里怎么放位置？</h3>
+      <p class="q">位置既要好找，又不能把面板撑高。</p>
+      <div class="opt pick"><span class="k">A</span><span><b>面板标题位（本稿）</b>：不新增行，位置就是面板的标题；点它切到位置视图。</span></div>
+      <div class="opt"><span class="k">B</span><span>面板顶部单独一块（浅底卡片）：更醒目，但面板要涨 60–80，条件被挤到下方。</span></div>
+      <div class="opt"><span class="k">C</span><span>点进去再开一个二级页：位置更专注，但改一次位置要两次开合。</span></div>
+      <div class="verdict"><b>建议 A。</b>位置与筛选共用一次开合；代价是「当前在哪」只能进面板才看见，需要在别处（如空态末尾）补一句回显。</div>
+    </div>
+    <div class="decision">
+      <div class="dno">Q2</div>
+      <h3>选点页的半径怎么来？</h3>
+      <p class="q">进入选点页时，半径档继承当前条件，还是固定回 5km？</p>
+      <div class="opt pick"><span class="k">A</span><span><b>继承当前档</b>，选点页可改，确认时一并写回。</span></div>
+      <div class="opt"><span class="k">B</span><span>固定 5km 起步，避免用户在两个地方改同一个值。</span></div>
+      <div class="verdict"><b>建议 A。</b>用户为「找这一带」而来，范围是意图的一部分；B 会让刚设好的 1km 在选点后被悄悄重置。</div>
+    </div>
+    <div class="decision">
+      <div class="dno">Q3</div>
+      <h3>锚点活多久？</h3>
+      <p class="q">「地图选点」产生的圆心，是本次搜索、本次会话，还是记到下次打开？</p>
+      <div class="opt pick"><span class="k">A</span><span><b>本次搜索有效</b>，清空条件即回落「我的位置」。</span></div>
+      <div class="opt"><span class="k">B</span><span>本次会话有效，切列表 / 切 Tab 仍保留。</span></div>
+      <div class="opt"><span class="k">C</span><span>持久化到下次打开（类似美团地址簿）。</span></div>
+      <div class="verdict"><b>建议 A + 会话内软保留。</b>切列表必须保留（否则地图 7 个、列表 12 条）；冷启动回到真实定位，避免用户下次打开以为自己在别的城市。C 属新产品面，不建议本轮做。</div>
+    </div>
+    <div class="decision">
+      <div class="dno">Q4</div>
+      <h3>未授权时还进全屏引导页吗？</h3>
+      <p class="q">现有 A/B 态是全屏引导页（替代地图）。本稿改成条件栏警示 + 提示条。</p>
+      <div class="opt"><span class="k">A</span><span><b>保留现有全屏引导页</b>，只在 C 态用警示位置条。</span></div>
+      <div class="opt pick"><span class="k">B</span><span><b>A/B 也降为提示条</b>，先给看得到的结果，再要权限。</span></div>
+      <div class="verdict"><b>建议本轮不做 B（改动面大、涉及 PRD §6.4.4 三态口径）。</b>稿里画的是目标态，落地时 A/B 仍走现有引导页，只把 C 态横幅换成位置条。</div>
+    </div>
+    <div class="decision">
+      <div class="dno">Q5</div>
+      <h3>兜底中心写「杭州」还是商圈？</h3>
+      <p class="q">PRD 要求「基站+商圈兜底，不用城市中心假值」，但代码当前就是城市中心。</p>
+      <div class="opt pick"><span class="k">A</span><span><b>先具名披露</b>「未校准 · 杭州」，承认这是兜底；商圈兜底另立条目。</span></div>
+      <div class="opt"><span class="k">B</span><span>本轮补商圈兜底（需定位/POI 能力，超出前端范围）。</span></div>
+      <div class="verdict"><b>建议 A。</b>具名披露本身就能消除「为什么结果离我这么远」的困惑；商圈兜底是后端与定位能力问题，不在本轮。</div>
+    </div>
+    <div class="decision" style="background:#FDF8F1;border-color:#F0D9BF">
+      <div class="dno" style="color:#8A4A17">评审提示</div>
+      <h3>还需要产品确认的四件事</h3>
+      <p class="q" style="margin-bottom:8px">①②④ 属口径，③ 属体验取舍：</p>
+      <div class="opt" style="background:#fff"><span class="k">①</span><span>锚点算不算「搜索意图」——写进 <code>searchIntent</code> 还是单独状态？影响空态回显与撤销。</span></div>
+      <div class="opt" style="background:#fff"><span class="k">②</span><span>精度门限除了现有 20m，还要不要加「可信 / 较粗」两档阈值（须进常量表，不得写死）。</span></div>
+      <div class="opt" style="background:#fff"><span class="k">③</span><span>拖动地图松手后的「查这里」是次要入口还是不做——不做则只剩「地图选点」一条路。</span></div>
+      <div class="opt" style="background:#fff"><span class="k">④</span><span>地点搜索的调用策略：复用 <code>/search/resolve</code>（已回 POI 锚点与小区候选），但「输入即搜」是防抖 300ms 连续调，还是回车才调一次——后者更省配额，前者更像地图 App。</span></div>
+    </div>
+  </div>
+
+  <div class="section-head" style="margin-top:44px">
+    <span class="no">SPEC 05</span>
+    <h2>落地映射</h2>
+    <p>评审通过后再改代码</p>
+  </div>
+  <div class="grid">
+    <div class="card">
+      <h3>前端文件</h3>
+      <ul>
+        <li><code>features/discovery/filter_panel.dart</code>：<code>sheet-head</code> 左侧标题换成位置（来源 + 地名 + ›），点击切到位置视图；面板高与四行条件不变。</li>
+        <li><code>features/discovery/location_panel.dart</code>（新）：位置视图 —— 搜索框 + 地图选点 + 当前搜索位置 + 当前定位（重新定位）+ 最近使用。</li>
+        <li><b>地点搜索复用已集成能力</b>：<code>POST /search/resolve</code> 的返回体（<code>SearchResolveResult</code>）本就带 <code>anchor_name / anchor_lat / anchor_lng / anchor_source</code>（source 含 <code>poi</code>）与 <code>community_candidates</code>，见 <code>search_intent.dart:137-156</code>。位置视图的搜索直接复用它，<b>不新增接口、不引新 SDK</b>。</li>
+        <li><b>待确认</b>：resolve 是「语音 ASR + 词表 + AI 兜底」的整句解析链路（10s 读超时），纯地名输入能否稳定回 POI 锚点需要实测；输入即搜要么做 300ms 防抖，要么改成「回车/点搜索才调一次」。</li>
+        <li><code>features/location/high_accuracy_locator.dart</code>：发现侧复用；不新增取点实现。</li>
+        <li><code>features/publish/map_selector_screen.dart</code>：抽成可复用选点页，底部面板按用途切换（发布：门牌号 / 发现：半径档）。</li>
+        <li><code>features/discovery/search_intent.dart</code>：写 <code>anchorLat/Lng</code> + <code>anchorSource = manual</code>；列表页已优先读锚点，无需改取数逻辑。</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>不新增的东西</h3>
+      <ul>
+        <li><b>不新增错误码</b>：定位失败沿用现有降级与文案，`50303` 仍只表示服务不可用。</li>
+        <li><b>新增接口仅限一件事</b>：地点搜索（<code>/places/search</code> 代理或 SDK）；<code>/map/pins</code> 与 <code>/posts/search</code> 不动，圆心仍走现有 lat/lng/radius/gridId。</li>
+        <li><b>不新增状态对象</b>：锚点复用 <code>searchIntent</code>，不做 SearchCenter 值对象。</li>
+        <li><b>不写死数字</b>：超时与精度门限引用 <code>NfrLocation</code>，新增分级阈值须先入常量表。</li>
+      </ul>
+    </div>
+  </div>
+
+  <p class="note">
+    <b>说明：</b>本页是设计稿，不是运行时 UI；尺寸按 390 × 844 逻辑像素绘制，颜色与圆角取自
+    <code>lib/design_tokens.dart</code>。地图为示意底图，仅用于表达圆心、半径圈与浮层的关系，不代表真实地理数据。
+    与 <code>docs/ideation/2026-10-29-location-recalibration-ideation.html</code> 的想法 1 / 2 / 3 对应；位置区排法参考美团的「当前选择置顶」。想法 5（精度可见）只画了状态矩阵一行，未单独出帧。
+  </p>
+</section>
+
+<script>
+/* 地图示意底图：所有画框共用一份 */
+const MAP_SVG = `
+<svg viewBox="0 0 390 844" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+  <rect width="390" height="844" fill="#EFF2EA"/>
+  <rect x="18" y="286" width="122" height="150" rx="14" fill="#E3EBDC"/>
+  <rect x="252" y="214" width="120" height="92" rx="12" fill="#E7EBE2"/>
+  <rect x="38" y="560" width="96" height="86" rx="12" fill="#E7EBE2"/>
+  <path d="M-10 700 C 70 664, 150 742, 250 700 S 380 676, 400 726 L400 844 L-10 844Z" fill="#DDE9EE"/>
+  <g stroke="#F7F8F4" stroke-width="13" stroke-linecap="round">
+    <line x1="-10" y1="248" x2="400" y2="212"/>
+    <line x1="-10" y1="470" x2="400" y2="442"/>
+    <line x1="118" y1="-10" x2="150" y2="854"/>
+    <line x1="300" y1="-10" x2="268" y2="854"/>
+  </g>
+  <g stroke="#F3F5EF" stroke-width="5" stroke-linecap="round">
+    <line x1="-10" y1="356" x2="400" y2="330"/>
+    <line x1="-10" y1="586" x2="400" y2="558"/>
+    <line x1="212" y1="-10" x2="200" y2="854"/>
+    <line x1="60" y1="-10" x2="72" y2="854"/>
+  </g>
+  <text x="164" y="238" font-size="9" fill="#9AA39B" letter-spacing="1">文三路</text>
+  <text x="196" y="462" font-size="9" fill="#9AA39B" letter-spacing="1">望江路</text>
+</svg>`;
+
+document.querySelectorAll('.map').forEach(el => { el.innerHTML = MAP_SVG; });
+</script>
+</body>
+</html>
