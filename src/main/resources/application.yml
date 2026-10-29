@@ -147,6 +147,15 @@ s2s:
     #   （容器里只有 OSS_BUCKET_NAME），2026-10-14 修正。
     endpoint: ${OSS_ENDPOINT:}
     bucket: ${OSS_BUCKET_NAME:}
+  # --- 实名核验（阿里云信息核验 Id2MetaVerify）---
+  # dry-run=true 时只按「身份证末 4 位 0000」判定（无 AK 阶段跑通全链）；
+  # false 时调阿里云真实核验，AK 未配置会在启动期快速失败（不带空凭据上线）。
+  cert:
+    provider:
+      dry-run: ${CERT_PROVIDER_DRY_RUN:true}
+      endpoint: ${CLOUDAUTH_ENDPOINT:https://cloudauth.cn-beijing.aliyuncs.com}
+      access-key-id: ${CLOUDAUTH_ACCESS_KEY_ID:}
+      access-key-secret: ${CLOUDAUTH_ACCESS_KEY_SECRET:}
   # --- AI 智能发布（B2-4 阶段①：通义千问 / 阿里云百炼 OpenAI 兼容）---
   ai:
     # API Key（凭证族；dry-run 阶段可空）。真实通道（s2s.ai.dry-run=false）必填，
