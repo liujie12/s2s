@@ -536,8 +536,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     // 选中态存的是 Marker 层的 String 标识（§10.4.3），
                     // 拉详情要 int —— 解析收敛在此一处（与 detail 路由同一口径）。
                     listingId: int.tryParse(_selectedListingId!) ?? -1,
-                    centerLat: _centerLat,
-                    centerLng: _centerLng,
+                    // 距离基准＝用户真实位置（2026-10-29 用户反馈：原来按视口中心算，
+                    // 拖地图后距离会跟着变，且与「离我多远」无关）。
+                    // 未授权定位/暂无定位结果时才退回视口中心，保证卡片仍能用。
+                    centerLat: fix?.lat ?? _centerLat,
+                    centerLng: fix?.lng ?? _centerLng,
                     onClose: () => setState(() => _selectedListingId = null),
                   ),
                 ),
@@ -1585,7 +1588,7 @@ class _ListingInfoCard extends ConsumerWidget {
   /// 帖子 ID；选中态解析失败为 -1，与 detail 路由同口径（走「信息不存在」）。
   final int listingId;
 
-  /// 距离基准点（当前视口中心）。
+  /// 距离基准点（优先用户当前定位；未定位时退回视口中心）。
   final double centerLat;
   final double centerLng;
 
