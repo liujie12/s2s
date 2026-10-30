@@ -136,17 +136,7 @@ void main() {
     });
   });
 
-  group('值语义与派生', () {
-    test('swapped 交换两端且不带距离（距离须按反方向重算）', () {
-      final pair = RoutePair.fromJson(completeJson())!;
-      final swapped = pair.swapped();
-
-      expect(swapped.origin.name, '中关村');
-      expect(swapped.destination.name, '回龙观');
-      expect(swapped.distanceM, isNull);
-      expect(swapped.durationS, isNull);
-    });
-
+  group('值语义', () {
     test('相同内容相等（值对象语义，供 widget 比较与 provider 缓存判断）', () {
       final a = RoutePair.fromJson(completeJson())!;
       final b = RoutePair.fromJson(completeJson())!;

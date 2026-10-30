@@ -124,10 +124,7 @@ class RoutePair {
   /// 参数：[raw] 属性原始值：对象形态或历史字符串。
   /// 返回：对象形态解析出的 [RoutePair]；**字符串形态返回 null**，由调用方
   ///   按文本键原样渲染（存量帖不能被吞掉，也不能被当成结构化两点）。
-  static RoutePair? parseAttribute(Object? raw) {
-    if (raw is! Map) return null;
-    return fromJson(raw);
-  }
+  static RoutePair? parseAttribute(Object? raw) => fromJson(raw);
 
   /// 起点。
   final RoutePlace origin;
@@ -143,13 +140,6 @@ class RoutePair {
 
   /// 两端是否都已定位 —— 发布必填与「位置精确」共用的判据（KTD3/KTD4）。
   bool get isComplete => origin.isLocated && destination.isLocated;
-
-  /// 交换起点与终点。
-  ///
-  /// 返回：两端互换后的新对象；距离与时长**不携带** —— 反向路线的数值
-  ///   不同，必须由调用方重新请求（R4 / KTD6）。
-  RoutePair swapped() =>
-      RoutePair(origin: destination, destination: origin);
 
   /// 序列化为 `attributes.route` 的对象形态。
   ///

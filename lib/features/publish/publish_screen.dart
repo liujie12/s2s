@@ -51,6 +51,7 @@ import '../../domain/category_tree.dart';
 import '../../domain/publish_template.dart';
 import '../../domain/route_pair.dart';
 import '../../core/network/api_exception.dart';
+import '../../core/text/route_label.dart';
 import '../../router/app_router.dart';
 import '../auth/auth_repository.dart';
 import '../cert/cert_picker.dart';
@@ -1306,14 +1307,9 @@ class _TemplateField extends StatelessWidget {
     final pair = routePair;
     final String text;
     if (pair != null) {
-      final origin = pair.origin.name.trim().isEmpty
-          ? '起点'
-          : pair.origin.name.trim();
-      final destination = pair.destination.name.trim().isEmpty
-          ? '终点'
-          : pair.destination.name.trim();
-      text = '$origin → $destination';
+      text = routePairLabel(pair);
     } else if (value.trim().isNotEmpty) {
+      // 存量文本形态原样展示（KTD1），不解析成对象。
       text = value.trim();
     } else {
       text = '选择起终点';
