@@ -14,17 +14,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../../nfr_constants.dart';
-
-/// 高德 Web 服务 Key 的 `--dart-define` 变量名（全工程唯一真源）。
-///
-/// 与地图 Android Key 不同链路：它是 Web 服务（逆地理/POI）凭证，
-/// 只经构建期注入，不入仓库。
-const String kAmapWebServiceKeyDefine = 'AMAP_WEBSERVICE_KEY';
-
-/// 构建期注入的高德 Web 服务 Key（未注入时为空串 → 逆地理不可用）。
-const String _kAmapWebServiceKey = String.fromEnvironment(
-  kAmapWebServiceKeyDefine,
-);
+import 'amap_web_service_key.dart';
 
 /// 把坐标逆地理成一行可读地址。
 ///
@@ -38,7 +28,7 @@ Future<String> reverseGeocodeLabel({
   required double lat,
   required double lng,
 }) async {
-  if (_kAmapWebServiceKey.isEmpty) return '';
+  if (!amapWebServiceKeyConfigured) return '';
 
   final client = HttpClient()
     ..connectionTimeout = const Duration(
@@ -46,7 +36,7 @@ Future<String> reverseGeocodeLabel({
     );
   try {
     final uri = Uri.https('restapi.amap.com', '/v3/geocode/regeo', {
-      'key': _kAmapWebServiceKey,
+      'key': amapWebServiceKey,
       // 高德要求「经度,纬度」顺序。
       'location': '$lng,$lat',
       'radius': '${NfrLocation.reverseGeocodeRadiusMeters}',
