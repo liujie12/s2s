@@ -11,7 +11,9 @@ library;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zhaoyazhao/domain/category_tree.dart';
+import 'package:zhaoyazhao/domain/listing_detail.dart';
 import 'package:zhaoyazhao/domain/publish_template.dart';
+import 'package:zhaoyazhao/domain/route_pair.dart';
 import 'package:zhaoyazhao/features/publish/publish_form_state.dart';
 import 'package:zhaoyazhao/nfr_constants.dart';
 
@@ -89,7 +91,10 @@ void main() {
     });
 
     test('hasLocation 与坐标同源：写入坐标即视为已选位置', () {
-      final form = const PublishFormState().copyWith(lng: 120.1551, lat: 30.2741);
+      final form = const PublishFormState().copyWith(
+        lng: 120.1551,
+        lat: 30.2741,
+      );
       expect(form.hasLocation, isTrue);
       expect(form.postDraftPayload()['lng'], 120.1551);
     });
@@ -134,7 +139,10 @@ void main() {
     });
 
     test('联系方式为空 → noContact', () {
-      expect(complete().copyWith(contact: '').blocker, PublishBlocker.noContact);
+      expect(
+        complete().copyWith(contact: '').blocker,
+        PublishBlocker.noContact,
+      );
     });
 
     test('协议未勾 → agreementUnchecked（§5.8「协议未勾选 → 主按钮 Disabled」）', () {
@@ -196,7 +204,10 @@ void main() {
     });
 
     test('填 0 不算已交代价格 —— 0 元发布须走面议，否则语义不明', () {
-      expect(complete().copyWith(priceText: '0').blocker, PublishBlocker.noPrice);
+      expect(
+        complete().copyWith(priceText: '0').blocker,
+        PublishBlocker.noPrice,
+      );
     });
 
     test('填非数字（如中间态「5.」以外的乱字符）→ noPrice', () {
@@ -381,6 +392,134 @@ void main() {
       final switched = loaded.withCategory(30101);
       expect(switched.loadedTemplate, isNull);
       expect(switched.templatePending, isTrue);
+    });
+  });
+
+  group('KTD1/KTD3/KTD4 起终点（route_pair）', () {
+    /// 构造一份除起终点外全部填妥的拼车表单（叶子 30101）。
+    ///
+    /// 参数 [pair] 起终点值；[legacyText] 历史文本形态的 route 值。
+    /// 返回：拼车表单快照。
+    PublishFormState carpool({RoutePair? pair, String legacyText = ''}) {
+      return PublishFormState(
+        leafCategoryId: 30101,
+        lng: 120.1551,
+        lat: 30.2741,
+        title: '工作日回龙观到中关村拼车',
+        priceUnit: '面议',
+        description: '每天早八点出发，走京藏高速，可带小件行李。',
+        templateValues: {
+          'depart_time': '工作日 8:00',
+          'seats': '2',
+          if (legacyText.isNotEmpty) 'route': legacyText,
+        },
+        routePair: pair,
+        contact: '13800138000',
+        agreed: true,
+      );
+    }
+
+    /// 两端齐备的起终点值。
+    RoutePair fullPair() => const RoutePair(
+      origin: RoutePlace(
+        name: '回龙观',
+        address: '北京市昌平区回龙观',
+        lng: 116.337,
+        lat: 40.071,
+      ),
+      destination: RoutePlace(
+        name: '中关村',
+        address: '北京市海淀区中关村大街',
+        lng: 116.316,
+        lat: 39.983,
+      ),
+      distanceM: 18500,
+      durationS: 2100,
+    );
+
+    test('模板含 route_pair 时 usesRoutePair 为真，其余分类为假', () {
+      expect(carpool().usesRoutePair, isTrue);
+      expect(complete().usesRoutePair, isFalse);
+    });
+
+    test('两端齐备 → 模板必填不拦', () {
+      expect(carpool(pair: fullPair()).blocker, isNull);
+    });
+
+    test('只有起点（终点无坐标）→ 仍报模板必填缺失（KTD4）', () {
+      final pair = RoutePair(
+        origin: fullPair().origin,
+        destination: const RoutePlace(name: '中关村'),
+      );
+      expect(carpool(pair: pair).blocker, PublishBlocker.templateFieldMissing);
+    });
+
+    test('载荷 attributes.route 是含两端坐标的对象（AE6）', () {
+      final payload = carpool(pair: fullPair()).postDraftPayload();
+      final attributes = payload['attributes']! as Map<String, Object?>;
+      final route = attributes['route']! as Map<String, Object?>;
+
+      final origin = route['origin']! as Map<String, Object?>;
+      final destination = route['destination']! as Map<String, Object?>;
+      expect(origin['name'], '回龙观');
+      expect(origin['lng'], 116.337);
+      expect(destination['lat'], 39.983);
+      expect(route['distance_m'], 18500);
+      // 门牌号下线：载荷里不再有门牌相关字段（R9）。
+      expect(payload.containsKey('door_number'), isFalse);
+    });
+
+    test('只有历史文本、没有对象 → 载荷 route 仍是字符串（KTD1 兼容）', () {
+      final form = carpool(legacyText: '回龙观 → 中关村');
+      final attributes =
+          form.postDraftPayload()['attributes']! as Map<String, Object?>;
+
+      expect(form.routePair, isNull);
+      expect(attributes['route'], '回龙观 → 中关村');
+      // 存量帖不能被客户端必填拦住，可直接重发。
+      expect(form.blocker, isNull);
+    });
+
+    test('拼车：位置精确看两端 POI，不看门牌号（AE6 / KTD3）', () {
+      expect(carpool(pair: fullPair()).locationPrecise, isTrue);
+      expect(
+        carpool(pair: fullPair()).postDraftPayload()['address_precise'],
+        isTrue,
+      );
+      // 有门牌号但两端不全 → 拼车仍不算精确。
+      expect(
+        carpool(
+          pair: RoutePair(
+            origin: fullPair().origin,
+            destination: const RoutePlace(name: '中关村'),
+          ),
+        ).copyWith(doorNumber: '3 号楼 501').locationPrecise,
+        isFalse,
+      );
+    });
+
+    test('拼车两端齐备 → 完整度三项全达成，档位为绿', () {
+      final form = carpool(pair: fullPair());
+      expect(form.completeness.metCount, 3);
+      expect(form.completeness.level, CompletenessLevel.green);
+    });
+
+    test('非拼车分类仍按门牌号判位置精确', () {
+      expect(complete().locationPrecise, isFalse);
+      expect(
+        complete().copyWith(doorNumber: '3 号楼 501').locationPrecise,
+        isTrue,
+      );
+    });
+
+    test('换分类后起终点仍在（换回来不必重选）', () {
+      final switched = carpool(pair: fullPair()).withCategory(40101);
+      expect(switched.routePair, fullPair());
+    });
+
+    test('withRoutePair(null) 可清空（copyWith 的 ?? 无法置空）', () {
+      final cleared = carpool(pair: fullPair()).withRoutePair(null);
+      expect(cleared.routePair, isNull);
     });
   });
 }

@@ -38,6 +38,12 @@ enum TemplateFieldType {
 
   /// 单选（新旧程度、取件方式等 §5.4.3「附加字段」列的选单）
   select,
+
+  /// 起终点地点对（拼车专用，KTD2）。
+  ///
+  /// 值不是字符串而是 `RoutePair` 对象，落 `attributes.route`；控件是
+  /// 「一行摘要 + 进入起终点选择页」，不是文本框。其余类型仍按文本处理。
+  routePair,
 }
 
 /// 模板中的一个字段（§5.7「字段 key、label、类型、校验、placeholder、必填」）。
@@ -215,7 +221,7 @@ const Map<int, PublishTemplate> _templatesBySecondLevel = {
       TemplateFieldSpec(
         key: 'route',
         label: '起点 → 终点',
-        type: TemplateFieldType.text,
+        type: TemplateFieldType.routePair,
         required: true,
         placeholder: '如：回龙观 → 中关村',
         memoryHint: '上次：回龙观 → 中关村',

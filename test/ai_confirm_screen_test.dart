@@ -219,7 +219,7 @@ void main() {
     testWidgets('🟡 档显示冲刺区，只放门牌号一项（三级类目已选到底）', (tester) async {
       await pump(tester, complete());
       expect(find.text('再花 5 秒升「完整」'), findsOneWidget);
-      expect(find.text('位置补到门牌号'), findsOneWidget);
+      expect(find.text('把位置选到具体 POI'), findsOneWidget);
       // 分类已选到第三级，故该冲刺项不该出现 —— 让用户去补一个已达成的条件
       // 会让他觉得这个提示是假的
       expect(find.text('分类选到第三级'), findsNothing);

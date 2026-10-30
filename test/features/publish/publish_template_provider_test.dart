@@ -99,6 +99,24 @@ void main() {
       expect(template.extraFields[1].required, isTrue);
     });
 
+    test('契约 route_pair → 本地 routePair（KTD2：三处枚举同源）', () async {
+      stubTemplate(
+        harness,
+        leafCategoryId: 30101,
+        fields: [
+          {'key': 'route', 'label': '起点 → 终点', 'type': 'route_pair',
+              'required': true},
+        ],
+      );
+
+      final template = await readTemplate(30101);
+
+      // 未知契约值会降级成 text —— 若映射漏了 route_pair，起终点入口
+      // 会静默消失，表现为「拼车只能手打路线」，且没有任何报错。
+      expect(template.extraFields.single.type, TemplateFieldType.routePair);
+      expect(template.extraFields.single.required, isTrue);
+    });
+
     test('通用模板叶子也能合并服务端字段（generic 文案保留）', () async {
       stubTemplate(
         harness,

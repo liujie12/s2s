@@ -65,7 +65,7 @@ void main() {
       await pump(tester, null);
       // 空表单三项全缺，三条都得出现
       expect(find.text('· 还有必填项没填'), findsOneWidget);
-      expect(find.text('· 位置补到门牌号'), findsOneWidget);
+      expect(find.text('· 把位置选到具体 POI'), findsOneWidget);
       expect(find.text('· 分类选到第三级'), findsOneWidget);
     });
 

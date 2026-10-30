@@ -16,6 +16,7 @@ import '../../domain/category_tree.dart';
 import '../../domain/listing_category.dart';
 import '../../domain/publish_completeness.dart';
 import '../../domain/publish_template.dart';
+import '../../domain/route_pair.dart';
 
 /// 发布类型（§5.4.1 胶囊切换「发布资源 / 发布需求」，对应 §13.2 `post.type`）。
 enum PublishKind {
@@ -112,6 +113,7 @@ class PublishFormState {
     this.negotiable = false,
     this.description = '',
     this.templateValues = const {},
+    this.routePair,
     this.loadedTemplate,
     this.mediaIds = const <String>[],
     this.certIds = const <int>[],
@@ -172,7 +174,34 @@ class PublishFormState {
   final String description;
 
   /// 模板附加字段的值，key 对应 [TemplateFieldSpec.key]。
+  ///
+  /// 只承载字符串值：起终点这类结构化字段单独存在 [routePair] 里，序列化时
+  /// 才以对象形态进载荷的 `attributes`（KTD1）。
   final Map<String, String> templateValues;
+
+  /// 起终点（拼车模板的 `route_pair` 字段值，KTD1）。
+  ///
+  /// null 表示尚未选择或该分类没有起终点字段；历史帖的文本形态仍留在
+  /// [templateValues]（兼容分支见 [blocker] 与 [postDraftPayload]）。
+  final RoutePair? routePair;
+
+  /// 当前模板是否含起终点字段（`route_pair`）。
+  ///
+  /// 决定「位置精确」的判据走哪一套（KTD3），也决定选择页入口是否出现。
+  bool get usesRoutePair =>
+      template.extraFields.any((f) => f.type == TemplateFieldType.routePair);
+
+  /// 位置是否已达「精确」口径（§9.8 条件二，KTD3）。
+  ///
+  /// - 模板含 `route_pair`：起点与终点都选到带坐标的 POI；
+  /// - 其余分类：门牌号非空（维持原口径）。
+  ///
+  /// **同一判据喂三处**：`postDraftPayload` 的 `address_precise`、
+  /// [completeness] 的条件二、确认页冲刺文案。三处各写一份必然漂移，
+  /// 表现为「应用内说 🟢、落库是 🟡」。
+  bool get locationPrecise => usesRoutePair
+      ? routePair?.isComplete == true
+      : doorNumber.trim().isNotEmpty;
 
   /// 服务端模板就位后的生效模板（[124] B3）：字段集合来自
   /// `GET /templates/{leaf}`，框架文案来自本地（合成唯一实现处在
@@ -254,6 +283,13 @@ class PublishFormState {
     // 只在选了分类后才真正生效，不会与 noCategory 抢先。
     for (final field in template.extraFields) {
       if (!field.required) continue;
+      if (field.type == TemplateFieldType.routePair) {
+        // 结构化字段按「两端齐备」判（KTD4）；存量帖只有文本值时按已填
+        // 放行 —— 旧数据没有坐标，不能因此把重发堵死（KTD1 兼容分支）。
+        if (routePair?.isComplete == true) continue;
+        if ((templateValues[field.key] ?? '').trim().isNotEmpty) continue;
+        return PublishBlocker.templateFieldMissing;
+      }
       if ((templateValues[field.key] ?? '').trim().isEmpty) {
         return PublishBlocker.templateFieldMissing;
       }
@@ -288,7 +324,8 @@ class PublishFormState {
     // 必填项 100%：直接复用 blocker —— 它本就是「必填是否齐」的唯一判据。
     // 另写一套「必填计数」会出现「按钮能点但完整度说必填没齐」这种矛盾。
     requiredFieldsComplete: canSubmit,
-    hasDoorNumber: doorNumber.trim().isNotEmpty,
+    // 条件二与载荷的 `address_precise` 共用 [locationPrecise]（KTD3）。
+    hasDoorNumber: locationPrecise,
     leafCategoryPrecise: _leafCategoryPrecise,
   );
 
@@ -320,6 +357,7 @@ class PublishFormState {
     bool? negotiable,
     String? description,
     Map<String, String>? templateValues,
+    RoutePair? routePair,
     PublishTemplate? loadedTemplate,
     List<String>? mediaIds,
     List<int>? certIds,
@@ -339,6 +377,7 @@ class PublishFormState {
       negotiable: negotiable ?? this.negotiable,
       description: description ?? this.description,
       templateValues: templateValues ?? this.templateValues,
+      routePair: routePair ?? this.routePair,
       loadedTemplate: loadedTemplate ?? this.loadedTemplate,
       mediaIds: mediaIds ?? this.mediaIds,
       certIds: certIds ?? this.certIds,
@@ -365,6 +404,33 @@ class PublishFormState {
     return copyWith(certIds: List<int>.unmodifiable(ids));
   }
 
+  /// 设置或清空起终点（[copyWith] 用 `?? this.routePair` 无法置空，故单列入口）。
+  ///
+  /// 参数：[pair] 选择页回传的起终点；null 表示清空。
+  /// 返回：新的表单快照。
+  PublishFormState withRoutePair(RoutePair? pair) {
+    return PublishFormState(
+      kind: kind,
+      leafCategoryId: leafCategoryId,
+      lng: lng,
+      lat: lat,
+      locationLabel: locationLabel,
+      doorNumber: doorNumber,
+      title: title,
+      priceText: priceText,
+      priceUnit: priceUnit,
+      negotiable: negotiable,
+      description: description,
+      templateValues: templateValues,
+      routePair: pair,
+      loadedTemplate: loadedTemplate,
+      mediaIds: mediaIds,
+      certIds: certIds,
+      contact: contact,
+      agreed: agreed,
+    );
+  }
+
   /// 构造 PostDraft 契约载荷（[124] B4，`POST /posts/precheck` 用；
   /// B5 `POST /posts` 复用同一构造 —— 两个端点的载荷 schema 同源，
   /// 各写一份会出现 precheck 过了、createPost 传了不同字段的分叉）。
@@ -372,14 +438,16 @@ class PublishFormState {
   /// 映射口径（契约 `PostDraft`，全字段非必填允许半成品预校验）：
   /// - `type`：supply→`resource`、demand→`demand`（契约 PostTypeEnum）；
   /// - `attributes`：只含当前模板字段键的非空值（空值不传键——
-  ///   attributes 语义是「已填的动态属性」，空串值无意义）；
+  ///   attributes 语义是「已填的动态属性」，空串值无意义）；`route_pair`
+  ///   字段有对象时写对象，否则保留历史文本（KTD1）；
   /// - `lng`/`lat`：**采集到坐标（[hasLocation]）才上送**。`POST /posts`
   ///   契约要求二者必填（`PostCreateRequest` `@NotNull`），缺失会被服务端
   ///   40001 打回；precheck 收的 `PostDraft` 不要求（允许半成品预校验），
   ///   故坐标缺失时 precheck 能过、createPost 必失败 —— 该组合由
   ///   [blocker] 的 [PublishBlocker.noLocation] 在提交前拦住，不会漏到线上；
   /// - `address`：本轮无逆地理编码（门牌号走手填 [doorNumber]），不上送；
-  /// - `address_precise`：门牌号手填非空即 true（§9.8 条件二兜底口径）；
+  /// - `address_precise`：与 [completeness] 条件二共用 [locationPrecise]
+  ///   （KTD3）；
   /// - `media_ids`：[mediaIds]（[B2-11] 起为真值，此前占位恒空；
   ///   只含已 commit 成功的媒体）；
   /// - 派生字段（`l2_category_id`/`completeness_level`/`grid_id`/
@@ -398,12 +466,8 @@ class PublishFormState {
       if (priceValue != null && (priceUnit ?? '').trim().isNotEmpty)
         'price_unit': priceUnit!.trim(),
       if (description.trim().isNotEmpty) 'description': description.trim(),
-      'attributes': <String, String>{
-        for (final field in template.extraFields)
-          if ((templateValues[field.key] ?? '').trim().isNotEmpty)
-            field.key: templateValues[field.key]!.trim(),
-      },
-      'address_precise': doorNumber.trim().isNotEmpty,
+      'attributes': _attributesPayload(),
+      'address_precise': locationPrecise,
       // 坐标与 hasLocation 同源：只有两个都非空才算「已选位置」，
       // 故此处用 hasLocation 单判即可，不会上送半对坐标。
       if (hasLocation) 'lng': lng,
@@ -412,6 +476,31 @@ class PublishFormState {
       'contact_type': 'phone',
       if (contact.trim().isNotEmpty) 'contact_value': contact.trim(),
     };
+  }
+
+  /// 组装 `attributes` 载荷。
+  ///
+  /// 字符串字段按模板顺序写非空值；`route_pair` 字段有对象时写对象
+  ///（`origin`/`destination` 嵌套），并顺带带上距离与时长；没有对象但存有
+  /// 历史文本时保留字符串 —— 旧帖重发不能被吞成一个空对象（KTD1）。
+  ///
+  /// 返回：`attributes` 的键值对。
+  Map<String, Object?> _attributesPayload() {
+    final result = <String, Object?>{};
+    for (final field in template.extraFields) {
+      final text = (templateValues[field.key] ?? '').trim();
+      if (field.type == TemplateFieldType.routePair) {
+        final pair = routePair;
+        if (pair != null) {
+          result[field.key] = pair.toJson();
+        } else if (text.isNotEmpty) {
+          result[field.key] = text;
+        }
+        continue;
+      }
+      if (text.isNotEmpty) result[field.key] = text;
+    }
+    return result;
   }
 
   /// 换分类后重置模板相关字段。
@@ -440,6 +529,9 @@ class PublishFormState {
       negotiable: negotiable,
       description: description,
       templateValues: const {},
+      // 起终点与位置一样跟用户走、不跟模板走：换分类再换回来时两点还在，
+      // 不必重选（该字段在新模板里不出现时也不会被提交）。
+      routePair: routePair,
       mediaIds: mediaIds,
       certIds: certIds,
       contact: contact,

@@ -69,6 +69,12 @@ void main() {
       expect(t.id, '3.1');
       final required = t.extraFields.where((f) => f.required).map((f) => f.key);
       expect(required, containsAll(['route', 'depart_time', 'seats']));
+      // KTD2：起终点是结构化地点对，不是自由文本；类型漂回 text 会让
+      // 选择页入口消失、载荷退回字符串。
+      expect(
+        t.extraFields.firstWhere((f) => f.key == 'route').type,
+        TemplateFieldType.routePair,
+      );
     });
 
     test('全职招聘：价格单位为月薪（§5.4.3「月薪范围/月」）', () {

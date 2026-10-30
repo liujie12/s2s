@@ -341,7 +341,9 @@ class _AiConfirmScreenState extends ConsumerState<AiConfirmScreen> {
   /// 会让角标永远显示「还差 1 项升 🟢」而页面上无处可补。
   CompletenessAssessment get _assessment => CompletenessAssessment(
         requiredFieldsComplete: _requiredReady,
-        hasDoorNumber: _form.doorNumber.trim().isNotEmpty,
+        // 与发布页共用同一「位置精确」判据（KTD3）：拼车看起终点 POI，
+        // 其余分类看门牌号 —— 否则本页说 🟢、落库却是 🟡。
+        hasDoorNumber: _form.locationPrecise,
         leafCategoryPrecise: _form.leafCategoryId != null &&
             leafCategoryById(_form.leafCategoryId!) != null,
       );
@@ -688,6 +690,7 @@ class _AiConfirmScreenState extends ConsumerState<AiConfirmScreen> {
         const SizedBox(height: AppSpacing.sm),
         _GreenSprint(
           assessment: _assessment,
+          usesRoutePair: _form.usesRoutePair,
           doorController: _doorCtrl,
           onDoorChanged: (v) => setState(() {
             _form = _form.copyWith(doorNumber: v);
@@ -1028,6 +1031,7 @@ class _RequiredSection extends StatelessWidget {
 class _GreenSprint extends StatelessWidget {
   const _GreenSprint({
     required this.assessment,
+    required this.usesRoutePair,
     required this.doorController,
     required this.onDoorChanged,
     required this.onPickCategory,
@@ -1035,6 +1039,9 @@ class _GreenSprint extends StatelessWidget {
   });
 
   final CompletenessAssessment assessment;
+
+  /// 该分类的位置精确是否走起终点 POI（拼车），决定是否还渲染门牌号输入。
+  final bool usesRoutePair;
   final TextEditingController doorController;
   final ValueChanged<String> onDoorChanged;
   final VoidCallback onPickCategory;
@@ -1083,7 +1090,7 @@ class _GreenSprint extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.md),
 
-          // 冲刺项一：门牌号
+          // 冲刺项一：位置精确
           if (!assessment.hasDoorNumber) ...[
             Text(
               CompletenessCondition.doorNumber.gapLabel,
@@ -1094,7 +1101,18 @@ class _GreenSprint extends StatelessWidget {
               ),
             ),
             const SizedBox(height: AppSpacing.xs),
-            Row(
+            // 拼车按起终点 POI 判定（KTD3），本页没有起终点选择入口 —
+            // 不再给一个对拼车用户无意义的门牌号输入框。
+            if (usesRoutePair)
+              Text(
+                '回到发布页选择起终点即可升级',
+                style: TextStyle(
+                  fontSize: AppTypeScale.caption.size,
+                  color: const Color(AppColors.textSecondary),
+                ),
+              )
+            else
+              Row(
               children: [
                 Expanded(
                   child: TextField(

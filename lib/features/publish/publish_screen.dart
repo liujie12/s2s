@@ -49,6 +49,7 @@ import 'package:go_router/go_router.dart';
 import '../../design_tokens.dart';
 import '../../domain/category_tree.dart';
 import '../../domain/publish_template.dart';
+import '../../domain/route_pair.dart';
 import '../../core/network/api_exception.dart';
 import '../../router/app_router.dart';
 import '../auth/auth_repository.dart';
@@ -202,6 +203,7 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
         f.mediaIds.isNotEmpty ||
         f.lng != null ||
         f.lat != null ||
+        f.routePair != null ||
         f.templateValues.values.any((v) => v.trim().isNotEmpty);
   }
 
@@ -536,6 +538,21 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
     );
   }
 
+  /// 打开起终点选择页并把回传结果写进表单（R1 / U3）。
+  ///
+  /// 入参带上当前起终点用于回填两行；返回 null 表示用户取消或返回 ——
+  /// 此时表单保留进入前的值（R14）。
+  ///
+  /// 返回：void。
+  Future<void> _pickRoutePair() async {
+    final result = await context.push<RoutePair>(
+      AppRoutes.routePairPicker,
+      extra: _form.routePair,
+    );
+    if (result == null || !mounted) return;
+    _updateForm(_form.withRoutePair(result));
+  }
+
   @override
   Widget build(BuildContext context) {
     // [124] B3：watch 服务端模板，数据到达后回写表单。不用 ref.listen ——
@@ -711,9 +728,13 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
                     _TemplateField(
                       spec: field,
                       value: _form.templateValues[field.key] ?? '',
-                      controller: field.type == TemplateFieldType.select
+                      controller:
+                          field.type == TemplateFieldType.select ||
+                              field.type == TemplateFieldType.routePair
                           ? null
                           : _templateCtrl(field.key),
+                      routePair: _form.routePair,
+                      onPickRoute: _pickRoutePair,
                       onChanged: (v) => _setTemplateValue(field.key, v),
                     ),
                 ],
@@ -1180,14 +1201,23 @@ class _TemplateField extends StatelessWidget {
     required this.value,
     required this.controller,
     required this.onChanged,
+    this.routePair,
+    this.onPickRoute,
   });
 
   final TemplateFieldSpec spec;
   final String value;
 
-  /// 文本类字段的控制器；[TemplateFieldType.select] 传 null。
+  /// 文本类字段的控制器；[TemplateFieldType.select] 与
+  /// [TemplateFieldType.routePair] 传 null。
   final TextEditingController? controller;
   final ValueChanged<String> onChanged;
+
+  /// 当前起终点值（仅 `route_pair` 字段使用，KTD1）。
+  final RoutePair? routePair;
+
+  /// 点击摘要行进入起终点选择页（仅 `route_pair` 字段使用）。
+  final VoidCallback? onPickRoute;
 
   @override
   Widget build(BuildContext context) {
@@ -1219,7 +1249,9 @@ class _TemplateField extends StatelessWidget {
             ],
           ),
           const SizedBox(height: AppSpacing.sm),
-          if (spec.type == TemplateFieldType.select)
+          if (spec.type == TemplateFieldType.routePair)
+            _buildRouteSummary()
+          else if (spec.type == TemplateFieldType.select)
             Wrap(
               spacing: AppSpacing.sm,
               runSpacing: AppSpacing.sm,
@@ -1254,12 +1286,79 @@ class _TemplateField extends StatelessWidget {
               ).copyWith(counterText: spec.maxLength == null ? '' : null),
               onChanged: onChanged,
             ),
-          if (spec.memoryHint != null) ...[
+          // 起终点字段的示例值没有意义（摘要行本身就是值），不渲染。
+          if (spec.memoryHint != null &&
+              spec.type != TemplateFieldType.routePair) ...[
             const SizedBox(height: AppSpacing.xs),
             // 只显示模板给的示例值，不自称「记忆带入」：真记忆需云端（见文件头）。
             _HintText('示例：${spec.memoryHint}'),
           ],
         ],
+      ),
+    );
+  }
+
+  /// 起终点摘要行：未选时「选择起终点」，已选时「起点名 → 终点名」，
+  /// 存量文本原样展示（KTD1）。整行可点，进入选择页（R1）。
+  ///
+  /// 返回：摘要行控件。
+  Widget _buildRouteSummary() {
+    final pair = routePair;
+    final String text;
+    if (pair != null) {
+      final origin = pair.origin.name.trim().isEmpty
+          ? '起点'
+          : pair.origin.name.trim();
+      final destination = pair.destination.name.trim().isEmpty
+          ? '终点'
+          : pair.destination.name.trim();
+      text = '$origin → $destination';
+    } else if (value.trim().isNotEmpty) {
+      text = value.trim();
+    } else {
+      text = '选择起终点';
+    }
+
+    return InkWell(
+      onTap: onPickRoute,
+      borderRadius: BorderRadius.circular(AppRadius.md),
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 44),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.md,
+          vertical: AppSpacing.sm,
+        ),
+        decoration: BoxDecoration(
+          color: const Color(AppColors.background),
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          border: Border.all(color: const Color(AppColors.border)),
+        ),
+        child: Row(
+          children: [
+            const Icon(
+              Icons.route_outlined,
+              size: 18,
+              color: Color(AppColors.primary),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: Text(
+                text,
+                style: TextStyle(
+                  fontSize: AppTypeScale.body.size,
+                  color: pair != null || value.trim().isNotEmpty
+                      ? const Color(AppColors.textPrimary)
+                      : const Color(AppColors.textPlaceholder),
+                ),
+              ),
+            ),
+            const Icon(
+              Icons.chevron_right,
+              size: 18,
+              color: Color(AppColors.textPlaceholder),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -18,10 +18,10 @@ library;
 import 'package:zhaoyazhao/core/contract_json.dart';
 import 'package:zhaoyazhao/core/network/api_exception.dart';
 
-/// 模板字段类型的契约枚举（openapi.yaml `TemplateField.type` 五值）。
+/// 模板字段类型的契约枚举（openapi.yaml `TemplateField.type` 六值）。
 ///
-/// 与 domain `TemplateFieldType`（text/multiline/number/select 四档）不合并：
-/// 契约有 `multi_select`/`date` 而无 `multiline`，传输形态按契约建模，
+/// 与 domain `TemplateFieldType`（text/multiline/number/select/route_pair）
+/// 不合并：契约有 `multi_select`/`date` 而无 `multiline`，传输形态按契约建模，
 /// 到 domain 的映射由转换层完成（B3 模板驱动接线时）。
 enum TemplateFieldTypeDto {
   /// 单行文本
@@ -38,6 +38,9 @@ enum TemplateFieldTypeDto {
 
   /// 日期
   date,
+
+  /// 起终点地点对（拼车，KTD2；值为对象而非字符串）
+  routePair,
 }
 
 /// 契约字符串 → 字段类型枚举（显式 switch + default 降级，禁
@@ -54,6 +57,7 @@ TemplateFieldTypeDto templateFieldTypeFromApi(String value) =>
       'select' => TemplateFieldTypeDto.select,
       'multi_select' => TemplateFieldTypeDto.multiSelect,
       'date' => TemplateFieldTypeDto.date,
+      'route_pair' => TemplateFieldTypeDto.routePair,
       _ => TemplateFieldTypeDto.text,
     };
 

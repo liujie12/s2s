@@ -23,6 +23,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:zhaoyazhao/core/network/api_error_code.dart';
 import 'package:zhaoyazhao/core/network/api_exception.dart';
+import 'package:zhaoyazhao/domain/route_pair.dart';
 import 'package:zhaoyazhao/features/category/category_repository.dart';
 import 'package:zhaoyazhao/features/publish/publish_form_state.dart';
 import 'package:zhaoyazhao/features/publish/publish_screen.dart';
@@ -75,7 +76,9 @@ void main() {
   Widget app(PublishFormState form) {
     return ProviderScope(
       overrides: [categoryRepositoryProvider.overrideWithValue(repo)],
-      child: MaterialApp(home: PublishScreen(args: PublishScreenArgs(initialForm: form))),
+      child: MaterialApp(
+        home: PublishScreen(args: PublishScreenArgs(initialForm: form)),
+      ),
     );
   }
 
@@ -87,8 +90,7 @@ void main() {
     return button.onPressed == null;
   }
 
-  testWidgets('未选分类：不发起模板请求，无模板段，blocker 为先选分类',
-      (tester) async {
+  testWidgets('未选分类：不发起模板请求，无模板段，blocker 为先选分类', (tester) async {
     useTallSurface(tester);
     await tester.pumpWidget(app(const PublishFormState()));
     await tester.pumpAndSettle();
@@ -100,8 +102,7 @@ void main() {
     expect(submitDisabled(tester), isTrue);
   });
 
-  testWidgets('加载中渲染骨架并禁提交；服务端模板到达后字段整体替换',
-      (tester) async {
+  testWidgets('加载中渲染骨架并禁提交；服务端模板到达后字段整体替换', (tester) async {
     useTallSurface(tester);
     await tester.pumpWidget(app(filledExceptTemplate()));
 
@@ -142,5 +143,60 @@ void main() {
     expect(find.text('食宿情况'), findsOneWidget);
     expect(find.text('模板加载中…'), findsNothing);
     expect(repo.templateFetchCount, 1);
+  });
+
+  group('U4 起终点摘要行（R1）', () {
+    /// 拼车表单（服务端模板拉取失败 → 用本地 3.1 模板，含 route_pair 字段）。
+    ///
+    /// 参数：[pair] 已选起终点；null 表示未选。
+    /// 返回：拼车表单快照。
+    PublishFormState carpool({RoutePair? pair}) => PublishFormState(
+      leafCategoryId: 30101,
+      lng: 120.1551,
+      lat: 30.2741,
+      title: '工作日回龙观到中关村拼车',
+      priceUnit: '面议',
+      description: '每天早八点出发，可带小件行李。',
+      templateValues: const {'depart_time': '工作日 8:00', 'seats': '2'},
+      routePair: pair,
+      contact: '13800138000',
+      agreed: true,
+    );
+
+    setUp(() {
+      // 服务端 fixture 的字段集不含 route_pair；让它失败以走本地 3.1 模板。
+      repo.templateErrorToThrow = const ApiException(
+        code: ApiErrorCode.networkFailure,
+        message: '网络连接失败，请检查网络后重试',
+      );
+    });
+
+    testWidgets('未选时摘要行显示「选择起终点」，不是文本框', (tester) async {
+      useTallSurface(tester);
+      await tester.pumpWidget(app(carpool()));
+      await tester.pumpAndSettle();
+
+      expect(find.text('起点 → 终点'), findsOneWidget);
+      expect(find.text('选择起终点'), findsOneWidget);
+      // 旧实现是 text 输入框：提示文案「如：回龙观 → 中关村」不应再出现。
+      expect(find.text('如：回龙观 → 中关村'), findsNothing);
+    });
+
+    testWidgets('已选时摘要行显示「起点名 → 终点名」', (tester) async {
+      useTallSurface(tester);
+      await tester.pumpWidget(
+        app(
+          carpool(
+            pair: const RoutePair(
+              origin: RoutePlace(name: '回龙观', lng: 116.337, lat: 40.071),
+              destination: RoutePlace(name: '中关村', lng: 116.316, lat: 39.983),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('回龙观 → 中关村'), findsOneWidget);
+    });
   });
 }
