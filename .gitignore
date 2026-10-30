@@ -32,6 +32,8 @@ Desktop.ini
 .dart_tool/
 build/
 .flutter-plugins-dependencies
+# Flutter DevTools 的本机配置：各机器路径与开关不同，非交付物
+devtools_options.yaml
 *.iml
 # pubspec.lock：应用（非 library）应当入库以锁定依赖版本，故不忽略
 
