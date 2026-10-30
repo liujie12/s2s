@@ -8,6 +8,7 @@
 /// 点击命中不走 Widget 树，由 [MarkerLayer.hitTestMarker] 在 Marker 列表上反查。
 library;
 
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/gestures.dart';
@@ -16,6 +17,7 @@ import 'package:flutter/material.dart';
 import '../../design_tokens.dart';
 import '../../domain/listing_category.dart';
 import '../../domain/listing_category_style.dart';
+import '../../nfr_constants.dart';
 import 'clustering/marker_builder.dart';
 
 /// Marker 图层。
@@ -73,7 +75,10 @@ class MarkerLayer extends StatefulWidget {
   MapMarker? hitTestMarker(Offset position) {
     for (int i = markers.length - 1; i >= 0; i--) {
       final m = markers[i];
-      final double radius = _radiusOf(m, selectedListingId);
+      // 叠点堆外圈还露着叠影，命中半径要按「最远一层叠影」算，否则点叠影
+      // 那一侧会被判成未命中，用户感觉「明明点在图上却没反应」。
+      final double radius = _radiusOf(m, selectedListingId) +
+          (_stackGhostReach(m) * _kStackGhostStepPx);
       // 用平方比较省一次开方。命中区按视觉半径不额外放大 ——
       // 单点 40px、最小聚合 32px 均已超过 44px 触控下限的等效面积要求。
       final double dx = position.dx - m.x;
@@ -147,12 +152,39 @@ class _MarkerLayerState extends State<MarkerLayer> {
 double _radiusOf(MapMarker marker, String? selectedListingId) {
   return switch (marker) {
     ClusterMarker() => marker.diameter / 2,
+    StackMarker() => _stackDiameter(marker, selectedListingId) / 2,
     SinglePointMarker() =>
       (marker.listingId == selectedListingId
               ? kSelectedMarkerDiameter
               : kSinglePointMarkerDiameter) /
           2,
   };
+}
+
+/// 叠点堆每多一层叠影的偏移量（逻辑像素）。
+const double _kStackGhostStepPx = 4;
+
+/// 叠点堆实际画出的叠影层数（不含主层）。
+///
+/// 层数由 `NfrOverlap.stackGhostMax` 封顶：再多的成员只体现在数量角标上。
+///
+/// 参数：[marker] 待画的叠点堆。
+/// 返回：叠影层数（0–[NfrOverlap.stackGhostMax]）。
+int _stackGhostReach(MapMarker marker) {
+  if (marker is! StackMarker) return 0;
+  final int available = marker.accentCategories.length - 1;
+  if (available <= 0) return 0;
+  return math.min(NfrOverlap.stackGhostMax, available);
+}
+
+/// 叠点堆的 Pin 直径（选中时与单点一致放大到 48）。
+///
+/// 参数：[marker] 叠点堆；[selectedListingId] 当前选中的信息 ID。
+/// 返回：直径（逻辑像素）。
+double _stackDiameter(StackMarker marker, String? selectedListingId) {
+  final bool selected =
+      selectedListingId != null && marker.contains(selectedListingId);
+  return selected ? kSelectedMarkerDiameter : kSinglePointMarkerDiameter;
 }
 
 /// 已完成整形的文本缓存。
@@ -245,6 +277,11 @@ class _MarkerPainter extends CustomPainter {
     for (final m in markers) {
       if (m is SinglePointMarker) _paintSinglePoint(canvas, m);
     }
+    // 叠点堆最后画（压在最上层）：它代表「重合的几条」，被单点盖住就等于
+    // 又回到「点不到」的老问题；命中判定是倒序遍历，顺序与之一致。
+    for (final m in markers) {
+      if (m is StackMarker) _paintStack(canvas, m);
+    }
   }
 
   /// 聚合 Marker：白底 + 分类色描边 + 居中数字。
@@ -297,7 +334,6 @@ class _MarkerPainter extends CustomPainter {
     final double diameter = isSelected
         ? kSelectedMarkerDiameter
         : kSinglePointMarkerDiameter;
-    final double radius = diameter / 2;
     final center = Offset(marker.x, marker.y);
     // 查不到按资源处理：Marker 的 listingId 来自同一批 listings，缺失说明
     // 两个入参不配套，是编码错误而非数据情况，故用 assert 暴露而不静默兜底。
@@ -307,6 +343,104 @@ class _MarkerPainter extends CustomPainter {
     );
     final isSupply = supplyDemandById[marker.listingId] != SupplyDemand.demand;
 
+    _paintPinBody(
+      canvas,
+      center,
+      diameter: diameter,
+      color: pinColor,
+      icon: pinIcon,
+      isSupply: isSupply,
+      isSelected: isSelected,
+    );
+
+    if (!isSupply) _paintDemandBadge(canvas, center, diameter / 2, pinColor);
+  }
+
+  /// 叠点堆：主层 Pin + 后方向右下的若干层「其它条分类色」叠影 + 数量角标。
+  ///
+  /// 叠影用组内其它条的分类色而非统一灰度：一眼能读出「这里不止一类」，
+  /// 且与主层（完整度最高的那条）形成对照。
+  void _paintStack(Canvas canvas, StackMarker marker) {
+    final String? selectedId = selectedListingId;
+    final bool isSelected = selectedId != null && marker.contains(selectedId);
+    final double diameter = isSelected
+        ? kSelectedMarkerDiameter
+        : kSinglePointMarkerDiameter;
+    final double radius = diameter / 2;
+    final center = Offset(marker.x, marker.y);
+
+    // 从最远一层往近处画，近的压住远的。
+    for (int i = _stackGhostReach(marker); i >= 1; i--) {
+      final Color ghostColor =
+          marker.accentCategories[i]?.color ?? neutralCategoryColor;
+      final Offset ghostCenter = center.translate(
+        _kStackGhostStepPx * i,
+        _kStackGhostStepPx * i,
+      );
+      canvas.drawCircle(
+        ghostCenter,
+        radius,
+        Paint()..color = Color(AppColors.surface).withValues(alpha: 0.78),
+      );
+      canvas.drawCircle(
+        ghostCenter,
+        radius - 1,
+        Paint()
+          ..color = ghostColor.withValues(alpha: i == 1 ? 0.52 : 0.28)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2,
+      );
+    }
+
+    final category = marker.topCategory;
+    final Color pinColor = category?.color ?? neutralCategoryColor;
+    final IconData pinIcon = category == null
+        ? neutralCategoryIcon
+        : l2CategoryIcon(marker.leafCategoryId) ?? category.icon;
+    assert(
+      supplyDemandById.containsKey(marker.representativeId),
+      '${marker.representativeId} 不在 supplyDemandById 内，markers 与该表不是同一批数据',
+    );
+    final bool isSupply =
+        supplyDemandById[marker.representativeId] != SupplyDemand.demand;
+
+    _paintPinBody(
+      canvas,
+      center,
+      diameter: diameter,
+      color: pinColor,
+      icon: pinIcon,
+      isSupply: isSupply,
+      isSelected: isSelected,
+    );
+    // 数量角标**替代**需求态的 ? 角标：同一位置只能挂一个角标，而条数比供需
+    // 更紧急；供需态仍由 Pin 本体的实心/空心表达，逐条供需在清单行内标明。
+    _paintCountBadge(canvas, center, radius, marker.count);
+  }
+
+  /// 画一枚 Pin 的本体（实心/空心 + 圆心字形 + 选中阴影），供需角标由调用方补。
+  ///
+  /// 抽出来是因为单点与叠点堆的主层规则完全一致 —— 两处各写一份的话，
+  /// 改一次配色或选中阴影就得改两个地方，而漏改的那处只在真机上看得出。
+  ///
+  /// 参数：
+  /// - [canvas] 画布；
+  /// - [center] Pin 圆心；
+  /// - [diameter] 直径（40 或选中 48）；
+  /// - [color] 分类色（查不到时中性色）；
+  /// - [icon] 圆心字形（二级优先）；
+  /// - [isSupply] 资源＝实心 / 需求＝空心；
+  /// - [isSelected] 是否选中（画阴影）。
+  void _paintPinBody(
+    Canvas canvas,
+    Offset center, {
+    required double diameter,
+    required Color color,
+    required IconData icon,
+    required bool isSupply,
+    required bool isSelected,
+  }) {
+    final double radius = diameter / 2;
     if (isSelected) {
       // 选中态阴影：单靠放大 8px 在密集区域看不出来，须有阴影把它从同色邻居中拔出。
       canvas.drawCircle(
@@ -319,18 +453,14 @@ class _MarkerPainter extends CustomPainter {
     }
 
     if (isSupply) {
-      canvas.drawCircle(center, radius, Paint()..color = pinColor);
+      canvas.drawCircle(center, radius, Paint()..color = color);
     } else {
-      canvas.drawCircle(
-        center,
-        radius,
-        Paint()..color = Color(AppColors.surface),
-      );
+      canvas.drawCircle(center, radius, Paint()..color = Color(AppColors.surface));
       canvas.drawCircle(
         center,
         radius - 1,
         Paint()
-          ..color = pinColor
+          ..color = color
           ..style = PaintingStyle.stroke
           ..strokeWidth = 2,
       );
@@ -340,32 +470,82 @@ class _MarkerPainter extends CustomPainter {
     _paintIcon(
       canvas,
       center,
-      icon: pinIcon,
+      icon: icon,
       size: diameter * 0.5,
-      color: isSupply ? Color(AppColors.surface) : pinColor,
+      color: isSupply ? Color(AppColors.surface) : color,
     );
+  }
 
-    if (!isSupply) {
-      // 需求态 ? 角标在右上，不占圆心 —— 圆心已被分类图标占用（PRD §6.4.2）。
-      final badgeCenter = center.translate(radius * 0.7, -radius * 0.7);
-      canvas.drawCircle(badgeCenter, 8, Paint()..color = pinColor);
-      canvas.drawCircle(
-        badgeCenter,
-        8,
-        Paint()
-          ..color = Color(AppColors.surface)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.5,
-      );
-      _paintCenteredText(
-        canvas,
-        badgeCenter,
-        text: '?',
-        color: Color(AppColors.surface),
-        fontSize: 11,
-        fontWeight: FontWeight.w700,
-      );
-    }
+  /// 需求态 ? 角标（右上，不占圆心 —— 圆心已被分类图标占用，PRD §6.4.2）。
+  ///
+  /// 参数：[canvas] 画布；[center] Pin 圆心；[radius] Pin 半径；[color] 分类色。
+  void _paintDemandBadge(
+    Canvas canvas,
+    Offset center,
+    double radius,
+    Color color,
+  ) {
+    final badgeCenter = center.translate(radius * 0.7, -radius * 0.7);
+    canvas.drawCircle(badgeCenter, 8, Paint()..color = color);
+    canvas.drawCircle(
+      badgeCenter,
+      8,
+      Paint()
+        ..color = Color(AppColors.surface)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5,
+    );
+    _paintCenteredText(
+      canvas,
+      badgeCenter,
+      text: '?',
+      color: Color(AppColors.surface),
+      fontSize: 11,
+      fontWeight: FontWeight.w700,
+    );
+  }
+
+  /// 叠点堆的数量角标（右上，深色胶囊 + 白字）。
+  ///
+  /// 用深色而非分类色：分类色在中低对比度下与 Pin 本体糊成一团，数量就失去了
+  /// 「这里不止一条」的提示作用（分类色白字本就不达 4.5:1，见 design_tokens）。
+  ///
+  /// 参数：
+  /// - [canvas] 画布；
+  /// - [center] Pin 圆心；
+  /// - [radius] Pin 半径（角标贴在圆外 0.72R 处）；
+  /// - [count] 组内条数，超过 `NfrOverlap.badgeMaxCount` 显示「N+」。
+  void _paintCountBadge(Canvas canvas, Offset center, double radius, int count) {
+    final String text = count > NfrOverlap.badgeMaxCount
+        ? '${NfrOverlap.badgeMaxCount}+'
+        : '$count';
+    final TextPainter painter = _cachedPainter(
+      text: text,
+      color: Color(AppColors.surface),
+      fontSize: 11,
+      fontWeight: FontWeight.w700,
+    );
+    // 固定高度、宽度随字数走：一位数时是圆角方，两位数自动变宽，不挤字。
+    final double width = math.max(19.0, painter.width + 10);
+    const double height = 19;
+    final Rect rect = Rect.fromCenter(
+      center: center.translate(radius * 0.72, -radius * 0.72),
+      width: width,
+      height: height,
+    );
+    final RRect rrect = RRect.fromRectAndRadius(rect, const Radius.circular(9.5));
+    canvas.drawRRect(rrect, Paint()..color = const Color(AppColors.textPrimary));
+    canvas.drawRRect(
+      rrect,
+      Paint()
+        ..color = Color(AppColors.surface)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5,
+    );
+    painter.paint(
+      canvas,
+      rect.center - Offset(painter.width / 2, painter.height / 2),
+    );
   }
 
   /// 把 [IconData] 当字形画出来。

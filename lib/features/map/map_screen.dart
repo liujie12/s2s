@@ -26,6 +26,7 @@ import 'package:x_amap_base/x_amap_base.dart';
 import '../../core/cache/grid_id.dart';
 import '../../core/network/api_error_code.dart';
 import '../../core/network/api_exception.dart';
+import '../../core/text/distance_label.dart';
 import '../../design_tokens.dart';
 import '../../domain/category_tree.dart';
 import '../../domain/listing.dart';
@@ -59,6 +60,7 @@ import 'clustering/marker_builder.dart';
 import 'fallback_map_canvas.dart';
 import 'map_projection.dart';
 import 'marker_layer.dart';
+import 'overlap_list_sheet.dart';
 
 /// 聚合网格边长（逻辑像素）。
 ///
@@ -1383,6 +1385,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           p.id.toString(): supplyDemandFromCompact(p.typeCode),
       },
       topCategoryByLeafId: topCategoryByLeafId,
+      // 完整度档（0/1/2）：叠点堆靠它排主层与清单首行（越大越完整）。
+      completenessById: {
+        for (final p in pins) p.id.toString(): p.completenessLevel,
+      },
     );
     _derivedPins = pins;
     _derivedClusters = clusters;
@@ -1417,15 +1423,20 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       );
     }, growable: false);
 
-    final clusters = clusterByGrid(points, gridSize: _kClusterGridSize);
-    return buildMarkers(
+    // 先叠点分组再网格聚合：同一坐标的多条信息（含不同类目）必须收成一枚
+    // 带数量的 Pin，否则重合时只有最上面那条能被点中（见 buildMarkersWithOverlap）。
+    return buildMarkersWithOverlap(
       points,
-      clusters,
       // 大类为 null（分类树查不到）时取最保守的阈值 3：宁可多聚也不要在
       // 密集区散成一片点。阈值该取几由产品决定，故留在调用方而非算法层。
       thresholdOf: (topCategory) =>
           topCategory?.clusterThreshold ??
           ListingCategory.work.clusterThreshold,
+      gridSize: _kClusterGridSize,
+      stackTolerance: NfrOverlap.stackTolerancePx,
+      // 主层＝完整度最高的那条；查不到按最低档（0）处理，
+      // 让「有数据的那条」优先当门面。
+      completenessOf: (id) => derived.completenessById[id] ?? 0,
     );
   }
 
@@ -1486,9 +1497,17 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 
   void _onTapMarker(MapMarker marker) {
+    // 叠点堆是「这里重合了几条」，点它要能挑一条 —— 放大解决不了选择问题。
+    if (marker is StackMarker) {
+      _openStackList(marker);
+      return;
+    }
     bool cameraChanged = false;
     setState(() {
       switch (marker) {
+        case StackMarker():
+          // 已在上面提前返回（sealed 类穷尽性由编译器保证，此分支不可达）。
+          break;
         case SinglePointMarker():
           _selectedListingId = marker.listingId;
         case ClusterMarker():
@@ -1505,6 +1524,37 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     // 真地图分支的视角由原生相机持有，Dart 侧改了缩放必须推给相机，否则点聚合圈
     // 「点了没反应」。降级分支没有控制器，这行为空操作。
     if (cameraChanged) _pushCameraToAmap();
+  }
+
+  /// 打开叠点清单，并把用户选中的那条直接带进详情页。
+  ///
+  /// 参数：[marker] 被点中的叠点堆（成员已按完整度排好序）。
+  ///
+  /// 返回：Future，无返回值；用户点面板外关闭时不做任何状态变更。
+  ///
+  /// **为什么点行直接进详情**（2026-10-30 用户裁定）：清单里已经有标题、供需、
+  /// 类目、距离、价格与完整度，足够判断「是不是这条」；再让用户回到地图点一次
+  /// 信息卡是多余的一步。选中态仍然写入，这样从详情返回时地图停在这条上。
+  Future<void> _openStackList(StackMarker marker) async {
+    final List<int> ids = marker.memberIds
+        .map(int.tryParse)
+        .whereType<int>()
+        .toList(growable: false);
+    if (ids.isEmpty) return;
+    // 展开清单即退出上一条的选中态：否则地图上会有一枚被放大的 Pin 与清单
+    // 同时"选中"，用户不知道当前在操作哪一条。
+    setState(() => _selectedListingId = null);
+    final LocationFix? fix = ref.read(locationFixProvider);
+    final int? picked = await showOverlapListSheet(
+      context,
+      listingIds: ids,
+      // 距离基准与信息卡同源（优先我的位置，未定位时退回视口中心）。
+      centerLat: fix?.lat ?? _centerLat,
+      centerLng: fix?.lng ?? _centerLng,
+    );
+    if (!mounted || picked == null) return;
+    setState(() => _selectedListingId = picked.toString());
+    await context.push('/detail/$picked');
   }
 }
 
@@ -1681,10 +1731,8 @@ class _ListingInfoCard extends ConsumerWidget {
           listing.latitude,
           listing.longitude,
         );
-        // 1km 内用米（取整到 10m）：与列表卡片同一口径，避免两处距离写法不一致。
-        final String distance = meters < 1000
-            ? '${(meters / 10).round() * 10}m'
-            : '${(meters / 1000).toStringAsFixed(1)}km';
+        // 距离文案与列表卡片同一实现（`core/text/distance_label.dart`）。
+        final String distance = distanceLabel(meters);
         final String price = listing.priceLabel == null
             ? ''
             : ' · ${listing.priceLabel}';
@@ -1859,6 +1907,7 @@ class _PinsDerived {
     required this.ids,
     required this.supplyDemandById,
     required this.topCategoryByLeafId,
+    required this.completenessById,
   });
 
   /// 与 pins 同序的 id 字符串（省掉每帧数万次 `int.toString()` 分配）。
@@ -1872,6 +1921,11 @@ class _PinsDerived {
   /// 按叶子去重后通常只有几条，故缓存的是「叶子→大类」而非逐 pin。
   /// 值可空（查询不到时），判命中须用 `containsKey`。
   final Map<int, ListingCategory?> topCategoryByLeafId;
+
+  /// 信息 ID → 完整度档（0/1/2，越大越完整）。
+  ///
+  /// 叠点堆用它决定「谁当主层」与清单首行；缺失时调用方按最低档处理。
+  final Map<String, int> completenessById;
 }
 
 /// 定位前骨架屏（PRD §6.7 `:1305`）。

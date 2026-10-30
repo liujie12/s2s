@@ -55,6 +55,53 @@ class SinglePointMarker extends MapMarker {
   final int? leafCategoryId;
 }
 
+/// 叠点堆 Marker：多条信息落在**几乎同一处**时只画一枚 Pin + 数量角标。
+///
+/// 与 [ClusterMarker] 的区别是尺度与语义：聚合圈代表「这一片很密」，点它是
+/// 放大地图；叠点堆代表「这里重合了几条」，点它是**展开清单挑一条**。
+/// 两者互斥 —— 进入叠点堆的点不再参与网格聚合，见 [buildMarkersWithOverlap]。
+///
+/// 为什么必须存在：重合的点若各画一枚 Pin，[MarkerLayer.hitTestMarker] 的
+/// 倒序命中只会返回最上面那枚，下面的在屏幕上等同于不存在。
+class StackMarker extends MapMarker {
+  const StackMarker({
+    required super.x,
+    required super.y,
+    required super.topCategory,
+    required this.representativeId,
+    required this.memberIds,
+    required this.accentCategories,
+    this.leafCategoryId,
+  });
+
+  /// 主层那条信息的本地标识（决定 Pin 的供需态与圆心字形）。
+  ///
+  /// 由调用方按「完整度最高优先」排出，故它与清单首行是同一条 —— 图面与
+  /// 清单能对得上，用户不会觉得「点进去是另一条」。
+  final String representativeId;
+
+  /// 组内全部成员 ID（含 [representativeId]），顺序即清单展示顺序。
+  final List<String> memberIds;
+
+  /// 与 [memberIds] 一一对应的分类色来源，用于画叠影（第 0 项即主层）。
+  ///
+  /// 存整组而非只存两层，是因为「最多几层」属图面规格，应由渲染层按
+  /// `NfrOverlap.stackGhostMax` 截断；本层不替它做这个决定。
+  final List<ListingCategory?> accentCategories;
+
+  /// 主层那条的叶子类目 ID（渲染层据此取二级字形）。
+  final int? leafCategoryId;
+
+  /// 组内条数（= [memberIds] 长度）。
+  int get count => memberIds.length;
+
+  /// 是否包含某条信息（选中态判定用）。
+  ///
+  /// 参数：[listingId] 待查的本地标识。
+  /// 返回：该 ID 是否在本组内。
+  bool contains(String listingId) => memberIds.contains(listingId);
+}
+
 /// 聚合 Marker，代表多条信息。
 class ClusterMarker extends MapMarker {
   const ClusterMarker({
@@ -148,4 +195,75 @@ List<MapMarker> buildMarkers(
   }
 
   return markers;
+}
+
+/// 完整的分组流水线：**先叠点分组，再网格聚合**，最后产出可渲染的 Marker 列表。
+///
+/// 为什么顺序不能反：网格聚合的分桶键含一级大类，同一坐标的两条不同类目
+/// 永远进不了同一桶（见 `grid_cluster.dart#clusterByGrid`），若先聚合再补叠点，
+/// 这类重合点已经被拆散、拿不回来了。反过来先按位置分组则没有信息损失 ——
+/// 分组只看坐标，类目只在画叠影时用到。
+///
+/// 与 [buildMarkers] 的关系：单点/聚合圈两条路径的行为完全一致，
+/// 本函数只是在其前面插了一道叠点分组，故未达叠点条件的点仍走原逻辑。
+///
+/// 参数：
+/// - [points]：聚合前的原始点集；
+/// - [thresholdOf]：某大类的聚合阈值（口径同 [buildMarkers]）；
+/// - [gridSize]：网格聚合边长（逻辑像素），转引调用方的常量真源；
+/// - [stackTolerance]：叠点判定距离（逻辑像素），见 `NfrOverlap.stackTolerancePx`；
+/// - [completenessOf]：信息 ID → 完整度档（0/1/2，越大越完整），用于排主层。
+///
+/// 返回：[MapMarker] 列表，顺序为「聚合圈 / 单点 / 叠点堆」—— 与绘制顺序一致，
+///   这样 [MarkerLayer.hitTestMarker] 的倒序命中才能先命中压在最后画的叠点堆。
+List<MapMarker> buildMarkersWithOverlap(
+  List<ClusterPoint> points, {
+  required int Function(ListingCategory? topCategory) thresholdOf,
+  required double gridSize,
+  required double stackTolerance,
+  required int Function(String id) completenessOf,
+}) {
+  final List<List<ClusterPoint>> groups = groupOverlappingPoints(
+    points,
+    tolerance: stackTolerance,
+  );
+
+  final List<StackMarker> stacks = [];
+  final List<ClusterPoint> rest = [];
+
+  for (final group in groups) {
+    if (group.length < 2) {
+      rest.add(group.single);
+      continue;
+    }
+    // 主层＝完整度最高的那条；同档按 ID 升序，保证同一批数据每次渲染顺序一致
+    // （否则清单首行会在两次拖动之间跳动）。
+    final List<ClusterPoint> members = [...group]
+      ..sort((a, b) {
+        final int byLevel = completenessOf(b.id).compareTo(completenessOf(a.id));
+        return byLevel != 0 ? byLevel : a.id.compareTo(b.id);
+      });
+    final ClusterPoint rep = members.first;
+    stacks.add(
+      StackMarker(
+        // 用主层坐标而非组中心：中心会漂移，且组内最大只差 18px，
+        // 主层坐标至少是「真实存在的那条信息所在处」。
+        x: rep.x,
+        y: rep.y,
+        topCategory: rep.topCategory,
+        representativeId: rep.id,
+        memberIds: List<String>.unmodifiable(members.map((m) => m.id)),
+        accentCategories: List<ListingCategory?>.unmodifiable(
+          members.map((m) => m.topCategory),
+        ),
+        leafCategoryId: rep.leafCategoryId,
+      ),
+    );
+  }
+
+  final List<Cluster> clusters = clusterByGrid(rest, gridSize: gridSize);
+  return [
+    ...buildMarkers(rest, clusters, thresholdOf: thresholdOf),
+    ...stacks,
+  ];
 }

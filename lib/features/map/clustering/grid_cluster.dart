@@ -148,6 +148,77 @@ List<Cluster> clusterByGrid(
   return buckets.values.map((b) => b.toCluster()).toList(growable: false);
 }
 
+/// 按「屏幕距离几乎重合」把点分成若干组（PRD §6.4.2 叠点堆的前置分组）。
+///
+/// **为什么不能只靠 [clusterByGrid]**：网格聚合的分桶键里带了一级大类，
+/// 同一坐标的「工作」与「房屋」永远进不了同一桶，于是两条完全重合的 Pin
+/// 在图上只能点到最上面那条；且大类阈值（如工作 3）决定了「2 条同类同点」
+/// 也不聚 —— 这条退化不报错，只表现为「点不到」。
+/// 故叠点分组**只看位置、不看类目**，且必须先于网格聚合执行。
+///
+/// 算法：以 [tolerance] 为格边长做空间哈希，每个点只查所在格与相邻 8 格，
+/// 与**组首点**比距离；在容差内即入组，否则自成新组。复杂度 O(n)，
+/// 与 [clusterByGrid] 同量级，可继续跑 POC 基准。
+///
+/// 用「组首点」而非组中心做比较：组中心随成员增加而漂移，会让「先来的点」
+/// 在后续点到来时被重新判成不合规，出现同一组内两点相距超过容差 ——
+/// 而图面上它们仍画在同一个位置，属看不出来的静默不一致。
+///
+/// 参数：
+/// - [points]：待分组的点集，允许为空；
+/// - [tolerance]：判定为同一处的屏幕距离（逻辑像素），必须 > 0。
+///
+/// 返回：组列表。**包含单点组**（长度 1），由调用方决定哪些组画成叠点堆；
+///   组顺序按「组首点首次出现顺序」稳定，组内成员保持入参顺序。
+List<List<ClusterPoint>> groupOverlappingPoints(
+  List<ClusterPoint> points, {
+  required double tolerance,
+}) {
+  assert(tolerance > 0, 'tolerance 必须为正数，收到 $tolerance');
+
+  if (points.isEmpty) return const [];
+
+  final List<List<ClusterPoint>> groups = [];
+  final List<ClusterPoint> seeds = [];
+  // 格键 → 组下标列表。用字符串键的理由同 [clusterByGrid]。
+  final Map<String, List<int>> cells = {};
+  final double toleranceSq = tolerance * tolerance;
+
+  for (final p in points) {
+    final int gx = (p.x / tolerance).floor();
+    final int gy = (p.y / tolerance).floor();
+    int? hitGroup;
+    // 只查 3×3 邻格：容差半径不超过一格边长，隔一格的组不可能命中。
+    for (int dx = -1; dx <= 1 && hitGroup == null; dx++) {
+      for (int dy = -1; dy <= 1; dy++) {
+        final List<int>? bucket = cells['${gx + dx}:${gy + dy}'];
+        if (bucket == null) continue;
+        for (final int gi in bucket) {
+          final ClusterPoint seed = seeds[gi];
+          final double ddx = p.x - seed.x;
+          final double ddy = p.y - seed.y;
+          if (ddx * ddx + ddy * ddy <= toleranceSq) {
+            hitGroup = gi;
+            break;
+          }
+        }
+        if (hitGroup != null) break;
+      }
+    }
+
+    if (hitGroup != null) {
+      groups[hitGroup].add(p);
+      continue;
+    }
+    final int gi = groups.length;
+    groups.add(<ClusterPoint>[p]);
+    seeds.add(p);
+    (cells['$gx:$gy'] ??= <int>[]).add(gi);
+  }
+
+  return groups;
+}
+
 /// 聚合过程中的可变累加器。
 ///
 /// 单独一个类而非用元组：累加过程要改状态，而 [Cluster] 是不可变的。

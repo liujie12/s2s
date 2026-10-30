@@ -17,6 +17,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/cache/grid_id.dart';
+import '../../core/text/distance_label.dart';
 import '../../core/time_format.dart';
 import '../../design_tokens.dart';
 import '../../domain/category_tree.dart';
@@ -443,10 +444,10 @@ class _ListingCard extends StatelessWidget {
     final String? age = card.publishAt == null
         ? null
         : formatRelativeAge(card.publishAt!);
-    final String? distanceLabel = card.distanceM == null
+    final String? distanceText = card.distanceM == null
         ? null
-        : _formatDistance(card.distanceM!.toDouble());
-    final List<String> meta = [?distanceLabel, ?age];
+        : distanceLabel(card.distanceM!.toDouble());
+    final List<String> meta = [?distanceText, ?age];
     final List<String> breadcrumb = [
       if (category != null) category.label,
       supplyDemand.label,
@@ -731,15 +732,6 @@ class _EmptyState extends ConsumerWidget {
       ),
     );
   }
-}
-
-/// 距离文案。
-///
-/// 1km 以内用米（取整到 10m）：「368m」比「0.37km」更符合步行距离的直觉。
-/// 超过则用公里保留一位小数。
-String _formatDistance(double meters) {
-  if (meters < 1000) return '${(meters / 10).round() * 10}m';
-  return '${(meters / 1000).toStringAsFixed(1)}km';
 }
 
 /// 发布时间的相对文案（实现见 `core/time_format.dart` 唯一实现处，
