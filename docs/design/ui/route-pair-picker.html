@@ -1,0 +1,1462 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>起终点双点采集 · 高保真设计稿</title>
+<style>
+  /* =========================================================================
+     本文件的颜色 / 字号 / 间距 / 圆角全部取自 lib/design_tokens.dart，
+     变量名后面的注释即对应 Dart 常量名，请勿在评审外新增色值。
+     ========================================================================= */
+  :root{
+    /* AppColors */
+    --primary:#0B7C8C;          /* AppColors.primary        */
+    --primary-dark:#075E6B;     /* AppColors.primaryDark    */
+    --primary-light:#E6F6F8;    /* AppColors.primaryLight   */
+    --accent:#B4531A;           /* AppColors.accent         */
+    --success:#22C55E;          /* AppColors.success        */
+    --warning:#F59E0B;          /* AppColors.warning        */
+    --error:#EF4444;            /* AppColors.error          */
+    --success-text:#15803D;     /* AppColors.successText    */
+    --warning-text:#B45309;     /* AppColors.warningText    */
+    --error-text:#B91C1C;       /* AppColors.errorText      */
+    --text-primary:#1F2937;     /* AppColors.textPrimary    */
+    --text-secondary:#6B7280;   /* AppColors.textSecondary  */
+    --text-placeholder:#9CA3AF; /* AppColors.textPlaceholder*/
+    --border:#E5E7EB;           /* AppColors.border         */
+    --background:#F8FAFC;       /* AppColors.background     */
+    --surface:#FFFFFF;          /* AppColors.surface        */
+
+    /* AppSpacing */
+    --xs:4px;   /* AppSpacing.xs  */
+    --sm:8px;   /* AppSpacing.sm  */
+    --md:12px;  /* AppSpacing.md  */
+    --lg:16px;  /* AppSpacing.lg  */
+    --xl:24px;  /* AppSpacing.xl  */
+    --xxl:32px; /* AppSpacing.xxl */
+
+    /* AppRadius */
+    --r-sm:4px;     /* AppRadius.sm   */
+    --r-md:8px;     /* AppRadius.md   */
+    --r-lg:12px;    /* AppRadius.lg   */
+    --r-xl:16px;    /* AppRadius.xl   */
+    --r-full:999px; /* AppRadius.full */
+
+    /* 唯一一处派生色：阴影取 AppColors.textPrimary 的低透明度，用于地图浮层 */
+    --shadow-map:0 2px 8px rgba(31,41,55,.10);
+    --shadow-phone:0 8px 24px rgba(31,41,55,.08);
+  }
+
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--background);
+    color:var(--text-primary);
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Segoe UI",sans-serif;
+    -webkit-font-smoothing:antialiased;
+    padding-bottom:var(--xxl);
+  }
+  h1,h2,h3,p,ul{margin:0;}
+  ul{padding-left:18px;}
+  svg{display:block;}
+
+  /* 字阶：AppTypeScale（行高 = 字号 × 倍率） */
+  .t-h1{font-size:24px;line-height:31.2px;font-weight:700;}   /* AppTypeScale.h1 */
+  .t-h2{font-size:18px;line-height:23.4px;font-weight:600;}   /* AppTypeScale.h2 */
+  .t-h3{font-size:16px;line-height:22.4px;font-weight:600;}   /* AppTypeScale.h3 */
+  .t-body{font-size:14px;line-height:21px;font-weight:400;}   /* AppTypeScale.body */
+  .t-small{font-size:12px;line-height:18px;font-weight:400;}  /* AppTypeScale.small */
+  .t-caption{font-size:11px;line-height:13.2px;font-weight:500;}/* AppTypeScale.caption */
+
+  /* ---------- 页面外框 ---------- */
+  .page{max-width:1720px;margin:0 auto;padding:var(--xxl);}
+
+  .banner{
+    background:var(--accent);
+    color:var(--surface);
+    font-size:14px;line-height:21px;font-weight:600;
+    padding:var(--md) var(--lg);
+    border-radius:var(--r-md);
+    display:flex;align-items:center;gap:var(--sm);
+    letter-spacing:.3px;
+  }
+  .banner svg{flex:none;}
+
+  .page-head{margin-bottom:var(--xxl);}
+  .page-head .title-row{
+    display:flex;align-items:baseline;gap:var(--md);flex-wrap:wrap;
+    margin-top:var(--xl);
+  }
+  .page-head .title-row .sub{color:var(--text-secondary);}
+  .page-head .scope{
+    margin-top:var(--sm);color:var(--text-secondary);font-size:12px;line-height:18px;
+  }
+  .page-head .scope b{color:var(--text-primary);font-weight:600;}
+
+  .swatches{
+    display:flex;flex-wrap:wrap;gap:var(--sm);
+    margin-top:var(--lg);
+  }
+  .sw{
+    display:flex;align-items:center;gap:6px;
+    border:1px solid var(--border);border-radius:var(--r-full);
+    background:var(--surface);padding:5px 10px 5px 5px;
+  }
+  .sw i{
+    width:18px;height:18px;border-radius:var(--r-sm);
+    border:1px solid var(--border);flex:none;
+  }
+  .sw span{font-size:11px;line-height:13.2px;color:var(--text-secondary);font-weight:500;}
+  .sw code{font-size:10px;color:var(--text-placeholder);font-family:ui-monospace,Consolas,monospace;}
+
+  /* ---------- 画框排布 ---------- */
+  .frames{
+    display:flex;flex-wrap:wrap;gap:var(--xxl);
+    align-items:flex-start;
+  }
+  .frame-cell{width:390px;}
+  .frame-cell.wide{width:auto;}
+
+  .frame-head{
+    display:flex;align-items:center;gap:var(--sm);
+    margin-bottom:var(--md);
+  }
+  .frame-head .num{
+    width:24px;height:24px;border-radius:var(--r-full);
+    background:var(--primary);color:var(--surface);
+    display:grid;place-items:center;
+    font-size:11px;font-weight:600;flex:none;
+  }
+  .frame-head h2{font-size:16px;line-height:22.4px;font-weight:600;}
+  .frame-head .hint{
+    margin-left:auto;font-size:11px;line-height:13.2px;font-weight:500;
+    color:var(--text-secondary);background:var(--surface);
+    border:1px solid var(--border);border-radius:var(--r-full);
+    padding:4px 8px;white-space:nowrap;
+  }
+  .map-note{
+    margin-top:var(--sm);font-size:11px;line-height:16px;
+    color:var(--text-secondary);
+  }
+  .map-note b{color:var(--primary-dark);font-weight:600;}
+
+  /* ---------- 手机画框 ---------- */
+  .phone{
+    width:390px;height:844px;
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--r-xl);
+    box-shadow:var(--shadow-phone);
+    overflow:hidden;
+    display:flex;flex-direction:column;
+  }
+  .statusbar{
+    height:24px;flex:none;
+    display:flex;align-items:center;justify-content:space-between;
+    padding:0 var(--lg);
+    font-size:11px;line-height:13.2px;font-weight:600;
+    color:var(--text-primary);
+  }
+  .statusbar .right{display:flex;align-items:center;gap:3px;}
+  .statusbar .bar{
+    width:2px;background:var(--text-primary);border-radius:1px;
+  }
+  .appbar{
+    height:48px;flex:none;
+    display:flex;align-items:center;
+    padding:0 var(--sm);
+    background:var(--surface);
+    border-bottom:1px solid var(--border);
+    position:relative;
+  }
+  .appbar .side{
+    min-width:64px;height:44px;
+    display:flex;align-items:center;
+    font-size:14px;line-height:21px;color:var(--text-secondary);
+  }
+  .appbar .side.right{justify-content:flex-end;}
+  .appbar .side.center{justify-content:center;}
+  .appbar .title{
+    flex:1;text-align:center;
+    font-size:16px;line-height:22.4px;font-weight:600;color:var(--text-primary);
+  }
+  .appbar .side .lead{display:flex;align-items:center;gap:2px;color:var(--primary);font-weight:500;}
+
+  .screen-body{
+    flex:1;min-height:0;
+    display:flex;flex-direction:column;
+    background:var(--background);
+  }
+  .pane{padding:var(--lg) var(--lg) 0;display:flex;flex-direction:column;min-height:0;flex:1;}
+
+  /* ---------- 两行卡片 ---------- */
+  .pair-card{
+    position:relative;
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--r-lg);
+    flex:none;
+  }
+  .pair-card.focused{border-color:var(--primary);}
+  .pair-card.floating{box-shadow:var(--shadow-map);}
+
+  .pair-row{
+    display:flex;align-items:center;gap:var(--md);
+    min-height:56px;
+    padding:var(--sm) 56px var(--sm) var(--md);
+    position:relative;
+  }
+  .pair-row + .pair-row::before{
+    content:"";position:absolute;left:46px;right:0;top:0;height:1px;background:var(--border);
+  }
+  .pair-row.compact{min-height:48px;padding-top:var(--xs);padding-bottom:var(--xs);}
+
+  .dot{
+    width:22px;height:22px;border-radius:var(--r-full);flex:none;
+    display:grid;place-items:center;
+    font-size:11px;line-height:13.2px;font-weight:600;
+  }
+  .dot.start{background:var(--primary-light);color:var(--primary-dark);}
+  .dot.end{background:var(--background);color:var(--text-secondary);border:1px solid var(--border);}
+  .dot.empty{background:var(--background);color:var(--text-placeholder);border:1px dashed var(--border);}
+
+  .pair-text{min-width:0;flex:1;}
+  .pair-value{
+    font-size:14px;line-height:21px;font-weight:500;color:var(--text-primary);
+    display:flex;align-items:center;gap:2px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .pair-value.ph{font-weight:400;color:var(--text-placeholder);}
+  .pair-sub{
+    margin-top:2px;
+    font-size:12px;line-height:18px;color:var(--text-secondary);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .caret{
+    display:inline-block;width:1.5px;height:18px;background:var(--primary);
+    margin-left:1px;border-radius:1px;
+    animation:blink 1.1s step-end infinite;
+  }
+  @keyframes blink{0%,50%{opacity:1}50.1%,100%{opacity:0}}
+  .pair-row.focused{background:var(--primary-light);}
+  .pair-row.focused .pair-value{color:var(--primary-dark);font-weight:600;}
+  .pair-row.focused + .pair-row::before{background:transparent;}
+
+  /* 交换按钮：热区 44×44，视觉 32 圆 */
+  .swap{
+    position:absolute;right:8px;top:50%;transform:translateY(-50%);
+    width:44px;height:44px;
+    display:grid;place-items:center;
+    background:transparent;border:0;padding:0;cursor:pointer;
+  }
+  /* 卡片底部多一条距离行时，交换按钮锚在两行交界（两行各 57）而非卡片几何中心 */
+  .pair-card.has-distance .swap{top:57px;}
+  .swap i{
+    width:32px;height:32px;border-radius:var(--r-full);
+    background:var(--surface);border:1px solid var(--border);
+    display:grid;place-items:center;color:var(--primary);
+    box-shadow:0 1px 2px rgba(31,41,55,.06);
+  }
+
+  /* 距离行（R7） */
+  .distance{
+    display:flex;align-items:center;gap:6px;
+    padding:var(--sm) var(--md) var(--sm) 46px;
+    border-top:1px solid var(--border);
+    background:var(--primary-light);
+    border-radius:0 0 var(--r-lg) var(--r-lg);
+  }
+  .distance .val{font-size:14px;line-height:21px;font-weight:600;color:var(--primary-dark);}
+  .distance .unit{
+    margin-left:auto;font-size:11px;line-height:13.2px;font-weight:500;color:var(--text-secondary);
+  }
+
+  /* ---------- 快捷项 chip（R5） ---------- */
+  .quick{display:flex;gap:var(--sm);margin-top:var(--md);flex:none;}
+  .chip{
+    display:inline-flex;align-items:center;gap:6px;
+    height:44px;padding:0 var(--md);
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--r-full);
+    color:var(--text-primary);
+    font-size:14px;line-height:21px;font-weight:500;
+  }
+  .chip svg{color:var(--primary);flex:none;}
+  .chip .cap{font-size:11px;line-height:13.2px;color:var(--text-secondary);font-weight:500;}
+
+  /* ---------- 候选列表（R6） ---------- */
+  .list-head{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:var(--sm) var(--xs) 6px;
+    font-size:11px;line-height:13.2px;font-weight:500;color:var(--text-secondary);
+  }
+  .list-head .kw{color:var(--text-primary);font-weight:600;}
+  .cand-list{flex:1;min-height:0;overflow:hidden;background:var(--surface);border-radius:var(--r-md);border:1px solid var(--border);}
+  .cand{
+    display:flex;align-items:center;gap:var(--md);
+    min-height:52px;padding:var(--sm) var(--md);
+    border-bottom:1px solid var(--border);
+    position:relative;background:var(--surface);
+  }
+  .cand:last-child{border-bottom:0;}
+  .cand .nm{
+    font-size:14px;line-height:21px;font-weight:500;color:var(--text-primary);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .cand .ad{
+    margin-top:1px;font-size:12px;line-height:18px;color:var(--text-secondary);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .cand .txt{min-width:0;flex:1;}
+  .cand .go{color:var(--primary);flex:none;}
+  .cand.hl{background:var(--primary-light);}
+  .cand.hl .nm{color:var(--primary-dark);font-weight:600;}
+  .cand.hl::before{
+    content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--primary);
+  }
+
+  /* ---------- 空态 ---------- */
+  .empty{
+    flex:1;min-height:0;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    text-align:center;padding:var(--lg) var(--md) var(--xl);
+  }
+  .empty .ring{
+    width:64px;height:64px;border-radius:var(--r-full);
+    border:1.5px dashed var(--border);
+    display:grid;place-items:center;color:var(--primary);
+    margin-bottom:var(--md);
+  }
+  .empty .tt{font-size:14px;line-height:21px;font-weight:600;color:var(--text-primary);}
+  .empty .ds{margin-top:var(--xs);font-size:12px;line-height:18px;color:var(--text-secondary);max-width:280px;}
+  .empty .ds + .ds{margin-top:2px;}
+
+  /* 已选齐后的提示块 */
+  .done-block{
+    flex:1;min-height:0;
+    display:flex;flex-direction:column;gap:var(--md);
+    padding-top:var(--lg);
+  }
+  .ok-line{
+    display:flex;align-items:center;gap:6px;
+    font-size:12px;line-height:18px;color:var(--success-text);
+  }
+  .tip-card{
+    background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);
+    padding:var(--md);
+  }
+  .tip-card .th{font-size:11px;line-height:13.2px;font-weight:600;color:var(--text-secondary);letter-spacing:.3px;}
+  .tip-card .tl{margin-top:6px;font-size:12px;line-height:18px;color:var(--text-secondary);display:flex;gap:6px;}
+  .tip-card .tl b{color:var(--text-primary);font-weight:600;}
+  .tip-card .tl svg{flex:none;margin-top:1px;color:var(--primary);}
+
+  /* ---------- 底部确认区（R11） ---------- */
+  .confirm-bar{
+    flex:none;margin-top:auto;
+    background:var(--surface);
+    border-top:1px solid var(--border);
+    padding:var(--md) var(--lg) var(--lg);
+  }
+  .btn{
+    width:100%;height:48px;border:0;border-radius:var(--r-full);
+    background:var(--primary);color:var(--surface);
+    font-size:14px;line-height:21px;font-weight:600;
+    font-family:inherit;
+    display:flex;align-items:center;justify-content:center;gap:6px;
+  }
+  .btn.ph{background:var(--border);color:var(--text-placeholder);}
+  .btn.sm{height:44px;font-size:13px;line-height:20px;}
+  .helper{
+    margin-top:var(--sm);
+    display:flex;align-items:center;justify-content:center;gap:4px;
+    font-size:12px;line-height:18px;color:var(--text-secondary);
+    text-align:center;
+  }
+  .helper svg{flex:none;}
+
+  /* ---------- 键盘 ---------- */
+  .keyboard{
+    flex:none;height:200px;
+    background:var(--border);
+    display:flex;flex-direction:column;gap:5px;
+    padding:5px 6px var(--sm);
+  }
+  .kb-cap{
+    height:16px;display:flex;align-items:center;justify-content:center;
+    font-size:10px;line-height:12px;color:var(--text-secondary);
+  }
+  .kb-row{flex:1;display:flex;gap:5px;}
+  .key{
+    flex:1;background:var(--surface);border-radius:6px;
+    display:grid;place-items:center;
+    font-size:11px;line-height:13.2px;font-weight:500;color:var(--text-primary);
+  }
+  .key.blank{background:var(--background);color:var(--text-placeholder);}
+  .key.wide{flex:2.6;}
+
+  /* ---------- 地图模式（R8） ---------- */
+  .map{
+    position:relative;flex:1;min-height:0;overflow:hidden;
+    background:
+      linear-gradient(90deg, transparent 0 96px, var(--surface) 96px 104px, transparent 104px),
+      linear-gradient(0deg, transparent 0 138px, var(--surface) 138px 146px, transparent 146px),
+      linear-gradient(90deg, transparent 0 262px, var(--border) 262px 263px, transparent 263px),
+      linear-gradient(0deg, transparent 0 320px, var(--border) 320px 321px, transparent 321px),
+      var(--background);
+  }
+  .map .blk{position:absolute;background:var(--surface);border:1px solid var(--border);border-radius:2px;}
+  .map .water{
+    position:absolute;background:var(--primary-light);
+    border-radius:58% 42% 52% 48%;
+  }
+  .map .labor{
+    position:absolute;left:0;right:0;height:9px;
+    background:var(--surface);box-shadow:0 0 0 1px var(--border);
+  }
+  .map .labor.v{left:auto;right:auto;top:0;bottom:0;width:9px;height:auto;}
+  .map-label{
+    position:absolute;
+    font-size:11px;line-height:13.2px;font-weight:500;color:var(--text-secondary);
+    background:var(--surface);padding:1px 3px;border-radius:2px;
+  }
+  .map-pin{
+    position:absolute;left:50%;top:50%;
+    transform:translate(-50%,-50%) translateY(-18px);
+    width:40px;height:40px;
+    color:var(--primary);            /* AppColors.primary */
+    filter:drop-shadow(0 2px 3px rgba(31,41,55,.28));
+  }
+  .map-pin .hole{fill:var(--surface);} /* AppColors.surface */
+  .map-badge{
+    position:absolute;left:var(--md);top:132px;
+    display:inline-flex;align-items:center;gap:5px;
+    background:var(--surface);border:1px solid var(--border);
+    border-radius:var(--r-full);
+    padding:6px 10px;
+    font-size:11px;line-height:13.2px;font-weight:500;color:var(--text-secondary);
+    box-shadow:var(--shadow-map);
+  }
+  .map-badge i{width:6px;height:6px;border-radius:var(--r-full);background:var(--primary);}
+  .map-badge b{color:var(--primary-dark);font-weight:600;}
+
+  .map-card{
+    position:absolute;left:var(--md);right:var(--md);top:var(--md);
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--r-lg);
+    box-shadow:var(--shadow-map);
+  }
+  .map-card .pair-row{padding-right:56px;}
+
+  .sheet{
+    flex:none;background:var(--surface);
+    border-top:1px solid var(--border);
+    border-radius:var(--r-xl) var(--r-xl) 0 0;
+    padding:var(--sm) var(--lg) var(--lg);
+    box-shadow:0 -2px 8px rgba(31,41,55,.06);
+  }
+  .sheet .handle{
+    width:36px;height:4px;border-radius:var(--r-full);
+    background:var(--border);margin:0 auto var(--md);
+  }
+  .sheet .kicker{
+    font-size:11px;line-height:13.2px;font-weight:500;color:var(--text-secondary);
+  }
+  .sheet .addr{
+    margin-top:2px;
+    font-size:14px;line-height:21px;font-weight:600;color:var(--text-primary);
+  }
+  .sheet .privacy{
+    margin-top:6px;
+    display:flex;align-items:center;gap:4px;
+    font-size:11px;line-height:13.2px;color:var(--text-secondary);
+  }
+  .sheet .btn{margin-top:var(--md);}
+  .sheet .privacy svg{color:var(--primary);flex:none;}
+
+  /* ---------- 小图：返回表单后的一行摘要（R1） ---------- */
+  .mini-board{
+    width:390px;margin-top:var(--md);
+  }
+  .mini-cap{
+    font-size:11px;line-height:13.2px;font-weight:600;color:var(--text-secondary);
+    margin-bottom:6px;
+  }
+  .form-card{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--r-lg);
+    padding:var(--md) var(--lg);
+  }
+  .form-card .fc-title{
+    font-size:11px;line-height:13.2px;font-weight:600;color:var(--text-placeholder);
+    letter-spacing:.3px;margin-bottom:6px;
+  }
+  .summary-row{
+    display:flex;align-items:center;gap:var(--md);
+    min-height:56px;
+    border-top:1px solid var(--border);
+  }
+  .summary-row:first-of-type{border-top:0;}
+  .summary-row .k{
+    width:56px;flex:none;
+    font-size:14px;line-height:21px;color:var(--text-secondary);
+  }
+  .summary-row .v{
+    flex:1;min-width:0;
+    font-size:14px;line-height:21px;font-weight:600;color:var(--text-primary);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .summary-row .v.ph{font-weight:400;color:var(--text-placeholder);}
+  .summary-row .arrow{color:var(--text-placeholder);flex:none;}
+  .mini-note{
+    margin-top:6px;font-size:11px;line-height:16px;color:var(--text-secondary);
+  }
+
+  /* ---------- 降级态小条（AE4 / AE5） ---------- */
+  .side-col{width:232px;display:flex;flex-direction:column;gap:var(--md);}
+  .side-title{
+    font-size:11px;line-height:13.2px;font-weight:600;color:var(--text-secondary);
+    letter-spacing:.3px;
+  }
+  .strip{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--r-lg);
+    padding:var(--md);
+  }
+  .strip .sh{
+    display:flex;align-items:center;gap:6px;justify-content:space-between;
+    margin-bottom:var(--sm);
+  }
+  .strip .sh b{font-size:12px;line-height:18px;font-weight:600;color:var(--text-primary);}
+  .strip .sh span{font-size:10px;line-height:12px;color:var(--text-placeholder);}
+  .mini-pair{
+    border:1px solid var(--border);border-radius:var(--r-md);
+    overflow:hidden;
+  }
+  .mini-row{
+    display:flex;align-items:center;gap:var(--sm);
+    min-height:44px;padding:var(--xs) var(--sm) var(--xs) 10px;
+    position:relative;
+  }
+  .mini-row + .mini-row{border-top:1px solid var(--border);}
+  .mini-row .dot{width:18px;height:18px;font-size:10px;line-height:12px;}
+  .mini-row .mv{font-size:12px;line-height:18px;font-weight:500;color:var(--text-primary);}
+  .mini-row .mv.ph{font-weight:400;color:var(--warning-text);}
+  .mini-row .ms{font-size:10px;line-height:14px;color:var(--text-secondary);}
+  .mini-fail{
+    display:flex;align-items:center;gap:4px;
+    margin-top:6px;padding:6px var(--sm);
+    background:var(--background);border-left:3px solid var(--warning);
+    border-radius:var(--r-sm);
+    font-size:11px;line-height:15px;color:var(--warning-text);
+  }
+  .mini-btn{
+    margin-top:var(--sm);height:44px;border-radius:var(--r-full);
+    display:flex;align-items:center;justify-content:center;
+    font-size:12px;line-height:18px;font-weight:600;
+    background:var(--primary);color:var(--surface);
+  }
+  .mini-btn.ph{background:var(--border);color:var(--text-placeholder);}
+  .mini-help{
+    margin-top:6px;display:flex;align-items:center;gap:4px;
+    font-size:11px;line-height:15px;color:var(--text-secondary);
+  }
+  .strip .foot{
+    margin-top:var(--sm);font-size:11px;line-height:15px;color:var(--text-secondary);
+  }
+
+  /* ---------- 设计说明 ---------- */
+  .notes{
+    margin-top:var(--xxl);
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--r-lg);
+    padding:var(--xl);
+  }
+  .notes h2{font-size:18px;line-height:23.4px;font-weight:600;}
+  .notes .lead{
+    margin-top:var(--xs);font-size:12px;line-height:18px;color:var(--text-secondary);
+  }
+  .notes h3{
+    margin-top:var(--xl);margin-bottom:var(--sm);
+    font-size:16px;line-height:22.4px;font-weight:600;
+    display:flex;align-items:center;gap:var(--sm);
+  }
+  .notes h3 .idx{
+    font-size:11px;line-height:13.2px;font-weight:600;color:var(--text-placeholder);
+  }
+  .notes h3 .cnt{
+    margin-left:auto;font-size:11px;line-height:13.2px;font-weight:500;color:var(--text-secondary);
+  }
+  table{
+    width:100%;border-collapse:collapse;
+    font-size:12px;line-height:18px;
+  }
+  thead th{
+    text-align:left;
+    background:var(--background);
+    color:var(--text-secondary);
+    font-size:11px;line-height:13.2px;font-weight:600;
+    padding:var(--sm) var(--md);
+    border-bottom:1px solid var(--border);
+    white-space:nowrap;
+  }
+  tbody td{
+    padding:10px var(--md);
+    border-bottom:1px solid var(--border);
+    vertical-align:top;
+    color:var(--text-primary);
+  }
+  tbody tr:last-child td{border-bottom:0;}
+  tbody td.k{font-weight:600;color:var(--text-primary);white-space:nowrap;}
+  tbody td.mono,code{
+    font-family:ui-monospace,Consolas,monospace;
+    font-size:11px;color:var(--primary-dark);
+  }
+  td .muted{color:var(--text-secondary);}
+  .tag{
+    display:inline-block;padding:1px 6px;border-radius:var(--r-full);
+    background:var(--primary-light);color:var(--primary-dark);
+    font-size:10px;line-height:14px;font-weight:600;white-space:nowrap;
+  }
+  .tag.warn{background:var(--background);color:var(--warning-text);border:1px solid var(--border);}
+  .tag.gray{background:var(--background);color:var(--text-secondary);border:1px solid var(--border);}
+  .a11y-list{margin:0;padding-left:18px;font-size:12px;line-height:20px;color:var(--text-primary);}
+  .a11y-list li{margin:2px 0;}
+  .a11y-list code{font-size:11px;}
+  .footnote{
+    margin-top:var(--lg);padding-top:var(--md);
+    border-top:1px solid var(--border);
+    font-size:11px;line-height:18px;color:var(--text-secondary);
+  }
+  @media (max-width:900px){
+    .page{padding:var(--lg);}
+    .frame-cell,.phone,.mini-board{width:100%;max-width:390px;}
+    .side-col{width:100%;max-width:390px;}
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ===================== 评审提示 ===================== -->
+  <header class="page-head">
+    <div class="banner">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/>
+      </svg>
+      设计稿 · 用于评审，不是可运行实现
+    </div>
+
+    <div class="title-row">
+      <h1 class="t-h1">起终点双点采集 · 高保真设计稿</h1>
+      <p class="sub t-body">发布流程专用「选择起终点」页 · 表单侧一行摘要入口</p>
+    </div>
+    <p class="scope">
+      依据 <b>docs/plans/2026-10-30-1018-feat-route-pair-picker-plan.md</b>（R1–R13 / AE1–AE6）；颜色、字阶、间距、圆角全部取 <b>lib/design_tokens.dart</b> 的真实值，token 名标注在每个组件上。
+    </p>
+
+    <div class="swatches">
+      <div class="sw"><i style="background:var(--primary)"></i><span>primary</span><code>#0B7C8C</code></div>
+      <div class="sw"><i style="background:var(--primary-dark)"></i><span>primaryDark</span><code>#075E6B</code></div>
+      <div class="sw"><i style="background:var(--primary-light)"></i><span>primaryLight</span><code>#E6F6F8</code></div>
+      <div class="sw"><i style="background:var(--surface)"></i><span>surface</span><code>#FFFFFF</code></div>
+      <div class="sw"><i style="background:var(--background)"></i><span>background</span><code>#F8FAFC</code></div>
+      <div class="sw"><i style="background:var(--border)"></i><span>border</span><code>#E5E7EB</code></div>
+      <div class="sw"><i style="background:var(--text-primary)"></i><span>textPrimary</span><code>#1F2937</code></div>
+      <div class="sw"><i style="background:var(--text-secondary)"></i><span>textSecondary</span><code>#6B7280</code></div>
+      <div class="sw"><i style="background:var(--text-placeholder)"></i><span>textPlaceholder</span><code>#9CA3AF</code></div>
+      <div class="sw"><i style="background:var(--warning)"></i><span>warning</span><code>#F59E0B</code></div>
+      <div class="sw"><i style="background:var(--warning-text)"></i><span>warningText</span><code>#B45309</code></div>
+      <div class="sw"><i style="background:var(--success-text)"></i><span>successText</span><code>#15803D</code></div>
+    </div>
+  </header>
+
+  <main class="frames">
+
+    <!-- ============================================================
+         画框 01 · 默认态
+         ============================================================ -->
+    <article class="frame-cell">
+      <div class="frame-head">
+        <span class="num">01</span>
+        <h2>默认态</h2>
+        <span class="hint">AE1</span>
+      </div>
+
+      <div class="phone" role="img" aria-label="默认态：起点为我的位置，终点为空，确认按钮禁用">
+        <div class="statusbar">
+          <span>9:41</span>
+          <span class="right">
+            <span class="bar" style="height:5px"></span>
+            <span class="bar" style="height:7px"></span>
+            <span class="bar" style="height:9px"></span>
+            <span class="bar" style="height:11px"></span>
+          </span>
+        </div>
+
+        <div class="appbar">
+          <div class="side">取消</div>
+          <div class="title">选择起终点</div>
+          <div class="side right"></div>
+        </div>
+
+        <div class="screen-body">
+          <div class="pane">
+            <!-- 两行卡片：起点默认「我的位置」，终点空（R3） -->
+            <div class="pair-card">
+              <div class="pair-row">
+                <span class="dot start">起</span>
+                <div class="pair-text">
+                  <div class="pair-value">我的位置</div>
+                  <div class="pair-sub">当前定位</div>
+                </div>
+              </div>
+              <div class="pair-row">
+                <span class="dot end">终</span>
+                <div class="pair-text">
+                  <div class="pair-value ph">搜索终点</div>
+                </div>
+              </div>
+              <!-- 交换起终点（R4） -->
+              <button class="swap" type="button" aria-label="交换起终点">
+                <i>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M7 20V5M4 8l3-3 3 3"/><path d="M17 4v15M14 16l3 3 3-3"/>
+                  </svg>
+                </i>
+              </button>
+            </div>
+
+            <!-- 快捷项（R5） -->
+            <div class="quick">
+              <span class="chip">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="7"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="2.2"/>
+                </svg>
+                我的位置
+              </span>
+              <span class="chip">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M9 3 3 6v15l6-3 6 3 6-3V3l-6 3-6-3Z"/><path d="M9 3v15M15 6v15"/>
+                </svg>
+                地图选点
+              </span>
+            </div>
+
+            <!-- 空态：未输入关键词 -->
+            <div class="empty">
+              <div class="ring">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/>
+                </svg>
+              </div>
+              <div class="tt">先搜索终点</div>
+              <p class="ds">在上方输入小区、写字楼或商圈名称</p>
+              <p class="ds">也可以点「地图选点」直接落针</p>
+            </div>
+          </div>
+
+          <!-- 确认按钮：缺终点时禁用并说明（R11 / AE1） -->
+          <div class="confirm-bar">
+            <button class="btn ph" type="button" aria-disabled="true" aria-describedby="h1">确认起终点</button>
+            <p class="helper" id="h1">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--warning)" aria-hidden="true">
+                <circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/>
+              </svg>
+              还差终点：选好终点后即可确认
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <p class="map-note">对应：<b>R3, R5, R11 / AE1</b> · 起点默认「我的位置」，终点空，候选区为空态</p>
+    </article>
+
+    <!-- ============================================================
+         画框 02 · 搜索候选态
+         ============================================================ -->
+    <article class="frame-cell">
+      <div class="frame-head">
+        <span class="num">02</span>
+        <h2>搜索候选态</h2>
+        <span class="hint">R6</span>
+      </div>
+
+      <div class="phone" role="img" aria-label="搜索候选态：终点输入中关，下方五条 POI 候选，键盘弹起">
+        <div class="statusbar">
+          <span>9:41</span>
+          <span class="right">
+            <span class="bar" style="height:5px"></span>
+            <span class="bar" style="height:7px"></span>
+            <span class="bar" style="height:9px"></span>
+            <span class="bar" style="height:11px"></span>
+          </span>
+        </div>
+
+        <div class="appbar">
+          <div class="side">取消</div>
+          <div class="title">选择起终点</div>
+          <div class="side right"></div>
+        </div>
+
+        <div class="screen-body">
+          <div class="pane">
+            <div class="pair-card focused">
+              <div class="pair-row">
+                <span class="dot start">起</span>
+                <div class="pair-text">
+                  <div class="pair-value">我的位置</div>
+                  <div class="pair-sub">当前定位</div>
+                </div>
+              </div>
+              <!-- 正在编辑终点：输入「中关」 -->
+              <div class="pair-row focused">
+                <span class="dot end">终</span>
+                <div class="pair-text">
+                  <div class="pair-value">中关<span class="caret" aria-hidden="true"></span></div>
+                  <div class="pair-sub">输入关键词，下方实时匹配</div>
+                </div>
+              </div>
+              <button class="swap" type="button" aria-label="交换起终点">
+                <i>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M7 20V5M4 8l3-3 3 3"/><path d="M17 4v15M14 16l3 3 3-3"/>
+                  </svg>
+                </i>
+              </button>
+            </div>
+
+            <div class="quick">
+              <span class="chip">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="7"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="2.2"/>
+                </svg>
+                我的位置
+              </span>
+              <span class="chip">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M9 3 3 6v15l6-3 6 3 6-3V3l-6 3-6-3Z"/><path d="M9 3v15M15 6v15"/>
+                </svg>
+                地图选点
+              </span>
+            </div>
+
+            <div class="list-head">
+              <span>搜索「<span class="kw">中关</span>」的结果</span>
+              <span>共 5 条</span>
+            </div>
+
+            <!-- 候选列表：名称 + 一句地址描述 + 右侧回填箭头 -->
+            <div class="cand-list">
+              <div class="cand hl">
+                <div class="txt">
+                  <div class="nm">中关村</div>
+                  <div class="ad">海淀区中关村大街 · 商圈</div>
+                </div>
+                <svg class="go" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="m14 6 6 6-6 6"/><path d="M4 12h15"/>
+                </svg>
+              </div>
+              <div class="cand">
+                <div class="txt">
+                  <div class="nm">中关村地铁站</div>
+                  <div class="ad">海淀区 · 4 号线大兴线</div>
+                </div>
+                <svg class="go" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="m14 6 6 6-6 6"/><path d="M4 12h15"/>
+                </svg>
+              </div>
+              <div class="cand">
+                <div class="txt">
+                  <div class="nm">中关村软件园</div>
+                  <div class="ad">海淀区西北旺东路 10 号</div>
+                </div>
+                <svg class="go" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="m14 6 6 6-6 6"/><path d="M4 12h15"/>
+                </svg>
+              </div>
+              <div class="cand">
+                <div class="txt">
+                  <div class="nm">中关村南大街</div>
+                  <div class="ad">海淀区 · 主干道</div>
+                </div>
+                <svg class="go" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="m14 6 6 6-6 6"/><path d="M4 12h15"/>
+                </svg>
+              </div>
+              <div class="cand">
+                <div class="txt">
+                  <div class="nm">中关村创业大街</div>
+                  <div class="ad">海淀区海淀西大街 36 号</div>
+                </div>
+                <svg class="go" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="m14 6 6 6-6 6"/><path d="M4 12h15"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <div class="confirm-bar">
+            <button class="btn ph" type="button" aria-disabled="true">确认起终点</button>
+            <p class="helper">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--warning)" aria-hidden="true">
+                <circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/>
+              </svg>
+              还差终点：点选一条候选即可回填
+            </p>
+          </div>
+
+          <!-- 键盘：仅示意弹起高度与遮挡关系 -->
+          <div class="keyboard" aria-hidden="true">
+            <div class="kb-cap">系统键盘（示意，不画真实按键）</div>
+            <div class="kb-row">
+              <span class="key">q</span><span class="key">w</span><span class="key">e</span><span class="key">r</span><span class="key">t</span><span class="key">y</span><span class="key">u</span><span class="key">i</span><span class="key">o</span><span class="key">p</span>
+            </div>
+            <div class="kb-row">
+              <span class="key">a</span><span class="key">s</span><span class="key">d</span><span class="key">f</span><span class="key">g</span><span class="key">h</span><span class="key">j</span><span class="key">k</span><span class="key">l</span>
+            </div>
+            <div class="kb-row">
+              <span class="key">z</span><span class="key">x</span><span class="key">c</span><span class="key">v</span><span class="key">b</span><span class="key">n</span><span class="key">m</span><span class="key blank">⌫</span>
+            </div>
+            <div class="kb-row">
+              <span class="key blank">123</span><span class="key wide">空格</span><span class="key blank">换行</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <p class="map-note">对应：<b>R6, R5, R11</b> · 5 条候选含 1 条高亮；卡片未显示距离（只选了一端）</p>
+    </article>
+
+    <!-- ============================================================
+         画框 03 · 已选齐态 + 表单入口小图
+         ============================================================ -->
+    <article class="frame-cell">
+      <div class="frame-head">
+        <span class="num">03</span>
+        <h2>已选齐态</h2>
+        <span class="hint">R7 / R1</span>
+      </div>
+
+      <div class="phone" role="img" aria-label="已选齐态：起点回龙观、终点中关村，显示约 18 km 约 35 分钟，确认可点">
+        <div class="statusbar">
+          <span>9:41</span>
+          <span class="right">
+            <span class="bar" style="height:5px"></span>
+            <span class="bar" style="height:7px"></span>
+            <span class="bar" style="height:9px"></span>
+            <span class="bar" style="height:11px"></span>
+          </span>
+        </div>
+
+        <div class="appbar">
+          <div class="side">取消</div>
+          <div class="title">选择起终点</div>
+          <div class="side right"></div>
+        </div>
+
+        <div class="screen-body">
+          <div class="pane">
+            <div class="pair-card has-distance">
+              <div class="pair-row">
+                <span class="dot start">起</span>
+                <div class="pair-text">
+                  <div class="pair-value">回龙观</div>
+                  <div class="pair-sub">昌平区回龙观西大街</div>
+                </div>
+              </div>
+              <div class="pair-row">
+                <span class="dot end">终</span>
+                <div class="pair-text">
+                  <div class="pair-value">中关村</div>
+                  <div class="pair-sub">海淀区中关村大街</div>
+                </div>
+              </div>
+              <button class="swap" type="button" aria-label="交换起终点">
+                <i>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M7 20V5M4 8l3-3 3 3"/><path d="M17 4v15M14 16l3 3 3-3"/>
+                  </svg>
+                </i>
+              </button>
+              <!-- 距离行：两端都有坐标才出现（R7） -->
+              <div class="distance">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--primary)" aria-hidden="true">
+                  <path d="M5 16.5V15a2 2 0 0 1 2-2h10a2 2 0 0 0 2-2V9.5"/><circle cx="5" cy="18.5" r="1.5"/><circle cx="19" cy="7" r="1.5"/>
+                </svg>
+                <span class="val">约 18 km · 约 35 分钟</span>
+                <span class="unit">驾车</span>
+              </div>
+            </div>
+
+            <div class="quick">
+              <span class="chip">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="7"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="2.2"/>
+                </svg>
+                我的位置
+              </span>
+              <span class="chip">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M9 3 3 6v15l6-3 6 3 6-3V3l-6 3-6-3Z"/><path d="M9 3v15M15 6v15"/>
+                </svg>
+                地图选点
+              </span>
+            </div>
+
+            <div class="done-block">
+              <div class="ok-line">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="9"/><path d="m8 12.5 3 3 5-6"/>
+                </svg>
+                起终点都已定位，拼车「位置精确」成立（R10）
+              </div>
+
+              <div class="tip-card">
+                <div class="th">接下来可以</div>
+                <p class="tl">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 20V5M4 8l3-3 3 3"/><path d="M17 4v15M14 16l3 3 3-3"/></svg>
+                  方向填反了点 <b>⇄</b>，两行互换并重算距离
+                </p>
+                <p class="tl">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
+                  点任一行可重新搜索，或改用 <b>地图选点</b>
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="confirm-bar">
+            <button class="btn" type="button">确认起终点</button>
+            <p class="helper" style="color:var(--success-text)">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7"/></svg>
+              两端齐全，确认后回填发布表单
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 小图：返回表单后的一行摘要（R1 两态） -->
+      <div class="mini-board">
+        <div class="mini-cap">小图 · 返回发布表单后的一行摘要（R1）</div>
+        <div class="form-card">
+          <div class="fc-title">分类专属信息</div>
+          <div class="summary-row">
+            <span class="k">起终点</span>
+            <span class="v">回龙观 → 中关村</span>
+            <svg class="arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+          </div>
+          <div class="summary-row">
+            <span class="k">起终点</span>
+            <span class="v ph">选择起终点</span>
+            <svg class="arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+          </div>
+        </div>
+        <p class="mini-note">上：已选（起点名 → 终点名）；下：未选（占位「选择起终点」）。整行可点，进本页。</p>
+      </div>
+
+      <p class="map-note">对应：<b>R7, R1, R4, R10 / AE2</b> · 距离行仅在两端都有坐标时出现</p>
+    </article>
+
+    <!-- ============================================================
+         画框 04 · 地图模式 + 两个降级态
+         ============================================================ -->
+    <article class="frame-cell wide">
+      <div class="frame-head">
+        <span class="num">04</span>
+        <h2>地图模式 + 降级态</h2>
+        <span class="hint">R8 / R12 / R13</span>
+      </div>
+
+      <div style="display:flex;gap:var(--lg);align-items:flex-start;flex-wrap:wrap;">
+
+        <div class="phone" role="img" aria-label="地图模式：顶部两行卡片浮在图上，中心准星，底部确认此点">
+          <div class="statusbar">
+            <span>9:41</span>
+            <span class="right">
+              <span class="bar" style="height:5px"></span>
+              <span class="bar" style="height:7px"></span>
+              <span class="bar" style="height:9px"></span>
+              <span class="bar" style="height:11px"></span>
+            </span>
+          </div>
+
+          <div class="appbar">
+            <div class="side">
+              <span class="lead">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m14 6-6 6 6 6"/></svg>
+                列表
+              </span>
+            </div>
+            <div class="title">地图选点</div>
+            <div class="side right">取消</div>
+          </div>
+
+          <div class="screen-body">
+            <div class="map">
+              <!-- 用 token 色拼出的示意底图：无图片、无外部字体 -->
+              <div class="labor" style="top:210px;"></div>
+              <div class="labor v" style="left:268px;"></div>
+              <div class="blk" style="left:34px;top:250px;width:70px;height:46px;"></div>
+              <div class="blk" style="left:118px;top:250px;width:58px;height:46px;"></div>
+              <div class="blk" style="left:34px;top:308px;width:70px;height:60px;"></div>
+              <div class="blk" style="right:26px;top:236px;width:62px;height:56px;"></div>
+              <div class="blk" style="right:26px;top:302px;width:62px;height:44px;"></div>
+              <div class="water" style="left:-40px;top:390px;width:190px;height:110px;"></div>
+              <span class="map-label" style="left:40px;top:196px;">回龙观</span>
+              <span class="map-label" style="left:280px;top:190px;">西二旗</span>
+              <span class="map-label" style="right:14px;top:360px;">13 号线</span>
+              <span class="map-label" style="left:30px;top:470px;">龙泽</span>
+
+              <!-- 顶部两行卡片仍然浮在图上（R8） -->
+              <div class="map-card">
+                <div class="pair-row compact focused">
+                  <span class="dot start">起</span>
+                  <div class="pair-text">
+                    <div class="pair-value">我的位置</div>
+                    <div class="pair-sub">拖动地图调整起点</div>
+                  </div>
+                </div>
+                <div class="pair-row compact">
+                  <span class="dot end">终</span>
+                  <div class="pair-text">
+                    <div class="pair-value">中关村</div>
+                    <div class="pair-sub">海淀区中关村大街</div>
+                  </div>
+                </div>
+                <button class="swap" type="button" aria-label="交换起终点">
+                  <i>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M7 20V5M4 8l3-3 3 3"/><path d="M17 4v15M14 16l3 3 3-3"/>
+                    </svg>
+                  </i>
+                </button>
+              </div>
+
+              <div class="map-badge"><i></i>正在设置：<b>起点</b></div>
+
+              <!-- 准星：底尖对屏幕中心 -->
+              <svg class="map-pin" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 2c-3.6 0-6.5 2.9-6.5 6.5 0 4.9 6.5 13 6.5 13s6.5-8.1 6.5-13C18.5 4.9 15.6 2 12 2Z" fill="currentColor"/>
+                <circle class="hole" cx="12" cy="8.5" r="2.6"/>
+              </svg>
+            </div>
+
+            <!-- 底部面板：只有确认，没有门牌号（R9） -->
+            <div class="sheet">
+              <div class="handle"></div>
+              <div class="kicker">准星位置</div>
+              <div class="addr">昌平区回龙观西大街 · 龙泽地铁站附近</div>
+              <p class="privacy">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+                只记录坐标与地点名，不采集门牌号
+              </p>
+              <button class="btn" type="button">确认此点</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右侧两个降级态小条（局部示意，不是完整画框） -->
+        <div class="side-col">
+          <div class="side-title">降级态（局部示意）</div>
+
+          <!-- AE4 / R13 -->
+          <div class="strip">
+            <div class="sh">
+              <b>A · 距离获取失败</b>
+              <span>R13 / AE4</span>
+            </div>
+            <div class="mini-pair">
+              <div class="mini-row">
+                <span class="dot start">起</span>
+                <div style="min-width:0;">
+                  <div class="mv">回龙观</div>
+                  <div class="ms">昌平区回龙观西大街</div>
+                </div>
+              </div>
+              <div class="mini-row">
+                <span class="dot end">终</span>
+                <div style="min-width:0;">
+                  <div class="mv">中关村</div>
+                  <div class="ms">海淀区中关村大街</div>
+                </div>
+              </div>
+            </div>
+            <div class="mini-fail">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>
+              距离段整段隐藏，无错误弹窗
+            </div>
+            <div class="mini-btn">确认起终点</div>
+            <p class="foot">确认与回填不受影响（按钮保持可用）。</p>
+          </div>
+
+          <!-- AE5 / R12 -->
+          <div class="strip">
+            <div class="sh">
+              <b>B · 定位被拒</b>
+              <span>R12 / AE5</span>
+            </div>
+            <div class="mini-pair">
+              <div class="mini-row">
+                <span class="dot empty">起</span>
+                <div style="min-width:0;">
+                  <div class="mv ph">选择起点</div>
+                  <div class="ms">定位不可用，搜索或地图选点</div>
+                </div>
+              </div>
+              <div class="mini-row">
+                <span class="dot end">终</span>
+                <div style="min-width:0;">
+                  <div class="mv">中关村</div>
+                  <div class="ms">海淀区中关村大街</div>
+                </div>
+              </div>
+            </div>
+            <div class="mini-btn ph">确认起终点</div>
+            <p class="mini-help" style="color:var(--text-secondary)">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--warning)" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>
+              还差起点：补齐后即可确认
+            </p>
+            <p class="foot">不阻断进入页面，其余交互正常。</p>
+          </div>
+        </div>
+
+      </div>
+
+      <p class="map-note">对应：<b>R8, R12, R13, R4 / AE4, AE5</b> · 地图是页内形态，非新页面；降级态为局部示意</p>
+    </article>
+
+  </main>
+
+  <!-- ===================== 设计说明 ===================== -->
+  <section class="notes">
+    <h2>设计说明</h2>
+    <p class="lead">所有数值来自 lib/design_tokens.dart：字号 AppTypeScale、间距 AppSpacing、圆角 AppRadius、颜色 AppColors。单位均为逻辑像素，画框 390 × 844。</p>
+
+    <h3><span class="idx">01</span>组件清单<span class="cnt">尺寸 / 间距 · 字号 · 颜色 token</span></h3>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:112px;">组件</th>
+          <th style="width:34%;">尺寸 / 间距 / 圆角</th>
+          <th style="width:26%;">字号（AppTypeScale）</th>
+          <th>颜色 token（AppColors）</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="k">两行卡片容器</td>
+          <td>宽 358（390 − AppSpacing.lg×2）；圆角 AppRadius.lg(12)；描边 1px；内左右 AppSpacing.md(12)；行间 1px 分隔线（左缩进 46）</td>
+          <td>—</td>
+          <td>底 surface；描边 border；聚焦时描边 primary</td>
+        </tr>
+        <tr>
+          <td class="k">起终点行</td>
+          <td>最小高 56（≥44 触控）；左圆点 22；右留 56 给交换按钮；行内边距 8 / 12</td>
+          <td>主值 <span class="tag">body 14</span> 500；副地址 <span class="tag">small 12</span></td>
+          <td>主值 textPrimary；占位 textPlaceholder；副文 textSecondary；起点圆点 primaryLight + primaryDark；终点圆点 background + border</td>
+        </tr>
+        <tr>
+          <td class="k">交换按钮</td>
+          <td>热区 44×44；视觉 32 圆；右 8、垂直居中于两行交界；图标 18</td>
+          <td>图标</td>
+          <td>面 surface；环 border；图标 primary；阴影取 textPrimary 6%</td>
+        </tr>
+        <tr>
+          <td class="k">快捷 chip</td>
+          <td>高 44；水平内边距 12；间距 8；圆角 full；图标 18 + 文字间距 6</td>
+          <td><span class="tag">body 14</span> 500</td>
+          <td>面 surface；环 border；字 textPrimary；图标 primary</td>
+        </tr>
+        <tr>
+          <td class="k">候选行</td>
+          <td>最小高 52；内边距 8 / 12；名称与地址两行；右侧箭头 18；高亮时左 3px 竖条</td>
+          <td>名称 <span class="tag">body 14</span> 500；地址 <span class="tag">small 12</span></td>
+          <td>名称 textPrimary；地址 textSecondary；箭头 primary；高亮底 primaryLight、名称 primaryDark</td>
+        </tr>
+        <tr>
+          <td class="k">距离行</td>
+          <td>高 34；内边距 8 / 12 / 8 / 46；上描边 1px；贴卡片底部圆角 12；图标 16</td>
+          <td>数值 <span class="tag">body 14</span> 600；单位 <span class="tag">caption 11</span></td>
+          <td>数值 primaryDark；单位 textSecondary；底 primaryLight；图标 primary</td>
+        </tr>
+        <tr>
+          <td class="k">确认按钮</td>
+          <td>358×48；圆角 full；底部区内边距 12 / 16 / 16</td>
+          <td><span class="tag">body 14</span> 600</td>
+          <td>可用 primary + surface；禁用 border + textPlaceholder</td>
+        </tr>
+        <tr>
+          <td class="k">空态</td>
+          <td>图标圈 64、1.5px 虚线；上下留 24 / 16；正文最大宽 280</td>
+          <td>标题 <span class="tag">body 14</span> 600；说明 <span class="tag">small 12</span></td>
+          <td>圈线 border；图标 primary；标题 textPrimary；说明 textSecondary</td>
+        </tr>
+        <tr>
+          <td class="k">异常条 / 降级条</td>
+          <td>高 ≥44；圆角 8；内边距 8 / 12；左 3px 竖条；图标 12</td>
+          <td><span class="tag">caption 11</span> 500</td>
+          <td>左条与字 warningText；底 background；图标 warning</td>
+        </tr>
+        <tr>
+          <td class="k">地图浮动卡片</td>
+          <td>左右 12、上 12；两行各 48；圆角 12；阴影 0 2 8</td>
+          <td>同「起终点行」</td>
+          <td>面 surface；环 border；阴影取 textPrimary 10%</td>
+        </tr>
+        <tr>
+          <td class="k">地图底部面板</td>
+          <td>顶部圆角 16；上 8、下 16、左右 16；把手 36×4；地址行 21</td>
+          <td>地址 <span class="tag">body 14</span> 600；落款 <span class="tag">caption 11</span></td>
+          <td>面 surface；顶描边 border；地址 textPrimary；落款 textSecondary</td>
+        </tr>
+        <tr>
+          <td class="k">表单一行摘要</td>
+          <td>高 56；内边距 12 / 16；右侧 chevron 16；整行可点</td>
+          <td>键 <span class="tag">body 14</span>；值 <span class="tag">body 14</span> 600</td>
+          <td>值 textPrimary；未选 textPlaceholder；箭头 textPlaceholder</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3><span class="idx">02</span>状态表<span class="cnt">状态 → 条件 → 各区域表现</span></h3>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:120px;">状态</th>
+          <th style="width:24%;">触发条件</th>
+          <th>起点行</th>
+          <th>终点行</th>
+          <th>距离行</th>
+          <th>确认按钮</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="k">默认</td>
+          <td>进入页面，定位可用（AE1）</td>
+          <td>「我的位置」+ 副文「当前定位」</td>
+          <td>占位「搜索终点」</td>
+          <td>不显示</td>
+          <td><span class="tag gray">禁用</span> 提示「还差终点」</td>
+        </tr>
+        <tr>
+          <td class="k">搜索中</td>
+          <td>在某行输入关键词（R6）</td>
+          <td>保持原值</td>
+          <td>行内显示关键词 + 光标，行底 primaryLight</td>
+          <td>不显示</td>
+          <td><span class="tag gray">禁用</span> 提示「点选一条候选」</td>
+        </tr>
+        <tr>
+          <td class="k">只选一端</td>
+          <td>仅终端有值（AE3）</td>
+          <td>占位「选择起点」</td>
+          <td>已选地名 + 地址</td>
+          <td>不显示</td>
+          <td><span class="tag gray">禁用</span> 提示「还差起点」</td>
+        </tr>
+        <tr>
+          <td class="k">两端齐全</td>
+          <td>两端都带坐标（R7 / R11）</td>
+          <td>地名 + 地址</td>
+          <td>地名 + 地址</td>
+          <td>「约 18 km · 约 35 分钟」+「驾车」</td>
+          <td><span class="tag">可用</span> 主色实心</td>
+        </tr>
+        <tr>
+          <td class="k">交换后</td>
+          <td>点 ⇄（R4 / AE2）</td>
+          <td>变为原终点值</td>
+          <td>变为原起点值</td>
+          <td>保留组件位置，数值替换为反向结果</td>
+          <td><span class="tag">可用</span>（两端仍齐全）</td>
+        </tr>
+        <tr>
+          <td class="k">距离失败</td>
+          <td>路径规划请求失败（R13 / AE4）</td>
+          <td>正常</td>
+          <td>正常</td>
+          <td><span class="tag warn">整段隐藏</span> 无错误弹窗</td>
+          <td><span class="tag">可用</span> 不受影响</td>
+        </tr>
+        <tr>
+          <td class="k">定位被拒</td>
+          <td>权限拒绝或定位超时（R12 / AE5）</td>
+          <td>留空，占位「选择起点」</td>
+          <td>正常可选</td>
+          <td>不显示（缺一端）</td>
+          <td><span class="tag gray">禁用</span> 提示「还差起点」</td>
+        </tr>
+        <tr>
+          <td class="k">地图模式</td>
+          <td>点「地图选点」（R8）</td>
+          <td colspan="2">卡片浮在图上，正在编辑的一行高亮；底部面板给地址 + 「确认此点」</td>
+          <td>不显示（回到列表态再算）</td>
+          <td>地图内为「确认此点」，回填后回列表态</td>
+        </tr>
+        <tr>
+          <td class="k">返回表单</td>
+          <td>确认后 pop（R1）</td>
+          <td colspan="2">表单只渲染一行摘要：已选「起点名 → 终点名」，未选「选择起终点」</td>
+          <td>不在表单展示</td>
+          <td>—</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3><span class="idx">03</span>触控与可访问性</h3>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:150px;">检查项</th>
+          <th>结论与实现口径</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="k">触控热区 ≥ 44×44</td>
+          <td>起终点行 56、候选行 52、快捷 chip 44、交换按钮 44（视觉 32 但热区 44）、确认按钮 48、地图确认 48、表单摘要行 56、顶部文字按钮 44。无小于 44 的可点元素。</td>
+        </tr>
+        <tr>
+          <td class="k">最小字号</td>
+          <td>正文最小 11（<code>AppTypeScale.caption</code>），仅用于「驾车」单位、降级说明、地图落款；主信息与地址分别是 14 / 12，全稿无 11 以下字号。</td>
+        </tr>
+        <tr>
+          <td class="k">对比度</td>
+          <td>
+            <code>textPrimary</code> on surface ≈ 13.9:1；<code>textSecondary</code> on surface ≈ 4.8:1（AA）；
+            <code>primary</code> on surface ≈ 4.9:1（AA）；<code>primaryDark</code> on <code>primaryLight</code> ≈ 6.7:1；
+            <code>warningText</code> on <code>background</code> ≈ 4.6:1。
+          </td>
+        </tr>
+        <tr>
+          <td class="k">占位 / 禁用态</td>
+          <td><code>textPlaceholder</code> on surface ≈ 2.5:1，不达 AA，因此占位永远不是唯一信息：禁用按钮旁必有 <code>textSecondary</code> 的「还差终点 / 还差起点」说明（4.8:1），起点为空时圆点改为虚线并写「选择起点」。</td>
+        </tr>
+        <tr>
+          <td class="k">焦点与键盘</td>
+          <td>输入行聚焦用 <code>primary</code> 1.5px 描边 + <code>primaryLight</code> 底，与发布页 <code>_fieldDecoration</code> 的 focusedBorder 一致；焦点不靠颜色单独表达（另有光标与行底色）。</td>
+        </tr>
+        <tr>
+          <td class="k">语义标签</td>
+          <td>交换按钮不是纯图标按钮：<code>aria-label="交换起终点"</code>，并在已选态用「⇄」文案复述；两行卡片读作「起点 / 终点」而非「第一行 / 第二行」。</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p class="footnote">
+      未纳入：门牌号输入（R9 已下线）、家 / 公司 / 最近使用（R5 明确不提供）、发现侧地图选点页（R2 保持不变）。
+      距离与耗时示例值「约 18 km · 约 35 分钟」仅用于版式占位，实际取高德驾车路径规划结果。
+    </p>
+  </section>
+
+</div>
+</body>
+</html>
