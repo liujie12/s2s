@@ -17,6 +17,7 @@ import 'package:go_router/go_router.dart';
 
 import 'home_shell.dart';
 import '../domain/category_tree.dart';
+import '../domain/route_pair.dart';
 import '../features/auth/login_screen.dart';
 import '../features/cert/cert_models.dart';
 import '../features/cert/qualification_form_screen.dart';
@@ -42,6 +43,7 @@ import '../features/publish/publish_form_state.dart';
 import '../features/publish/publish_screen.dart';
 import '../features/publish/publish_screen_args.dart';
 import '../features/publish/publish_success_screen.dart';
+import '../features/publish/route_pair_picker_screen.dart';
 import '../features/settings/settings_screen.dart';
 
 /// 路由路径常量。
@@ -89,6 +91,9 @@ class AppRoutes {
   // ── 模态（PRD §10.1 三个模态）──
   static const String categorySelector = '/modal/category';
   static const String mapSelector = '/modal/map-picker';
+
+  /// 起终点选择页（发布侧专用，R2）。
+  static const String routePairPicker = '/publish/route-pair';
   static const String certModal = '/modal/cert';
 }
 
@@ -308,6 +313,15 @@ final List<RouteBase> _routes = [
         ),
       );
     },
+  ),
+  GoRoute(
+    path: AppRoutes.routePairPicker,
+    // extra 传入进入前的起终点（可空），用于回填两行；回传 [RoutePair]，
+    // 取消/返回时为 null（表单保留进入前的值，R14）。
+    pageBuilder: (context, state) => MaterialPage(
+      fullscreenDialog: true,
+      child: RoutePairPickerScreen(initial: state.extra as RoutePair?),
+    ),
   ),
   GoRoute(
     path: AppRoutes.certModal,
