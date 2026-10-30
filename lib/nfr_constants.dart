@@ -141,6 +141,35 @@ class NfrPerf {
   static const double pinDragMarginViewports = 1.0;
 }
 
+/// 重叠标点（叠点堆）的判定与图面上限。
+///
+/// **与 [NfrPerf.clusterGridSizePx] 的分工**：网格聚合解决「这一片很密」，
+/// 本组常量解决「这几条几乎完全重合」—— 前者按 60px 格聚成一圈，后者在
+/// 同格之内再把重合的点收成一枚带数量的 Pin（否则重合的几条里只有最上面
+/// 那条能被点中，见 `marker_layer.dart#hitTestMarker` 的倒序命中）。
+class NfrOverlap {
+  const NfrOverlap._();
+
+  /// 判定为「同一处」的屏幕距离（逻辑像素）。
+  ///
+  /// 18 ≈ 单点 Pin 直径 40 的一半：只收「视觉上就是一个点」的，不动那些
+  /// 还分得开、值得各点一次的相邻 Pin。该值小于 [NfrPerf.clusterGridSizePx]，
+  /// 故叠点堆总在聚合圈之内生效，两者互斥不重复计数。
+  static const double stackTolerancePx = 18;
+
+  /// 叠点堆最多画几层叠影（不含主层）。
+  ///
+  /// 超过 2 层不再加层：第 3 层起在 40px 的 Pin 上已分辨不出颜色，只是变糊；
+  /// 条数继续由数量角标表达。
+  static const int stackGhostMax = 2;
+
+  /// 数量角标显示原值的上限，超过则显示「9+」。
+  ///
+  /// 与聚合圈的 999+ 上限刻意不同：叠点堆的条数来自「同一处」，实测上界远小于
+  /// 三位数；角标要贴在一枚 40px 的 Pin 上，两位数字已是可读性极限。
+  static const int badgeMaxCount = 9;
+}
+
 /// §6.10 三级缓存 + §12 传输层约定。
 class NfrCache {
   const NfrCache._();
@@ -520,6 +549,30 @@ class NfrLocation {
 
   /// 高德逆地理的搜索半径（米）：200m 内取最近的道路/POI。
   static const int reverseGeocodeRadiusMeters = 200;
+
+  /// 高德输入提示（POI 候选）请求的超时（毫秒）。
+  ///
+  /// 与逆地理同一量级：候选只是「少打几个字」的辅助，不能因其拖慢输入。
+  static const int poiSearchTimeoutMs = 3000;
+
+  /// 关键词输入的防抖间隔（毫秒）。
+  ///
+  /// 打字过程中每个字符都发请求会既费配额又让候选跳变；停顿这么久才发。
+  static const int poiSearchDebounceMs = 350;
+
+  /// 触发候选搜索的最短关键词长度（字符）。
+  ///
+  /// 空输入不发请求；单字起就允许（中文地名常以单字开头，设更高门槛会让
+  /// 用户以为搜索坏了）。
+  static const int poiSearchMinKeywordLength = 1;
+
+  /// 候选列表最多展示条数。
+  static const int poiSearchMaxResults = 10;
+
+  /// 高德驾车路径规划请求的超时（毫秒）。
+  ///
+  /// 距离与时长只用于确认「这条路顺不顺」，失败即隐藏，不阻断发布。
+  static const int drivingRouteTimeoutMs = 3000;
 }
 
 /// §6.10.1 性能降级开关触发条件（预留，本期不实施 —— PRD:2379）。
