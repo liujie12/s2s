@@ -4702,7 +4702,12 @@ components:
         label: { type: string, example: 品牌 }
         type:
           type: string
-          enum: [text, number, select, multi_select, date]
+          enum: [text, number, select, multi_select, date, route_pair]
+          description: |
+            字段控件类型。`route_pair`（2026-10-30 新增，拼车「起点 → 终点」）
+            的值为对象而非字符串：`{origin:{name,address,lng,lat},
+            destination:{...},distance_m?,duration_s?}`；其余类型为字符串。
+            必填判定对 `route_pair` 要求两端都带数值坐标（历史字符串形态按已填放行）。
         required:
           type: boolean
           description: |
@@ -4791,7 +4796,10 @@ components:
         address: { type: string, maxLength: 120 }
         address_precise:
           type: boolean
-          description: 地址是否精确到门牌，`completeness_level` 三条件之一
+          description: |
+            位置是否精确，`completeness_level` 三条件之一。
+            模板含 `route_pair` 字段（拼车）时为「起点与终点都选到带坐标的 POI」；
+            其余分类为「门牌号非空」。
         media_ids:
           type: array
           maxItems: 9
