@@ -12,11 +12,13 @@ library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/text/route_label.dart';
 import '../../domain/category_tree.dart';
 import '../../domain/listing.dart';
 import '../../domain/listing_category.dart';
 import '../../domain/listing_detail.dart';
 import '../../domain/publish_template.dart';
+import '../../domain/route_pair.dart';
 import '../post/post_dto.dart';
 import '../post/post_repository.dart';
 
@@ -149,7 +151,27 @@ List<TemplateField> _templateFieldsFromAttributes(
     for (final entry in attributes.entries)
       (
         label: labels[entry.key] ?? entry.key,
-        value: entry.value?.toString() ?? '',
+        value: _attributeValueText(entry.value),
       ),
   ];
+}
+
+/// 属性值 → 详情页展示文案。
+///
+/// 起终点是对象形态（KTD1）：渲染成「起点名 → 终点名」，有距离与时长时另起
+/// 一行（详情页 value 是多行 Text）。其它值沿用 `toString` 直出 —— 历史帖的
+/// `route` 是字符串，走的就是这条分支。
+///
+/// 参数：[value] `attributes` 的单个值。
+/// 返回：展示文案；对象不是起终点形态时退回字符串形态。
+String _attributeValueText(Object? value) {
+  final pair = RoutePair.parseAttribute(value);
+  if (pair != null) {
+    final label = routePairLabel(pair);
+    final distance = routeDistanceLabel(pair);
+    return distance == null ? label : '$label\n$distance';
+  }
+  // 非起终点对象（未来若出现别的结构化属性）按 JSON 原样展示不如留空可读，
+  // 但当前契约没有这种值；toString 的 Map 形态至少不丢信息。
+  return value?.toString() ?? '';
 }

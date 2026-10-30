@@ -15,6 +15,7 @@ import 'package:zhaoyazhao/features/post/post_dto.dart';
 import 'package:zhaoyazhao/features/post/post_repository.dart';
 import 'package:zhaoyazhao/features/publish/draft_store.dart';
 import 'package:zhaoyazhao/features/publish/publish_form_state.dart';
+import 'package:zhaoyazhao/features/publish/publish_screen_args.dart';
 import 'package:zhaoyazhao/router/app_router.dart';
 
 import '../../support/fake_repositories.dart';
@@ -160,6 +161,89 @@ void main() {
     expect(repo.lastRepostPostId, 1002, reason: '刷新重发须打 repost 而非 PATCH status');
     expect(repo.lastChangePostId, isNull, reason: '重发不得走状态变更');
     expect(find.text('发布页占位'), findsOneWidget);
+  });
+
+  testWidgets('U5 编辑新帖：起终点对象 → 表单 routePair，文本键不残留', (tester) async {
+    repo.detailToReturn = PostDetailDto.fromJson({
+      ...postDetailPayload(),
+      'leaf_category_id': 30101,
+      'attributes': <String, Object?>{
+        'route': <String, Object?>{
+          'origin': <String, Object?>{
+            'name': '回龙观',
+            'lng': 116.337,
+            'lat': 40.071,
+          },
+          'destination': <String, Object?>{
+            'name': '中关村',
+            'lng': 116.316,
+            'lat': 39.983,
+          },
+        },
+        'depart_time': '工作日 8:00',
+      },
+    });
+    Object? pushed;
+    final router = GoRouter(
+      initialLocation: AppRoutes.myPublish,
+      routes: [
+        GoRoute(
+          path: AppRoutes.myPublish,
+          builder: (_, _) => const MyPublishScreen(),
+        ),
+        GoRoute(
+          path: AppRoutes.publish,
+          builder: (_, state) {
+            pushed = state.extra;
+            return const Scaffold(body: Text('发布页占位'));
+          },
+        ),
+      ],
+    );
+
+    await pumpScreen(tester, router: router);
+    await tester.tap(find.text('编辑'));
+    await tester.pumpAndSettle();
+
+    final form = (pushed! as PublishScreenArgs).initialForm;
+    expect(form.routePair?.origin.name, '回龙观');
+    expect(form.routePair?.destination.name, '中关村');
+    // 对象不能以 toString 形态混进文本键，否则再发一次就写坏了结构化数据。
+    expect(form.templateValues.containsKey('route'), isFalse);
+    expect(form.templateValues['depart_time'], '工作日 8:00');
+  });
+
+  testWidgets('U5 重发旧帖（字符串 route）→ routePair 为 null，文本键保留',
+      (tester) async {
+    repo.repostToReturn = RepostDraftDto.fromJson({
+      ...repostDraftPayload(),
+      'attributes': <String, Object?>{'route': '回龙观 → 中关村'},
+    });
+    Object? pushed;
+    final router = GoRouter(
+      initialLocation: AppRoutes.myPublish,
+      routes: [
+        GoRoute(
+          path: AppRoutes.myPublish,
+          builder: (_, _) => const MyPublishScreen(),
+        ),
+        GoRoute(
+          path: AppRoutes.publish,
+          builder: (_, state) {
+            pushed = state.extra;
+            return const Scaffold(body: Text('发布页占位'));
+          },
+        ),
+      ],
+    );
+
+    await pumpScreen(tester, router: router);
+    await tester.tap(find.text('刷新重发'));
+    await tester.pumpAndSettle();
+
+    final form = (pushed! as PublishScreenArgs).initialForm;
+    expect(form.routePair, isNull);
+    expect(form.templateValues['route'], '回龙观 → 中关村');
   });
 
   testWidgets('点「删除」：仍为降级提示（[B2-8] 裁定本轮不做删除端点）',

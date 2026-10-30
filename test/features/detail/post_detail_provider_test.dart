@@ -77,6 +77,34 @@ void main() {
       ]);
     });
 
+    test('U5 起终点对象 → 「起点 → 终点」+ 距离行，不出现花括号', () {
+      final payload = postDetailPayload();
+      payload['attributes'] = <String, Object?>{
+        'route': <String, Object?>{
+          'origin': <String, Object?>{'name': '回龙观', 'lng': 116.337, 'lat': 40.071},
+          'destination': <String, Object?>{
+            'name': '中关村',
+            'lng': 116.316,
+            'lat': 39.983,
+          },
+          'distance_m': 18500,
+          'duration_s': 2100,
+        },
+      };
+      final detail = postDetailToListingDetail(PostDetailDto.fromJson(payload));
+
+      expect(detail.templateFields.single.value, '回龙观 → 中关村\n约 19 km · 约 35 分钟');
+      expect(detail.templateFields.single.value, isNot(contains('{')));
+    });
+
+    test('U5 历史文本 route 原样展示（不解析成对象）', () {
+      final payload = postDetailPayload();
+      payload['attributes'] = <String, Object?>{'route': '回龙观 → 中关村'};
+      final detail = postDetailToListingDetail(PostDetailDto.fromJson(payload));
+
+      expect(detail.templateFields.single.value, '回龙观 → 中关村');
+    });
+
     test('media[] → mediaUrls（只取 url 且保序）', () {
       final detail = postDetailToListingDetail(
         PostDetailDto.fromJson(postDetailPayload()),

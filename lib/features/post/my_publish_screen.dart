@@ -40,6 +40,7 @@ import '../../domain/category_tree.dart';
 import '../../domain/listing.dart';
 import '../../domain/listing_category_style.dart';
 import '../../domain/listing_detail.dart';
+import '../../domain/route_pair.dart';
 import '../../router/app_router.dart';
 import '../publish/draft_store.dart';
 import '../publish/publish_form_state.dart';
@@ -266,6 +267,7 @@ class _MyPublishScreenState extends ConsumerState<MyPublishScreen> {
       priceUnit: detail.priceUnit,
       description: detail.description ?? '',
       templateValues: _stringAttributes(detail.attributes),
+      routePair: _routePairFromAttributes(detail.attributes),
       mediaIds: [for (final media in detail.media) media.mediaId],
       // 编辑态回显已挂载资质（一帖多证）：只带 cert_id，勾选态由发布页资质栏渲染。
       certIds: [
@@ -293,6 +295,7 @@ class _MyPublishScreenState extends ConsumerState<MyPublishScreen> {
       priceUnit: draft.priceUnit,
       description: draft.description ?? '',
       templateValues: _stringAttributes(draft.attributes ?? const {}),
+      routePair: _routePairFromAttributes(draft.attributes ?? const {}),
       mediaIds: draft.mediaIds,
       contact: '',
     );
@@ -302,11 +305,29 @@ class _MyPublishScreenState extends ConsumerState<MyPublishScreen> {
   ///
   /// 参数：[attributes] 动态属性（可空值）。
   /// 返回：[Map] 仅含非空值的字符串属性。
+  ///
+  /// 结构化对象（起终点）**不走这里**：`toString` 会得到一个不可解析的
+  /// Map 字符串，再发出去就把结构化数据写坏了。它们由
+  /// [_routePairFromAttributes] 单独解析。
   Map<String, String> _stringAttributes(Map<String, Object?> attributes) {
     return {
       for (final entry in attributes.entries)
-        if (entry.value != null) entry.key: entry.value.toString(),
+        if (entry.value != null && entry.value is! Map)
+          entry.key: entry.value.toString(),
     };
+  }
+
+  /// 从 `attributes` 中解析起终点对象（KTD1）。
+  ///
+  /// 参数：[attributes] 详情/重发出参的动态属性。
+  /// 返回：第一条能解析成起终点的对象值；历史帖只有字符串 `route` 时返回
+  ///   null（文本值仍留在 `templateValues` 里，重发照常带上）。
+  RoutePair? _routePairFromAttributes(Map<String, Object?> attributes) {
+    for (final value in attributes.values) {
+      final pair = RoutePair.parseAttribute(value);
+      if (pair != null) return pair;
+    }
+    return null;
   }
 
   /// 价格数字转输入框文本（整数不带小数点，贴合用户输入习惯）。

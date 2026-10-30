@@ -164,6 +164,9 @@ class FakePostRepository extends PostRepository {
   /// fetchDetail 抛出的异常；null 走正常返回。
   Object? detailErrorToThrow;
 
+  /// fetchDetail 返回的详情；null 用 [postDetailPayload] 默认桩。
+  PostDetailDto? detailToReturn;
+
   /// fetchDetail 收到的帖子 ID（断言「编辑」先取详情再进编辑态）。
   int? lastDetailPostId;
 
@@ -190,7 +193,7 @@ class FakePostRepository extends PostRepository {
     lastDetailPostId = postId;
     final error = detailErrorToThrow;
     if (error != null) throw error;
-    return PostDetailDto.fromJson(postDetailPayload());
+    return detailToReturn ?? PostDetailDto.fromJson(postDetailPayload());
   }
 
   @override

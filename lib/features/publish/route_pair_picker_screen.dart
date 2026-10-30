@@ -20,6 +20,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:x_amap_base/x_amap_base.dart';
 
+import '../../core/text/route_label.dart';
 import '../../design_tokens.dart';
 import '../../domain/route_pair.dart';
 import '../../nfr_constants.dart';
@@ -741,7 +742,8 @@ class _RoutePairPickerScreenState
         text = '计算中…';
       } else if (_distance != null) {
         text =
-            '${_distanceText(_distance!.distanceM)} · ${_durationText(_distance!.durationS)}';
+            '${routeMetersLabel(_distance!.distanceM)} · '
+            '${routeDurationText(_distance!.durationS)}';
       } else {
         // 距离失败：整段隐藏（R13），但保持行高不让版面跳动。
         text = '';
@@ -1048,24 +1050,3 @@ class _RoutePairPickerScreenState
   }
 }
 
-/// 驾车里程文案：`约 18.5 km` / `约 850 m`。
-///
-/// 参数：[meters] 里程（米）。返回：展示文案。
-String _distanceText(int meters) {
-  if (meters < 1000) return '约 ${(meters / 10).round() * 10} m';
-  final km = meters / 1000;
-  final text = km >= 10 ? km.round().toString() : km.toStringAsFixed(1);
-  return '约 $text km';
-}
-
-/// 驾车时长文案：`约 35 分钟` / `约 1 小时 10 分钟`。
-///
-/// 参数：[seconds] 时长（秒）。返回：展示文案。
-String _durationText(int seconds) {
-  final rawMinutes = (seconds / 60).round();
-  final minutes = rawMinutes < 1 ? 1 : rawMinutes;
-  if (minutes < 60) return '约 $minutes 分钟';
-  final hours = minutes ~/ 60;
-  final rest = minutes % 60;
-  return rest == 0 ? '约 $hours 小时' : '约 $hours 小时 $rest 分钟';
-}

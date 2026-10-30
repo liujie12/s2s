@@ -20,6 +20,7 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../domain/route_pair.dart';
 import 'publish_form_state.dart';
 
 /// 发布页草稿自动保存的防抖间隔（PRD §8.7「每编辑 3 秒自动存本地」）。
@@ -98,6 +99,7 @@ Map<String, Object?> _formToJson(PublishFormState form) => <String, Object?>{
   'negotiable': form.negotiable,
   'description': form.description,
   'template_values': form.templateValues,
+  if (form.routePair != null) 'route_pair': form.routePair!.toJson(),
   'media_ids': form.mediaIds,
   'cert_ids': form.certIds,
   'contact': form.contact,
@@ -149,6 +151,8 @@ PublishFormState _formFromJson(Object? raw) {
     negotiable: (map['negotiable'] as bool?) ?? false,
     description: (map['description'] as String?) ?? '',
     templateValues: templateValues,
+    // 旧草稿没有这个键：解析为 null，按「未选起终点」恢复（KTD1）。
+    routePair: RoutePair.fromJson(map['route_pair']),
     mediaIds: mediaIds,
     certIds: certIds,
     contact: (map['contact'] as String?) ?? '',
