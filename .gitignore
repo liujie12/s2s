@@ -109,6 +109,9 @@ logs/
 .tmp/
 # 仓库根目录下同类的单文件产物：截图（.tmp-*.png）与 uiautomator dump（.tmp-ui.xml）
 .tmp-*
+# 图标生成用的第三方字体（ZCOOL QingKe HuangYou，SIL OFL 1.1，8MB）：
+# 公开可下载，不值得进版本库；缺失时 build_android_icons.py 会直接报错而非静默出错图
+prototype-figma/assets/icon-preview/fonts/*.ttf
 # ce-code-review 的运行产物（diff、清单与报告），每次评审重新生成
 .review-run/
 
