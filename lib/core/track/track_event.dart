@@ -13,7 +13,7 @@
 ///      [TrackEvent.interactionId] 是事件级「用户交互」，两字段分列不互顶。
 library;
 
-/// 埋点事件名（契约 `TrackEvent.event` 的 5 值枚举，逐字对齐）。
+/// 埋点事件名（契约 `TrackEvent.event` 的 6 值枚举，逐字对齐）。
 ///
 /// **为什么线值绑在枚举自身而非靠 `name.toLowerCase()`**：枚举常量名是
 /// 驼峰（`layerSwitch`），契约线值是下划线小写（`layer_switch`），两者不可
@@ -34,7 +34,13 @@ enum TrackEventName {
   demandPushSent('demand_push_sent'),
 
   /// 资源详情点击（Batch2）。
-  resourceDetailClick('resource_detail_click');
+  resourceDetailClick('resource_detail_click'),
+
+  /// 高德 Web 服务降级（props：`{reason}`，取值见客户端 `AmapDegradeReason`）。
+  ///
+  /// **去重口径**：每次进入起终点选择页最多上报一条 —— 降级会随每次按键重复
+  /// 触发，逐次上报既会撑大去重键同毫秒冲突面，也没有分析价值。
+  amapDegraded('amap_degraded');
 
   const TrackEventName(this.wire);
 

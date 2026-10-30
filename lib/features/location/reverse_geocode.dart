@@ -13,7 +13,10 @@ library;
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
+
 import '../../nfr_constants.dart';
+import 'amap_degrade.dart';
 import 'amap_web_service_key.dart';
 
 /// 把坐标逆地理成一行可读地址。
@@ -27,8 +30,12 @@ import 'amap_web_service_key.dart';
 Future<String> reverseGeocodeLabel({
   required double lat,
   required double lng,
+  void Function(AmapDegradeReason reason)? onDegraded,
 }) async {
-  if (!amapWebServiceKeyConfigured) return '';
+  if (!amapWebServiceKeyConfigured) {
+    onDegraded?.call(AmapDegradeReason.noKey);
+    return '';
+  }
 
   final client = HttpClient()
     ..connectionTimeout = const Duration(
@@ -46,15 +53,28 @@ Future<String> reverseGeocodeLabel({
     final response = await request.close().timeout(
       const Duration(milliseconds: NfrLocation.reverseGeocodeTimeoutMs),
     );
-    if (response.statusCode != HttpStatus.ok) return '';
-    final body = await utf8.decoder.bind(response).join();
+    if (response.statusCode != HttpStatus.ok) {
+      // 只记录状态码：URL 含 Key，消息体也可能带 Key，都不能进日志。
+      if (kDebugMode) debugPrint('[REGEO] http=${response.statusCode}');
+      onDegraded?.call(AmapDegradeReason.httpError);
+      return '';
+    }
+    // 响应体也要有上限：只给 request.close() 加超时时，体流停住会永久挂起。
+    final body = await utf8.decoder
+        .bind(response)
+        .join()
+        .timeout(const Duration(milliseconds: NfrLocation.reverseGeocodeTimeoutMs));
     final json = jsonDecode(body);
     if (json is! Map) return '';
     if (json['status']?.toString() != '1') return '';
     final regeocode = json['regeocode'];
     if (regeocode is! Map) return '';
     return (regeocode['formatted_address'] ?? '').toString().trim();
-  } catch (_) {
+  } catch (e) {
+    // 只打原因枚举，不打 message —— 它可能带上含 Key 的 URL。
+    final reason = amapDegradeReasonOf(e);
+    if (kDebugMode) debugPrint('[REGEO] degraded: ${reason.wire}');
+    onDegraded?.call(reason);
     return '';
   } finally {
     client.close(force: true);

@@ -1302,13 +1302,25 @@ class _TemplateField extends StatelessWidget {
   /// 起终点摘要行：未选时「选择起终点」，已选时「起点名 → 终点名」，
   /// 存量文本原样展示（KTD1）。整行可点，进入选择页（R1）。
   ///
+  /// 半截对象（有名称但缺坐标）不按「已选好」渲染：blocker 仍会拦下，
+  /// 直接显示缺的是哪一端，避免用户点发布才知道没填完。
+  ///
   /// 返回：摘要行控件。
   Widget _buildRouteSummary() {
     final pair = routePair;
+    final hasLegacyText = value.trim().isNotEmpty;
     final String text;
     if (pair != null) {
-      text = routePairLabel(pair);
-    } else if (value.trim().isNotEmpty) {
+      if (pair.isComplete) {
+        text = routePairLabel(pair);
+      } else if (pair.origin.isLocated) {
+        text = '还差终点';
+      } else if (pair.destination.isLocated) {
+        text = '还差起点';
+      } else {
+        text = '选择起终点';
+      }
+    } else if (hasLegacyText) {
       // 存量文本形态原样展示（KTD1），不解析成对象。
       text = value.trim();
     } else {
@@ -1342,7 +1354,7 @@ class _TemplateField extends StatelessWidget {
                 text,
                 style: TextStyle(
                   fontSize: AppTypeScale.body.size,
-                  color: pair != null || value.trim().isNotEmpty
+                  color: (pair?.isComplete ?? false) || hasLegacyText
                       ? const Color(AppColors.textPrimary)
                       : const Color(AppColors.textPlaceholder),
                 ),

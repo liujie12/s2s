@@ -14,6 +14,7 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.s2s.server.ai.AiQuotaGate;
 import com.s2s.server.auth.IdentityBindingService;
+import com.s2s.server.category.TemplateService;
 import com.s2s.server.cert.CertService;
 import com.s2s.server.common.crypto.CryptoFacade;
 import com.s2s.server.common.error.BizException;
@@ -58,6 +59,7 @@ class PostServiceTest {
     private CommunityResolver communityResolver;
     private CertService certService;
     private PostCredentialAssembler credentialAssembler;
+    private TemplateService templateService;
     private PostService postService;
 
     @BeforeEach
@@ -74,10 +76,12 @@ class PostServiceTest {
         communityResolver = mock(CommunityResolver.class);
         certService = mock(CertService.class);
         credentialAssembler = mock(PostCredentialAssembler.class);
+        templateService = mock(TemplateService.class);
         when(communityResolver.resolve(any(), any())).thenReturn(CommunityResolver.CommunityMatch.empty());
         postService = new PostService(postMapper, mediaMapper, cryptoFacade, validator,
                 mediaAssembler, objectMapper, aiQuotaGate, identityBindingService,
-                amapPoiClient, communityResolver, certService, credentialAssembler);
+                amapPoiClient, communityResolver, certService, credentialAssembler,
+                templateService);
 
         when(validator.computeDerived(any(), any(), any()))
                 .thenReturn(new PrecheckResult.Derived(true, false, true));

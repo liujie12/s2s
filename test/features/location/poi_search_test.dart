@@ -7,10 +7,15 @@
 /// 可用，实际提交不了。故这里把「跳过坏条目、失败即空」钉死。
 library;
 
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zhaoyazhao/features/location/amap_degrade.dart';
+import 'package:zhaoyazhao/features/location/amap_web_service_key.dart';
 import 'package:zhaoyazhao/features/location/poi_search.dart';
+import 'package:zhaoyazhao/nfr_constants.dart';
 
 /// 构造一条正常的候选条目（测试基线）。
 ///
@@ -59,7 +64,7 @@ void main() {
         ],
       });
 
-      expect(tips.length, lessThanOrEqualTo(10));
+      expect(tips.length, 10);
     });
   });
 
@@ -111,14 +116,18 @@ void main() {
       // 测试环境不带 --dart-define，Key 必为空；传入一个「一用就抛」的
       // 客户端，若实现先发了请求，用例会因异常失败而不是静默通过。
       final client = _ThrowingHttpClient();
+      AmapDegradeReason? reason;
 
       final result = await searchPoiSuggestions(
         keywords: '回龙观',
         client: client,
+        onDegraded: (r) => reason = r,
       );
 
       expect(result, isEmpty);
       expect(client.used, isFalse);
+      // 未注入 Key 也要报原因，否则线上分不清「没配 Key」与「搜不到」。
+      expect(reason, AmapDegradeReason.noKey);
     });
 
     test('关键词为空 → 不发请求', () async {
@@ -129,6 +138,155 @@ void main() {
       expect(client.used, isFalse);
     });
   });
+
+  group('请求侧降级（已配置 Key）', () {
+    setUp(() => amapWebServiceKeyOverride = 'test-key');
+    tearDown(() => amapWebServiceKeyOverride = null);
+
+    test('服务端返回非 200 → 空列表，并回调 http_error', () async {
+      AmapDegradeReason? reason;
+      final client = _FakeHttpClient(
+        (_) async => _FakeResponse(500, const Stream<List<int>>.empty()),
+      );
+
+      final result = await searchPoiSuggestions(
+        keywords: '回龙观',
+        client: client,
+        onDegraded: (r) => reason = r,
+      );
+
+      expect(result, isEmpty);
+      expect(reason, AmapDegradeReason.httpError);
+    });
+
+    test('请求抛异常 → 空列表（不向上抛），并回调 network', () async {
+      AmapDegradeReason? reason;
+      final client = _FakeHttpClient(
+        (_) async => throw const SocketException('连接失败'),
+      );
+
+      final result = await searchPoiSuggestions(
+        keywords: '回龙观',
+        client: client,
+        onDegraded: (r) => reason = r,
+      );
+
+      expect(result, isEmpty);
+      expect(reason, AmapDegradeReason.network);
+    });
+
+    test('响应体停滞 → 有超时上限，不永久挂起，并回调 timeout', () async {
+      final body = StreamController<List<int>>();
+      addTearDown(body.close);
+      AmapDegradeReason? reason;
+      final client = _FakeHttpClient(
+        (_) async => _FakeResponse(200, body.stream),
+      );
+
+      final startedAt = DateTime.now();
+      final result = await searchPoiSuggestions(
+        keywords: '回龙观',
+        client: client,
+        onDegraded: (r) => reason = r,
+      );
+      final elapsed = DateTime.now().difference(startedAt);
+
+      expect(result, isEmpty);
+      expect(reason, AmapDegradeReason.timeout);
+      // 只断言「有上限」：真正的回归是永不返回，而不是差几十毫秒。
+      expect(
+        elapsed.inMilliseconds,
+        lessThan(NfrLocation.poiSearchTimeoutMs + 2000),
+      );
+    });
+
+    test('200 且结构正常 → 解析出候选', () async {
+      final client = _FakeHttpClient(
+        (_) async => _FakeResponse(
+          200,
+          Stream<List<int>>.value(
+            utf8.encode(
+              jsonEncode(<String, Object?>{
+                'status': '1',
+                'tips': <Object?>[tip()],
+              }),
+            ),
+          ),
+        ),
+      );
+
+      final result = await searchPoiSuggestions(
+        keywords: '回龙观',
+        client: client,
+      );
+
+      expect(result, hasLength(1));
+      expect(result.first.name, '回龙观地铁站');
+    });
+  });
+}
+
+/// 可控的 HttpClient 替身：把它收到的请求换成一个固定响应。
+class _FakeHttpClient implements HttpClient {
+  _FakeHttpClient(this._onGet);
+
+  final Future<HttpClientResponse> Function(Uri url) _onGet;
+
+  @override
+  Duration? connectionTimeout;
+
+  @override
+  Future<HttpClientRequest> getUrl(Uri url) async => _FakeRequest(url, _onGet);
+
+  @override
+  void close({bool force = false}) {}
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      throw StateError('未预期的 HttpClient 调用');
+}
+
+/// 只实现 close() 的请求替身（客户端只用到这一个入口）。
+class _FakeRequest implements HttpClientRequest {
+  _FakeRequest(this.url, this._onGet);
+
+  /// 请求 URL（本替身不校验，仅保留以便排查）。
+  final Uri url;
+  final Future<HttpClientResponse> Function(Uri url) _onGet;
+
+  @override
+  Future<HttpClientResponse> close() => _onGet(url);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      throw StateError('未预期的 HttpClientRequest 调用');
+}
+
+/// 固定状态码 + 可控响应体的响应替身。
+class _FakeResponse extends Stream<List<int>> implements HttpClientResponse {
+  _FakeResponse(this.statusCode, this._body);
+
+  @override
+  final int statusCode;
+
+  final Stream<List<int>> _body;
+
+  @override
+  StreamSubscription<List<int>> listen(
+    void Function(List<int>)? onData, {
+    Function? onError,
+    void Function()? onDone,
+    bool? cancelOnError,
+  }) => _body.listen(
+    onData,
+    onError: onError,
+    onDone: onDone,
+    cancelOnError: cancelOnError,
+  );
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      throw StateError('未预期的 HttpClientResponse 调用');
 }
 
 /// 一被使用就抛异常的 HttpClient（验证「未配置 Key 时不发请求」）。

@@ -20,13 +20,20 @@ const String _amapWebServiceKey = String.fromEnvironment(
   kAmapWebServiceKeyDefine,
 );
 
-/// 当前构建的高德 Web 服务 Key（未注入时为空串）。
+/// 测试缝：非 null 时覆盖构建期注入的 Key。
+///
+/// **为什么需要**：请求侧降级（非 200、超时、异常）只有真的发出请求才能覆盖，
+/// 而 `String.fromEnvironment` 是编译期常量，测试进程里恒为空串。生产代码不得
+/// 读写本变量；测试须在 `tearDown` 里置回 null。
+String? amapWebServiceKeyOverride;
+
+/// 当前生效的高德 Web 服务 Key（未注入时为空串）。
 ///
 /// 返回：Key 明文；只允许用于拼请求参数，不得写进日志或异常文案。
-String get amapWebServiceKey => _amapWebServiceKey;
+String get amapWebServiceKey => amapWebServiceKeyOverride ?? _amapWebServiceKey;
 
-/// 当前构建是否已配置高德 Web 服务 Key。
+/// 当前是否已配置高德 Web 服务 Key。
 ///
 /// 返回：bool；false 时所有依赖它的客户端都不发请求，直接走空结果降级
 ///   （与逆地理「不可用即空」同一口径）。
-bool get amapWebServiceKeyConfigured => _amapWebServiceKey.isNotEmpty;
+bool get amapWebServiceKeyConfigured => amapWebServiceKey.isNotEmpty;

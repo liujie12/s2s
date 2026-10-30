@@ -14,10 +14,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zhaoyazhao/domain/route_pair.dart';
+import 'package:zhaoyazhao/features/location/amap_degrade.dart';
 import 'package:zhaoyazhao/features/location/driving_route.dart';
 import 'package:zhaoyazhao/features/location/high_accuracy_locator.dart';
 import 'package:zhaoyazhao/features/location/location_center.dart';
 import 'package:zhaoyazhao/features/location/poi_search.dart';
+import 'package:zhaoyazhao/features/location/route_services.dart';
 import 'package:zhaoyazhao/features/publish/route_pair_picker_screen.dart';
 import 'package:zhaoyazhao/features/privacy/privacy_consent.dart';
 import 'package:zhaoyazhao/nfr_constants.dart';
@@ -63,6 +65,7 @@ class _FakeSearch {
     required String keywords,
     double? lng,
     double? lat,
+    void Function(AmapDegradeReason reason)? onDegraded,
   }) async {
     calls++;
     lastKeyword = keywords;
@@ -92,6 +95,7 @@ class _FakeDriving {
     required double originLat,
     required double destinationLng,
     required double destinationLat,
+    void Function(AmapDegradeReason reason)? onDegraded,
   }) {
     calls.add((originLng: originLng, destinationLng: destinationLng));
     if (autoResolve) return Future<DrivingSummary?>.value(result);

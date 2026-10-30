@@ -1026,7 +1026,8 @@ class _RequiredSection extends StatelessWidget {
 
 /// 「再花 5 秒升完整」冲刺区（§5.9「确认页默认带 🟢 冲刺项」）。
 ///
-/// §5.9 明确「只放 🟢 档差的两项 —— 门牌号与三级类目」。不放必填项：
+/// §5.9 明确「只放 🟢 档差的两项 —— 位置精确项与三级类目」（位置精确项在
+/// 拼车为起终点、其余分类为门牌号）。不放必填项：
 /// 必填没齐的话「确认发布」本就是禁用的，那不叫冲刺，叫拦截。
 class _GreenSprint extends StatelessWidget {
   const _GreenSprint({

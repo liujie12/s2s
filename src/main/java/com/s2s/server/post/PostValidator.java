@@ -198,16 +198,26 @@ public class PostValidator {
     }
 
     /**
-     * 判断单个地点是否带数值坐标。
+     * 判断单个地点是否带可用的数值坐标。
      *
      * @param place 地点对象（期望 {@code Map}）
-     * @return boolean；{@code lng}/{@code lat} 都是数值时为 true（字符串坐标不算）
+     * @return boolean；{@code lng}/{@code lat} 都是数值且落在合法经纬度范围内时为
+     *     true。字符串坐标、缺坐标、越界坐标都不算 —— 无效坐标建不了索引，也
+     *     算不了距离，不能当作「已选到具体 POI」。
      */
     private boolean hasCoordinate(Object place) {
         if (!(place instanceof Map<?, ?> map)) {
             return false;
         }
-        return map.get("lng") instanceof Number && map.get("lat") instanceof Number;
+        Object lng = map.get("lng");
+        Object lat = map.get("lat");
+        if (!(lng instanceof Number) || !(lat instanceof Number)) {
+            return false;
+        }
+        double lngValue = ((Number) lng).doubleValue();
+        double latValue = ((Number) lat).doubleValue();
+        return lngValue >= -180 && lngValue <= 180
+                && latValue >= -90 && latValue <= 90;
     }
 
     /**

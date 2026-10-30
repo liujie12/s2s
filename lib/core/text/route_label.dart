@@ -22,8 +22,15 @@ String? routeDistanceLabel(RoutePair pair) {
   final distance = pair.distanceM;
   final duration = pair.durationS;
   if (distance == null || duration == null) return null;
-  return '${routeMetersLabel(distance)} · ${routeDurationText(duration)}';
+  return routeDistanceText(distance, duration);
 }
+
+/// 距离与时长的一行摘要（已取到数值的两处共用入口）。
+///
+/// 参数：[meters] 里程（米）；[seconds] 时长（秒）。
+/// 返回：`约 19 km · 约 35 分钟` 形态的文案。
+String routeDistanceText(int meters, int seconds) =>
+    '${routeMetersLabel(meters)} · ${routeDurationText(seconds)}';
 
 /// 驾车里程文案：`约 850 m` / `约 19 km`。
 ///

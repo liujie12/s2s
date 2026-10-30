@@ -4790,7 +4790,11 @@ components:
         attributes:
           type: object
           additionalProperties: true
-          description: 动态属性，键取自模板 fields[].key，落 `post.attributes` JSON 列
+          description: |
+            动态属性，键取自模板 fields[].key，落 `post.attributes` JSON 列。
+            `route_pair` 类型的字段（拼车「起点 → 终点」）值是对象而非字符串：
+            `{origin:{name,address,lng,lat}, destination:{...}, distance_m?, duration_s?}`；
+            历史数据的同名字段仍是字符串，读取端必须同时接受两种形态。
         lng: { type: number, format: double }
         lat: { type: number, format: double }
         address: { type: string, maxLength: 120 }
@@ -5564,6 +5568,10 @@ components:
         `layer_switch`（Batch1）、`post_published`（Batch1）、`contact_event`（Batch1）、
         `demand_push_sent` + `resource_detail_click`（Batch2）。
 
+        另有 `amap_degraded`（高德 Web 服务降级，props 仅 `{reason}`：`no_key` /
+        `timeout` / `http_error` / `parse` / `network`），客户端**每次进入起终点
+        选择页最多一条**，避免随按键重复触发造成同毫秒去重冲突。
+
         `ts` 取**客户端采集时刻**；服务端按 `ts` 归入 `track_event_YYYYMM` 月表。
 
         **`interaction_id` + `event` + `ts` 三者同时是去重键成员**
@@ -5574,7 +5582,7 @@ components:
       properties:
         event:
           type: string
-          enum: [layer_switch, post_published, contact_event, demand_push_sent, resource_detail_click]
+          enum: [layer_switch, post_published, contact_event, demand_push_sent, resource_detail_click, amap_degraded]
         ts:
           type: string
           format: date-time

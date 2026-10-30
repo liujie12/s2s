@@ -78,6 +78,29 @@ public class TemplateService {
     }
 
     /**
+     * 读取叶子类目所属模板的当前版本号（发帖时写入 {@code post.template_version}）。
+     *
+     * <p>口径与 {@link #loadTemplate} 一致：模板按 L2 父级存储。没有自定义模板
+     * （走通用模板）时返回 0，不抛异常 —— 版本号只用于回溯帖子发布时的字段口径。</p>
+     *
+     * @param leafCategoryId 叶子类目 ID（L3）
+     * @return 模板 {@code template_version}；无模板行或值为空时为 0
+     */
+    public int getTemplateVersion(Integer leafCategoryId) {
+        CategoryEntity leaf = categoryMapper.selectById(leafCategoryId);
+        Integer parentId = (leaf != null) ? leaf.getParentId() : null;
+        if (parentId == null) {
+            return 0;
+        }
+        TemplateEntity entity = templateMapper.selectOne(
+                new QueryWrapper<TemplateEntity>().eq("leaf_category_id", parentId));
+        if (entity == null || entity.getTemplateVersion() == null) {
+            return 0;
+        }
+        return entity.getTemplateVersion();
+    }
+
+    /**
      * 从数据库加载模板（缓存未命中时调用）。
      *
      * <p>查找口径（对齐前端 {@code templateForLeaf} 的 {@code leafCategoryId ~/ 100}）：

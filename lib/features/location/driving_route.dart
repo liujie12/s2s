@@ -11,7 +11,10 @@ library;
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
+
 import '../../nfr_constants.dart';
+import 'amap_degrade.dart';
 import 'amap_web_service_key.dart';
 
 /// 一段驾车路径的摘要。
@@ -57,7 +60,8 @@ DrivingSummary? parseDrivingSummary(Object? json) {
 /// 参数：
 /// - [originLng]/[originLat] 起点坐标（GCJ-02）；
 /// - [destinationLng]/[destinationLat] 终点坐标（GCJ-02）；
-/// - [client] 可注入的 HTTP 客户端（测试用）；传入时由调用方负责关闭。
+/// - [client] 可注入的 HTTP 客户端（测试用）；传入时由调用方负责关闭；
+/// - [onDegraded] 降级回调（只报原因枚举，页面据此上报 `amap_degraded` 埋点）。
 ///
 /// 返回：路径摘要；未配置 Key、超时或任何失败时为 null，**不抛异常**。
 Future<DrivingSummary?> fetchDrivingSummary({
@@ -66,8 +70,12 @@ Future<DrivingSummary?> fetchDrivingSummary({
   required double destinationLng,
   required double destinationLat,
   HttpClient? client,
+  void Function(AmapDegradeReason reason)? onDegraded,
 }) async {
-  if (!amapWebServiceKeyConfigured) return null;
+  if (!amapWebServiceKeyConfigured) {
+    onDegraded?.call(AmapDegradeReason.noKey);
+    return null;
+  }
 
   final ownClient = client == null;
   final http = client ??
@@ -88,11 +96,24 @@ Future<DrivingSummary?> fetchDrivingSummary({
     final response = await request.close().timeout(
       const Duration(milliseconds: NfrLocation.drivingRouteTimeoutMs),
     );
-    if (response.statusCode != HttpStatus.ok) return null;
-    final body = await utf8.decoder.bind(response).join();
+    if (response.statusCode != HttpStatus.ok) {
+      // 只记录状态码：URL 含 Key，消息体也可能带 Key，都不能进日志。
+      if (kDebugMode) debugPrint('[DRIVING-ROUTE] http=${response.statusCode}');
+      onDegraded?.call(AmapDegradeReason.httpError);
+      return null;
+    }
+    // 响应体也要有上限：只给 request.close() 加超时时，体流停住会永久挂起。
+    final body = await utf8.decoder
+        .bind(response)
+        .join()
+        .timeout(const Duration(milliseconds: NfrLocation.drivingRouteTimeoutMs));
     return parseDrivingSummary(jsonDecode(body));
-  } catch (_) {
+  } catch (e) {
     // 含超时、连接失败与 JSON 解析失败：距离段静默隐藏（R13）。
+    // 只打原因枚举，不打 message —— 它可能带上含 Key 的 URL。
+    final reason = amapDegradeReasonOf(e);
+    if (kDebugMode) debugPrint('[DRIVING-ROUTE] degraded: ${reason.wire}');
+    onDegraded?.call(reason);
     return null;
   } finally {
     if (ownClient) http.close(force: true);

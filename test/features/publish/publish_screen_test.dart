@@ -19,6 +19,7 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:zhaoyazhao/core/network/api_error_code.dart';
@@ -28,6 +29,7 @@ import 'package:zhaoyazhao/features/category/category_repository.dart';
 import 'package:zhaoyazhao/features/publish/publish_form_state.dart';
 import 'package:zhaoyazhao/features/publish/publish_screen.dart';
 import 'package:zhaoyazhao/features/publish/publish_screen_args.dart';
+import 'package:zhaoyazhao/router/app_router.dart';
 
 import '../../support/fake_repositories.dart';
 
@@ -196,6 +198,58 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      expect(find.text('回龙观 → 中关村'), findsOneWidget);
+    });
+
+    testWidgets('点击摘要行进入选择页，回传后写回表单（R1 导航与回传）', (tester) async {
+      useTallSurface(tester);
+      // 选择页用桩替代：本用例只验证「点摘要行 → push 选择页 → 回传写回表单」
+      // 这条链路，选择页自身的交互由 route_pair_picker_screen_test 覆盖。
+      final router = GoRouter(
+        initialLocation: '/publish',
+        routes: [
+          GoRoute(
+            path: '/publish',
+            builder: (context, state) =>
+                PublishScreen(args: PublishScreenArgs(initialForm: carpool())),
+          ),
+          GoRoute(
+            path: AppRoutes.routePairPicker,
+            builder: (context, state) => Scaffold(
+              body: Center(
+                child: ElevatedButton(
+                  onPressed: () => context.pop(
+                    const RoutePair(
+                      origin: RoutePlace(name: '回龙观', lng: 116.337, lat: 40.071),
+                      destination: RoutePlace(
+                        name: '中关村',
+                        lng: 116.316,
+                        lat: 39.983,
+                      ),
+                    ),
+                  ),
+                  child: const Text('桩：回传起终点'),
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [categoryRepositoryProvider.overrideWithValue(repo)],
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('选择起终点'));
+      await tester.pumpAndSettle();
+      expect(find.text('桩：回传起终点'), findsOneWidget);
+
+      await tester.tap(find.text('桩：回传起终点'));
+      await tester.pumpAndSettle();
       expect(find.text('回龙观 → 中关村'), findsOneWidget);
     });
   });

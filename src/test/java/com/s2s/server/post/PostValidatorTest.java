@@ -105,6 +105,15 @@ class PostValidatorTest {
     }
 
     @Test
+    void 超出经纬度范围视为缺失() {
+        Map<String, Object> attributes = new HashMap<>();
+        attributes.put("route", route(place(200.0, 40.071), place(116.316, 39.983)));
+        attributes.put("seats", "2");
+
+        assertThat(requiredFull(attributes)).isFalse();
+    }
+
+    @Test
     void 对象缺终点视为缺失() {
         Map<String, Object> attributes = new HashMap<>();
         attributes.put("route", route(place(116.337, 40.071), null));

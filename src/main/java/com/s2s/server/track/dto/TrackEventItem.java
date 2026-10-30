@@ -61,6 +61,8 @@ public record TrackEventItem(
         POST_PUBLISHED("post_published"),
         /** 联系事件。 */
         CONTACT_EVENT("contact_event"),
+        /** 高德 Web 服务降级（props 仅含 reason；客户端每次进页最多一条）。 */
+        AMAP_DEGRADED("amap_degraded"),
         /** 需求推送送达。 */
         DEMAND_PUSH_SENT("demand_push_sent"),
         /** 资源详情点击。 */

@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.s2s.server.ai.AiQuotaGate;
+import com.s2s.server.category.TemplateService;
 import com.s2s.server.cert.CertService;
 import com.s2s.server.cert.dto.CertSnapshot;
 import com.s2s.server.common.constants.NfrPost;
@@ -57,9 +58,6 @@ public class PostService {
     /** 帖子初始状态：已发布上架。 */
     private static final String STATUS_ACTIVE = "active";
 
-    /** 帖子初始模板版本（TODO：对齐 template 表实际版本）。 */
-    private static final int INITIAL_TEMPLATE_VERSION = 1;
-
     private final PostMapper postMapper;
     private final PostMediaMapper mediaMapper;
     private final CryptoFacade cryptoFacade;
@@ -72,6 +70,7 @@ public class PostService {
     private final CommunityResolver communityResolver;
     private final CertService certService;
     private final PostCredentialAssembler credentialAssembler;
+    private final TemplateService templateService;
 
     /**
      * 构造发布服务。
@@ -82,6 +81,7 @@ public class PostService {
      * @param communityResolver 小区实体归一（发布时把地址收敛为 community_id）
      * @param certService 资质服务（发布/补挂时校验可挂载资质，跨域只调 service）
      * @param credentialAssembler 帖级凭证声明组装器（写快照 + 读展示）
+     * @param templateService 模板服务（发布时读取模板版本，写入帖子快照）
      */
     public PostService(PostMapper postMapper,
             PostMediaMapper mediaMapper,
@@ -94,7 +94,8 @@ public class PostService {
             AmapPoiClient amapPoiClient,
             CommunityResolver communityResolver,
             CertService certService,
-            PostCredentialAssembler credentialAssembler) {
+            PostCredentialAssembler credentialAssembler,
+            TemplateService templateService) {
         this.postMapper = postMapper;
         this.mediaMapper = mediaMapper;
         this.cryptoFacade = cryptoFacade;
@@ -107,6 +108,7 @@ public class PostService {
         this.communityResolver = communityResolver;
         this.certService = certService;
         this.credentialAssembler = credentialAssembler;
+        this.templateService = templateService;
     }
 
     /**
@@ -187,7 +189,8 @@ public class PostService {
         post.setStatus(STATUS_ACTIVE);
         post.setRestricted(0);
         post.setAiAssisted(Boolean.TRUE.equals(req.aiAssisted()));
-        post.setTemplateVersion(INITIAL_TEMPLATE_VERSION);
+        // 快照发布时实际使用的模板版本，而不是写死常量（V26 起模板会随迁移递增）。
+        post.setTemplateVersion(templateService.getTemplateVersion(req.leafCategoryId()));
         post.setExpireAt(LocalDateTime.now().plusDays(NfrPost.VALID_DAYS));
         postMapper.insert(post);
 

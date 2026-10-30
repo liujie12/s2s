@@ -12,7 +12,10 @@ library;
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
+
 import '../../nfr_constants.dart';
+import 'amap_degrade.dart';
 import 'amap_web_service_key.dart';
 
 /// 一条 POI 候选。
@@ -87,7 +90,8 @@ List<PoiSuggestion> parseInputTips(Object? json) {
 /// 参数：
 /// - [keywords] 用户输入的关键词（空白串不发请求）；
 /// - [lng]/[lat] 当前位置，作为排序偏置（有则带、无则全省，不影响结果可用性）；
-/// - [client] 可注入的 HTTP 客户端（测试用）；传入时由调用方负责关闭。
+/// - [client] 可注入的 HTTP 客户端（测试用）；传入时由调用方负责关闭；
+/// - [onDegraded] 降级回调（只报原因枚举，页面据此上报 `amap_degraded` 埋点）。
 ///
 /// 返回：候选列表；未配置 Key、关键词过短、超时或任何失败时为空列表，
 ///   **不抛异常**。
@@ -96,9 +100,13 @@ Future<List<PoiSuggestion>> searchPoiSuggestions({
   double? lng,
   double? lat,
   HttpClient? client,
+  void Function(AmapDegradeReason reason)? onDegraded,
 }) async {
   final trimmed = keywords.trim();
-  if (!amapWebServiceKeyConfigured) return const <PoiSuggestion>[];
+  if (!amapWebServiceKeyConfigured) {
+    onDegraded?.call(AmapDegradeReason.noKey);
+    return const <PoiSuggestion>[];
+  }
   if (trimmed.length < NfrLocation.poiSearchMinKeywordLength) {
     return const <PoiSuggestion>[];
   }
@@ -124,11 +132,24 @@ Future<List<PoiSuggestion>> searchPoiSuggestions({
     final response = await request.close().timeout(
       const Duration(milliseconds: NfrLocation.poiSearchTimeoutMs),
     );
-    if (response.statusCode != HttpStatus.ok) return const <PoiSuggestion>[];
-    final body = await utf8.decoder.bind(response).join();
+    if (response.statusCode != HttpStatus.ok) {
+      // 只记录状态码：URL 含 Key，消息体也可能带 Key，都不能进日志。
+      if (kDebugMode) debugPrint('[POI-SEARCH] http=${response.statusCode}');
+      onDegraded?.call(AmapDegradeReason.httpError);
+      return const <PoiSuggestion>[];
+    }
+    // 响应体也要有上限：只给 request.close() 加超时时，体流停住会永久挂起。
+    final body = await utf8.decoder
+        .bind(response)
+        .join()
+        .timeout(const Duration(milliseconds: NfrLocation.poiSearchTimeoutMs));
     return parseInputTips(jsonDecode(body));
-  } catch (_) {
-    // 含超时、连接失败与 JSON 解析失败：候选是辅助信息，静默降级为空列表。
+  } catch (e) {
+    // 含超时、连接失败与 JSON 解析失败：候选是辅助信息，降级为空列表。
+    // 只打原因枚举，不打 message —— 它可能带上含 Key 的 URL。
+    final reason = amapDegradeReasonOf(e);
+    if (kDebugMode) debugPrint('[POI-SEARCH] degraded: ${reason.wire}');
+    onDegraded?.call(reason);
     return const <PoiSuggestion>[];
   } finally {
     if (ownClient) http.close(force: true);

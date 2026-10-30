@@ -578,4 +578,56 @@ void main() {
       expect(find.textContaining('未实名用户发布数量已达上限'), findsOneWidget);
     });
   });
+
+  group('拼车冲刺区（KTD3）', () {
+    testWidgets('拼车给「回到发布页选择起终点」，不再渲染门牌号输入（KTD3）', (tester) async {
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 2;
+      addTearDown(tester.view.reset);
+      final ai = FakeAiRepository()
+        ..resultToReturn = const AiParseResultDto(
+          guess: AiGuessDto(
+            title: '工作日早八点回龙观到中关村',
+            leafCategoryId: 30101,
+            priceUnit: '面议',
+            templateValues: {'depart_time': '工作日 8:00', 'seats': '2'},
+          ),
+          scopeVerified: {
+            'leaf_category_id': 'user_input',
+            'title': 'user_input',
+            'depart_time': 'user_input',
+            'seats': 'user_input',
+          },
+          unresolvedFields: <String>[],
+        );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [aiRepositoryProvider.overrideWithValue(ai)],
+          child: MaterialApp(
+            home: AiConfirmScreen(
+              args: AiConfirmArgs(
+                form: const PublishFormState(
+                  leafCategoryId: 30101,
+                  lng: 120.1551,
+                  lat: 30.2741,
+                  title: '工作日早八点回龙观到中关村',
+                  priceUnit: '面议',
+                  description: '每天早八点出发，可带小件行李。',
+                  contact: '13800138000',
+                  agreed: true,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // 拼车的位置精确由起终点 POI 判定，本页没有选点入口 → 只给指路文案。
+      expect(find.text('回到发布页选择起终点即可升级'), findsOneWidget);
+      // 门牌号输入框不应出现（它的 hint 就是这段文案）。
+      expect(find.text('如 3 号楼 2 单元 501'), findsNothing);
+    });
+  });
 }

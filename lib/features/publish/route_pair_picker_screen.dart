@@ -15,72 +15,30 @@ library;
 
 import 'dart:async';
 
-import 'package:amap_map/amap_map.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uuid/uuid.dart';
 import 'package:x_amap_base/x_amap_base.dart';
 
 import '../../core/text/route_label.dart';
+import '../../core/track/track_event.dart';
 import '../../design_tokens.dart';
 import '../../domain/route_pair.dart';
 import '../../nfr_constants.dart';
+import '../location/amap_degrade.dart';
 import '../location/driving_route.dart';
 import '../location/high_accuracy_locator.dart';
 import '../location/location_center.dart';
 import '../location/poi_search.dart';
 import '../location/reverse_geocode.dart';
+import '../location/route_services.dart';
 import '../map/amap_init_guard.dart';
 import '../privacy/privacy_consent.dart';
-
-/// POI 候选搜索的可覆盖入口（widget 测试注入假实现）。
-///
-/// 参数：[keywords] 关键词；[lng]/[lat] 当前定位（排序偏置，可空）。
-/// 返回：候选列表（失败为空列表）。
-typedef PoiSearchFn =
-    Future<List<PoiSuggestion>> Function({
-      required String keywords,
-      double? lng,
-      double? lat,
-    });
-
-/// 驾车路径的可覆盖入口（widget 测试注入假实现）。
-///
-/// 参数：起点与终点的 GCJ-02 坐标。
-/// 返回：路径摘要；失败为 null。
-typedef DrivingSummaryFn =
-    Future<DrivingSummary?> Function({
-      required double originLng,
-      required double originLat,
-      required double destinationLng,
-      required double destinationLat,
-    });
-
-/// POI 候选搜索 Provider（默认指向高德真实现，测试可覆写）。
-final poiSearchFnProvider = Provider<PoiSearchFn>((ref) {
-  return ({required String keywords, double? lng, double? lat}) =>
-      searchPoiSuggestions(keywords: keywords, lng: lng, lat: lat);
-});
-
-/// 驾车路径 Provider（默认指向高德真实现，测试可覆写）。
-final drivingSummaryFnProvider = Provider<DrivingSummaryFn>((ref) {
-  return ({
-    required double originLng,
-    required double originLat,
-    required double destinationLng,
-    required double destinationLat,
-  }) => fetchDrivingSummary(
-    originLng: originLng,
-    originLat: originLat,
-    destinationLng: destinationLng,
-    destinationLat: destinationLat,
-  );
-});
+import '../track/track_wiring.dart';
+import 'route_pair_map_mode.dart';
 
 /// 当前聚焦的是哪一行（决定候选回填、快捷项与地图落针的目标）。
 enum _RouteRow { origin, destination }
-
-/// 地图态缩放级别：与发现侧选点页一致，能看清楼栋又不至于失去参照物。
-const double _kMapZoom = 17;
 
 /// 起终点选择页。
 class RoutePairPickerScreen extends ConsumerStatefulWidget {
@@ -114,8 +72,12 @@ class _RoutePairPickerScreenState
   /// 是否处于地图形态。
   bool _mapMode = false;
 
-  /// 当前候选列表与请求序号（防抖后只接受最后一次结果）。
+  /// 当前候选列表、发起该列表的行与请求序号（防抖后只接受最后一次结果）。
+  ///
+  /// [_suggestionRow] 是候选的归属行：用户在终点输入后立刻改点起点时，候选
+  /// 仍属于终点 —— 少了它就会把终点搜出来的地点写进起点。
   List<PoiSuggestion> _suggestions = const <PoiSuggestion>[];
+  _RouteRow? _suggestionRow;
   int _searchSeq = 0;
   Timer? _debounce;
 
@@ -124,12 +86,14 @@ class _RoutePairPickerScreenState
   bool _distanceLoading = false;
   int _distanceSeq = 0;
 
-  /// 地图态当前准星坐标与地址（确认后回填聚焦行）。
+  /// 进入地图态时的初始准星（形态内部自管坐标，见 route_pair_map_mode.dart）。
   LatLng _mapTarget = const LatLng(kDefaultCenterLat, kDefaultCenterLng);
-  String _mapAddress = '';
-  bool _mapResolving = false;
-  AMapController? _mapController;
-  int _mapAddressSeq = 0;
+
+  /// 本次进页的交互标识（埋点去重键成员，进页生成一次后冻结）。
+  final String _interactionId = const Uuid().v4();
+
+  /// 是否已上报过 `amap_degraded`（每次进页最多一条，见事件定义）。
+  bool _degradeReported = false;
 
   @override
   void initState() {
@@ -174,12 +138,37 @@ class _RoutePairPickerScreenState
   bool get _consented =>
       ref.read(privacyConsentProvider) == PrivacyConsentStatus.agreed;
 
+  /// 上报一次高德降级事件（每次进入本页最多一条）。
+  ///
+  /// 参数：[reason] 降级原因（不带坐标、关键词与含 Key 的 URL）。
+  /// 返回：void。埋点控制器未就绪时静默跳过。
+  void _reportDegrade(AmapDegradeReason reason) {
+    if (_degradeReported) return;
+    _degradeReported = true;
+    final controller = ref.read(trackControllerProvider);
+    if (controller == null) return;
+    unawaited(
+      controller.enqueue(
+        TrackEvent(
+          event: TrackEventName.amapDegraded,
+          ts: DateTime.now(),
+          interactionId: _interactionId,
+          props: <String, Object?>{'reason': reason.wire},
+        ),
+      ),
+    );
+  }
+
   /// 把一次定位结果写进指定行（「我的位置」，KTD8）。
   ///
   /// 参数：[row] 目标行。
   /// 返回：Future，定位与逆地理完成（成功或失败）后结束。失败时该行留空，
   ///   不阻断页面其余交互（R12）。
+  ///
+  /// **未同意隐私协议时不取点**：设备定位同样属于个人信息采集，与 KTD5
+  /// 「未同意不出网」同一口径；此时该行保持空态，页面已有同意提示。
   Future<void> _fillWithCurrentLocation(_RouteRow row) async {
+    if (!_consented) return;
     final localized = await locateForPublish(ref);
     if (!mounted) return;
     final coordinate = localized != null
@@ -194,7 +183,11 @@ class _RoutePairPickerScreenState
 
     // 逆地理只用于副文与 address；未同意隐私协议时不发这次出网（KTD5）。
     final label = _consented
-        ? await reverseGeocodeLabel(lat: coordinate.lat, lng: coordinate.lng)
+        ? await reverseGeocodeLabel(
+            lat: coordinate.lat,
+            lng: coordinate.lng,
+            onDegraded: _reportDegrade,
+          )
         : '';
     if (!mounted) return;
     _setRow(
@@ -213,6 +206,9 @@ class _RoutePairPickerScreenState
   /// 参数：[row] 目标行；[place] 地点值。
   /// 返回：void。
   void _setRow(_RouteRow row, RoutePlace place) {
+    // 已选定就作废在途候选：否则上一条关键词的结果会在选点后又弹回来。
+    _debounce?.cancel();
+    ++_searchSeq;
     setState(() {
       if (row == _RouteRow.origin) {
         _origin = place;
@@ -222,6 +218,7 @@ class _RoutePairPickerScreenState
         _destCtrl.text = place.name;
       }
       _suggestions = const <PoiSuggestion>[];
+      _suggestionRow = null;
       _focus = row;
     });
     unawaited(_refreshDistance());
@@ -231,6 +228,8 @@ class _RoutePairPickerScreenState
   ///
   /// 参数：[row] 目标行。返回：void。
   void _clearRow(_RouteRow row) {
+    _debounce?.cancel();
+    ++_searchSeq;
     setState(() {
       if (row == _RouteRow.origin) {
         _origin = null;
@@ -239,6 +238,8 @@ class _RoutePairPickerScreenState
         _destination = null;
         _destCtrl.clear();
       }
+      _suggestions = const <PoiSuggestion>[];
+      _suggestionRow = null;
     });
     unawaited(_refreshDistance());
   }
@@ -262,20 +263,38 @@ class _RoutePairPickerScreenState
     _debounce?.cancel();
     final keyword = value.trim();
     if (keyword.length < NfrLocation.poiSearchMinKeywordLength) {
-      setState(() => _suggestions = const <PoiSuggestion>[]);
+      setState(() {
+        _suggestions = const <PoiSuggestion>[];
+        _suggestionRow = null;
+      });
       return;
     }
     _debounce = Timer(
       const Duration(milliseconds: NfrLocation.poiSearchDebounceMs),
-      () => unawaited(_searchSuggestions(keyword)),
+      () => unawaited(_searchSuggestions(keyword, row)),
     );
+  }
+
+  /// 聚焦某一行：取消防抖、作废在途搜索并清空上一条候选。
+  ///
+  /// 参数：[row] 被聚焦或点按的行。
+  /// 返回：void。候选只在发起它的那一行上有效，换行时旧候选必须一起作废，
+  ///   否则点选会把另一行搜出来的地点写进这一行。
+  void _focusRow(_RouteRow row) {
+    _debounce?.cancel();
+    ++_searchSeq;
+    setState(() {
+      _focus = row;
+      _suggestions = const <PoiSuggestion>[];
+      _suggestionRow = null;
+    });
   }
 
   /// 按关键词请求候选（只接受最后一次请求的结果）。
   ///
-  /// 参数：[keyword] 已去空白的关键词。
+  /// 参数：[keyword] 已去空白的关键词；[row] 发起这次搜索的行。
   /// 返回：Future，请求完成（成功或失败）后结束。
-  Future<void> _searchSuggestions(String keyword) async {
+  Future<void> _searchSuggestions(String keyword, _RouteRow row) async {
     if (!_consented) return;
     final seq = ++_searchSeq;
     final fix = _origin?.isLocated == true ? _origin : null;
@@ -283,16 +302,21 @@ class _RoutePairPickerScreenState
       keywords: keyword,
       lng: fix?.lng,
       lat: fix?.lat,
+      onDegraded: _reportDegrade,
     );
     if (!mounted || seq != _searchSeq) return;
-    setState(() => _suggestions = results);
+    setState(() {
+      _suggestions = results;
+      _suggestionRow = row;
+    });
   }
 
-  /// 点选一条候选：回填当前聚焦行并收起列表（R6）。
+  /// 点选一条候选：回填发起该候选的行并收起列表（R6）。
   ///
   /// 参数：[suggestion] 被点选的候选。返回：void。
   void _pickSuggestion(PoiSuggestion suggestion) {
-    final row = _focus ?? _RouteRow.origin;
+    // 回填到「发起这次搜索的行」，而不是当前焦点行（两者可能已被用户切换）。
+    final row = _suggestionRow ?? _focus ?? _RouteRow.origin;
     _setRow(
       row,
       RoutePlace(
@@ -310,12 +334,15 @@ class _RoutePairPickerScreenState
   void _swap() {
     final origin = _origin;
     final destination = _destination;
+    _debounce?.cancel();
+    ++_searchSeq;
     setState(() {
       _origin = destination;
       _destination = origin;
       _originCtrl.text = destination?.name ?? '';
       _destCtrl.text = origin?.name ?? '';
       _suggestions = const <PoiSuggestion>[];
+      _suggestionRow = null;
       _distance = null;
     });
     unawaited(_refreshDistance());
@@ -334,6 +361,8 @@ class _RoutePairPickerScreenState
         destination.isLocated;
 
     if (!ready || !_consented) {
+      // 作废在途请求：否则端点在途被清空后，旧响应仍会通过序号校验写回 _distance。
+      ++_distanceSeq;
       if (_distance != null || _distanceLoading) {
         setState(() {
           _distance = null;
@@ -353,6 +382,7 @@ class _RoutePairPickerScreenState
       originLat: origin.lat!,
       destinationLng: destination.lng!,
       destinationLat: destination.lat!,
+      onDegraded: _reportDegrade,
     );
     if (!mounted || seq != _distanceSeq) return;
     setState(() {
@@ -401,9 +431,6 @@ class _RoutePairPickerScreenState
         _mapTarget = LatLng(place!.lat!, place.lng!);
       }
     });
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) unawaited(_refreshMapAddress());
-    });
   }
 
   /// 退出地图形态回到列表（不提交落针）。
@@ -411,41 +438,22 @@ class _RoutePairPickerScreenState
   /// 返回：void。
   void _exitMap() => setState(() => _mapMode = false);
 
-  /// 确认地图落针：逆地理后回填当前聚焦行并回到列表（R8）。
+  /// 地图落针后的回填：写进当前聚焦行并回到列表（R8）。
   ///
-  /// 返回：Future，回填完成后结束。
-  Future<void> _confirmMapPick() async {
+  /// 参数：[label] 逆地理得到的地点名（可空串）；[lng]/[lat] GCJ-02 坐标。
+  /// 返回：void。地址名缺失时主值退回「地图选点」，坐标仍然回填。
+  void _onMapPicked(String label, double lng, double lat) {
     final row = _focus ?? _RouteRow.origin;
-    final label = _mapAddress;
     _setRow(
       row,
       RoutePlace(
         name: label.isEmpty ? '地图选点' : label,
         address: label,
-        lng: _mapTarget.longitude,
-        lat: _mapTarget.latitude,
+        lng: lng,
+        lat: lat,
       ),
     );
     setState(() => _mapMode = false);
-  }
-
-  /// 对地图准星位置做一次逆地理（只接受最后一次请求的结果）。
-  ///
-  /// 返回：Future，逆地理完成（成功或失败）后结束。
-  Future<void> _refreshMapAddress() async {
-    final seq = ++_mapAddressSeq;
-    setState(() => _mapResolving = true);
-    final label = _consented
-        ? await reverseGeocodeLabel(
-            lat: _mapTarget.latitude,
-            lng: _mapTarget.longitude,
-          )
-        : '';
-    if (!mounted || seq != _mapAddressSeq) return;
-    setState(() {
-      _mapAddress = label;
-      _mapResolving = false;
-    });
   }
 
   /// 主按钮是否可用（两端都已定位，R11）。
@@ -479,7 +487,14 @@ class _RoutePairPickerScreenState
             ? _buildMapAppBar()
             : _buildListAppBar(consent: consent),
         body: _mapMode
-            ? _buildMapBody(mapUsable: mapUsable, consent: consent)
+            ? RoutePairMapMode(
+                initialTarget: _mapTarget,
+                consented: consent == PrivacyConsentStatus.agreed,
+                mapUsable: mapUsable,
+                targetLabel: _focus == _RouteRow.destination ? '终点' : '起点',
+                onDegraded: _reportDegrade,
+                onPicked: _onMapPicked,
+              )
             : _buildListBody(consent: consent),
       ),
     );
@@ -707,7 +722,7 @@ class _RoutePairPickerScreenState
                     color: Color(AppColors.textPlaceholder),
                   ),
                 ),
-                onTap: () => setState(() => _focus = row),
+                onTap: () => _focusRow(row),
                 onChanged: (value) => _onKeywordChanged(row, value),
               ),
               if (place != null && place.address.isNotEmpty)
@@ -741,9 +756,11 @@ class _RoutePairPickerScreenState
       if (_distanceLoading) {
         text = '计算中…';
       } else if (_distance != null) {
-        text =
-            '${routeMetersLabel(_distance!.distanceM)} · '
-            '${routeDurationText(_distance!.durationS)}';
+        // 与详情页共用同一份取整规则（route_label.dart），不在此手拼。
+        text = routeDistanceText(
+          _distance!.distanceM,
+          _distance!.durationS,
+        );
       } else {
         // 距离失败：整段隐藏（R13），但保持行高不让版面跳动。
         text = '';
@@ -891,162 +908,4 @@ class _RoutePairPickerScreenState
       ),
     );
   }
-
-  /// 地图态主体：可拖图的地图 + 准星 + 底部确认面板（KTD7）。
-  ///
-  /// 参数：[mapUsable] 是否可渲染真实地图；[consent] 隐私同意态。
-  /// 返回：页面主体。
-  Widget _buildMapBody({
-    required bool mapUsable,
-    required PrivacyConsentStatus consent,
-  }) {
-    return Column(
-      children: [
-        Expanded(
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              if (mapUsable)
-                AMapWidget(
-                  initialCameraPosition: CameraPosition(
-                    target: _mapTarget,
-                    zoom: _kMapZoom,
-                  ),
-                  onMapCreated: (controller) => _mapController = controller,
-                  onCameraMoveEnd: (camera) {
-                    setState(() => _mapTarget = camera.target);
-                    unawaited(_refreshMapAddress());
-                  },
-                  onTap: (target) {
-                    setState(() => _mapTarget = target);
-                    _mapController?.moveCamera(CameraUpdate.newLatLng(target));
-                    unawaited(_refreshMapAddress());
-                  },
-                  compassEnabled: false,
-                  scaleEnabled: true,
-                )
-              else
-                Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(AppSpacing.lg),
-                    child: Text(
-                      consent == PrivacyConsentStatus.agreed
-                          ? '高德地图 Key 未配置，地图选点不可用'
-                          : '请先同意隐私协议后再使用地图选点',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: AppTypeScale.body.size,
-                        color: const Color(AppColors.textSecondary),
-                      ),
-                    ),
-                  ),
-                ),
-              if (mapUsable)
-                IgnorePointer(
-                  child: Align(
-                    alignment: Alignment.center,
-                    child: Transform.translate(
-                      offset: const Offset(0, -18),
-                      child: Icon(
-                        Icons.place,
-                        size: 40,
-                        color: const Color(AppColors.primary),
-                        shadows: const [
-                          Shadow(color: Colors.black26, blurRadius: 4),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-        _buildMapPanel(mapUsable: mapUsable),
-      ],
-    );
-  }
-
-  /// 地图态底部面板：地址核对 + 回填确认。
-  ///
-  /// 参数：[mapUsable] 是否可回填（false 时按钮禁用）。
-  /// 返回：面板控件。
-  Widget _buildMapPanel({required bool mapUsable}) {
-    final target = _focus == _RouteRow.destination ? '终点' : '起点';
-    return Container(
-      width: double.infinity,
-      color: const Color(AppColors.surface),
-      padding: EdgeInsets.fromLTRB(
-        AppSpacing.lg,
-        AppSpacing.md,
-        AppSpacing.lg,
-        AppSpacing.md + MediaQuery.of(context).padding.bottom,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            mapUsable
-                ? '拖动地图，把准星对准$target'
-                : '地图不可用，返回列表继续搜索',
-            style: TextStyle(
-              fontSize: AppTypeScale.body.size,
-              color: const Color(AppColors.textSecondary),
-            ),
-          ),
-          if (mapUsable) ...[
-            const SizedBox(height: AppSpacing.xs),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Icon(
-                  Icons.location_on_outlined,
-                  size: 18,
-                  color: Color(AppColors.primary),
-                ),
-                const SizedBox(width: AppSpacing.xs),
-                Expanded(
-                  child: Text(
-                    _mapResolving
-                        ? '正在获取位置信息…'
-                        : (_mapAddress.isEmpty ? '暂时无法获取位置名称' : _mapAddress),
-                    style: TextStyle(
-                      fontSize: AppTypeScale.body.size,
-                      fontWeight: FontWeight.w600,
-                      color: _mapAddress.isEmpty && !_mapResolving
-                          ? const Color(AppColors.textSecondary)
-                          : const Color(AppColors.textPrimary),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            SizedBox(
-              width: double.infinity,
-              height: 44,
-              child: ElevatedButton(
-                onPressed: () => unawaited(_confirmMapPick()),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(AppColors.primary),
-                  foregroundColor: const Color(AppColors.surface),
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(AppRadius.full),
-                  ),
-                ),
-                child: Text(
-                  '设为$target',
-                  style: TextStyle(
-                    fontSize: AppTypeScale.body.size,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
 }
-

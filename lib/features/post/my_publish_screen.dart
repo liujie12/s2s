@@ -40,6 +40,7 @@ import '../../domain/category_tree.dart';
 import '../../domain/listing.dart';
 import '../../domain/listing_category_style.dart';
 import '../../domain/listing_detail.dart';
+import '../../domain/publish_template.dart';
 import '../../domain/route_pair.dart';
 import '../../router/app_router.dart';
 import '../publish/draft_store.dart';
@@ -267,7 +268,10 @@ class _MyPublishScreenState extends ConsumerState<MyPublishScreen> {
       priceUnit: detail.priceUnit,
       description: detail.description ?? '',
       templateValues: _stringAttributes(detail.attributes),
-      routePair: _routePairFromAttributes(detail.attributes),
+      routePair: _routePairFromAttributes(
+        detail.attributes,
+        detail.leafCategoryId,
+      ),
       mediaIds: [for (final media in detail.media) media.mediaId],
       // 编辑态回显已挂载资质（一帖多证）：只带 cert_id，勾选态由发布页资质栏渲染。
       certIds: [
@@ -295,7 +299,10 @@ class _MyPublishScreenState extends ConsumerState<MyPublishScreen> {
       priceUnit: draft.priceUnit,
       description: draft.description ?? '',
       templateValues: _stringAttributes(draft.attributes ?? const {}),
-      routePair: _routePairFromAttributes(draft.attributes ?? const {}),
+      routePair: _routePairFromAttributes(
+        draft.attributes ?? const {},
+        draft.leafCategoryId,
+      ),
       mediaIds: draft.mediaIds,
       contact: '',
     );
@@ -319,12 +326,22 @@ class _MyPublishScreenState extends ConsumerState<MyPublishScreen> {
 
   /// 从 `attributes` 中解析起终点对象（KTD1）。
   ///
-  /// 参数：[attributes] 详情/重发出参的动态属性。
-  /// 返回：第一条能解析成起终点的对象值；历史帖只有字符串 `route` 时返回
-  ///   null（文本值仍留在 `templateValues` 里，重发照常带上）。
-  RoutePair? _routePairFromAttributes(Map<String, Object?> attributes) {
-    for (final value in attributes.values) {
-      final pair = RoutePair.parseAttribute(value);
+  /// 参数：[attributes] 详情/重发出参的动态属性；[leafCategoryId] 该帖叶子类目
+  ///   （决定用哪份模板找 `route_pair` 字段）。
+  /// 返回：按模板 `route_pair` 字段的 key 解析出的起终点；未选分类、模板无该
+  ///   字段、或历史帖只有字符串值时返回 null（文本值仍留在 `templateValues`
+  ///   里，重发照常带上）。
+  ///
+  /// **为什么按 key 而不是遍历所有值**：遍历会把任何形如 `{origin,destination}`
+  /// 的属性误认成起终点，未来多一个结构化字段就会绑错键。
+  RoutePair? _routePairFromAttributes(
+    Map<String, Object?> attributes,
+    int? leafCategoryId,
+  ) {
+    if (leafCategoryId == null) return null;
+    for (final field in templateForLeaf(leafCategoryId).extraFields) {
+      if (field.type != TemplateFieldType.routePair) continue;
+      final pair = RoutePair.parseAttribute(attributes[field.key]);
       if (pair != null) return pair;
     }
     return null;

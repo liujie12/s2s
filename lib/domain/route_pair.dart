@@ -119,7 +119,7 @@ class RoutePair {
     );
   }
 
-  /// 解析 `attributes.route` 的两种历史形态（KTD1）。
+  /// 解析 `attributes.route`（KTD1）：只认对象形态。
   ///
   /// 参数：[raw] 属性原始值：对象形态或历史字符串。
   /// 返回：对象形态解析出的 [RoutePair]；**字符串形态返回 null**，由调用方
