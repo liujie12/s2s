@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ideation: 发布页「分类专属信息」录入效率与体验</title>
+<style>
+  :root{
+    --bg:#f7f8f7;
+    --surface:#ffffff;
+    --surface-2:#f1f4f2;
+    --text:#1b2320;
+    --text-2:#4a5751;
+    --text-3:#6f7d76;
+    --border:#dfe5e1;
+    --accent:#0f766e;
+    --accent-soft:#e4f1ee;
+    --accent-text:#0b5c56;
+    --warn-soft:#fdf2e3;
+    --warn-text:#8a5a14;
+    --danger-soft:#fbeceb;
+    --danger-text:#9b3530;
+    --radius:10px;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    font-size:15px;line-height:1.75;
+  }
+  .page{max-width:940px;margin-inline:auto;padding:48px 24px 72px}
+  .eyebrow{
+    font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--accent-text);font-weight:700;margin:0 0 10px;
+  }
+  h1{font-size:28px;line-height:1.35;margin:0 0 10px;letter-spacing:-.01em}
+  .lede{font-size:16px;color:var(--text-2);margin:0 0 22px;max-width:70ch}
+  header.meta dl{
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
+    gap:12px 24px;margin:0;padding:16px 18px;background:var(--surface);
+    border:1px solid var(--border);border-radius:var(--radius);
+  }
+  header.meta dt{font-size:11px;letter-spacing:.08em;color:var(--text-3);text-transform:uppercase;margin:0 0 2px}
+  header.meta dd{margin:0;font-size:14px;color:var(--text)}
+  .stats{display:flex;flex-wrap:wrap;gap:10px;margin:18px 0 0;padding:0;list-style:none}
+  .stats li{
+    font-size:13px;color:var(--accent-text);background:var(--accent-soft);
+    border-radius:999px;padding:4px 12px;font-variant-numeric:tabular-nums;
+  }
+  nav.toc{
+    margin:26px 0 0;padding:12px 18px;background:var(--surface);
+    border:1px solid var(--border);border-radius:var(--radius);
+    display:flex;flex-wrap:wrap;gap:6px 20px;font-size:13px;
+  }
+  nav.toc a{color:var(--text-2);text-decoration:none;border-bottom:1px solid transparent}
+  nav.toc a:hover{color:var(--accent-text);border-bottom-color:var(--accent-text)}
+  section{margin-top:46px}
+  h2{font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-3);margin:0 0 14px;font-weight:700}
+  h3{font-size:17px;margin:0 0 8px;line-height:1.45}
+  p{margin:0 0 12px;max-width:70ch}
+  code{
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    font-size:.88em;background:var(--surface-2);padding:1px 5px;border-radius:4px;
+    color:var(--text-2);word-break:break-word;
+  }
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media (max-width:720px){.grid2{grid-template-columns:1fr}}
+  .card{
+    background:var(--surface);border:1px solid var(--border);
+    border-radius:var(--radius);padding:16px 18px;
+  }
+  .card h4{margin:0 0 6px;font-size:13px;letter-spacing:.04em;color:var(--text-3);text-transform:uppercase}
+  .card ul{margin:0;padding-left:18px}
+  .card li{margin:4px 0;font-size:14px;color:var(--text-2)}
+  .jump{margin:0 0 22px;padding:12px 18px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)}
+  .jump ol{margin:0;padding-left:20px;font-size:14px}
+  .jump li{margin:3px 0}
+  .jump a{color:var(--text-2);text-decoration:none}
+  .jump a:hover{color:var(--accent-text)}
+  article.idea{
+    background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+    padding:22px 24px;margin:0 0 18px;
+  }
+  .idea-head{display:flex;gap:12px;align-items:baseline;flex-wrap:wrap;margin-bottom:4px}
+  .id-chip{
+    font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--accent-text);
+    background:var(--accent-soft);border-radius:999px;padding:2px 10px;font-variant-numeric:tabular-nums;
+  }
+  .axis-chip{
+    font-size:11px;color:var(--text-2);background:var(--surface-2);
+    border-radius:999px;padding:2px 10px;
+  }
+  dl.fields{margin:14px 0 0;display:grid;grid-template-columns:96px 1fr;gap:10px 14px}
+  dl.fields dt{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-3);padding-top:3px}
+  dl.fields dd{margin:0;font-size:14px;color:var(--text-2)}
+  dl.fields dd strong{color:var(--text)}
+  .basis-tag{
+    display:inline-block;font-size:10.5px;letter-spacing:.06em;font-weight:700;
+    border-radius:4px;padding:1px 6px;margin-right:8px;vertical-align:1px;
+    background:var(--accent-soft);color:var(--accent-text);
+  }
+  .basis-tag.ext{background:#e8eefb;color:#2d4a8a}
+  .basis-tag.rea{background:var(--warn-soft);color:var(--warn-text)}
+  .metric{
+    font-size:13px;color:var(--text-2);margin-top:14px;padding-top:12px;
+    border-top:1px solid var(--border);font-variant-numeric:tabular-nums;
+  }
+  figure{margin:18px 0 6px;padding:0}
+  figure svg{display:block;width:100%;height:auto;background:var(--surface-2);border-radius:8px}
+  figcaption{font-size:12px;color:var(--text-3);margin-top:8px;max-width:70ch}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+  thead th{
+    text-align:left;font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--text-3);background:var(--surface-2);padding:9px 12px;font-weight:700;
+  }
+  tbody td{padding:9px 12px;border-top:1px solid var(--border);color:var(--text-2);vertical-align:top}
+  tbody td:first-child{color:var(--text-3);font-variant-numeric:tabular-nums;width:34px}
+  tbody td:nth-child(2){color:var(--text);width:34%}
+  .callout{
+    background:var(--warn-soft);border-radius:var(--radius);padding:14px 18px;margin:18px 0 0;
+    font-size:14px;color:var(--warn-text);
+  }
+  .callout strong{color:var(--warn-text)}
+  footer.composition-signal{
+    margin-top:56px;padding-top:16px;border-top:1px solid var(--border);
+    font-size:12px;color:var(--text-3);
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+<header>
+  <p class="eyebrow">Ideation · 2026-10-30</p>
+  <h1>发布页「分类专属信息」录入效率与体验</h1>
+  <p class="lede">用户上传的拼车发布截图暴露的不是四个输入框不好看，而是这四个框里没有一个认识用户要填的东西。以下是 29 条候选经过逐条依据核验后留下的 7 个方向。</p>
+  <dl>
+    <div><dt>日期</dt><dd>2026-10-30</dd></div>
+    <div><dt>议题</dt><dd><code>publish-vehicle-form</code></dd></div>
+    <div><dt>焦点</dt><dd>发布页「分类专属信息」的录入效率与体验（拼车 L2=301）</dd></div>
+    <div><dt>模式</dt><dd>代码库内议题</dd></div>
+  </dl>
+  <ul class="stats">
+    <li>29 条候选</li>
+    <li>7 条入选</li>
+    <li>22 条被否</li>
+    <li>5 条议题轴</li>
+    <li>5 组并行取证</li>
+  </ul>
+</header>
+
+<nav class="toc" aria-label="目录">
+  <a href="#grounding">现状</a>
+  <a href="#axes">议题轴</a>
+  <a href="#ideas">入选方向（7）</a>
+  <a href="#rejections">否决记录（22）</a>
+</nav>
+
+<section id="grounding">
+  <h2>现状</h2>
+  <p>发布页有 8 段表单，其中 7 段是硬编码的，「分类专属信息」这一段是唯一由模板驱动的（<code>publish_screen.dart:695-721</code>）。拼车模板的四个字段定义在 <code>publish_template.dart:209-246</code>：<code>route</code>（起点 → 终点，文本，必填）、<code>depart_time</code>（出发时间，文本，必填）、<code>seats</code>（空座数，数字，必填）、<code>car_model</code>（车型，文本，选填）。服务端可以覆盖这份定义，同名 seed 在 <code>V4__seed_template.sql:23-24</code>。</p>
+
+  <div class="grid2">
+    <div class="card">
+      <h4>控件能力</h4>
+      <ul>
+        <li>模板字段的渲染只有两种：<code>select</code> 走 ChoiceChip，其余一律 TextField（<code>publish_screen.dart:1176-1266</code>）</li>
+        <li>数字只加了 digitsOnly 键盘，全仓没有任何时间、日期、步进器控件</li>
+        <li>本地枚举只有 4 型；契约已有 <code>date</code>、<code>multi_select</code>，到客户端被静默降级成文本框与单选（<code>publish_template_provider.dart:71-77</code>）</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>数据形状</h4>
+      <ul>
+        <li>所有附加字段都是 <code>String</code>，塞进同一张 <code>Map&lt;String,String&gt;</code>（<code>publish_form_state.dart:174-175</code>）</li>
+        <li>数据库只有 <code>post.template_values</code> 一个 JSON 列，没有路线、时间、座位、品牌、车牌的结构化列</li>
+        <li>草稿恢复只认 String，非字符串值被静默丢弃（<code>draft_store.dart:115-121</code>）</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>地点能力</h4>
+      <ul>
+        <li>地图选点已经真接上了，但只有单点：<code>MapPickResult{lat,lng,doorNumber,address,radius}</code></li>
+        <li>POI 搜索只在发现侧（<code>POST /search/resolve</code>），发布侧没有复用</li>
+        <li>「起点 → 终点」靠 placeholder「如：回龙观 → 中关村」教用户写</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>减负现状</h4>
+      <ul>
+        <li>草稿是单份本地快照，3 秒防抖，提交成功即清空</li>
+        <li>模板记忆（<code>user_id + leaf_category_id</code>）在 PRD 里有定义，但代码里是演示值</li>
+        <li>屏幕上的「示例：回龙观 → 中关村」对每个人都是同一句假话（<code>publish_template.dart:80-85</code>）</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout">
+    <strong>三条硬约束，任何方向都绕不过去。</strong> 字段清单必须由服务端模板下发（PRD <code>:955</code> / <code>:2314</code>），前端不得自造字段或校验口径；必填集合与完整度三档（🟢🟡🔴，权重 2/1/0.5）直接耦合（PRD <code>:2084-2096</code>）；设计文档没覆盖的口径先问，不在业务代码里自创。用户点名的五个方向里，有四个需要先动模板 schema 才可能合法落地。
+  </div>
+</section>
+
+<section id="axes">
+  <h2>议题轴</h2>
+  <p>把「录入体验」拆成五条互不重叠的面，发散时每条轴都被迫产出至少一条：</p>
+  <table>
+    <thead><tr><th>轴</th><th>名称</th><th>这条轴在问什么</th></tr></thead>
+    <tbody>
+      <tr><td>A</td><td>控件选型</td><td>每个字段该用什么控件，以及现有四种选择范式够不够用。</td></tr>
+      <tr><td>B</td><td>模板与契约</td><td>新字段怎么才能被下发、被校验、被算进完整度、被重发。</td></tr>
+      <tr><td>C</td><td>地点输入路径</td><td>「起点 → 终点」两个点从哪来：地图、POI、常用地点、当前位置。</td></tr>
+      <tr><td>D</td><td>复用与减负</td><td>第二次发布能不能不重填：草稿、重发、记忆、车辆档案。</td></tr>
+      <tr><td>E</td><td>信任·合规·转化</td><td>必填膨胀的代价、车牌与行踪的告知与脱敏、识别失败路径。</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="ideas">
+  <h2>入选方向</h2>
+  <div class="jump">
+    <ol>
+      <li><a href="#idea-1">起终点：两个地点对象 + 双针选点 + 就地交换</a></li>
+      <li><a href="#idea-2">出发时间：默认下一整点 + 三枚快捷 chip + 滚轮</a></li>
+      <li><a href="#idea-3">人数：一行 1/2/3/4+ 大按钮，不弹键盘</a></li>
+      <li><a href="#idea-4">车型：品牌可搜索 + 颜色色块</a></li>
+      <li><a href="#idea-5">车牌：专用键盘是主路径，拍照是加速器</a></li>
+      <li><a href="#idea-6">attributes 值类型升级 + 模板版本快照</a></li>
+      <li><a href="#idea-7">模板记忆接真：第二次发布只改时间</a></li>
+    </ol>
+  </div>
+
+  <article class="idea" id="idea-1">
+    <div class="idea-head">
+      <h3>起终点：两个地点对象 + 双针选点 + 就地交换</h3>
+      <span class="id-chip">1</span><span class="axis-chip">C · 地点输入路径</span>
+    </div>
+    <dl class="fields">
+      <dt>描述</dt>
+      <dd>「起点 → 终点」从一个自由文本框升成两个地点对象：每个对象带 <code>name</code>、<code>lat</code>、<code>lng</code>、<code>city_code</code>。选点页内是 A/B 两个槽位，起点默认用当前定位，终点在地图上落针；两点都确认后回填两组坐标，卡片上直接显示「约 18km · 预计 8:38 到」。两侧各留一个可点区域，中间一个「⇄ 交换」就地翻转并重算距离，不需要重新进地图。</dd>
+      <dt>依据</dt>
+      <dd>
+        <span class="basis-tag">direct</span><code>map_selector_screen.dart:62-85</code>：<code>MapPickResult{lat,lng,doorNumber,address,radius}</code> 只有一组坐标，<code>:121-122</code> 是 <code>late LatLng _selected;</code>——一次选点只能拿回一个点。<br>
+        <span class="basis-tag">direct</span><code>publish_form_state.dart:409-410</code>：<code>if (hasLocation) 'lng': lng, if (hasLocation) 'lat': lat,</code>——全帖只有一对坐标，终点没有承载位。<br>
+        <span class="basis-tag ext">external</span>滴滴把「目的地」与「推荐下车点」分成两个图形（橙大头针 / 小橙点），默认给一个推荐点让用户确认，而不是让人从零拖准星。
+      </dd>
+      <dt>为什么重要</dt>
+      <dd>车主在停车场选完起点、再进一次地图选终点，中间没有任何东西告诉他这两个点凑起来是不是一条顺路的线——而这正是他决定发不发这条帖的全部依据。距离与到点时间把「填表」换成「确认一条我认识的路线」，也顺手回答了搭车人最先问的那句「几点能到」。填反方向是这类帖最常见的错误，而现在的模型里每次选点都是一次全屏 push–pop，纠错只能整段重来。</dd>
+      <dt>代价</dt>
+      <dd>两个点串行选、各进出一次全屏地图页，用户中途接个电话回来上下文就丢了；逆地理 Key 缺失时 <code>_refreshAddress</code> 返回空串（<code>reverse_geocode.dart:37-41</code>），终点只剩一个准星。数据侧意味着要在 JSON 或新列里装两个点，与「发现侧与发布侧选点必须收敛成同一份交互」那条既有决议必须一起解决，否则会出现两个准星页。</dd>
+      <dt>置信度 / 复杂度</dt>
+      <dd>82% · 中</dd>
+    </dl>
+
+    <figure>
+      <svg viewBox="0 0 860 260" role="img" aria-label="左侧为一段自由文本产生三种互不相同的写法，右侧为两个地点对象各自带名称与坐标">
+        <text x="20" y="26" font-size="12" font-weight="700" fill="#6f7d76" letter-spacing="1">现在</text>
+        <rect x="20" y="40" width="330" height="44" rx="8" fill="#ffffff" stroke="#dfe5e1"/>
+        <text x="36" y="68" font-size="14" fill="#1b2320">起点 → 终点</text>
+        <text x="128" y="68" font-size="13" fill="#6f7d76">回龙观 → 中关村</text>
+        <text x="20" y="112" font-size="12" fill="#6f7d76">同一条路线，库里三种写法：</text>
+        <rect x="20" y="124" width="104" height="28" rx="6" fill="#fbeceb"/>
+        <text x="34" y="143" font-size="12" fill="#9b3530">回龙观 → 中关村</text>
+        <rect x="132" y="124" width="104" height="28" rx="6" fill="#fbeceb"/>
+        <text x="146" y="143" font-size="12" fill="#9b3530">回龙观到中关村</text>
+        <rect x="244" y="124" width="106" height="28" rx="6" fill="#fbeceb"/>
+        <text x="258" y="143" font-size="12" fill="#9b3530">回龙观-中关村</text>
+        <text x="20" y="184" font-size="12" fill="#6f7d76">无法算距离 · 无法去重 · 无法按时段筛选</text>
+
+        <line x1="378" y1="130" x2="470" y2="130" stroke="#0f766e" stroke-width="2"/>
+        <path d="M470 130 L458 124 L458 136 Z" fill="#0f766e"/>
+        <text x="382" y="118" font-size="11" fill="#0b5c56">结构化</text>
+
+        <text x="500" y="26" font-size="12" font-weight="700" fill="#0b5c56" letter-spacing="1">两个地点对象</text>
+        <rect x="500" y="40" width="340" height="66" rx="8" fill="#ffffff" stroke="#0f766e"/>
+        <text x="516" y="62" font-size="12" font-weight="700" fill="#1b2320">起点 · 回龙观</text>
+        <text x="516" y="82" font-size="12" fill="#4a5751" font-family="ui-monospace,monospace">{ lat, lng, city_code }</text>
+        <text x="516" y="98" font-size="11" fill="#6f7d76">默认取当前定位，可改</text>
+
+        <rect x="500" y="122" width="340" height="66" rx="8" fill="#ffffff" stroke="#0f766e"/>
+        <text x="516" y="144" font-size="12" font-weight="700" fill="#1b2320">终点 · 中关村</text>
+        <text x="516" y="164" font-size="12" fill="#4a5751" font-family="ui-monospace,monospace">{ lat, lng, city_code }</text>
+        <text x="516" y="180" font-size="11" fill="#6f7d76">候选优先，没有才进地图</text>
+
+        <text x="500" y="212" font-size="12" fill="#0b5c56">约 18km · 预计 8:38 到 · 方向错了点一下交换</text>
+      </svg>
+      <figcaption>同一句话的三种写法在库里是三条不相干的数据；两个地点对象之后，距离、方向、时段筛选才有计算基础。图只表达结构，不代表最终视觉。</figcaption>
+    </figure>
+  </article>
+
+  <article class="idea" id="idea-2">
+    <div class="idea-head">
+      <h3>出发时间：默认下一整点 + 三枚快捷 chip + 滚轮</h3>
+      <span class="id-chip">2</span><span class="axis-chip">A · 控件选型</span>
+    </div>
+    <dl class="fields">
+      <dt>描述</dt>
+      <dd>字段进页面就带一个默认值（当天下一个整半点，跨夜则落到次日早间档），呈现为一行可点的值加三枚快捷 chip：「现在出发 / 1 小时后 / 明早 8:00」。点值才展开时间滚轮。上送统一成 ISO 时刻，而不是「工作日 8:00」这类自由文本。</dd>
+      <dt>依据</dt>
+      <dd>
+        <span class="basis-tag">direct</span><code>publish_template.dart:223-230</code>：<code>depart_time</code> 是 <code>type: text</code>，placeholder「如：工作日 8:00」；<code>publish_template_provider.dart:71-77</code> 契约的 <code>date</code> 被降级成 text。<br>
+        <span class="basis-tag">direct</span>PRD <code>:878</code>：「模板决定字段清单、字段标签、默认值、必填校验」——默认时间属于模板的 <code>default</code>，不该由发布页硬编码。<br>
+        <span class="basis-tag ext">external</span>哈啰开放平台 <code>planDepartureTime</code> 不传即「立即出发」、<code>waitMinutes</code> 默认 10 最大 180，双模与弹性窗口在接口层已经固化；医院挂号的「号源时段」同构——时间是离散刻度，客户端只做选择不做输入。
+      </dd>
+      <dt>为什么重要</dt>
+      <dd>出发时间是拼车的成交前提，也是发现侧唯一能做的硬过滤。文本态下它既不能排序、也不能提醒、也不能筛选，用户还得自己记「工作日」还是「周一」。默认值加三枚 chip 让多数人零键盘完成，同时给「一小时内出发」这类排序留了可比较的字段。</dd>
+      <dt>代价</dt>
+      <dd>预填的整点算不算用户已确认——算，则有人没看时间就发了；不算，则「出发时间」的必填判定要另立一条口径，牵动 blocker 文案与完整度。固定网格会让「时间灵活」的用户无处安放，必须留出口。设备时间不准时预填值是错的，而用户不展开滚轮根本发现不了。</dd>
+      <dt>置信度 / 复杂度</dt>
+      <dd>85% · 低</dd>
+    </dl>
+  </article>
+
+  <article class="idea" id="idea-3">
+    <div class="idea-head">
+      <h3>人数：一行 1/2/3/4+ 大按钮，不弹键盘</h3>
+      <span class="id-chip">3</span><span class="axis-chip">A · 控件选型</span>
+    </div>
+    <dl class="fields">
+      <dt>描述</dt>
+      <dd>标签从「空座数」改成「还能带几人」，控件从数字输入框换成一行四个大按钮（1 / 2 / 3 / 4+），点一下完成，全程不弹数字键盘。默认值与上限由模板的 <code>default</code> / <code>options</code> 下发，hint 补一句「儿童也计入人数」。</dd>
+      <dt>依据</dt>
+      <dd>
+        <span class="basis-tag">direct</span><code>publish_template.dart:231-237</code>：<code>label: '空座数'</code>、<code>type: number</code>、<code>placeholder: '1-6'</code>；<code>publish_screen.dart:1241-1256</code> 的 number 只有 <code>TextInputType.number</code> + <code>digitsOnly</code>。<br>
+        <span class="basis-tag ext">external</span>哈啰口径「儿童/婴幼儿一律计入乘车人数」——人数不是自然数，需要一句说明；Poparide 新司机默认 3 座并提示「后排最多 2 人可提升 50% 预订」，用默认值加一句引导替代解释。
+      </dd>
+      <dt>为什么重要</dt>
+      <dd>数字键盘是整个「分类专属信息」里唯一必须切换输入法的地方：点一下、弹键盘、输数字、收键盘，四步才得到一个 1–6 的整数，而键盘一弹还盖住下一段「车型」。一次点按把它压成一步。默认值同时把「空」变成「已填」，直接消掉一次「模板必填项未填完」的拦截。</dd>
+      <dt>代价</dt>
+      <dd>不能在前端把 <code>number</code> 擅自渲染成按钮——那是改写字段语义，必须先由服务端下发 <code>options</code> 或新类型。默认值会让「必填项 100%」在用户零输入时也成立，等于悄悄放松 🟢 的第一条件，这一点要在完整度口径里说清。四枚按钮在 44×44 触控口径下容易误触，需要真机验证。</dd>
+      <dt>置信度 / 复杂度</dt>
+      <dd>80% · 低</dd>
+    </dl>
+  </article>
+
+  <article class="idea" id="idea-4">
+    <div class="idea-head">
+      <h3>车型：品牌可搜索 + 颜色色块</h3>
+      <span class="id-chip">4</span><span class="axis-chip">A · 控件选型</span>
+    </div>
+    <dl class="fields">
+      <dt>描述</dt>
+      <dd>打开先看到 8–10 个颜色格子加一个品牌搜索框：点颜色即完成颜色（一次点按），品牌输两个字命中，车系可留空。选项全部由模板下发，客户端只负责最近使用与常见度排序。</dd>
+      <dt>依据</dt>
+      <dd>
+        <span class="basis-tag">direct</span><code>publish_template.dart:238-244</code>：<code>car_model</code> 是 <code>type: text</code>、连 <code>required</code> 都没有，placeholder「如：轩逸（白色）」——一个框同时要求品牌、车系、颜色，还要用户自己决定用不用全角括号。<br>
+        <span class="basis-tag ext">external</span>汽车之家口径 149 品牌、车系约 1700，必须带搜索、最近使用、按常见度排序；瓜子与懂车帝用 VIN 扫码带出全车参数，说明「强标识符替代手填字段」是行业共识。
+      </dd>
+      <dt>为什么重要</dt>
+      <dd>中文输入法下打「轩逸」要选字，「白色」和「白」是两种写法，全角括号大部分人不会打——最终落库的是「轩逸」「白色轩逸」「轩逸 白」三种互不相干的字符串，对搭车人和任何按车型筛选都是废数据。它同时是模板里唯一「不填也能发」的字段，把高价值可选项做成了高成本空白项。颜色先于品牌还有一个现实理由：车主对「我车是白的」比对「我这车属于哪个品牌层级」确定得多。</dd>
+      <dt>代价</dt>
+      <dd>级联选择天然比文本框多一跳，单手操作路径反而变长。品牌枚举一旦下发就不能前端硬编码，谁维护、多久更新要在模板编辑器里说清；纯靠 <code>options</code> 装不下 1700 个车系，「字典」这个概念 PRD <code>:2314</code> 的 <code>fields[]</code> 里并不存在，落地等于先改契约。旧客户端遇到新类型会静默降级成一个裸输入框，用户不知道这是降级而不是设计。</dd>
+      <dt>置信度 / 复杂度</dt>
+      <dd>68% · 中</dd>
+    </dl>
+  </article>
+
+  <article class="idea" id="idea-5">
+    <div class="idea-head">
+      <h3>车牌：专用键盘是主路径，拍照是加速器</h3>
+      <span class="id-chip">5</span><span class="axis-chip">E · 信任·合规·转化</span>
+    </div>
+    <dl class="fields">
+      <dt>描述</dt>
+      <dd>车牌不设计成「拍照 → 成功」或「失败 → 空框」，而是：拍照得到整牌候选，结果逐位可点改、低置信位高亮；认不出时保留已识别的部分，直接落省简称加字母数字的专用键盘（排除 I / O，覆盖 7 位燃油与 8 位新能源）。字段保持选填，不因新增车牌而增加必填项数量；他人视角展示打码（如「京A·***45」），完整值只回给本人。</dd>
+      <dt>依据</dt>
+      <dd>
+        <span class="basis-tag">direct</span>PRD <code>:855</code>：「OCR 识别失败 | 证名留空并提示手动填写，不阻断提交」；<code>cert_repository.dart:88-107</code> 的抽取失败仍返回 200 / code=0、结果为 null。<br>
+        <span class="basis-tag direct">direct</span><code>media_section.dart:200-226</code>：相机打不开只有一句固定文案加「从相册选」，现有媒体链路没有「拍完立刻识别并回填」的位置。<br>
+        <span class="basis-tag ext">external</span>整牌一次全对率按 85–93% 预估（腾讯云官方 98%+、ML Kit 端侧字符级 96.5%、HyperLPR 卡口 95–97%）；GA36-2018 规定新能源 8 位、序号不含 I/O、省简称 30 个。
+      </dd>
+      <dt>为什么重要</dt>
+      <dd>车牌是唯一「用户必须走到车尾才能填」的字段，也是唯一字符集受限、却要给中文输入法的字段。识别成功的那 85% 不决定成败，失败的 15% 才决定用户觉得「还行」还是「算了」。允许失败，产品才敢把拍照放在入口；专用键盘让失败成本从「蹲在车后打八个字」降到一个字符。</dd>
+      <dt>代价</dt>
+      <dd>专用键盘是全仓没有的新控件（现在只有 TextField 与 ChoiceChip），要处理 44×44 触控、30 个省简称的分组与最近使用，复杂度接近一个小型选择器。复用资质域的 <code>POST /cert/ocr</code> 会把「失败也 200」的语义带进发布页，前端必须自己判 null。车牌照片若进 <code>media_ids</code> 会占掉「最多 9 张」的一张。车牌属个人信息，能否公开、公开成什么样，PRD 目前没有条款，属于「口径未覆盖先问」。</dd>
+      <dt>置信度 / 复杂度</dt>
+      <dd>66% · 中高</dd>
+    </dl>
+  </article>
+
+  <article class="idea" id="idea-6">
+    <div class="idea-head">
+      <h3>attributes 值类型升级 + 模板版本快照</h3>
+      <span class="id-chip">6</span><span class="axis-chip">B · 模板与契约</span>
+    </div>
+    <dl class="fields">
+      <dt>描述</dt>
+      <dd>值从「一律 String」升级成按字段类型序列化：标量仍平铺（<code>seats: "3"</code>），成组值收进对象（<code>route: {from:{lat,lng,name}, to:{…}}</code>、<code>car: {brand, color}</code>），时间存 ISO。前端 <code>templateValues</code> 放宽为 <code>Map&lt;String, Object?&gt;</code>，草稿、重发、AI 确认页三处读写同批改；帖子落库带 <code>template_version</code>，老帖按老规则渲染。</dd>
+      <dt>依据</dt>
+      <dd>
+        <span class="basis-tag">direct</span><code>publish_form_state.dart:174-175</code> <code>Map&lt;String,String&gt; templateValues</code>，<code>:401-405</code> 上送时逐字段 <code>trim()</code>；<code>draft_store.dart:115-121</code> 恢复只收 <code>entry.value is String</code>。<br>
+        <span class="basis-tag direct">direct</span><code>PostValidator.java:148-159</code>：<code>value == null || (value instanceof String s && s.isBlank())</code> 即判未填——<b>非 String 一律当作已填</b>，一个空对象也能过，这是改结构时必须同批修的坑。<br>
+        <span class="basis-tag reason">reasoned</span>前六条方向里有四条（双点、时间、人数、品牌颜色）都卡在「值往哪放」。不先解决这个，每个新控件都会在提交那一步卡住，而且草稿恢复会把坐标和时刻悄悄清空，用户看到的是「我明明填了」。
+      </dd>
+      <dt>为什么重要</dt>
+      <dd>这是复利最大的一处，也是唯一「现在不做、以后一定重做」的地方。值类型一旦升级，按出发时间排序、按人数筛选、按起终点算距离、按字段权重算完整度、重发原样回填、AI 合并结构化猜测，全部自动成立；不升级，每一个下游能力都要在字符串上做一次脆弱切分，而且脏字符串无法索引、无法比较、无法迁移。</dd>
+      <dt>代价</dt>
+      <dd>数据模型迁移是成本最高、风险最大的变更类型：必填判定、完整度、草稿容错、重发反序列化、AI 合并五处必须同批改，否则会出现「发布页按对象写、服务端按 String 判空」的半新半旧。契约的 <code>attributes</code> 是 <code>additionalProperties: true</code>，值语义没有约束，改之前要先补契约描述与 PRD。DB 仍是单 JSON 列，结构化值仍无法直接走索引。</dd>
+      <dt>置信度 / 复杂度</dt>
+      <dd>72% · 高</dd>
+    </dl>
+
+    <figure>
+      <svg viewBox="0 0 860 200" role="img" aria-label="时间字段从服务端到屏幕经历两次静默降级，最终变成一个空白文本框">
+        <text x="20" y="24" font-size="12" font-weight="700" fill="#6f7d76" letter-spacing="1">一个 date 字段的真实旅程</text>
+
+        <rect x="20" y="44" width="200" height="62" rx="8" fill="#ffffff" stroke="#dfe5e1"/>
+        <text x="36" y="68" font-size="12" font-weight="700" fill="#1b2320">服务端模板</text>
+        <text x="36" y="88" font-size="12" fill="#4a5751" font-family="ui-monospace,monospace">type: "date"</text>
+
+        <line x1="228" y1="75" x2="292" y2="75" stroke="#9b3530" stroke-width="1.5"/>
+        <path d="M292 75 L282 70 L282 80 Z" fill="#9b3530"/>
+        <text x="232" y="64" font-size="11" fill="#9b3530">降级</text>
+
+        <rect x="300" y="44" width="220" height="62" rx="8" fill="#fbeceb"/>
+        <text x="316" y="68" font-size="12" font-weight="700" fill="#9b3530">客户端映射</text>
+        <text x="316" y="88" font-size="12" fill="#9b3530" font-family="ui-monospace,monospace">date =&gt; text</text>
+
+        <line x1="528" y1="75" x2="592" y2="75" stroke="#9b3530" stroke-width="1.5"/>
+        <path d="M592 75 L582 70 L582 80 Z" fill="#9b3530"/>
+        <text x="532" y="64" font-size="11" fill="#9b3530">再降级</text>
+
+        <rect x="600" y="44" width="240" height="62" rx="8" fill="#ffffff" stroke="#9b3530"/>
+        <text x="616" y="68" font-size="12" font-weight="700" fill="#1b2320">屏幕上是普通文本框</text>
+        <text x="616" y="88" font-size="11" fill="#6f7d76">placeholder：如：工作日 8:00</text>
+
+        <text x="20" y="140" font-size="12" fill="#4a5751">运营在后台看到类型是对的，用户在手机上一个字一个字打，还可能打成「工作日八点」。</text>
+        <text x="20" y="162" font-size="12" fill="#4a5751">这条链不报错、不埋点（post_published 目前只是 TODO），所以团队永远不会知道用户没拿到时间控件。</text>
+        <text x="20" y="184" font-size="12" fill="#9b3530">先修链，再谈控件——否则新控件写好了也到不了屏幕。</text>
+      </svg>
+      <figcaption>「控件能力协商」比「换一个控件」更靠前：本地枚举只有 4 型、契约有 5 型，中间两次静默降级没有任何提示。</figcaption>
+    </figure>
+  </article>
+
+  <article class="idea" id="idea-7">
+    <div class="idea-head">
+      <h3>模板记忆接真：第二次发布只改时间</h3>
+      <span class="id-chip">7</span><span class="axis-chip">D · 复用与减负</span>
+    </div>
+    <dl class="fields">
+      <dt>描述</dt>
+      <dd>把 PRD 里已定义、代码里还是演示值的记忆机制接真：按 <code>user_id + category_leaf_id</code> 存最近一次发布值（本地加云端），字段上方一键带入；超过 30 天保留但加提示，超过 180 天清空。时间型字段特殊处理——带入的是上次的时刻，若已过去则顺延到下一个同类时点，而不是把「昨天 8:00」原样填进去。最近几条同路线沉淀成线路卡，点一下两端一起回填。</dd>
+      <dt>依据</dt>
+      <dd>
+        <span class="basis-tag">direct</span><code>publish_screen.dart:1257-1261</code>：<code>_HintText('示例：${spec.memoryHint}')</code>，注释写明「只显示模板给的示例值，不自称记忆带入：真记忆需云端」；<code>publish_template.dart:80-85</code>「本轮是演示值而非真记忆」。<br>
+        <span class="basis-tag direct">direct</span>PRD <code>:956</code>「记忆机制：按 user_id + category_leaf_id 维度存最近一次发布值，写入本地缓存 + 云端」；<code>:969</code> 30 天提示 / 180 天清空。<br>
+        <span class="basis-tag ext">external</span>嘀嗒车主「常用路线」最多 8 条，可设自动抢单、途经点与频次——路线是复用单位，不是一次性的字符串。
+      </dd>
+      <dt>为什么重要</dt>
+      <dd>拼车是典型高频同构发布：同一条路、同一个时间、同一辆车。第二次发布的手指次数从几十次降到两三次，这是唯一能让第 N 次成本低于第 1 次的机制，而且版面位已经留好了，接真不需要重排版式。现在的屏幕上写着「示例：回龙观 → 中关村」，对每个人都是同一句假话，还会误导用户以为系统记住了。</dd>
+      <dt>代价</dt>
+      <dd>记忆是「N 份」，草稿是「单份」，恢复优先级必须先定，否则进页面同时弹草稿恢复与记忆带入会互相覆盖。记忆会制造「看起来已经填好了」的陷阱：用户改了时间却忘了改人数，发出一条错误信息，比空白表单更危险。云端存起终点加时间属敏感信息，留存期限与删除路径要同步写进安全方案。30 / 180 天阈值必须走常量，不能写字面量。</dd>
+      <dt>置信度 / 复杂度</dt>
+      <dd>70% · 中</dd>
+    </dl>
+  </article>
+</section>
+
+<section id="rejections">
+  <h2>否决记录</h2>
+  <p>22 条被否，每条都记了原因。被否不等于坏主意——多数是「依据只支持更小的改动」或「先得改 PRD 才能合法落地」。</p>
+  <table>
+    <thead><tr><th>#</th><th>候选</th><th>否决原因</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>type→控件注册表</td><td>实现手段而非产品改进；其收益已被候选 6 与控件选型三条覆盖。</td></tr>
+      <tr><td>2</td><td>结构化短码输入原语（车牌/VIN/门牌通用）</td><td>被候选 5 的车牌专用键盘吸收；过早抽象，第二个使用方还不存在。</td></tr>
+      <tr><td>3</td><td>先修「控件能力降级链」</td><td>并入候选 6 的实施要求：降级修好之前，任何新控件都到不了屏幕。</td></tr>
+      <tr><td>4</td><td>服务端通用模板只「补缺」</td><td>重复渲染的问题为真，但 PRD <code>:968</code>/<code>:2094</code> 把 generic 兜底定为标准口径，去重需先改 PRD。</td></tr>
+      <tr><td>5</td><td>模板下发 presets[] 常用组合卡</td><td>契约无此概念（openapi <code>:4684-4716</code>），且与候选 7 的记忆能力重复。</td></tr>
+      <tr><td>6</td><td>品牌/颜色改为模板字典</td><td>PRD <code>:2314</code> 的 <code>fields[]</code> 没有字典概念；先做候选 4 的选项集更务实。</td></tr>
+      <tr><td>7</td><td>粘贴一段话 / 说一句，AI 填多字段</td><td>潜力高但依赖解析质量，PRD <code>:1000</code> 要求不猜；留作候选 7 之后的增量。</td></tr>
+      <tr><td>8</td><td>「起点→终点」升为两个地点对象</td><td>已是候选 1 的核心机制，重复。</td></tr>
+      <tr><td>9</td><td>起点默认定位、终点点开是候选列表</td><td>被候选 1（默认定位）与候选 7（线路卡）分别吸收。</td></tr>
+      <tr><td>10</td><td>线路是一等对象</td><td>超范围：等于重构发布数据模型，其价值由候选 1 + 7 部分实现。</td></tr>
+      <tr><td>11</td><td>「我的车」用户级车辆档案</td><td>跨分类用户级存储无 PRD 依据；先做候选 7 的 user×leaf。</td></tr>
+      <tr><td>12</td><td>整单「再来一单」</td><td>与候选 7 的记忆机制重复，且「沿用旧值在新模板下怎么渲染」未定。</td></tr>
+      <tr><td>13</td><td>草稿恢复送回断点（还差 N 项 + 跳转）</td><td>价值真实但低于候选 7，且需先把两套「还差几项」口径桥接起来。</td></tr>
+      <tr><td>14</td><td>拍行驶证一次回填品牌+颜色+车牌</td><td>依据被推翻：<code>CertOcrResult</code> 只有 <code>certName</code>，PRD <code>:781</code> 把行驶证 OCR 限定在车辆认证用途。</td></tr>
+      <tr><td>15</td><td>字段级 sensitivity 元数据</td><td>超出 PRD 的模板口径；合规策略应由服务端定，不能进运营可编辑的模板。</td></tr>
+      <tr><td>16</td><td>渐进披露三段折叠</td><td>与「blocker 一次只报一条」正面冲突；折叠里的必填项会造成二次拦截。</td></tr>
+      <tr><td>17</td><td>分类专属信息不阻断发布（先发后补）</td><td>依据被推翻：PRD <code>:1000</code>「必填项未补齐时确认发布保持禁用」，<code>allowIncomplete</code> 仅限抢发模式。</td></tr>
+      <tr><td>18</td><td>负向复利清单</td><td>不是方案，是取舍标尺；已作为候选 4 / 6 / 7 的代价论证使用。</td></tr>
+      <tr><td>19</td><td>「一条线路」成为发布一等对象</td><td>与第 10 条同源，超范围。</td></tr>
+      <tr><td>20</td><td>模板即表单契约一次补齐六项</td><td>过度打包：六项依赖不同前置（有的要改 PRD，有的要改 DB），捆一起无法启动。</td></tr>
+      <tr><td>21</td><td>降级必须可见（旧客户端提示「需更新 App」）</td><td>作为候选 4 与 6 的实施要求保留，不单独成项。</td></tr>
+      <tr><td>22</td><td>发布漏斗埋点与字段级耗时</td><td>可观测性基础设施，不是录入改进本身；但缺它，「效率变好」无法验证。</td></tr>
+      <tr><td>—</td><td>轴 A 的三条入选</td><td>轴分布不均（A×3 / C×1 / E×1 / B×1 / D×1），原因是用户点名的五个方向本身就聚集在控件层；非覆盖缺口。</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<footer class="composition-signal">
+  Composed 2026-10-30 by ce-ideate · 依据：5 组并行取证（代码扫描 / 既有经验 / 外部研究 / 5 份证据档案）+ 5 个发散代理 + 1 个独立依据核验 · 仓库 <code>liujie12/s2s</code>
+</footer>
+
+</div>
+</body>
+</html>

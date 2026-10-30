@@ -1,0 +1,864 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>找丫找 · 叠点堆与展开清单 原型 v1</title>
+<style>
+/* ============================================================
+   叠点堆（overlapping pins）+ 展开清单 · 设计稿
+   基准：390 × 844（逻辑像素），颜色与圆角取自 lib/design_tokens.dart
+   primary #0B7C8C / primary-light #E6F6F8 / accent #B4531A
+   ============================================================ */
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --primary:#0B7C8C;
+  --primary-dark:#075E6B;
+  --primary-light:#E6F6F8;
+  --accent:#B4531A;
+  --warn:#F59E0B;
+  --warn-text:#B45309;
+  --text:#1F2937;
+  --text-2:#6B7280;
+  --text-3:#9CA3AF;
+  --border:#E5E7EB;
+  --bg:#F8FAFC;
+  --surface:#FFFFFF;
+  --work:#326FD1;
+  --house:#8055E2;
+  --vehicle:#B85510;
+  --life:#0B825A;
+  --service:#C63C81;
+  --ok:#15803D;
+  --ok-bg:rgba(34,197,94,.13);
+  --mid:#B45309;
+  --mid-bg:rgba(245,158,11,.15);
+  --low:#B91C1C;
+  --low-bg:rgba(239,68,68,.12);
+  --mono:"JetBrains Mono","SFMono-Regular",Consolas,"Liberation Mono",monospace;
+}
+html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+body{
+  font-family:"HarmonyOS Sans SC","PingFang SC","Noto Sans SC","Microsoft YaHei",sans-serif;
+  color:var(--text);
+  padding:44px 32px 72px;
+  background:
+    radial-gradient(1100px 620px at 8% -8%, #E2EEE7 0%, rgba(226,238,231,0) 62%),
+    radial-gradient(900px 520px at 98% 2%, #F2E7DA 0%, rgba(242,231,218,0) 58%),
+    #F4F5F1;
+}
+body::before{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+  background-image:
+    linear-gradient(rgba(31,41,55,.04) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(31,41,55,.04) 1px,transparent 1px);
+  background-size:34px 34px;
+  -webkit-mask-image:radial-gradient(circle at 50% 24%,#000 22%,transparent 82%);
+  mask-image:radial-gradient(circle at 50% 24%,#000 22%,transparent 82%);
+}
+.doc-head{position:relative;z-index:1;max-width:1180px;margin:0 auto 40px}
+.kicker{font-family:var(--mono);font-size:11px;letter-spacing:.18em;color:var(--primary);margin-bottom:12px}
+.doc-head h1{font-size:34px;line-height:1.22;letter-spacing:-.02em;font-weight:700;color:#16232E;max-width:920px}
+.lede{margin-top:14px;max-width:840px;font-size:14px;line-height:1.8;color:#4B5563}
+.lede b{color:#1F2937;font-weight:600}
+.lede code{font-family:var(--mono);font-size:12px;background:#fff;border:1px solid #E2E5DE;border-radius:5px;padding:1px 5px;color:#334155}
+.meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+.tag{font-size:11px;line-height:1;padding:7px 11px;border-radius:999px;background:#fff;border:1px solid #E2E5DE;color:#4B5563}
+.tag.primary{background:var(--primary);border-color:var(--primary);color:#fff}
+.tag.warn{background:#FDF3E7;border-color:#F0D9BF;color:#8A4A17}
+
+/* ---------- 画框 ---------- */
+.stage{position:relative;z-index:1;max-width:884px;margin:0 auto;display:flex;flex-wrap:wrap;gap:34px 40px;align-items:flex-start}
+.frame-wrap{width:408px}
+.frame-cap{display:flex;align-items:baseline;gap:8px;margin-bottom:10px;padding:0 4px}
+.idx{font-family:var(--mono);font-size:11px;color:var(--primary);letter-spacing:.06em}
+.frame-cap b{font-size:13.5px;font-weight:600;color:#1F2937}
+.frame-cap em{font-style:normal;font-size:11px;color:var(--text-2);margin-left:auto}
+.phone{
+  width:408px;height:862px;padding:9px;border-radius:46px;background:#101820;
+  box-shadow:0 28px 64px -20px rgba(15,23,42,.48),0 0 0 1px rgba(15,23,42,.10),inset 0 0 0 1px rgba(255,255,255,.08);
+}
+.screen{position:relative;width:390px;height:844px;border-radius:38px;overflow:hidden;background:#EFF2EA}
+.map{position:absolute;inset:0;z-index:0}
+.map svg{display:block;width:100%;height:100%}
+
+/* ---------- 状态栏 ---------- */
+.statusbar{position:absolute;top:0;left:0;right:0;height:44px;z-index:9;display:flex;align-items:center;justify-content:space-between;padding:10px 24px 0;color:#1F2937}
+.statusbar .time{font-size:13px;font-weight:600;letter-spacing:.02em;font-variant-numeric:tabular-nums}
+.top-scrim{position:absolute;top:0;left:0;right:0;height:178px;z-index:2;pointer-events:none;
+  background:linear-gradient(180deg,rgba(244,246,240,.94) 0%,rgba(244,246,240,.62) 48%,rgba(244,246,240,0) 100%)}
+
+/* ---------- 搜索栏 / 条件栏 ---------- */
+.searchbar{
+  position:absolute;top:52px;left:16px;right:16px;height:48px;z-index:7;
+  display:flex;align-items:center;padding:0 6px 0 15px;border-radius:24px;background:#fff;
+  box-shadow:0 10px 26px -10px rgba(15,23,42,.22),0 2px 6px rgba(15,23,42,.06);
+}
+.icon-search{width:18px;height:18px;flex:0 0 auto;stroke:#6B7280;stroke-width:1.9;fill:none;stroke-linecap:round}
+.search-hint{flex:1;min-width:0;margin-left:10px;font-size:14px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.filter-entry{width:32px;height:32px;flex:0 0 auto;margin-right:2px;border-radius:16px;background:#F3F5F1;display:grid;place-items:center}
+.filter-entry svg{width:16px;height:16px;stroke:#4B5563;stroke-width:1.9;fill:none;stroke-linecap:round}
+.mic{width:36px;height:36px;flex:0 0 auto;border:0;border-radius:18px;background:var(--primary-light);display:grid;place-items:center}
+.mic svg{width:18px;height:18px;stroke:var(--primary);stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.chipbar{position:absolute;top:108px;left:16px;right:16px;height:32px;z-index:7;display:flex;align-items:center;gap:8px}
+.chips{flex:1;min-width:0;display:flex;align-items:center;gap:6px;overflow:hidden;
+  -webkit-mask-image:linear-gradient(90deg,#000 0,#000 91%,transparent 100%);
+  mask-image:linear-gradient(90deg,#000 0,#000 91%,transparent 100%);}
+.chip{height:32px;flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;padding:0 10px;border-radius:999px;
+  background:rgba(255,255,255,.97);border:1px solid var(--border);font-size:12.5px;color:var(--text);
+  box-shadow:0 2px 8px -2px rgba(15,23,42,.12);white-space:nowrap}
+.chip .dot{width:6px;height:6px;border-radius:50%;background:#94A3B8;flex:0 0 auto}
+
+/* ---------- 右侧浮钮 ---------- */
+.rail{position:absolute;right:16px;top:152px;z-index:6;display:flex;flex-direction:column;gap:10px}
+.rail-btn{width:40px;height:40px;border-radius:20px;background:#fff;display:grid;place-items:center;
+  box-shadow:0 8px 20px -8px rgba(15,23,42,.28),0 1px 3px rgba(15,23,42,.06)}
+.rail-btn svg{width:19px;height:19px;stroke:#374151;stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round}
+
+/* ---------- 命中数胶囊 ---------- */
+.map-count{position:absolute;left:16px;bottom:98px;z-index:6;height:32px;padding:0 12px;border-radius:999px;
+  display:inline-flex;align-items:center;gap:7px;background:rgba(255,255,255,.95);
+  box-shadow:0 8px 20px -8px rgba(15,23,42,.26),0 1px 3px rgba(15,23,42,.06);
+  font-size:11.5px;color:#4B5563}
+.map-count i{width:6px;height:6px;border-radius:50%;background:var(--primary);box-shadow:0 0 0 3px rgba(11,124,140,.12)}
+.map-count b{font-family:var(--mono);font-weight:600;color:var(--primary);margin:0 2px}
+
+/* ---------- 普通单点 Pin（对照用） ---------- */
+.pin{position:absolute;z-index:3;width:40px;height:40px;border-radius:50%;border:2px solid #fff;
+  box-shadow:0 3px 8px -2px rgba(15,23,42,.45);transform:translate(-50%,-50%);
+  display:grid;place-items:center;background:var(--c,#94A3B8)}
+.pin svg{width:20px;height:20px;stroke:#fff;stroke-width:1.9;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.pin.hollow{background:#fff;border-color:#fff;box-shadow:0 0 0 2px var(--c),0 3px 8px -2px rgba(15,23,42,.4)}
+.pin.hollow svg{stroke:var(--c)}
+.pin .q{position:absolute;right:-6px;top:-6px;width:16px;height:16px;border-radius:50%;background:var(--c);
+  border:1.5px solid #fff;color:#fff;font-size:11px;font-weight:700;display:grid;place-items:center;line-height:1}
+.pin.me{width:16px;height:16px;background:var(--primary);box-shadow:0 0 0 5px rgba(11,124,140,.16),0 3px 8px -2px rgba(15,23,42,.4)}
+.pin.me::after{content:"";position:absolute;left:50%;top:50%;width:6px;height:6px;border-radius:50%;background:#fff;transform:translate(-50%,-50%)}
+
+/* ---------- 叠点堆 ---------- */
+/* 一叠三层：后两层是「同组其它条」的分类色描边圆（白底、半透明），
+   主层是最上面那条的完整 Pin。数量角标在右上，替代需求态的 ? 角标。 */
+.stack{position:absolute;z-index:4;width:40px;height:40px;transform:translate(-50%,-50%)}
+.stack .ghost{position:absolute;width:40px;height:40px;border-radius:50%;background:#fff;
+  border:2px solid var(--g);opacity:.5;transform:translate(4px,4px)}
+.stack .ghost.g2{opacity:.26;transform:translate(8px,8px)}
+.stack .body{position:absolute;inset:0;border-radius:50%;background:var(--c);border:2px solid #fff;
+  box-shadow:0 3px 8px -2px rgba(15,23,42,.45);display:grid;place-items:center}
+.stack .body svg{width:20px;height:20px;stroke:#fff;stroke-width:1.9;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.stack .body.hollow{background:#fff;box-shadow:0 0 0 2px var(--c),0 3px 8px -2px rgba(15,23,42,.4)}
+.stack .body.hollow svg{stroke:var(--c)}
+.stack .num{position:absolute;right:-8px;top:-8px;min-width:19px;height:19px;padding:0 5px;border-radius:10px;
+  background:#1F2937;border:1.5px solid #fff;color:#fff;font-size:11px;font-weight:700;line-height:1;
+  display:grid;place-items:center;font-variant-numeric:tabular-nums;
+  box-shadow:0 2px 6px -1px rgba(15,23,42,.45)}
+.stack.sel{width:48px;height:48px;z-index:5}
+.stack.sel .body{box-shadow:0 0 0 4px rgba(11,124,140,.22),0 6px 16px -4px rgba(15,23,42,.5)}
+.stack.sel .body svg{width:24px;height:24px}
+
+/* 痛点帧：三条完全重合的 Pin + 虚线标注 */
+.pain .pin{opacity:.9}
+.pain-note{position:absolute;z-index:6;left:210px;top:352px;width:158px;font-size:10.5px;line-height:1.55;
+  color:#8A4A17;background:rgba(253,243,231,.97);border:1px solid rgba(245,158,11,.4);border-radius:9px;padding:7px 9px;
+  box-shadow:0 8px 20px -10px rgba(15,23,42,.35)}
+.pain-note b{display:block;font-size:11px;color:#7C3E0C;margin-bottom:2px}
+.pain-note svg{position:absolute;left:-26px;top:16px;width:26px;height:1px;stroke:#C99A5E;stroke-width:1.4}
+.pain-ring{position:absolute;z-index:2;left:196px;top:430px;width:64px;height:64px;border-radius:50%;transform:translate(-50%,-50%);
+  border:1.5px dashed rgba(180,83,26,.65)}
+
+/* ---------- 底部清单 ---------- */
+.sheet{position:absolute;left:0;right:0;bottom:0;z-index:10;display:flex;flex-direction:column;
+  background:#fff;border-radius:24px 24px 0 0;
+  box-shadow:0 -18px 46px -12px rgba(15,23,42,.28),0 -1px 0 rgba(15,23,42,.05)}
+.sheet.stack-list{padding:0 16px 12px;max-height:608px}
+.handle{width:36px;height:4px;border-radius:2px;background:#D5DAE0;margin:8px auto 6px;flex:0 0 auto}
+.sheet-head{display:flex;align-items:flex-start;gap:10px;padding:6px 0 10px;border-bottom:1px solid #F1F3EE}
+.sheet-head .t{flex:1;min-width:0}
+.sheet-title{font-size:16px;font-weight:600;letter-spacing:.01em;display:flex;align-items:center;gap:7px}
+.sheet-title .n{font-family:var(--mono);color:var(--primary);font-weight:700}
+.sheet-sub{margin-top:4px;font-size:11px;color:var(--text-2);display:flex;align-items:center;gap:5px}
+.sheet-sub svg{width:12px;height:12px;stroke:var(--text-3);stroke-width:1.8;fill:none;flex:0 0 auto;stroke-linecap:round;stroke-linejoin:round}
+.sheet-close{width:28px;height:28px;flex:0 0 auto;display:grid;place-items:center;color:#9CA3AF;font-size:17px;line-height:1}
+
+.rows{flex:1;min-height:0;overflow:hidden;position:relative}
+.rows.scroll{-webkit-mask-image:linear-gradient(180deg,#000 0,#000 88%,transparent 100%);
+  mask-image:linear-gradient(180deg,#000 0,#000 88%,transparent 100%)}
+.row-item{display:flex;align-items:center;gap:10px;padding:11px 2px;border-bottom:1px solid #F1F3EE}
+.row-item:last-child{border-bottom:0}
+.row-ic{width:38px;height:38px;flex:0 0 auto;border-radius:50%;background:var(--c);display:grid;place-items:center;position:relative}
+.row-ic svg{width:19px;height:19px;stroke:#fff;stroke-width:1.9;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.row-ic.hollow{background:#fff;box-shadow:inset 0 0 0 2px var(--c)}
+.row-ic.hollow svg{stroke:var(--c)}
+.row-ic .q{position:absolute;right:-2px;top:-2px;width:14px;height:14px;border-radius:50%;background:var(--c);border:1.5px solid #fff;
+  color:#fff;font-size:9.5px;font-weight:700;display:grid;place-items:center;line-height:1}
+.row-main{flex:1;min-width:0}
+.row-t{display:flex;align-items:center;gap:6px}
+.row-t b{font-size:14.5px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row-t .top-tag{flex:0 0 auto;font-size:9.5px;font-weight:600;color:var(--primary-dark);background:var(--primary-light);
+  padding:1px 5px;border-radius:4px;letter-spacing:.02em}
+.row-s{margin-top:3px;font-size:11px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row-s .sep{color:#D1D5DB;margin:0 4px}
+.row-s .price{color:var(--accent);font-weight:600}
+.row-right{flex:0 0 auto;display:flex;flex-direction:column;align-items:flex-end;gap:5px}
+.grade{display:inline-flex;align-items:center;gap:4px;height:18px;padding:0 6px;border-radius:9px;font-size:10px;font-weight:600}
+.grade i{width:5px;height:5px;border-radius:50%;background:currentColor}
+.grade.ok{color:var(--ok);background:var(--ok-bg)}
+.grade.mid{color:var(--mid);background:var(--mid-bg)}
+.grade.low{color:var(--low);background:var(--low-bg)}
+.row-chev{font-size:13px;color:var(--text-3);line-height:1}
+
+/* ---------- 单条信息卡（选中后，与现状一致） ---------- */
+.info-card{position:absolute;left:16px;right:16px;bottom:92px;z-index:7;background:#fff;border-radius:16px;
+  padding:12px;display:flex;align-items:flex-start;gap:10px;
+  box-shadow:0 12px 28px -12px rgba(15,23,42,.32),0 2px 6px rgba(15,23,42,.06)}
+.info-card .ic{width:40px;height:40px;flex:0 0 auto;border-radius:50%;background:var(--c);display:grid;place-items:center}
+.info-card .ic svg{width:20px;height:20px;stroke:#fff;stroke-width:1.9;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.info-card .m{flex:1;min-width:0}
+.info-card .m b{display:block;font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.info-card .m span{display:block;margin-top:3px;font-size:11px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.info-card .m .go{display:inline-flex;align-items:center;gap:2px;margin-top:5px;font-size:11px;font-weight:600;color:var(--primary)}
+.info-card .x{width:28px;height:28px;flex:0 0 auto;display:grid;place-items:center;color:var(--text-3);font-size:16px;line-height:1}
+
+/* ---------- 底部 Tab ---------- */
+.tabbar{position:absolute;left:0;right:0;bottom:0;height:76px;z-index:8;display:flex;align-items:flex-start;padding:9px 0 0;
+  background:rgba(255,255,255,.97);border-top:1px solid rgba(31,41,55,.07);
+  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+.tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:10.5px;color:#9CA3AF}
+.tab svg{width:21px;height:21px;stroke:currentColor;stroke-width:1.7;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.tab.active{color:var(--primary);font-weight:600}
+.tab.publish svg{width:32px;height:32px;stroke:none;fill:initial}
+.tab.publish span{color:var(--primary);font-weight:500}
+
+/* ---------- 局部放大（放大镜） ---------- */
+.zoom-badge{position:absolute;z-index:6;width:112px;height:112px;border-radius:50%;background:#fff;
+  border:1px solid rgba(31,41,55,.08);box-shadow:0 14px 34px -14px rgba(15,23,42,.4);overflow:hidden}
+.zoom-badge .inner{position:absolute;inset:0;background:#F3F6EF}
+.zoom-badge .cap{position:absolute;left:0;right:0;bottom:10px;text-align:center;font-size:9.5px;color:var(--text-2);
+  background:rgba(255,255,255,.86);padding:3px 0}
+.zoom-badge::after{content:"";position:absolute;inset:6px;border-radius:50%;border:1px dashed rgba(11,124,140,.28)}
+
+/* ---------- 规格说明 ---------- */
+.specs{position:relative;z-index:1;max-width:1180px;margin:64px auto 0}
+.section-head{display:flex;align-items:flex-end;gap:14px;border-top:1px solid rgba(31,41,55,.12);padding-top:22px;margin-bottom:20px}
+.section-head .no{font-family:var(--mono);font-size:11px;color:var(--primary);letter-spacing:.12em}
+.section-head h2{font-size:20px;font-weight:700;letter-spacing:-.01em}
+.section-head p{margin-left:auto;font-size:12px;color:var(--text-2)}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+.card{background:#fff;border:1px solid #E7EAE3;border-radius:16px;padding:20px 22px;box-shadow:0 10px 30px -24px rgba(15,23,42,.4)}
+.card h3{font-size:13px;font-weight:700;letter-spacing:.02em;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.card h3::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--primary)}
+.card p{font-size:12.5px;line-height:1.75;color:#4B5563}
+.card p + p{margin-top:8px}
+.card ul{list-style:none;display:flex;flex-direction:column;gap:9px}
+.card li{position:relative;padding-left:14px;font-size:12.5px;line-height:1.65;color:#4B5563}
+.card li::before{content:"";position:absolute;left:0;top:8px;width:4px;height:4px;border-radius:50%;background:#B9C2CC}
+.card li b{color:#1F2937;font-weight:600}
+code{font-family:var(--mono);font-size:11.5px;background:#F3F5F1;border:1px solid #E7EAE3;border-radius:5px;padding:1px 5px;color:#334155}
+.table{width:100%;border-collapse:collapse;font-size:12px}
+.table th{text-align:left;font-weight:600;color:var(--text-2);padding:0 0 8px;border-bottom:1px solid #EDEFEA;font-size:11px;letter-spacing:.04em}
+.table td{padding:9px 0;border-bottom:1px solid #F1F3EE;color:#4B5563;line-height:1.55;vertical-align:top}
+.table tr:last-child td{border-bottom:0}
+.table td:first-child{white-space:nowrap;color:#1F2937;font-weight:600;padding-right:14px}
+.table th:not(:last-child),.table td:not(:last-child){padding-right:16px}
+.swatches{display:flex;flex-wrap:wrap;gap:10px}
+.swatch{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--text-2)}
+.swatch i{width:18px;height:18px;border-radius:6px;display:block;border:1px solid rgba(31,41,55,.06)}
+.note{max-width:1180px;margin:26px auto 0;font-size:11.5px;line-height:1.8;color:#7A8390}
+.note b{color:#4B5563}
+
+/* ---------- 评审卡 ---------- */
+.decision{background:#fff;border:1px solid #E7EAE3;border-radius:16px;padding:18px 20px}
+.decision .dno{font-family:var(--mono);font-size:10.5px;color:var(--primary);letter-spacing:.1em}
+.decision h3{font-size:14px;font-weight:700;margin:6px 0 10px}
+.decision .q{font-size:12.5px;line-height:1.7;color:#4B5563;margin-bottom:10px}
+.opt{display:flex;gap:9px;padding:9px 11px;border-radius:10px;background:#F8FAF7;border:1px solid #EDEFEA;margin-bottom:7px;font-size:12px;line-height:1.6;color:#4B5563}
+.opt .k{font-family:var(--mono);font-size:11px;color:#8A93A0;flex:0 0 auto}
+.opt.pick{background:var(--primary-light);border-color:rgba(11,124,140,.34);color:#1F3F45}
+.opt.pick .k{color:var(--primary-dark);font-weight:600}
+.opt b{color:#1F2937;font-weight:600}
+.verdict{margin-top:10px;font-size:12px;line-height:1.65;color:#3E7C86;background:var(--primary-light);border-radius:9px;padding:9px 11px}
+.verdict b{font-weight:700}
+
+@media (max-width:920px){
+  body{padding:28px 16px 52px}
+  .doc-head h1{font-size:26px}
+  .stage{justify-content:center;gap:28px}
+  .grid{grid-template-columns:1fr}
+  .section-head p{display:none}
+}
+</style>
+</head>
+<body>
+
+<header class="doc-head">
+  <div class="kicker">S2S · DISCOVERY / OVERLAPPING PINS · PROTOTYPE V1</div>
+  <h1>同一处多条信息：叠点堆显示数量，点开是一张可选的清单</h1>
+  <p class="lede">
+    同一个用户在同一个位置发多条资源/需求是常态，而现在这些点会<b>精确重合</b>：
+    <code>buildMarkers</code> 把未达阈值的簇拆回单点、各回原坐标，<code>hitTestMarker</code> 倒序命中，
+    于是屏幕上只剩最上面那一枚可点，下面的永远点不到；而分桶键里带了一级大类，
+    同点不同类更是<b>连聚合圈都不会出现</b>。
+    本稿在“位置几乎重合”这个尺度上新加一种 Marker —— <b>叠点堆</b>：主 Pin + 同组其它条的分类色叠影 + 右上角数量角标；
+    点它不从放大开始，而是直接从底部弹出<b>「这一处有 N 条」的清单</b>，每行是一条完整信息（分类图标、标题、供需·类目·距离·价格、完整度角标），
+    点行<b>直接进详情</b>（2026-10-30 用户裁定：清单信息已足够判断，不必再回地图点一次信息卡）；从详情返回时地图停在该条并显示信息卡。
+  </p>
+  <div class="meta">
+    <span class="tag primary">390 × 844</span>
+    <span class="tag">主色 #0B7C8C</span>
+    <span class="tag">间距 / 圆角取 design_tokens</span>
+    <span class="tag">叠点堆 + 展开清单</span>
+    <span class="tag">对照 PRD §6.4.2 / §6.7 / §6.9</span>
+    <span class="tag warn">本稿只做设计，未改代码</span>
+  </div>
+</header>
+
+<section class="stage">
+
+  <!-- 01 现状痛点 -->
+  <figure class="frame-wrap">
+    <figcaption class="frame-cap"><span class="idx">01</span><b>现状 · 重叠后点不到</b><em>对照帧，不是要交付的样式</em></figcaption>
+    <div class="phone"><div class="screen pain">
+      <div class="map"></div>
+      <div class="top-scrim"></div>
+      <div class="statusbar"><span class="time">8:41</span></div>
+      <div class="searchbar">
+        <svg class="icon-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5 21 21"/></svg>
+        <span class="search-hint">搜资源、需求或一句话</span>
+        <span class="filter-entry"><svg viewBox="0 0 24 24"><path d="M3 5h18M6 12h12M10 19h4"/></svg></span>
+        <span class="mic"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></span>
+      </div>
+      <div class="chipbar"><div class="chips">
+        <span class="chip"><span class="dot"></span>5km</span>
+        <span class="chip"><span class="dot"></span>资源 + 需求</span>
+      </div></div>
+      <div class="rail">
+        <span class="rail-btn"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg></span>
+        <span class="rail-btn"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></span>
+      </div>
+
+      <div class="pain-ring"></div>
+      <!-- 三条完全重合：只有最后画的这条能被点到 -->
+      <div class="pin" style="left:196px;top:430px;--c:var(--house)"><svg viewBox="0 0 24 24"><path d="M4 11 12 4l8 7v9H4z"/><path d="M9.5 20v-5h5v5"/></svg></div>
+      <div class="pin hollow" style="left:196px;top:430px;--c:var(--house)"><svg viewBox="0 0 24 24"><path d="M4 11 12 4l8 7v9H4z"/><path d="M9.5 20v-5h5v5"/></svg><span class="q">?</span></div>
+      <div class="pin hollow" style="left:196px;top:430px;--c:var(--life)"><svg viewBox="0 0 24 24"><path d="M6 8h12l-1 12H7z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg><span class="q">?</span></div>
+      <div class="pain-note">
+        <b>3 条重合在这里</b>
+        命中倒序判定 → 只有最上面那条能被点中，另外两条在屏幕上“不存在”。
+        <svg viewBox="0 0 26 2" preserveAspectRatio="none"></svg>
+      </div>
+      <div class="pin me" style="left:120px;top:300px"></div>
+      <div class="pin" style="left:286px;top:496px;--c:var(--vehicle)"><svg viewBox="0 0 24 24"><path d="M4 16v-3l2-5h12l2 5v3"/><circle cx="7.5" cy="17" r="1.6"/><circle cx="16.5" cy="17" r="1.6"/></svg></div>
+      <div class="map-count"><i></i>附近 <b>9</b> 条</div>
+      <div class="tabbar">
+        <span class="tab active"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12h8M12 8v8"/></svg>发现</span>
+        <span class="tab"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z"/><path d="M4 10h16"/></svg>消息</span>
+        <span class="tab publish"><span style="font-size:26px">🦆</span><span>发布</span></span>
+        <span class="tab"><svg viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-9a4 4 0 0 1 7-2.6A4 4 0 0 1 19 11c0 4.6-7 9-7 9z"/></svg>收藏</span>
+        <span class="tab"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c1.6-3.6 4-5.4 7-5.4S17.4 16.4 19 20"/></svg>我的</span>
+      </div>
+    </div></div>
+  </figure>
+
+  <!-- 02 叠点堆 -->
+  <figure class="frame-wrap">
+    <figcaption class="frame-cap"><span class="idx">02</span><b>叠点堆 · 地图默认态</b><em>1 枚 Pin + 数量角标 3</em></figcaption>
+    <div class="phone"><div class="screen">
+      <div class="map"></div>
+      <div class="top-scrim"></div>
+      <div class="statusbar"><span class="time">8:41</span></div>
+      <div class="searchbar">
+        <svg class="icon-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5 21 21"/></svg>
+        <span class="search-hint">搜资源、需求或一句话</span>
+        <span class="filter-entry"><svg viewBox="0 0 24 24"><path d="M3 5h18M6 12h12M10 19h4"/></svg></span>
+        <span class="mic"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></span>
+      </div>
+      <div class="chipbar"><div class="chips">
+        <span class="chip"><span class="dot"></span>5km</span>
+        <span class="chip"><span class="dot"></span>资源 + 需求</span>
+      </div></div>
+      <div class="rail">
+        <span class="rail-btn"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg></span>
+        <span class="rail-btn"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></span>
+      </div>
+
+      <!-- 叠点堆：主层=房屋（资源，实心）；叠影两层=另一条房屋需求 + 一条生活需求 -->
+      <div class="stack" style="left:196px;top:430px;--c:var(--house);--g:var(--house)">
+        <span class="ghost g2" style="--g:var(--life)"></span>
+        <span class="ghost g1" style="--g:var(--house)"></span>
+        <span class="body"><svg viewBox="0 0 24 24"><path d="M4 11 12 4l8 7v9H4z"/><path d="M9.5 20v-5h5v5"/></svg></span>
+        <span class="num">3</span>
+      </div>
+
+      <div class="pin me" style="left:120px;top:300px"></div>
+      <div class="pin hollow" style="left:286px;top:360px;--c:var(--work)"><svg viewBox="0 0 24 24"><rect x="4" y="8" width="16" height="11" rx="2"/><path d="M9 8V6h6v2"/></svg><span class="q">?</span></div>
+      <div class="pin" style="left:286px;top:496px;--c:var(--vehicle)"><svg viewBox="0 0 24 24"><path d="M4 16v-3l2-5h12l2 5v3"/><circle cx="7.5" cy="17" r="1.6"/><circle cx="16.5" cy="17" r="1.6"/></svg></div>
+      <div class="pin" style="left:126px;top:520px;--c:var(--life)"><svg viewBox="0 0 24 24"><path d="M6 8h12l-1 12H7z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg></div>
+      <div class="pin hollow" style="left:250px;top:246px;--c:var(--service)"><svg viewBox="0 0 24 24"><path d="m12 4 1.8 4.7L19 10l-4.4 2.6L16 18l-4-2.6L8 18l1.4-5.4L5 10l5.2-1.3z"/></svg><span class="q">?</span></div>
+
+      <div class="zoom-badge" style="left:246px;top:566px">
+        <div class="inner"></div>
+        <div style="position:absolute;left:50%;top:44%;transform:translate(-50%,-50%)">
+          <div class="stack" style="position:relative;left:0;top:0;--c:var(--house);--g:var(--house)">
+            <span class="ghost g2" style="--g:var(--life)"></span>
+            <span class="ghost g1" style="--g:var(--house)"></span>
+            <span class="body"><svg viewBox="0 0 24 24"><path d="M4 11 12 4l8 7v9H4z"/><path d="M9.5 20v-5h5v5"/></svg></span>
+            <span class="num">3</span>
+          </div>
+        </div>
+        <div class="cap">1 : 1 细节</div>
+      </div>
+
+      <div class="map-count"><i></i>附近 <b>9</b> 条</div>
+      <div class="tabbar">
+        <span class="tab active"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12h8M12 8v8"/></svg>发现</span>
+        <span class="tab"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z"/><path d="M4 10h16"/></svg>消息</span>
+        <span class="tab publish"><span style="font-size:26px">🦆</span><span>发布</span></span>
+        <span class="tab"><svg viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-9a4 4 0 0 1 7-2.6A4 4 0 0 1 19 11c0 4.6-7 9-7 9z"/></svg>收藏</span>
+        <span class="tab"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c1.6-3.6 4-5.4 7-5.4S17.4 16.4 19 20"/></svg>我的</span>
+      </div>
+    </div></div>
+  </figure>
+
+  <!-- 03 展开清单 -->
+  <figure class="frame-wrap">
+    <figcaption class="frame-cap"><span class="idx">03</span><b>点叠点堆 · 展开清单</b><em>点面板外的地图即收起</em></figcaption>
+    <div class="phone"><div class="screen">
+      <div class="map"></div>
+      <div class="top-scrim"></div>
+      <div class="statusbar"><span class="time">8:41</span></div>
+      <div class="searchbar">
+        <svg class="icon-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5 21 21"/></svg>
+        <span class="search-hint">搜资源、需求或一句话</span>
+        <span class="filter-entry"><svg viewBox="0 0 24 24"><path d="M3 5h18M6 12h12M10 19h4"/></svg></span>
+        <span class="mic"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></span>
+      </div>
+      <div class="chipbar"><div class="chips">
+        <span class="chip"><span class="dot"></span>5km</span>
+        <span class="chip"><span class="dot"></span>资源 + 需求</span>
+      </div></div>
+      <div class="rail">
+        <span class="rail-btn"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg></span>
+        <span class="rail-btn"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></span>
+      </div>
+
+      <!-- 选中态：叠点堆放大 + 青色光环，提示“就是这一处” -->
+      <div class="stack sel" style="left:196px;top:430px;--c:var(--house);--g:var(--house)">
+        <span class="ghost g2" style="--g:var(--life)"></span>
+        <span class="ghost g1" style="--g:var(--house)"></span>
+        <span class="body"><svg viewBox="0 0 24 24"><path d="M4 11 12 4l8 7v9H4z"/><path d="M9.5 20v-5h5v5"/></svg></span>
+        <span class="num">3</span>
+      </div>
+      <div class="pin me" style="left:120px;top:300px"></div>
+      <div class="pin hollow" style="left:286px;top:360px;--c:var(--work)"><svg viewBox="0 0 24 24"><rect x="4" y="8" width="16" height="11" rx="2"/><path d="M9 8V6h6v2"/></svg><span class="q">?</span></div>
+      <div class="pin" style="left:286px;top:496px;--c:var(--vehicle)"><svg viewBox="0 0 24 24"><path d="M4 16v-3l2-5h12l2 5v3"/><circle cx="7.5" cy="17" r="1.6"/><circle cx="16.5" cy="17" r="1.6"/></svg></div>
+
+      <div class="sheet stack-list">
+        <div class="handle"></div>
+        <div class="sheet-head">
+          <div class="t">
+            <div class="sheet-title">这一处有 <span class="n">3</span> 条</div>
+            <div class="sheet-sub">
+              <svg viewBox="0 0 24 24"><path d="M12 21s7-5.6 7-11a7 7 0 1 0-14 0c0 5.4 7 11 7 11z"/><circle cx="12" cy="10" r="2.2"/></svg>
+              同一位置 · 北城世纪城鑫徽苑
+            </div>
+          </div>
+          <span class="sheet-close">×</span>
+        </div>
+        <div class="rows">
+          <div class="row-item">
+            <span class="row-ic" style="--c:var(--house)"><svg viewBox="0 0 24 24"><path d="M4 11 12 4l8 7v9H4z"/><path d="M9.5 20v-5h5v5"/></svg></span>
+            <div class="row-main">
+              <div class="row-t"><b>两室一厅合租 · 朝南主卧</b><span class="top-tag">置顶</span></div>
+              <div class="row-s">资源 · 房屋 · 合租<span class="sep">|</span>12m<span class="sep">|</span><span class="price">¥1,800/月</span></div>
+            </div>
+            <div class="row-right">
+              <span class="grade ok"><i></i>完整</span>
+              <span class="row-chev">›</span>
+            </div>
+          </div>
+          <div class="row-item">
+            <span class="row-ic hollow" style="--c:var(--house)"><svg viewBox="0 0 24 24"><path d="M4 11 12 4l8 7v9H4z"/><path d="M9.5 20v-5h5v5"/></svg><span class="q">?</span></span>
+            <div class="row-main">
+              <div class="row-t"><b>求租 · 一室带独卫即可</b></div>
+              <div class="row-s">需求 · 房屋 · 合租<span class="sep">|</span>12m<span class="sep">|</span><span class="price">¥1,500/月以内</span></div>
+            </div>
+            <div class="row-right">
+              <span class="grade mid"><i></i>待补</span>
+              <span class="row-chev">›</span>
+            </div>
+          </div>
+          <div class="row-item">
+            <span class="row-ic hollow" style="--c:var(--life)"><svg viewBox="0 0 24 24"><path d="M6 8h12l-1 12H7z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg><span class="q">?</span></span>
+            <div class="row-main">
+              <div class="row-t"><b>收一台二手洗衣机</b></div>
+              <div class="row-s">需求 · 生活 · 二手闲置<span class="sep">|</span>15m<span class="sep">|</span>预算面议</div>
+            </div>
+            <div class="row-right">
+              <span class="grade low"><i></i>待补</span>
+              <span class="row-chev">›</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div></div>
+  </figure>
+
+  <!-- 04 选中一条 -->
+  <figure class="frame-wrap">
+    <figcaption class="frame-cap"><span class="idx">04</span><b>选一条 · 直达详情</b><em>从详情返回时地图停在该条</em></figcaption>
+    <div class="phone"><div class="screen">
+      <div class="map"></div>
+      <div class="top-scrim"></div>
+      <div class="statusbar"><span class="time">8:41</span></div>
+      <div class="searchbar">
+        <svg class="icon-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5 21 21"/></svg>
+        <span class="search-hint">搜资源、需求或一句话</span>
+        <span class="filter-entry"><svg viewBox="0 0 24 24"><path d="M3 5h18M6 12h12M10 19h4"/></svg></span>
+        <span class="mic"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></span>
+      </div>
+      <div class="chipbar"><div class="chips">
+        <span class="chip"><span class="dot"></span>5km</span>
+        <span class="chip"><span class="dot"></span>资源 + 需求</span>
+      </div></div>
+      <div class="rail">
+        <span class="rail-btn"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg></span>
+        <span class="rail-btn"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></span>
+      </div>
+
+      <!-- 清单收起后：同一处仍显示叠点堆（3 条没变），但主层换成被选中的那条并放大 -->
+      <div class="stack sel" style="left:196px;top:430px;--c:var(--house);--g:var(--house)">
+        <span class="ghost g2" style="--g:var(--life)"></span>
+        <span class="ghost g1" style="--g:var(--house)"></span>
+        <span class="body"><svg viewBox="0 0 24 24"><path d="M4 11 12 4l8 7v9H4z"/><path d="M9.5 20v-5h5v5"/></svg></span>
+        <span class="num">3</span>
+      </div>
+      <div class="pin me" style="left:120px;top:300px"></div>
+      <div class="pin hollow" style="left:286px;top:360px;--c:var(--work)"><svg viewBox="0 0 24 24"><rect x="4" y="8" width="16" height="11" rx="2"/><path d="M9 8V6h6v2"/></svg><span class="q">?</span></div>
+      <div class="pin" style="left:286px;top:496px;--c:var(--vehicle)"><svg viewBox="0 0 24 24"><path d="M4 16v-3l2-5h12l2 5v3"/><circle cx="7.5" cy="17" r="1.6"/><circle cx="16.5" cy="17" r="1.6"/></svg></div>
+
+      <div class="info-card">
+        <span class="ic" style="--c:var(--house)"><svg viewBox="0 0 24 24"><path d="M4 11 12 4l8 7v9H4z"/><path d="M9.5 20v-5h5v5"/></svg></span>
+        <div class="m">
+          <b>两室一厅合租 · 朝南主卧</b>
+          <span>资源 · 房屋 · 合租 · 12m · ¥1,800/月</span>
+          <span class="go">查看详情 ›</span>
+        </div>
+        <span class="x">×</span>
+      </div>
+
+      <div class="tabbar">
+        <span class="tab active"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12h8M12 8v8"/></svg>发现</span>
+        <span class="tab"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z"/><path d="M4 10h16"/></svg>消息</span>
+        <span class="tab publish"><span style="font-size:26px">🦆</span><span>发布</span></span>
+        <span class="tab"><svg viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-9a4 4 0 0 1 7-2.6A4 4 0 0 1 19 11c0 4.6-7 9-7 9z"/></svg>收藏</span>
+        <span class="tab"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c1.6-3.6 4-5.4 7-5.4S17.4 16.4 19 20"/></svg>我的</span>
+      </div>
+    </div></div>
+  </figure>
+
+  <!-- 05 长清单 -->
+  <figure class="frame-wrap">
+    <figcaption class="frame-cap"><span class="idx">05</span><b>长清单 · 12 条</b><em>角标 9+，清单内部滚动</em></figcaption>
+    <div class="phone"><div class="screen">
+      <div class="map"></div>
+      <div class="top-scrim"></div>
+      <div class="statusbar"><span class="time">8:41</span></div>
+      <div class="searchbar">
+        <svg class="icon-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5 21 21"/></svg>
+        <span class="search-hint">搜资源、需求或一句话</span>
+        <span class="filter-entry"><svg viewBox="0 0 24 24"><path d="M3 5h18M6 12h12M10 19h4"/></svg></span>
+        <span class="mic"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></span>
+      </div>
+      <div class="chipbar"><div class="chips">
+        <span class="chip"><span class="dot"></span>5km</span>
+        <span class="chip"><span class="dot"></span>资源 + 需求</span>
+      </div></div>
+      <div class="rail">
+        <span class="rail-btn"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg></span>
+        <span class="rail-btn"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></span>
+      </div>
+
+      <div class="stack sel" style="left:196px;top:392px;--c:var(--work);--g:var(--work)">
+        <span class="ghost g2" style="--g:var(--house)"></span>
+        <span class="ghost g1" style="--g:var(--life)"></span>
+        <span class="body"><svg viewBox="0 0 24 24"><rect x="4" y="8" width="16" height="11" rx="2"/><path d="M9 8V6h6v2"/></svg></span>
+        <span class="num">9+</span>
+      </div>
+      <div class="pin me" style="left:120px;top:266px"></div>
+      <div class="pin" style="left:300px;top:300px;--c:var(--service)"><svg viewBox="0 0 24 24"><path d="m12 4 1.8 4.7L19 10l-4.4 2.6L16 18l-4-2.6L8 18l1.4-5.4L5 10l5.2-1.3z"/></svg></div>
+
+      <div class="sheet stack-list" style="height:500px">
+        <div class="handle"></div>
+        <div class="sheet-head">
+          <div class="t">
+            <div class="sheet-title">这一处有 <span class="n">12</span> 条</div>
+            <div class="sheet-sub">
+              <svg viewBox="0 0 24 24"><path d="M12 21s7-5.6 7-11a7 7 0 1 0-14 0c0 5.4 7 11 7 11z"/><circle cx="12" cy="10" r="2.2"/></svg>
+              同一位置 · 工作 6 / 房屋 4 / 生活 2
+            </div>
+          </div>
+          <span class="sheet-close">×</span>
+        </div>
+        <div class="rows scroll">
+          <div class="row-item">
+            <span class="row-ic" style="--c:var(--work)"><svg viewBox="0 0 24 24"><rect x="4" y="8" width="16" height="11" rx="2"/><path d="M9 8V6h6v2"/></svg></span>
+            <div class="row-main">
+              <div class="row-t"><b>周末兼职 · 传单派发</b><span class="top-tag">置顶</span></div>
+              <div class="row-s">资源 · 工作 · 兼职<span class="sep">|</span>8m<span class="sep">|</span><span class="price">¥180/天</span></div>
+            </div>
+            <div class="row-right"><span class="grade ok"><i></i>完整</span><span class="row-chev">›</span></div>
+          </div>
+          <div class="row-item">
+            <span class="row-ic hollow" style="--c:var(--work)"><svg viewBox="0 0 24 24"><rect x="4" y="8" width="16" height="11" rx="2"/><path d="M9 8V6h6v2"/></svg><span class="q">?</span></span>
+            <div class="row-main">
+              <div class="row-t"><b>找一份晚班后厨</b></div>
+              <div class="row-s">需求 · 工作 · 全职<span class="sep">|</span>8m<span class="sep">|</span>期望 5k+</div>
+            </div>
+            <div class="row-right"><span class="grade mid"><i></i>待补</span><span class="row-chev">›</span></div>
+          </div>
+          <div class="row-item">
+            <span class="row-ic" style="--c:var(--house)"><svg viewBox="0 0 24 24"><path d="M4 11 12 4l8 7v9H4z"/><path d="M9.5 20v-5h5v5"/></svg></span>
+            <div class="row-main">
+              <div class="row-t"><b>两室一厅合租 · 朝南主卧</b></div>
+              <div class="row-s">资源 · 房屋 · 合租<span class="sep">|</span>12m<span class="sep">|</span><span class="price">¥1,800/月</span></div>
+            </div>
+            <div class="row-right"><span class="grade ok"><i></i>完整</span><span class="row-chev">›</span></div>
+          </div>
+          <div class="row-item">
+            <span class="row-ic hollow" style="--c:var(--house)"><svg viewBox="0 0 24 24"><path d="M4 11 12 4l8 7v9H4z"/><path d="M9.5 20v-5h5v5"/></svg><span class="q">?</span></span>
+            <div class="row-main">
+              <div class="row-t"><b>求租 · 一室带独卫即可</b></div>
+              <div class="row-s">需求 · 房屋 · 合租<span class="sep">|</span>12m<span class="sep">|</span><span class="price">¥1,500/月以内</span></div>
+            </div>
+            <div class="row-right"><span class="grade low"><i></i>待补</span><span class="row-chev">›</span></div>
+          </div>
+          <div class="row-item">
+            <span class="row-ic" style="--c:var(--life)"><svg viewBox="0 0 24 24"><path d="M6 8h12l-1 12H7z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg></span>
+            <div class="row-main">
+              <div class="row-t"><b>出九成新婴儿推车</b></div>
+              <div class="row-s">资源 · 生活 · 二手闲置<span class="sep">|</span>16m<span class="sep">|</span><span class="price">¥260</span></div>
+            </div>
+            <div class="row-right"><span class="grade ok"><i></i>完整</span><span class="row-chev">›</span></div>
+          </div>
+          <div class="row-item">
+            <span class="row-ic hollow" style="--c:var(--life)"><svg viewBox="0 0 24 24"><path d="M6 8h12l-1 12H7z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg><span class="q">?</span></span>
+            <div class="row-main">
+              <div class="row-t"><b>收一台二手洗衣机</b></div>
+              <div class="row-s">需求 · 生活 · 二手闲置<span class="sep">|</span>18m<span class="sep">|</span>预算面议</div>
+            </div>
+            <div class="row-right"><span class="grade low"><i></i>待补</span><span class="row-chev">›</span></div>
+          </div>
+          <div class="row-item">
+            <span class="row-ic" style="--c:var(--work)"><svg viewBox="0 0 24 24"><rect x="4" y="8" width="16" height="11" rx="2"/><path d="M9 8V6h6v2"/></svg></span>
+            <div class="row-main">
+              <div class="row-t"><b>招兼职理货 · 周结</b></div>
+              <div class="row-s">资源 · 工作 · 兼职<span class="sep">|</span>20m<span class="sep">|</span><span class="price">¥20/时</span></div>
+            </div>
+            <div class="row-right"><span class="grade ok"><i></i>完整</span><span class="row-chev">›</span></div>
+          </div>
+        </div>
+      </div>
+    </div></div>
+  </figure>
+
+  <!-- 06 跨分类 -->
+  <figure class="frame-wrap">
+    <figcaption class="frame-cap"><span class="idx">06</span><b>跨类目同点</b><em>分桶键含大类 → 现状连聚合圈都没有</em></figcaption>
+    <div class="phone"><div class="screen">
+      <div class="map"></div>
+      <div class="top-scrim"></div>
+      <div class="statusbar"><span class="time">8:41</span></div>
+      <div class="searchbar">
+        <svg class="icon-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5 21 21"/></svg>
+        <span class="search-hint">搜资源、需求或一句话</span>
+        <span class="filter-entry"><svg viewBox="0 0 24 24"><path d="M3 5h18M6 12h12M10 19h4"/></svg></span>
+        <span class="mic"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></span>
+      </div>
+      <div class="chipbar"><div class="chips">
+        <span class="chip"><span class="dot"></span>5km</span>
+        <span class="chip"><span class="dot"></span>资源 + 需求</span>
+      </div></div>
+      <div class="rail">
+        <span class="rail-btn"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg></span>
+        <span class="rail-btn"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></span>
+      </div>
+
+      <!-- 三条不同类目：叠影用各自类目色，一眼看出“这里不止一类” -->
+      <div class="stack" style="left:196px;top:430px;--c:var(--work);--g:var(--work)">
+        <span class="ghost g2" style="--g:var(--life)"></span>
+        <span class="ghost g1" style="--g:var(--house)"></span>
+        <span class="body"><svg viewBox="0 0 24 24"><rect x="4" y="8" width="16" height="11" rx="2"/><path d="M9 8V6h6v2"/></svg></span>
+        <span class="num">3</span>
+      </div>
+      <div class="pin me" style="left:120px;top:300px"></div>
+      <div class="pin" style="left:292px;top:352px;--c:var(--service)"><svg viewBox="0 0 24 24"><path d="m12 4 1.8 4.7L19 10l-4.4 2.6L16 18l-4-2.6L8 18l1.4-5.4L5 10l5.2-1.3z"/></svg></div>
+      <div class="pin hollow" style="left:300px;top:520px;--c:var(--vehicle)"><svg viewBox="0 0 24 24"><path d="M4 16v-3l2-5h12l2 5v3"/><circle cx="7.5" cy="17" r="1.6"/><circle cx="16.5" cy="17" r="1.6"/></svg><span class="q">?</span></div>
+
+      <!-- 图例 -->
+      <div style="position:absolute;left:16px;bottom:98px;z-index:6;background:rgba(255,255,255,.96);border-radius:12px;
+        padding:9px 11px;box-shadow:0 8px 20px -8px rgba(15,23,42,.26);font-size:10.5px;color:#4B5563;line-height:1.9">
+        <div style="display:flex;align-items:center;gap:6px"><span style="width:9px;height:9px;border-radius:50%;background:var(--work)"></span>主层 = 置顶那条（完整度最高）</div>
+        <div style="display:flex;align-items:center;gap:6px"><span style="width:9px;height:9px;border-radius:50%;background:#fff;box-shadow:inset 0 0 0 1.5px var(--house)"></span>叠影 = 同组其它条的分类色</div>
+      </div>
+
+      <div class="tabbar">
+        <span class="tab active"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12h8M12 8v8"/></svg>发现</span>
+        <span class="tab"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z"/><path d="M4 10h16"/></svg>消息</span>
+        <span class="tab publish"><span style="font-size:26px">🦆</span><span>发布</span></span>
+        <span class="tab"><svg viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-9a4 4 0 0 1 7-2.6A4 4 0 0 1 19 11c0 4.6-7 9-7 9z"/></svg>收藏</span>
+        <span class="tab"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c1.6-3.6 4-5.4 7-5.4S17.4 16.4 19 20"/></svg>我的</span>
+      </div>
+    </div></div>
+  </figure>
+
+</section>
+
+<!-- ============ 规格 ============ -->
+<section class="specs">
+  <div class="section-head">
+    <span class="no">SPEC</span>
+    <h2>规格说明</h2>
+    <p>每条都注明与现有实现的接缝，便于落地时对号</p>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h3>SPEC 01 · 什么算“叠点堆”</h3>
+      <p>现有聚合是<b>网格</b>尺度（<code>clusterByGrid</code> 按 <code>NfrPerf.clusterGridSizePx</code>=60px 格 + 一级大类分桶），它解决的是“这一片很密”，不解决“这几条完全重合”。叠点堆补的就是后者：</p>
+      <ul>
+        <li><b>判定</b>：同一视口下，两点屏幕距离 ≤ <code>overlapStackPx</code>（建议 18，约 Pin 直径一半）即落入同一叠点组。</li>
+        <li><b>顺序</b>：先按位置做叠点分组，<b>组内不再按类目拆</b>（这正是修掉“同点不同类永不聚合”的关键）；分组后剩余的点再走原有网格聚合。</li>
+        <li><b>优先级</b>：叠点堆是比聚合圈更小尺度的 Marker，同时存在时叠点堆优先，聚合圈只统计“除去已进叠点组”的点。</li>
+        <li><b>数量</b>：2 ≤ 组内条数 → 画叠点堆；= 1 → 仍是原来的单点 Pin（样式零变化）。</li>
+        <li><b>与阈值解耦</b>：<code>clusterThreshold</code>（work 3 等）只管聚合圈，不再决定“2 条同点”怎么画 —— 2 条同点从“两个重叠 Pin”直接变“叠点堆 2”。</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h3>SPEC 02 · 图面：主层 + 叠影 + 数量角标</h3>
+      <ul>
+        <li><b>主层</b>：置顶那条的完整 Pin（实心=资源 / 空心=需求 / 圆心=二级分类字形），尺寸仍 40。</li>
+        <li><b>叠影</b>：主层后方向右下偏移 5px、10px 各画一圈白底 + 该条分类色描边，透明度 0.5 / 0.26，最多 2 层（&gt;3 条不再加层，只加数字）。叠影颜色取自<b>组内其它条</b>，让“这里不止一类”可读。</li>
+        <li><b>数量角标</b>：右上 <code>#1F2937</code> 底 + 白字 11/700，最小 19×19（两位数字自动加宽），1.5px 白描边。</li>
+        <li><b>与 ? 角标的关系</b>：有数量角标时<b>不再画 ?</b>（同位置只能挂一个角标）；需求态仍由 Pin 本体空心表达，逐条供需在清单行内标明。</li>
+        <li><b>数字口径</b>：1–9 显示原数，≥10 显示 <code>9+</code>；上限与聚合圈一致，不做 999+。</li>
+        <li><b>选中态</b>：整组放大到 48 并加青色光环（复用现有 <code>kSelectedMarkerDiameter</code> 的视觉增量）。</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h3>SPEC 03 · 清单：点开就能选</h3>
+      <ul>
+        <li><b>面板</b>：底部 sheet，圆角 24，最大高 72% 屏（与筛选面板同一约束），内容不足时自适应高度。</li>
+        <li><b>标题</b>：「这一处有 <b>N</b> 条」+ 位置行（地名 + 各类目条数）；右侧只有关闭（×）。<b>不放「放大地图」</b>：清单本身已经是空间聚集的结果，再放大是第二套语义。</li>
+        <li><b>行内容</b>：分类图标（供需同 Pin 的实心/空心规则）→ 标题 → 「供需 · 二级类目 · 距离 · 价格」→ 完整度角标（完整 / 待补 / 空缺，取 🟢🟡🔴 语义）→ <code>›</code>。</li>
+        <li><b>排序</b>：完整度 🟢&gt;🟡&gt;🔴，同级取发布时间新；<b>首行即地图主层那条</b>，带「置顶」小标，让图面与列表对得上。</li>
+        <li><b>点行</b>：收起清单 → <b>直接进详情页</b>（2026-10-30 用户裁定）。清单已含标题/供需/类目/距离/价格/完整度，足够判断；选中态一并写入，从详情返回时地图停在该条并显示信息卡。</li>
+        <li><b>关闭</b>：点面板之外的<b>地图任意位置</b>即收起（与筛选面板同一套遮挡处理，遮罩只吃这一下点击，不移动相机）；顶部 × 是同一个动作的显式入口。</li>
+        <li><b>无底部按钮</b>：不放「全部进列表查看」「按类目筛」—— 清单就是全部内容，超出即内部滚动。</li>
+        <li><b>滚动</b>：超过 6 行内部滚动，底部渐隐提示还有更多。</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h3>SPEC 04 · 数据从哪来（现成的坑）</h3>
+      <p><code>/map/pins</code> 是紧凑格式，只有 id / 坐标 / 类目 / 供需 / 完整度，<b>没有标题与价格</b>；现有信息卡是点开时单独 <code>GET /posts/{id}</code> 补的。清单一次展示 N 条，需要同样的补法：</p>
+      <ul>
+        <li>打开清单时对<b>首屏可见行</b>并发取详情（<code>postDetailProvider(listingId)</code> 已有缓存），滚动到哪拉到哪；未就绪的行标题位先占位、不接受点击。</li>
+        <li>41001（已下架）行内降级为「该信息已下架」，不可点，与详情页文案同口径。</li>
+        <li>不往 <code>/map/pins</code> 加标题/价格字段 —— 那会破坏它压体积的前提。</li>
+        <li>服务端 <code>mode=cluster</code> 时成员 ID 不下发，叠点堆<b>不适用</b>，仍按“点聚合圈放大 2 倍”走；叠加只发生在 pin 模式。</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h3>SPEC 05 · 与三种 Marker 的分工</h3>
+      <table class="table">
+        <thead><tr><th>点间距</th><th>画什么</th><th>点击语义</th></tr></thead>
+        <tbody>
+          <tr><td>≤ 18px</td><td>叠点堆（主层 + 叠影 + 数量）</td><td>展开清单，选一条 → 信息卡</td></tr>
+          <tr><td>18–60px 同格</td><td>聚合圈（数字，现有）</td><td>放大 2 倍</td></tr>
+          <tr><td>其余</td><td>单点 Pin（现有）</td><td>选中 + 信息卡</td></tr>
+        </tbody>
+      </table>
+      <p>三档互斥，由同一趟分组建 Marker 决定，避免叠点堆与聚合圈吃到同一批点造成重复计数（左下角「附近 N 条」按原始条数计，不受分组影响）。</p>
+    </div>
+
+    <div class="card">
+      <h3>SPEC 06 · 常量与门禁</h3>
+      <ul>
+        <li>新增数字一律进 <code>lib/nfr_constants.dart</code>：<code>overlapStackPx</code>、<code>overlapStackGhostMax</code>、<code>overlapListMaxVisibleRows</code>、<code>overlapBadgeMaxDigits</code>，业务代码不写字面量。</li>
+        <li>聚合函数仍是纯 Dart（不 import Flutter），叠点分组加在 <code>clusterByGrid</code> 之前，保持可跑 POC 基准。</li>
+        <li><code>hitTestMarker</code> 的倒序规则不变：叠点堆是<b>一个</b> Marker，命中它即命中整组，不再有“被压在下面”的概念。</li>
+        <li>门禁补三条：两条同点同类 → 1 个叠点堆 count=2；两条同点不同类 → 1 个叠点堆（旧实现是 2 个 Pin）；点聚合圈仍是放大而非展开。</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="section-head" style="margin-top:44px">
+    <span class="no">REVIEW</span>
+    <h2>待拍板</h2>
+    <p>三项会改变实现路径，需要你定</p>
+  </div>
+  <div class="grid">
+    <div class="decision">
+      <div class="dno">R-1</div>
+      <h3>点清单里的一行，去哪？</h3>
+      <div class="q">A 与点单个 Pin 一致（收起清单 → 选中 → 信息卡 → 再点进详情）；B 直接进详情页，少一次点击。</div>
+      <div class="opt"><span class="k">A</span><div>先信息卡：地图上下文不丢，且全应用只有一套“选一条信息”的手感。</div></div>
+      <div class="opt pick"><span class="k">B</span><div><b>直达详情（2026-10-30 用户裁定，已实现）</b>：清单里标题/供需/类目/距离/价格/完整度都齐了，足够判断是不是这条；再回地图点一次信息卡是多余一步。选中态仍写入，从详情返回时地图停在该条并显示信息卡。</div></div>
+    </div>
+    <div class="decision">
+      <div class="dno">R-2</div>
+      <h3>数量角标要不要顶掉 ? 角标？</h3>
+      <div class="q">同一枚 Pin 右上角只能挂一个角标。</div>
+      <div class="opt pick"><span class="k">A</span><div><b>叠点堆不画 ?</b>（本稿采用）：需求态靠空心本体已可读，数量是更紧急的信息。</div></div>
+      <div class="opt"><span class="k">B</span><div>两个都画（? 左上、数量右上）：信息全，但 40px 的 Pin 上会显得碎。</div></div>
+    </div>
+    <div class="decision">
+      <div class="dno">R-3</div>
+      <h3>叠点阈值取多少？</h3>
+      <div class="q">越大合并越狠、越不容易漏点，但也可能把“确实相邻的两条不同信息”误并成一条。</div>
+      <div class="opt pick"><span class="k">A</span><div><b>18px</b>（≈ Pin 半径）：只并“几乎完全重合”的，保守、不误伤。</div></div>
+      <div class="opt"><span class="k">B</span><div>28–32px：更激进，密集区更清爽，但会出现“明明分得开却被合起来”的观感。</div></div>
+      <div class="verdict"><b>建议 A</b>，真机看过再决定是否上调 —— 18 已经能覆盖“同一个人在同一地址发多条”这个主场景。</div>
+    </div>
+  </div>
+
+  <p class="note">
+    <b>说明：</b>本页是设计稿，不是运行时 UI；尺寸按 390 × 844 逻辑像素绘制，颜色与圆角取自
+    <code>lib/design_tokens.dart</code>。地图为示意底图，仅用于表达叠点堆、清单与信息卡的层级关系，不代表真实地理数据。
+    落地接缝：<code>lib/features/map/clustering/grid_cluster.dart</code>（新增叠点分组）、
+    <code>clustering/marker_builder.dart</code>（新增叠点堆 Marker）、
+    <code>marker_layer.dart</code>（绘制与命中）、<code>map_screen.dart</code>（清单 sheet 与选中态）。
+  </p>
+</section>
+
+<script>
+/* 地图示意底图：所有画框共用一份 */
+const MAP_SVG = `
+<svg viewBox="0 0 390 844" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+  <rect width="390" height="844" fill="#EFF2EA"/>
+  <rect x="18" y="286" width="122" height="150" rx="14" fill="#E3EBDC"/>
+  <rect x="252" y="214" width="120" height="92" rx="12" fill="#E7EBE2"/>
+  <rect x="38" y="560" width="96" height="86" rx="12" fill="#E7EBE2"/>
+  <path d="M-10 700 C 70 664, 150 742, 250 700 S 380 676, 400 726 L400 844 L-10 844Z" fill="#DDE9EE"/>
+  <g stroke="#F7F8F4" stroke-width="13" stroke-linecap="round">
+    <line x1="-10" y1="248" x2="400" y2="212"/>
+    <line x1="-10" y1="470" x2="400" y2="442"/>
+    <line x1="118" y1="-10" x2="150" y2="854"/>
+    <line x1="300" y1="-10" x2="268" y2="854"/>
+  </g>
+  <g stroke="#F3F5EF" stroke-width="5" stroke-linecap="round">
+    <line x1="-10" y1="356" x2="400" y2="330"/>
+    <line x1="-10" y1="586" x2="400" y2="558"/>
+    <line x1="212" y1="-10" x2="200" y2="854"/>
+    <line x1="60" y1="-10" x2="72" y2="854"/>
+  </g>
+  <text x="164" y="238" font-size="9" fill="#9AA39B" letter-spacing="1">文三路</text>
+  <text x="196" y="462" font-size="9" fill="#9AA39B" letter-spacing="1">望江路</text>
+</svg>`;
+
+document.querySelectorAll('.map').forEach(el => { el.innerHTML = MAP_SVG; });
+</script>
+</body>
+</html>
