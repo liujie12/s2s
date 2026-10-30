@@ -25,6 +25,14 @@ import org.springframework.stereotype.Component;
 @Component
 public class PostValidator {
 
+    /**
+     * 结构化起终点字段类型（与 openapi {@code TemplateField.type} 枚举同源，KTD2）。
+     *
+     * <p>该类型的值不是字符串而是 {@code {origin,destination,...}} 对象；
+     * 必填判定按「两端都带数值坐标」而不是「非空字符串」。</p>
+     */
+    private static final String FIELD_TYPE_ROUTE_PAIR = "route_pair";
+
     private final SensitiveWordChecker sensitiveWordChecker;
     private final MediaService mediaService;
     private final CategoryMapper categoryMapper;
@@ -144,18 +152,62 @@ public class PostValidator {
 
     /**
      * 判断模板必填字段是否全部有值。
+     *
+     * <p>按字段类型分流（KTD4）：{@code route_pair} 要求对象形态且两端都带
+     * 数值坐标；历史字符串形态按已填放行（存量帖没有坐标，不能因此被拦）。
+     * 其余类型维持「null 或空白字符串即缺失」。</p>
      */
     private boolean isRequiredFull(Integer leafCategoryId, Map<String, Object> attributes) {
         TemplateDto template = templateService.getByLeaf(leafCategoryId);
         for (TemplateFieldDto field : template.getFields()) {
-            if (Boolean.TRUE.equals(field.getRequired())) {
-                Object value = attributes == null ? null : attributes.get(field.getKey());
-                if (value == null || (value instanceof String s && s.isBlank())) {
+            if (!Boolean.TRUE.equals(field.getRequired())) {
+                continue;
+            }
+            Object value = attributes == null ? null : attributes.get(field.getKey());
+            if (FIELD_TYPE_ROUTE_PAIR.equals(field.getType())) {
+                if (!isRoutePairFilled(value)) {
                     return false;
                 }
+                continue;
+            }
+            if (value == null || (value instanceof String s && s.isBlank())) {
+                return false;
             }
         }
         return true;
+    }
+
+    /**
+     * 判断起终点字段是否已填（KTD4）。
+     *
+     * <p>对象形态要求 {@code origin}/{@code destination} 各含数值 {@code lng}/{@code lat}；
+     * 字符串形态是历史数据，按已填放行。不做「对象非空即已填」的放宽 ——
+     * 那会让只填了一半的路线通过服务端校验。</p>
+     *
+     * @param value attributes 中该字段的原始值
+     * @return boolean；true 表示已填
+     */
+    private boolean isRoutePairFilled(Object value) {
+        if (value instanceof String s) {
+            return !s.isBlank();
+        }
+        if (!(value instanceof Map<?, ?> route)) {
+            return false;
+        }
+        return hasCoordinate(route.get("origin")) && hasCoordinate(route.get("destination"));
+    }
+
+    /**
+     * 判断单个地点是否带数值坐标。
+     *
+     * @param place 地点对象（期望 {@code Map}）
+     * @return boolean；{@code lng}/{@code lat} 都是数值时为 true（字符串坐标不算）
+     */
+    private boolean hasCoordinate(Object place) {
+        if (!(place instanceof Map<?, ?> map)) {
+            return false;
+        }
+        return map.get("lng") instanceof Number && map.get("lat") instanceof Number;
     }
 
     /**
