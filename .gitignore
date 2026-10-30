@@ -115,6 +115,12 @@ prototype-figma/assets/icon-preview/fonts/*.ttf
 # ce-code-review 的运行产物（diff、清单与报告），每次评审重新生成
 .review-run/
 
+# ── 本地留存的第三方下载包 ──
+# third_party/mipush/ 是小米推送官方下载 zip；真正参与构建的
+# MiPush_SDK_Client_7_12_4-C_3rd.aar 已入库 android/app/libs/，
+# zip 只是换机时省一次下载，属机器本地副本，不入库。
+third_party/
+
 # ── 官网下载目录（二进制不入库）──
 # APK 与流程图 PNG 由发版步骤上传（宿主 /mnt/s2s/website/download/），
 # 页面上的版本号与 SHA-256 以该文件实测值回填（《官网设计文档》§7.1）。
