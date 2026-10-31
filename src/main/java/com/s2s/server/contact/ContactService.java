@@ -4,6 +4,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.s2s.server.auth.IdentityBindingService;
 import com.s2s.server.cert.CertService;
+import com.s2s.server.chat.ChatCopy;
+import com.s2s.server.chat.ContactApplyService;
 import com.s2s.server.common.audit.AuditEntry;
 import com.s2s.server.common.audit.AuditLogWriter;
 import com.s2s.server.common.audit.OperatorRole;
@@ -83,6 +85,7 @@ public class ContactService {
     private final CertService certService;
     private final PostModerationService postModerationService;
     private final IdentityBindingService identityBindingService;
+    private final ContactApplyService contactApplyService;
 
     /**
      * 构造联系域服务。
@@ -97,6 +100,7 @@ public class ContactService {
      * @param certService           认证域服务（举报方实名门槛/企业权重判定，[153] B2-5 ④）
      * @param postModerationService 帖子治理服务（风险分累计/审核下架，[153] B2-5 ④）
      * @param identityBindingService 身份绑定门禁（B2-6a：未绑手机号禁止查看联系方式）
+     * @param contactApplyService    联系方式申请链路（需申请帖的取号闸门，R22 / R24）
      */
     public ContactService(ContactRateGuard rateGuard,
             ContactPostMapper contactPostMapper,
@@ -107,7 +111,8 @@ public class ContactService {
             ObjectMapper objectMapper,
             CertService certService,
             PostModerationService postModerationService,
-            IdentityBindingService identityBindingService) {
+            IdentityBindingService identityBindingService,
+            ContactApplyService contactApplyService) {
         this.rateGuard = rateGuard;
         this.contactPostMapper = contactPostMapper;
         this.contactEventMapper = contactEventMapper;
@@ -118,6 +123,7 @@ public class ContactService {
         this.certService = certService;
         this.postModerationService = postModerationService;
         this.identityBindingService = identityBindingService;
+        this.contactApplyService = contactApplyService;
     }
 
     /**
@@ -153,6 +159,10 @@ public class ContactService {
 
         // [1.5] 身份门禁（B2-6a / 架构 §5.1.1 门禁②）：未绑定手机号禁止查看联系方式
         identityBindingService.requirePhoneBound(viewerId);
+
+        // [1.6] 需申请帖的取号闸门（R22 / R24）：先于三维限频，避免未获同意的申请人
+        //       白耗当日看号次数；帖子不存在/不可见时不在这里拦截，保持既有探测口径
+        requireApplyApprovedIfNeeded(viewerId, postId);
 
         // [2] 熔断冻结 → 42903
         rateGuard.assertNotFrozen(viewerId, today);
@@ -201,6 +211,36 @@ public class ContactService {
 
         // [9] 返回完整值 + 账号维剩余次数（剩余量在日限计数之后读取，故已含本次消耗）
         return new ContactInfo(channel, contactValue, rateGuard.remainingToday(viewerId, today));
+    }
+
+    /**
+     * 需申请帖的取号闸门（R22 / R24）。
+     *
+     * <p>只拦「可见 + 需申请 + 非发布者 + 未获同意」这一种组合：
+     * 帖子不存在或对他人不可见时放行给后续「限频 → 可见性」链路——否则按 id 探测
+     * 就会在限频之前拿到 41001，破坏既有「探测同样计入配额」的保护。</p>
+     *
+     * <p>已同意者不在这里短路：他们继续走三维限频、可见性与同事务审计（R22）。</p>
+     *
+     * @param viewerId 当前登录用户 ID
+     * @param postId   帖子 ID
+     * @throws BizException {@code 40305}，文案为「该发布者设置了查看联系方式需申请」
+     */
+    private void requireApplyApprovedIfNeeded(Long viewerId, Long postId) {
+        Map<String, Object> gate = contactPostMapper.selectApplyGateRow(postId);
+        if (gate == null) {
+            return;
+        }
+        if (PostStatus.isGoneForOthers((String) gate.get("status"))) {
+            return;
+        }
+        Long ownerId = toLong(gate.get("user_id"));
+        Integer applyRequired = toInteger(gate.get("contact_apply_required"));
+        boolean gated = applyRequired != null && applyRequired == 1
+                && ownerId != null && !ownerId.equals(viewerId);
+        if (gated && !contactApplyService.hasApprovedAccess(postId, viewerId)) {
+            throw BizException.of(ErrorCode.NO_PERMISSION, ChatCopy.APPLY_REQUIRED);
+        }
     }
 
     /**

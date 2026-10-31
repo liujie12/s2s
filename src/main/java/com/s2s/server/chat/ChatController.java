@@ -1,5 +1,7 @@
 package com.s2s.server.chat;
 
+import com.s2s.server.chat.dto.ApplyDecisionRequest;
+import com.s2s.server.chat.dto.ApplyStateResponse;
 import com.s2s.server.chat.dto.ConversationCreateRequest;
 import com.s2s.server.chat.dto.ConversationCreateResponse;
 import com.s2s.server.chat.dto.ConversationPageResponse;
@@ -37,6 +39,7 @@ public class ChatController {
     private final ChatMessageService chatMessageService;
     private final ChatQueryService chatQueryService;
     private final UnreadSummaryService unreadSummaryService;
+    private final ContactApplyService contactApplyService;
 
     /**
      * 构造会话控制器。
@@ -45,13 +48,16 @@ public class ChatController {
      * @param chatMessageService   消息发送服务
      * @param chatQueryService     会话读取服务
      * @param unreadSummaryService 未读汇总唯一出口
+     * @param contactApplyService  联系方式申请链路
      */
     public ChatController(ChatService chatService, ChatMessageService chatMessageService,
-            ChatQueryService chatQueryService, UnreadSummaryService unreadSummaryService) {
+            ChatQueryService chatQueryService, UnreadSummaryService unreadSummaryService,
+            ContactApplyService contactApplyService) {
         this.chatService = chatService;
         this.chatMessageService = chatMessageService;
         this.chatQueryService = chatQueryService;
         this.unreadSummaryService = unreadSummaryService;
+        this.contactApplyService = contactApplyService;
     }
 
     /**
@@ -164,6 +170,54 @@ public class ChatController {
     public UnreadSummaryResponse unreadSummary(HttpServletRequest httpRequest) {
         Long userId = requireUserId(httpRequest);
         return unreadSummaryService.summary(userId);
+    }
+
+    /**
+     * 提交（或再次提交）联系方式申请（{@code POST /conversations/{id}/apply}，R20 / R21）。
+     *
+     * @param conversationId 会话 ID（路径参数）
+     * @param httpRequest    当前请求（取登录态）
+     * @return {@link ApplyStateResponse} 提交后的卡片状态
+     */
+    @PostMapping("/conversations/{conversation_id}/apply")
+    @Idempotent
+    public ApplyStateResponse applyContact(@PathVariable("conversation_id") Long conversationId,
+            HttpServletRequest httpRequest) {
+        Long userId = requireUserId(httpRequest);
+        return contactApplyService.apply(userId, conversationId);
+    }
+
+    /**
+     * 审批申请卡（{@code POST /conversations/{id}/apply/decision}，R21 / R22）。
+     *
+     * @param conversationId 会话 ID（路径参数）
+     * @param request        审批入参（同意 / 拒绝）
+     * @param httpRequest    当前请求（取登录态）
+     * @return {@link ApplyStateResponse} 审批后的卡片状态
+     */
+    @PostMapping("/conversations/{conversation_id}/apply/decision")
+    @Idempotent
+    public ApplyStateResponse decideContactApply(
+            @PathVariable("conversation_id") Long conversationId,
+            @Valid @RequestBody ApplyDecisionRequest request,
+            HttpServletRequest httpRequest) {
+        Long userId = requireUserId(httpRequest);
+        return contactApplyService.decide(userId, conversationId, request);
+    }
+
+    /**
+     * 查询申请卡状态（{@code GET /conversations/{id}/apply}，R21a / R24）。
+     *
+     * @param conversationId 会话 ID（路径参数）
+     * @param httpRequest    当前请求（取登录态）
+     * @return {@link ApplyStateResponse} 卡片状态与两个入口可用性
+     */
+    @GetMapping("/conversations/{conversation_id}/apply")
+    public ApplyStateResponse contactApplyState(
+            @PathVariable("conversation_id") Long conversationId,
+            HttpServletRequest httpRequest) {
+        Long userId = requireUserId(httpRequest);
+        return contactApplyService.state(userId, conversationId);
     }
 
     /**

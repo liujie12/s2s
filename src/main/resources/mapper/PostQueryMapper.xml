@@ -23,6 +23,7 @@
                p.lat,
                p.address,
                p.contact_mask,
+               p.contact_apply_required,
                p.completeness_level,
                p.ai_assisted,
                p.status,

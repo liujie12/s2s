@@ -33,6 +33,7 @@ import java.util.Map;
  *                       发布成功后扣 1 次 AI 配额，并落 {@code post.ai_assisted}
  * @param certIds        可选挂载的资质档案 ID 列表（一帖多证；缺省/空 = 本次不展示，
  *                       不阻断发布、不进 precheck 阻断项）
+ * @param contactApplyRequired 查看联系方式是否需申请（R19；缺省/null=否，维持既有「一键取号」效率）
  */
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public record PostCreateRequest(
@@ -51,5 +52,6 @@ public record PostCreateRequest(
         @NotBlank String contactType,
         @NotBlank @Size(max = 64) String contactValue,
         Boolean aiAssisted,
-        List<Long> certIds) {
+        List<Long> certIds,
+        Boolean contactApplyRequired) {
 }

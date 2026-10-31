@@ -113,7 +113,7 @@ class PostServiceTest {
 
         PostCreateRequest req = new PostCreateRequest(
                 "resource", 10101, "标题", 50.0, "小时", "描述", Map.of(), 120.15, 30.28, null,
-                false, List.of(), "phone", "13800138000", null, null);
+                false, List.of(), "phone", "13800138000", null, null, null);
 
         PostDetail detail = postService.createPost(1L, req);
 
@@ -139,7 +139,7 @@ class PostServiceTest {
         when(postMapper.selectById(100L)).thenReturn(createSavedRow());
         PostCreateRequest req = new PostCreateRequest(
                 "resource", 10101, "标题", 50.0, "小时", null, Map.of(), 120.15, 30.28, null,
-                false, List.of(), "phone", "13800138000", true, null);
+                false, List.of(), "phone", "13800138000", true, null, null);
 
         postService.createPost(1L, req);
 
@@ -185,7 +185,7 @@ class PostServiceTest {
     private static PostCreateRequest createReq(Boolean aiAssisted) {
         return new PostCreateRequest(
                 "resource", 10101, "标题", 50.0, "小时", "描述", Map.of(), 120.15, 30.28, null,
-                false, List.of(), "phone", "13800138000", aiAssisted, null);
+                false, List.of(), "phone", "13800138000", aiAssisted, null, null);
     }
 
     /**
@@ -385,7 +385,7 @@ class PostServiceTest {
     private static PostUpdateRequest updateReq(String contactValue) {
         return new PostUpdateRequest(4L, "resource", 10101, "新标题", 60.0, "小时", "新描述",
                 Map.of("k", "v"), 120.15, 30.28, null, false, List.of(),
-                contactValue == null ? null : "phone", contactValue, null);
+                contactValue == null ? null : "phone", contactValue, null, null);
     }
 
     /**

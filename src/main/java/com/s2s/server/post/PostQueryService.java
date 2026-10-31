@@ -170,7 +170,8 @@ public class PostQueryService {
                 Boolean.TRUE.equals(toBoolean(row.get("ai_assisted"))),
                 favorited,
                 // 帖级凭证声明：未关联/脏数据为 null，客户端整块不渲染（快照主行 + 实时说明行）
-                credentialAssembler.of(postId));
+                credentialAssembler.of(postId),
+                Integer.valueOf(1).equals(toInteger(row.get("contact_apply_required"))));
     }
 
     /**

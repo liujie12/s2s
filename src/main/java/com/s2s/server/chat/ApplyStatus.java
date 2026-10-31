@@ -40,4 +40,23 @@ public enum ApplyStatus {
     public String dbValue() {
         return dbValue;
     }
+
+    /**
+     * 由库内值解析枚举（{@code conversation.apply_status} 的读写对称入口）。
+     *
+     * @param value 库内值（可空；空按 {@link #NONE} 处理，兼容未写过申请的历史会话）
+     * @return {@link ApplyStatus} 对应枚举
+     * @throws IllegalStateException 值不在四值枚举内时抛出（DB ENUM 约束外的脏数据，不静默兜底）
+     */
+    public static ApplyStatus fromDb(String value) {
+        if (value == null) {
+            return NONE;
+        }
+        for (ApplyStatus status : values()) {
+            if (status.dbValue.equals(value)) {
+                return status;
+            }
+        }
+        throw new IllegalStateException("conversation.apply_status 出现非法值: " + value);
+    }
 }

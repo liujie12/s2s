@@ -41,8 +41,9 @@ class ChatControllerTest {
     private final ChatMessageService chatMessageService = mock(ChatMessageService.class);
     private final ChatQueryService chatQueryService = mock(ChatQueryService.class);
     private final UnreadSummaryService unreadSummaryService = mock(UnreadSummaryService.class);
+    private final ContactApplyService contactApplyService = mock(ContactApplyService.class);
     private final ChatController controller = new ChatController(chatService, chatMessageService,
-            chatQueryService, unreadSummaryService);
+            chatQueryService, unreadSummaryService, contactApplyService);
 
     /**
      * 未登录开会话 → {@code 40101}，且不触达 service。

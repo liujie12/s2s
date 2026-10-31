@@ -37,6 +37,20 @@ public interface ContactPostMapper {
     Map<String, Object> selectContactRow(@Param("postId") Long postId);
 
     /**
+     * 取「取号申请闸门」所需的三个字段（R22 / R24；不含任何密文列）。
+     *
+     * <p>闸门必须在三维限频之前判定（计划「先开关、再权限、后业务额度」）：未获同意的
+     * 申请人调取号接口时不应白白消耗当日看号次数。本查询先于限频执行，故只出三列、
+     * 不取密文；行不存在或对他人不可见时不在这里报错，交给既有「限频 → 可见性」链路
+     * 维持按 id 探测同样计入配额的保护。</p>
+     *
+     * @param postId 帖子 ID
+     * @return {@link Map} 三列：{@code user_id} / {@code status} / {@code contact_apply_required}；
+     *         帖子不存在时返回 {@code null}
+     */
+    Map<String, Object> selectApplyGateRow(@Param("postId") Long postId);
+
+    /**
      * 统计某叶子类目下帖子在时间窗内被联系的次数（[153] B2-5 §9.10.2 达标判定用）。
      *
      * <p>口径：{@code contact_event.created_at} 落窗（「窗口内被联系」），而非

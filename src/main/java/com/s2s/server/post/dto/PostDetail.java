@@ -52,6 +52,8 @@ import java.util.Map;
  * @param aiAssisted        本条是否由 T2 AI 智能发布辅助生成（B2-4，PRD §5.9；详情页标识来源）
  * @param favorited         当前登录用户是否已收藏；登录用户恒 {@code true/false}，游客 {@code null}
  * @param credentials       帖级凭证声明列表（一帖多证；无有效凭证时为空列表，客户端整栏不渲染）
+ * @param contactApplyRequired 查看联系方式是否需申请（R19；详情页据此把「联系 TA」换成
+ *                        「申请查看联系方式」，中转页不再发号）
  */
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public record PostDetail(
@@ -79,5 +81,6 @@ public record PostDetail(
         Long version,
         Boolean aiAssisted,
         Boolean favorited,
-        List<PostCredential> credentials) {
+        List<PostCredential> credentials,
+        Boolean contactApplyRequired) {
 }

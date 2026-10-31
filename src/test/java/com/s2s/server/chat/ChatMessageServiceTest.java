@@ -61,6 +61,8 @@ class ChatMessageServiceTest {
     private final MessageMapper messageMapper = mock(MessageMapper.class);
     private final ContactEventMapper contactEventMapper = mock(ContactEventMapper.class);
     private final SensitiveWordChecker sensitiveWordChecker = mock(SensitiveWordChecker.class);
+    private final ChatMessageWriter messageWriter =
+            new ChatMessageWriter(conversationMapper, messageMapper, contactEventMapper);
 
     private ChatMessageService messageService;
 
@@ -70,7 +72,7 @@ class ChatMessageServiceTest {
     @BeforeEach
     void setUp() {
         messageService = new ChatMessageService(chatService, conversationMapper, memberMapper,
-                messageMapper, contactEventMapper, sensitiveWordChecker);
+                messageMapper, sensitiveWordChecker, messageWriter);
         when(memberMapper.selectMember(CONVERSATION_ID, USER_ID))
                 .thenReturn(new ConversationMemberEntity());
         when(messageMapper.countUnrepliedText(CONVERSATION_ID, USER_ID)).thenReturn(0);

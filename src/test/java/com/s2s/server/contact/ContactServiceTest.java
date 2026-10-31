@@ -24,6 +24,7 @@ import com.s2s.server.common.error.ErrorCode;
 import com.s2s.server.common.ratelimit.RateLimitEntries;
 import com.s2s.server.auth.IdentityBindingService;
 import com.s2s.server.cert.CertService;
+import com.s2s.server.chat.ContactApplyService;
 import com.s2s.server.contact.dto.ContactInfo;
 import com.s2s.server.post.PostModerationService;
 import com.s2s.server.contact.dto.ReportRequest;
@@ -82,6 +83,7 @@ class ContactServiceTest {
     private CertService certService;
     private PostModerationService postModerationService;
     private IdentityBindingService identityBindingService;
+    private ContactApplyService contactApplyService;
     private ContactService service;
 
     /**
@@ -104,9 +106,10 @@ class ContactServiceTest {
         certService = mock(CertService.class);
         postModerationService = mock(PostModerationService.class);
         identityBindingService = mock(IdentityBindingService.class);
+        contactApplyService = mock(ContactApplyService.class);
         service = new ContactService(rateGuard, contactPostMapper, contactEventMapper,
                 reportMapper, cryptoFacade, auditLogWriter, new ObjectMapper(),
-                certService, postModerationService, identityBindingService);
+                certService, postModerationService, identityBindingService, contactApplyService);
         when(rateGuard.remainingToday(anyLong(), any())).thenReturn(27);
         when(certService.isRealnamePassed(anyLong())).thenReturn(true);
         when(certService.isEnterpriseVerified(anyLong())).thenReturn(false);

@@ -210,6 +210,8 @@ public class PostService {
         post.setStatus(STATUS_ACTIVE);
         post.setRestricted(0);
         post.setAiAssisted(Boolean.TRUE.equals(req.aiAssisted()));
+        // R19：默认不勾选（一键取号），只有显式 true 才要求先申请
+        post.setContactApplyRequired(Boolean.TRUE.equals(req.contactApplyRequired()) ? 1 : 0);
         // 快照发布时实际使用的模板版本，而不是写死常量（V26 起模板会随迁移递增）。
         post.setTemplateVersion(templateService.getTemplateVersion(req.leafCategoryId()));
         post.setExpireAt(LocalDateTime.now().plusDays(NfrPost.VALID_DAYS));
@@ -370,6 +372,10 @@ public class PostService {
             update.set("contact_value_enc", enc.ciphertext());
             update.set("key_version", enc.keyVersion());
             update.set("contact_mask", maskContact(req.contactValue()));
+        }
+        // R19 / R23：null=本次不改；改回关闭只影响后续访客，不回收已同意的人
+        if (req.contactApplyRequired() != null) {
+            update.set("contact_apply_required", Boolean.TRUE.equals(req.contactApplyRequired()) ? 1 : 0);
         }
         update.setSql("version = version + 1");
 
@@ -574,7 +580,8 @@ public class PostService {
                 Boolean.TRUE.equals(post.getAiAssisted()),
                 // favorited：POST /posts 刚创建的帖子必为未收藏；该字段由 GET 详情填充
                 null,
-                credentialAssembler.of(post.getId()));
+                credentialAssembler.of(post.getId()),
+                post.getContactApplyRequired() != null && post.getContactApplyRequired() == 1);
     }
 
     /**

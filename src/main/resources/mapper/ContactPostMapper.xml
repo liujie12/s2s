@@ -27,6 +27,23 @@
     </select>
 
     <!--
+      取号申请闸门（R22 / R24）：只出三列，先于三维限频执行，避免未获同意的申请
+      白白消耗当日看号次数。
+
+      EXPLAIN 结论：主键等值查询，type=const、key=PRIMARY、rows=1；覆盖索引不适用
+      （需回表取 contact_apply_required），单行回表不构成性能问题。
+
+      列集合纪律：只出三列，不含 contact_value_enc / key_version —— 闸门阶段不需要解密。
+    -->
+    <select id="selectApplyGateRow" resultType="map">
+        SELECT p.user_id,
+               p.status,
+               p.contact_apply_required
+        FROM post p
+        WHERE p.id = #{postId}
+    </select>
+
+    <!--
       统计某叶子类目下帖子在给定时间窗内被联系次数（[153] B2-5 §9.10.2 达标判定用）。
 
       EXPLAIN 结论（2026-10-17 容量复核订正）：`post` 上**没有** leaf_category_id 前缀索引
