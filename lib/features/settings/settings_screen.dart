@@ -107,10 +107,17 @@ class SettingsScreen extends ConsumerWidget {
         _SettingRow(label: '修改密码', value: null, onTap: () => _notOpen(context)),
         _SettingRow(label: '注销账号', value: null, onTap: () => _notOpen(context)),
         const _GroupTitle('通用'),
+        // 原「消息通知」行改名「接收通知」：V30 / R15 起它是总开关，
+        // 而「消息」有了自己的独立开关（下一行），同名的两行会让人分不清关哪个。
         _SettingRow(
-          label: '消息通知',
+          label: '接收通知',
           value: settings.notify.enabled ? '已开启' : '已关闭',
           onTap: () => _toggleNotify(context, ref, settings.notify.enabled),
+        ),
+        _SettingRow(
+          label: '消息通知',
+          value: settings.notify.message ? '已开启' : '已关闭',
+          onTap: () => _toggleMessageNotify(context, ref, settings.notify.message),
         ),
         _SettingRow(
           label: '默认范围',
@@ -228,6 +235,25 @@ class SettingsScreen extends ConsumerWidget {
   Future<void> _toggleNotify(BuildContext context, WidgetRef ref, bool current) async {
     try {
       await ref.read(settingsProvider.notifier).setNotifyEnabled(enabled: !current);
+    } catch (e) {
+      if (!context.mounted) return;
+      _toast(context, asApiException(e).uiMessage);
+    }
+  }
+
+  /// 切换「消息通知」开关（R15；只停推送，消息照常落库与计入未读）。
+  ///
+  /// 参数：[context] 构建上下文；[ref] Riverpod 句柄；[current] 当前值。
+  /// 返回：[Future<void>]。
+  Future<void> _toggleMessageNotify(
+    BuildContext context,
+    WidgetRef ref,
+    bool current,
+  ) async {
+    try {
+      await ref
+          .read(settingsProvider.notifier)
+          .setMessageNotifyEnabled(enabled: !current);
     } catch (e) {
       if (!context.mounted) return;
       _toast(context, asApiException(e).uiMessage);

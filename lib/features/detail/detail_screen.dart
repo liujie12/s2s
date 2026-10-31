@@ -39,6 +39,9 @@ import '../../domain/listing_category_style.dart';
 import '../../domain/listing_detail.dart';
 import '../auth/auth_repository.dart';
 import '../favorite/favorite_state.dart';
+import '../message/conversation_entry.dart';
+import '../message/message_dto.dart';
+import '../message/message_list_provider.dart';
 import '../post/post_repository.dart';
 import 'media_carousel.dart';
 import 'post_detail_provider.dart';
@@ -76,10 +79,58 @@ class DetailScreen extends ConsumerStatefulWidget {
   ConsumerState<DetailScreen> createState() => _DetailScreenState();
 }
 
-/// 详情页状态：持浏览上报的一次性标志与收藏动作。
+/// 详情页状态：持浏览上报的一次性标志、收藏动作与会话入口态。
 class _DetailScreenState extends ConsumerState<DetailScreen> {
   /// 浏览上报只发一次（R12）：实例级标志，重建 / 翻页都不重复。
   bool _viewReported = false;
+
+  /// 该帖已有的会话行（R34 三态的数据；null＝无会话或列表未加载）。
+  ConversationDto? _conversation;
+
+  /// 会话列表订阅（首帧后挂上，避免登录回跳时在 build 期间改状态）。
+  ProviderSubscription<AsyncValue<ConversationsData>>? _conversationSub;
+
+  @override
+  void initState() {
+    super.initState();
+    // 放到首帧之后：登录返回会重建整页，若在 build 期间首次读会话 Provider，
+    // Riverpod 会在 build 中标记 Scope 需要重建并触发断言（detail_favorite_test
+    // 的「游客登录后补执行收藏」用例正是这个时机）。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _syncConversation();
+      _conversationSub = ref.listenManual<AsyncValue<ConversationsData>>(
+        conversationsProvider,
+        (previous, next) => _syncConversation(),
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _conversationSub?.close();
+    super.dispose();
+  }
+
+  /// 从会话列表快照里取出本页帖子的会话行（无变化时不触发重建）。
+  ///
+  /// 参数：无。
+  /// 返回：void。
+  void _syncConversation() {
+    final items = ref.read(conversationsProvider).asData?.value.items;
+    final next = items == null
+        ? null
+        : conversationForPost(items, widget.listingId);
+    if (next?.conversationId == _conversation?.conversationId &&
+        next?.unread == _conversation?.unread) {
+      return;
+    }
+    // 订阅回调可能发生在 build 阶段（登录态变化），统一推迟到帧后写状态。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() => _conversation = next);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -264,7 +315,9 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
   /// 返回：`Widget?`。
   Widget? _buildBottomBar(AsyncValue<ListingDetail> detailAsync) {
     final detail = detailAsync.value;
-    if (detail != null) return _ContactBar(detail: detail);
+    if (detail != null) {
+      return _ContactBar(detail: detail, conversation: _conversation);
+    }
     final error = detailAsync.error;
     if (error != null && asApiException(error).code == ApiErrorCode.postGone) {
       return const _ContactBar.disabled();
@@ -780,33 +833,49 @@ class _DemandHelpEntry extends StatelessWidget {
   }
 }
 
-/// 底部固定联系栏（PRD §7.4.1 底部固定主按钮胶囊）。
+/// 底部固定按钮组（PRD §7.4.1「[💬 发消息] [📞 联系 TA]」）。
 ///
-/// 41001 时走 [ _ContactBar.disabled ]：外壳与占位保留，但按钮禁用——
-/// 「已下架仍可收藏」需要这条提示仍在，而联系入口已无意义（R5）。
+/// 会话入口不替代联系入口（R2）：
+///   - 左键是站内会话（R34）：已有会话显示「进入会话」并带未读点，否则「发消息」；
+///   - 右键沿用中转页；需申请查看联系方式的帖子（R20）改为「申请查看联系方式」，
+///     点击开启或复用会话并发出申请卡 —— 与左键进入同一个会话。
+///
+/// 41001 时走 [ _ContactBar.disabled ]：外壳与占位保留，但两个按钮都禁用——
+/// 「已下架仍可收藏」需要这条提示仍在，而联系与会话入口都已无意义（R5）。
 class _ContactBar extends StatelessWidget {
-  const _ContactBar({required ListingDetail this.detail}) : enabled = true;
+  const _ContactBar({required ListingDetail this.detail, this.conversation})
+      : enabled = true;
 
   /// 已下架（41001）降级态：无详情数据，按钮禁用。
   const _ContactBar.disabled()
       : detail = null,
+        conversation = null,
         enabled = false;
 
   /// 详情域模型；禁用态为 null。
   final ListingDetail? detail;
 
-  /// 联系入口是否可点（41001 时为 false）。
+  /// 该帖已有会话（R34：有则显示「进入会话」+ 未读点）。
+  final ConversationDto? conversation;
+
+  /// 入口是否可点（41001 时为 false）。
   final bool enabled;
 
   @override
   Widget build(BuildContext context) {
+    final current = detail;
     // 需求态按钮文案改为「响应需求」（§7.4.3）：对需求发布者说「联系 TA」
     // 语义是反的 —— 点击者是来提供资源的，不是来求助的。
-    final isDemand = detail?.listing.supplyDemand == SupplyDemand.demand;
-    final label = isDemand ? '响应需求' : '联系 TA';
-    final icon = detail?.contactChannel == ContactChannel.wechat
-        ? Icons.chat_bubble_outline
-        : Icons.phone;
+    final isDemand = current?.listing.supplyDemand == SupplyDemand.demand;
+    final applyRequired = current?.contactApplyRequired ?? false;
+    final label = applyRequired
+        ? '申请查看联系方式'
+        : (isDemand ? '响应需求' : '联系 TA');
+    final icon = applyRequired
+        ? Icons.forum_outlined
+        : current?.contactChannel == ContactChannel.wechat
+            ? Icons.chat_bubble_outline
+            : Icons.phone;
 
     return SafeArea(
       child: Container(
@@ -826,25 +895,121 @@ class _ContactBar extends StatelessWidget {
         ),
         child: SizedBox(
           height: 48,
-          child: FilledButton.icon(
-            onPressed: enabled
-                ? () => context.push('/contact/${detail!.listing.id}')
-                : null,
-            icon: Icon(icon, size: 20),
-            label: Text(
-              label,
-              style: TextStyle(
-                fontSize: AppTypeScale.body.size,
-                fontWeight: FontWeight.w600,
+          // 用 Consumer 取 ref 供两个入口的点击回调使用：本组件本身是无状态的
+          // 展示件，会话态由详情页首帧后订阅并传入（避免 build 期读 Provider）。
+          child: Consumer(
+            builder: (context, ref, _) => Row(
+            children: [
+              Expanded(
+                child: _ChatEntryButton(
+                  unread: conversation?.unread ?? false,
+                  label: conversation == null ? '发消息' : '进入会话',
+                  onPressed: enabled && current != null
+                      ? () => enterConversation(
+                            context,
+                            ref,
+                            postId: current.listing.id,
+                          )
+                      : null,
+                ),
               ),
-            ),
-            style: FilledButton.styleFrom(
-              backgroundColor: Color(AppColors.primary),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(AppRadius.full),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: enabled && current != null
+                      ? () => applyRequired
+                          ? enterConversation(
+                              context,
+                              ref,
+                              postId: current.listing.id,
+                              apply: true,
+                            )
+                          : context.push('/contact/${current.listing.id}')
+                      : null,
+                  icon: Icon(icon, size: 18),
+                  label: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: AppTypeScale.small.size,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Color(AppColors.primary),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppRadius.full),
+                    ),
+                  ),
+                ),
               ),
+            ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 会话入口键（「发消息」/「进入会话」+ 未读点，R34）。
+///
+/// 用描边按钮而非主色实心：联系仍是主行动（R2 明写会话不替代它），
+/// 两个实心同色按钮会让用户以为它们是同一件事的两种叫法。
+class _ChatEntryButton extends StatelessWidget {
+  const _ChatEntryButton({
+    required this.unread,
+    required this.label,
+    required this.onPressed,
+  });
+
+  /// 是否显示未读点（会话行 `unread` 布尔）。
+  final bool unread;
+
+  /// 按钮文案。
+  final String label;
+
+  /// 点击回调；null＝禁用（41001）。
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton.icon(
+      onPressed: onPressed,
+      icon: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          const Icon(Icons.chat_bubble_outline, size: 18),
+          if (unread)
+            Positioned(
+              top: -2,
+              right: -3,
+              child: Container(
+                width: 7,
+                height: 7,
+                decoration: BoxDecoration(
+                  color: Color(AppColors.error),
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
+        ],
+      ),
+      label: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontSize: AppTypeScale.small.size,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: Color(AppColors.primary),
+        side: BorderSide(color: Color(AppColors.primary)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.full),
         ),
       ),
     );

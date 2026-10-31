@@ -16,12 +16,17 @@
 /// 「99+」（R9 / R11）。
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../core/badge/app_badge.dart';
 import '../design_tokens.dart';
+import '../features/message/conversation_entry.dart';
 import '../features/message/message_list_provider.dart';
+import '../features/notify/push_service.dart';
 import '../nfr_constants.dart';
 import 'app_router.dart';
 
@@ -48,23 +53,98 @@ class HomeBranch {
 /// `bottomNavigationBar` 承载四键栏。分支页面（MapScreen/ListScreen/
 /// MessageListScreen/ProfileScreen）各自持自己的 Scaffold + AppBar，
 /// 此处不再叠一层 AppBar。
-class HomeShell extends ConsumerWidget {
+class HomeShell extends ConsumerStatefulWidget {
   const HomeShell({super.key, required this.navigationShell});
 
   /// go_router 的分支 Navigator 壳，`body` 直接渲染它。
   final StatefulNavigationShell navigationShell;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<HomeShell> createState() => _HomeShellState();
+}
+
+/// 导航壳状态：持推送点击订阅（R16a）。
+class _HomeShellState extends ConsumerState<HomeShell> {
+  /// 推送点击事件订阅（App 存活时；冷启动的那一次由
+  /// [PushService.readInitialClick] 补上）。
+  StreamSubscription<Map<String, Object?>>? _clickSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    final push = ref.read(pushServiceProvider);
+    _clickSubscription = push.clicks.listen(_onPushClick);
+    unawaited(_consumeInitialClick(push));
+  }
+
+  @override
+  void dispose() {
+    _clickSubscription?.cancel();
+    super.dispose();
+  }
+
+  /// 处理冷启动点击（一次性，原生侧读取即清除）。
+  ///
+  /// 参数：[push] 推送服务。
+  /// 返回：[Future<void>]。
+  Future<void> _consumeInitialClick(PushService push) async {
+    final click = await push.readInitialClick();
+    if (click != null && mounted) await _onPushClick(click);
+  }
+
+  /// 推送点击 → 直达对应会话；会话已隐藏则落到消息列表并提示（R16a）。
+  ///
+  /// 先查已加载的会话行；查不到就刷新一次列表 —— 会触发推送的一定是「有新消息
+  /// 的会话」，它必然排在列表首位，刷新后仍找不到只可能是已隐藏。
+  ///
+  /// 参数：[click] 原生点击载荷。
+  /// 返回：[Future<void>]。
+  Future<void> _onPushClick(Map<String, Object?> click) async {
+    final target = pushClickTargetOf(click);
+    if (target == null || !target.opensConversation) return;
+    final conversationId = target.targetId!;
+
+    var items = ref.read(conversationsProvider).asData?.value.items;
+    var conversation =
+        items == null ? null : conversationById(items, conversationId);
+    if (conversation == null) {
+      await ref.read(conversationsProvider.notifier).refresh();
+      items = ref.read(conversationsProvider).asData?.value.items;
+      conversation =
+          items == null ? null : conversationById(items, conversationId);
+    }
+    if (!mounted) return;
+
+    if (conversation != null) {
+      context.push(
+        '/messages/${conversation.conversationId}',
+        extra: conversation,
+      );
+      return;
+    }
+    context.go(AppRoutes.messages);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('该会话已隐藏，可在消息列表查看')),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final unread = ref.watch(
       unreadSummaryProvider.select((value) => value.asData?.value.total ?? 0),
     );
+    // 桌面角标与 Tab 数字同源（KTD14 / R11）：总数一变就下发，0 清除。
+    // 只在变化时调用；iOS 由 [AppBadge.apply] 自行短路，不发通道调用。
+    ref.listen<int>(
+      unreadSummaryProvider.select((value) => value.asData?.value.total ?? 0),
+      (previous, next) => unawaited(ref.read(appBadgeProvider).apply(next)),
+    );
     return Scaffold(
-      body: navigationShell,
+      body: widget.navigationShell,
       bottomNavigationBar: HomeNavBar(
-        selectedIndex: navigationShell.currentIndex,
+        selectedIndex: widget.navigationShell.currentIndex,
         unreadTotal: unread,
-        onSelectBranch: navigationShell.goBranch,
+        onSelectBranch: widget.navigationShell.goBranch,
         onPublish: () => context.push(AppRoutes.publish),
       ),
     );

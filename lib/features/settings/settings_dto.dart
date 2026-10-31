@@ -12,6 +12,7 @@ class NotifySwitchesDto {
     required this.system,
     required this.interaction,
     required this.cert,
+    required this.message,
   });
 
   /// 由 `notify` 子对象构造。
@@ -26,6 +27,7 @@ class NotifySwitchesDto {
       system: requireBool(map, 'system', 'SettingsResponse.notify'),
       interaction: requireBool(map, 'interaction', 'SettingsResponse.notify'),
       cert: requireBool(map, 'cert', 'SettingsResponse.notify'),
+      message: requireBool(map, 'message', 'SettingsResponse.notify'),
     );
   }
 
@@ -40,6 +42,10 @@ class NotifySwitchesDto {
 
   /// 认证通知分通道。
   final bool cert;
+
+  /// 新消息通知开关（R15）：关闭只停推送，消息照常落库并计入未读；
+  /// 与 [enabled] 是「且」关系（任一关闭即不推送）。
+  final bool message;
 }
 
 /// 我的设置 DTO（openapi `SettingsResponse`）。

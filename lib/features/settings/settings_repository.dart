@@ -44,6 +44,7 @@ class SettingsRepository {
     bool? notifySystem,
     bool? notifyInteraction,
     bool? notifyCert,
+    bool? notifyMessage,
     String? defaultRadius,
     bool? personalizedRecommend,
     bool? aiImprove,
@@ -54,6 +55,7 @@ class SettingsRepository {
       'system': ?notifySystem,
       'interaction': ?notifyInteraction,
       'cert': ?notifyCert,
+      'message': ?notifyMessage,
     };
     final privacy = <String, Object?>{
       'personalized_recommend': ?personalizedRecommend,

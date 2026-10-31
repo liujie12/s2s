@@ -1,6 +1,7 @@
 package com.s2s.zhaoyazhao
 
 import android.os.Debug
+import com.s2s.zhaoyazhao.badge.BadgeMethodHandler
 import com.s2s.zhaoyazhao.push.PushMethodHandler
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -16,6 +17,8 @@ import io.flutter.plugin.common.MethodChannel
  *
  * 另注册推送平台通道（[PushMethodHandler]，B2-2 阶段 2）：小米 token 注册、
  * 点击事件回传、Android 13+ 通知权限申请。
+ *
+ * 以及桌面角标通道（[BadgeMethodHandler]，V30 / R11）：未读总数下发与清除。
  */
 class MainActivity : FlutterActivity() {
 
@@ -45,6 +48,12 @@ class MainActivity : FlutterActivity() {
             setMethodCallHandler(handler)
             handler.attach(this)
         }
+
+        // 桌面角标：只消费未读总数，失败/不支持由原生降级为红点（KTD13）。
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            BadgeMethodHandler.CHANNEL_NAME,
+        ).setMethodCallHandler(BadgeMethodHandler(applicationContext))
     }
 
     override fun onRequestPermissionsResult(

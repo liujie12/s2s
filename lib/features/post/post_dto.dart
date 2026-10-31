@@ -276,6 +276,7 @@ class PostDetailDto {
     this.media = const [],
     this.credentials = const [],
     this.contactMask,
+    this.contactApplyRequired = false,
     this.aiAssisted = false,
     this.favorited,
   });
@@ -329,6 +330,9 @@ class PostDetailDto {
             ]
           : const [],
       contactMask: optString(map, 'contact_mask', 'PostDetail'),
+      // 需申请查看联系方式（R19 / R20）：契约非 required，缺失/JSON null 维持一键取号。
+      contactApplyRequired:
+          optBool(map, 'contact_apply_required', 'PostDetail') ?? false,
       aiAssisted: optBool(map, 'ai_assisted', 'PostDetail') ?? false,
       // favorited：登录用户恒 true/false；游客为 null（详情页据此区分「未收藏」与「未知」）。
       favorited: optBool(map, 'favorited', 'PostDetail'),
@@ -393,6 +397,12 @@ class PostDetailDto {
   /// 完整明文仍只由 `GET /posts/{id}/contact` 返回。可空：存量行（迁移前发布）
   /// 为 null。
   final String? contactMask;
+
+  /// 查看联系方式是否需申请（契约 `contact_apply_required`，R19 / R20）。
+  ///
+  /// true 时详情页主按钮改为「申请查看联系方式」、中转页不再直接发号；
+  /// 契约非 required，缺失即维持一键取号（R25）。
+  final bool contactApplyRequired;
 
   /// 是否由 T2 AI 智能发布辅助生成（B2-4，PRD §5.9；详情页「AI 辅助生成」标识来源）。
   ///

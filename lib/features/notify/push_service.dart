@@ -12,6 +12,7 @@
 library;
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -48,6 +49,9 @@ class PushService {
   /// 申请 Android 13+ 通知权限。
   static const String methodRequestPermission = 'requestPermission';
 
+  /// 读取「App 未启动时点击通知」暂存的点击内容（原生侧读取后清除）。
+  static const String methodGetInitialClick = 'getInitialClick';
+
   /// 原生 → Dart：token 到达。
   static const String eventToken = 'onToken';
 
@@ -62,8 +66,26 @@ class PushService {
   final StreamController<Map<String, Object?>> _clicks =
       StreamController<Map<String, Object?>>.broadcast();
 
-  /// 通知点击事件流（当前仅用于观测；深链落点待产品口径）。
+  /// 通知点击事件流（App 存活时；落点由 [pushClickTargetOf] 解析，R16a）。
   Stream<Map<String, Object?>> get clicks => _clicks.stream;
+
+  /// 取「App 未启动时点击通知」暂存的点击内容（一次性，原生侧读取后清除）。
+  ///
+  /// 参数：无。
+  /// 返回：点击载荷；非 Android / 无记录 / 通道异常时为 null。
+  Future<Map<String, Object?>?> readInitialClick() async {
+    if (!_isAndroid) return null;
+    try {
+      return await _channel.invokeMapMethod<String, Object?>(
+        methodGetInitialClick,
+      );
+    } on MissingPluginException {
+      return null;
+    } on PlatformException catch (e) {
+      if (kDebugMode) debugPrint('push: 读取初始点击失败 ${e.code}');
+      return null;
+    }
+  }
 
   /// 是否 Android（当前仅小米通道有原生实现；iOS APNs 待接入）。
   bool get _isAndroid => !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
@@ -156,6 +178,66 @@ class PushService {
   /// 参数：无。
   /// 返回：[Future<void>]。
   Future<void> dispose() => _clicks.close();
+}
+
+/// 落点类型：打开会话详情（与服务端 `PushMessage.LANDING_CONVERSATION` 同值）。
+const String pushLandingConversation = 'conversation';
+
+/// 推送点击落点。
+class PushClickTarget {
+  /// 构造落点。
+  ///
+  /// 参数：[landingType] 服务端下发的落点类型；[targetId] 关联对象 ID。
+  const PushClickTarget({required this.landingType, this.targetId});
+
+  /// 落点类型（`conversation` / 其它）。
+  final String landingType;
+
+  /// 关联对象 ID（会话落点时为会话 ID）。
+  final int? targetId;
+
+  /// 是否应打开会话详情（R16a）。
+  bool get opensConversation =>
+      landingType == pushLandingConversation && targetId != null;
+}
+
+/// 从点击载荷里解析落点（R16a）。
+///
+/// 兼容三种形态：
+///   1. `payload` 为 JSON 字符串（小米 `MiPushMessage.content`，当前服务端实现）；
+///   2. `payload` 为已解析的 Map；
+///   3. 厂商把字段放进 `extra`（Map 或 JSON 字符串）。
+/// 解析不出来（或不是会话落点）返回 null —— 点击退回默认行为，不猜落点。
+///
+/// 参数：[click] 原生 `onClick` / `getInitialClick` 的载荷。
+/// 返回：[PushClickTarget?]。
+PushClickTarget? pushClickTargetOf(Map<String, Object?> click) {
+  final payload = _asMap(click['payload']) ?? _asMap(click['extra']);
+  if (payload == null) return null;
+  final landing = payload['landingType']?.toString();
+  if (landing == null || landing.isEmpty) return null;
+  final rawTarget = payload['targetId'];
+  final targetId = rawTarget is int
+      ? rawTarget
+      : int.tryParse(rawTarget?.toString() ?? '');
+  return PushClickTarget(landingType: landing, targetId: targetId);
+}
+
+/// 把 Map 或 JSON 字符串统一解析成 Map；失败返回 null。
+///
+/// 参数：[value] 原始值。
+/// 返回：展开一层的键值对；不可解析时为 null。
+Map<String, Object?>? _asMap(Object? value) {
+  if (value is Map) return value.cast<String, Object?>();
+  if (value is String && value.trim().isNotEmpty) {
+    try {
+      final decoded = jsonDecode(value);
+      if (decoded is Map) return decoded.cast<String, Object?>();
+    } on FormatException {
+      return null;
+    }
+  }
+  return null;
 }
 
 /// 推送服务 Provider（原生通道默认实例）。

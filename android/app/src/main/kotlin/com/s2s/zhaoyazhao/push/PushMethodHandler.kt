@@ -20,7 +20,8 @@ import org.json.JSONObject
  * - `register`：调用 [MiPushClient.registerPush]；返回 `ok` / `not_configured`。
  * - `getToken`：返回已缓存的 regId（未注册或未回包时为 null）。
  * - `requestPermission`：Android 13+ 申请 POST_NOTIFICATIONS；返回是否已授权。
- * - `getInitialClick`：取「App 未启动时点击通知」暂存的内容（读取后不清除）。
+ * - `getInitialClick`：取「App 未启动时点击通知」暂存的内容（**读取后清除**，
+ *   否则每次冷启动都会重复跳到同一条旧会话，V30 / R16a）。
  *
  * 回调（原生 → Dart）：`onToken`、`onClick`。
  *
@@ -52,7 +53,7 @@ class PushMethodHandler(private val activity: Activity) : MethodChannel.MethodCa
             METHOD_REGISTER -> registerPush(result)
             METHOD_GET_TOKEN -> result.success(readToken(activity))
             METHOD_REQUEST_PERMISSION -> requestNotificationPermission(result)
-            METHOD_GET_INITIAL_CLICK -> result.success(readStoredClick(activity))
+            METHOD_GET_INITIAL_CLICK -> result.success(consumeStoredClick(activity))
             else -> result.notImplemented()
         }
     }
@@ -205,14 +206,18 @@ class PushMethodHandler(private val activity: Activity) : MethodChannel.MethodCa
         }
 
         /**
-         * 读取上次暂存的点击内容。
+         * 读取并清除上次暂存的点击内容（一次性消费）。
+         *
+         * 不清除会让每次冷启动都重复落到同一条旧会话 —— 起点是「用户点击了
+         * 这条通知」，读过一次这件事就已经被处理完毕。
          *
          * @param context 任意上下文。
          * @return 点击内容；无记录时为 null。
          */
-        fun readStoredClick(context: Context): Map<String, Any?>? {
-            val raw = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                .getString(KEY_CLICK, null) ?: return null
+        fun consumeStoredClick(context: Context): Map<String, Any?>? {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val raw = prefs.getString(KEY_CLICK, null) ?: return null
+            prefs.edit().remove(KEY_CLICK).apply()
             return runCatching { jsonToMap(JSONObject(raw)) }.getOrNull()
         }
 

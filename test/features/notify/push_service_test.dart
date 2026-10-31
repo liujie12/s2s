@@ -71,6 +71,49 @@ void main() {
     expect(await service.requestPermission(), isTrue);
   });
 
+  group('推送点击落点（R16a）', () {
+    test('payload 为 JSON 字符串：解析出会话落点与目标 ID', () {
+      final target = pushClickTargetOf({
+        'payload': '{"type":"interaction","targetId":42,"landingType":"conversation"}',
+      });
+
+      expect(target?.landingType, pushLandingConversation);
+      expect(target?.targetId, 42);
+      expect(target?.opensConversation, isTrue);
+    });
+
+    test('payload 已是 Map：同样可解析', () {
+      final target = pushClickTargetOf({
+        'payload': {'landingType': 'conversation', 'targetId': 7},
+      });
+
+      expect(target?.targetId, 7);
+    });
+
+    test('厂商把落点放进 extra（JSON 字符串）也能解析', () {
+      final target = pushClickTargetOf({
+        'extra': '{"landingType":"conversation","targetId":"9"}',
+      });
+
+      expect(target?.targetId, 9);
+    });
+
+    test('无落点类型：返回 null，点击退回默认行为', () {
+      expect(pushClickTargetOf({'content': '你有一条新消息'}), isNull);
+      expect(pushClickTargetOf({'payload': '不是 JSON'}), isNull);
+      expect(
+        pushClickTargetOf({'payload': '{"type":"cert"}'}),
+        isNull,
+      );
+    });
+
+    test('会话落点缺 targetId：不认为可直接打开会话', () {
+      final target = pushClickTargetOf({'payload': '{"landingType":"conversation"}'});
+
+      expect(target?.opensConversation, isFalse);
+    });
+  });
+
   test('原生 onToken 事件：补报新 token', () async {
     await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .handlePlatformMessage(

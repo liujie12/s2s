@@ -37,9 +37,12 @@ class MiPushReceiver : PushMessageReceiver() {
      * @param message 被点击的消息。
      */
     override fun onNotificationMessageClicked(context: Context, message: MiPushMessage) {
+        // payload 是服务端 `XiaomiPushSender.dataPayload` 写入的 JSON 字符串
+        // （含 landingType / targetId），客户端据此把点击落到会话（R16a）。
         val payload = mutableMapOf<String, Any?>(
             "title" to message.title,
             "content" to message.content,
+            "payload" to message.content,
             "extra" to message.extra,
         )
         PushMethodHandler.saveClick(context, payload)

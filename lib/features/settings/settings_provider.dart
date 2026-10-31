@@ -55,6 +55,20 @@ class SettingsNotifier extends Notifier<AsyncValue<SettingsDto>> {
     state = AsyncValue.data(updated);
   }
 
+  /// 切换「消息通知」开关（R15）。
+  ///
+  /// 只停推送，消息照常落库并计入未读；与总开关是「且」关系（服务端判定）。
+  ///
+  /// 参数：[enabled] 目标值。
+  /// 返回：[Future<void>]。
+  /// 抛出：[ApiException] 由页面提示（失败不回滚——state 未被乐观改过）。
+  Future<void> setMessageNotifyEnabled({required bool enabled}) async {
+    final updated = await ref
+        .read(settingsRepositoryProvider)
+        .updateSettings(notifyMessage: enabled);
+    state = AsyncValue.data(updated);
+  }
+
   /// 设置默认检索半径档位。
   ///
   /// 参数：[radius] 契约档位（`1`/`3`/`5`/`10`/`city`）。

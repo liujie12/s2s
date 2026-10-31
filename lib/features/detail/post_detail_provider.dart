@@ -103,6 +103,8 @@ ListingDetail postDetailToListingDetail(PostDetailDto dto, {DateTime? now}) {
     expireAt: dto.expireAt,
     contactChannel: ContactChannel.phone,
     contactMasked: dto.contactMask,
+    // 需申请查看联系方式（R19 / R20）：详情页据此把主按钮换成申请入口。
+    contactApplyRequired: dto.contactApplyRequired,
     leafCategoryId: dto.leafCategoryId,
     templateFields: _templateFieldsFromAttributes(
       dto.attributes,

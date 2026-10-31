@@ -139,6 +139,7 @@ class ListingDetail {
     required this.contactChannel,
     required this.leafCategoryId,
     this.contactMasked,
+    this.contactApplyRequired = false,
     this.templateFields = const [],
     this.address,
     this.negotiable = false,
@@ -178,6 +179,12 @@ class ListingDetail {
 
   /// 是否留了联系方式（§7.8 边界：未填时主按钮禁用）。
   bool get hasContact => contactMasked != null;
+
+  /// 查看联系方式是否需申请（R19–R25）。
+  ///
+  /// 为 true 时详情页把「联系 TA」换成「申请查看联系方式」，中转页不再直接发号；
+  /// 存量帖与未勾选的帖子为 false，维持一键取号（R25）。
+  final bool contactApplyRequired;
 
   /// 三级分类路径，如 `['服务', '家政/保洁', '日常保洁']`（§7.4.1 面包屑）。
   ///

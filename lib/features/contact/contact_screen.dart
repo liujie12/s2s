@@ -45,6 +45,8 @@ import '../../domain/listing_detail.dart';
 import '../../router/app_router.dart';
 import '../auth/auth_repository.dart';
 import '../detail/post_detail_provider.dart';
+import '../message/conversation_entry.dart';
+import '../message/message_list_provider.dart';
 import 'contact_repository.dart';
 import 'report_reason.dart';
 
@@ -78,6 +80,54 @@ class _ContactScreenState extends ConsumerState<ContactScreen> {
   /// 凭空猜的次数等于向用户承诺一个服务端没给过的值。
   int? _remainingToday;
 
+  /// 取号被「需申请」闸门拦下（40305）：把主按钮切回申请入口（R22 / R24）。
+  ///
+  /// 常态下由会话行的 `apply_status` 决定是否申请态；本标志只兜住
+  /// 「列表里的同意态已过期」这类服务端才知道的情况。
+  bool _gateRequired = false;
+
+  /// 本页帖子是否已获发布者同意（会话行 `apply_status=approved`，R24）。
+  bool _approved = false;
+
+  /// 会话列表订阅（首帧后挂上，理由同详情页：登录回跳时不在 build 期读 Provider）。
+  ProviderSubscription<AsyncValue<ConversationsData>>? _conversationSub;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _syncApproval();
+      _conversationSub = ref.listenManual<AsyncValue<ConversationsData>>(
+        conversationsProvider,
+        (previous, next) => _syncApproval(),
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _conversationSub?.close();
+    super.dispose();
+  }
+
+  /// 同步「是否已同意」；变化时帧后重建（申请通过后主按钮从申请切回查看）。
+  ///
+  /// 参数：无。
+  /// 返回：void。
+  void _syncApproval() {
+    final items = ref.read(conversationsProvider).asData?.value.items;
+    final conversation = items == null
+        ? null
+        : conversationForPost(items, widget.listingId);
+    final approved = conversation?.applyStatus == 'approved';
+    if (approved == _approved) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() => _approved = approved);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     // 详情走真接口（[128] 代码评审 #2），三态与详情页同一分流口径。
@@ -95,6 +145,12 @@ class _ContactScreenState extends ConsumerState<ContactScreen> {
   /// 参数：[detail] 真接口映射后的详情域模型。本页只用它的发布者昵称 ——
   /// 渠道与联系方式一律以 `/contact` 结果为准（见文件头「渠道与脱敏号码」一节）。
   Widget _buildPage(ListingDetail detail) {
+    // 需申请帖：未获同意时不发号，主按钮改为「申请查看联系方式」（R20 / R24）。
+    // 同意态由首帧后订阅的 [_approved] 提供；列表还没加载时按「未同意」处理 ——
+    // 宁可多一步申请，也不能把号码提前发出去。
+    final applyMode =
+        _gateRequired || (detail.contactApplyRequired && !_approved);
+
     return Scaffold(
       backgroundColor: Color(AppColors.background),
       appBar: AppBar(
@@ -122,11 +178,13 @@ class _ContactScreenState extends ConsumerState<ContactScreen> {
             failure: _failure,
             remainingToday: _remainingToday,
             masked: detail.contactMasked,
+            applyMode: applyMode,
             onReveal: _reveal,
+            onApply: _applyAndEnter,
             onUse: _useContact,
             // 登录成功后自动重试拉取：让用户回到中转页还要再点一次按钮，
             // 等于把「他刚才已经表达过的意图」丢掉了。
-            onLogin: _goLoginThenReveal,
+            onLogin: applyMode ? _goLoginThenApply : _goLoginThenReveal,
             onBindPhone: _goBindPhoneThenReveal,
           ),
           const _SafetyTip(),
@@ -201,9 +259,33 @@ class _ContactScreenState extends ConsumerState<ContactScreen> {
           // 契约硬要求：42902 一律把本地剩余刷 0（且不解释是哪个维度超限）
           _remainingToday = 0;
         }
+        if (e.failure == ContactFailure.applyRequired) {
+          // 服务端说还没同意：把主按钮切回申请入口，让用户有下一步可做
+          _gateRequired = true;
+        }
         _loading = false;
       });
     }
+  }
+
+  /// 申请查看联系方式：开启（或复用）会话并发出申请卡（R20）。
+  ///
+  /// 与详情页的「申请查看联系方式」走同一条编排（[enterConversation]），
+  /// 冷却中 / 待审批不阻断进入，会话内的申请卡显示真实状态（R21a）。
+  ///
+  /// 参数：无。
+  /// 返回：[Future<void>]。
+  Future<void> _applyAndEnter() =>
+      enterConversation(context, ref, postId: widget.listingId, apply: true);
+
+  /// 未登录时先登录，成功后再走申请。
+  ///
+  /// 参数：无。
+  /// 返回：[Future<void>]。
+  Future<void> _goLoginThenApply() async {
+    final ok = await GoRouter.of(context).push<bool>(AppRoutes.login);
+    if (!mounted || ok != true) return;
+    await _applyAndEnter();
   }
 
   /// 跳登录页，登录成功后自动重试拉取。
@@ -410,7 +492,9 @@ class _ContactCard extends StatelessWidget {
     required this.failure,
     required this.remainingToday,
     required this.masked,
+    required this.applyMode,
     required this.onReveal,
+    required this.onApply,
     required this.onUse,
     required this.onLogin,
     required this.onBindPhone,
@@ -427,7 +511,14 @@ class _ContactCard extends StatelessWidget {
   /// 仅未拉取态展示：拉取成功后以 [full] 的完整值为准。
   final String? masked;
 
+  /// 是否为「需申请且未同意」态：主按钮改为发申请卡（R20 / R24）。
+  final bool applyMode;
+
   final VoidCallback onReveal;
+
+  /// 申请查看联系方式（开启或复用会话并发出申请卡）。
+  final VoidCallback onApply;
+
   final VoidCallback onUse;
   final VoidCallback onLogin;
 
@@ -496,7 +587,9 @@ class _ContactCard extends StatelessWidget {
           if (!revealed) ...[
             const SizedBox(height: AppSpacing.xs),
             Text(
-              '（点击下方按钮，查看完整联系方式）',
+              applyMode
+                  ? '（需发布者同意后才能查看完整联系方式）'
+                  : '（点击下方按钮，查看完整联系方式）',
               style: TextStyle(
                 fontSize: AppTypeScale.caption.size,
                 color: Color(AppColors.textPlaceholder),
@@ -516,10 +609,14 @@ class _ContactCard extends StatelessWidget {
             revealed: revealed,
             loading: loading,
             isPhone: isPhone,
+            applyMode: applyMode,
             onReveal: onReveal,
+            onApply: onApply,
             onUse: onUse,
           ),
-          if (remainingToday != null) ...[
+          // 申请态没有取号动作，剩余次数此时不适用：显示它会让用户以为
+          // 点一下就能消耗一次额度拿到号码。
+          if (!applyMode && remainingToday != null) ...[
             const SizedBox(height: AppSpacing.sm),
             Text(
               // 文案纪律（契约 `remaining_today` 原文）：只反映账号维一个维度，
@@ -544,7 +641,9 @@ class _ActionButton extends StatelessWidget {
     required this.revealed,
     required this.loading,
     required this.isPhone,
+    required this.applyMode,
     required this.onReveal,
+    required this.onApply,
     required this.onUse,
   });
 
@@ -555,7 +654,14 @@ class _ActionButton extends StatelessWidget {
   /// （契约不返回 `contact_channel`），调用方传 false，且不参与未拉取态文案。
   final bool isPhone;
 
+  /// 是否为「需申请且未同意」态：按钮改为发申请卡（R20 / R24）。
+  final bool applyMode;
+
   final VoidCallback onReveal;
+
+  /// 申请查看联系方式。
+  final VoidCallback onApply;
+
   final VoidCallback onUse;
 
   @override
@@ -566,18 +672,24 @@ class _ActionButton extends StatelessWidget {
     // 在「禁用条件已不存在」后只剩副作用：正常帖子会显示成一个点不动的按钮。
     final enabled = !loading;
 
-    final label = switch ((revealed, isPhone)) {
-      // 未拉取 → 中性文案：此时不知道是手机号还是微信号，写「号码」对微信号帖是错的。
-      (false, _) => '查看完整联系方式',
-      (true, true) => '拨打电话',
-      (true, false) => '复制微信号',
-    };
+    final label = applyMode
+        ? '申请查看联系方式'
+        : switch ((revealed, isPhone)) {
+            // 未拉取 → 中性文案：此时不知道是手机号还是微信号，写「号码」对微信号帖是错的。
+            (false, _) => '查看完整联系方式',
+            (true, true) => '拨打电话',
+            (true, false) => '复制微信号',
+          };
 
     return SizedBox(
       width: double.infinity,
       height: 48,
       child: FilledButton.icon(
-        onPressed: enabled ? (revealed ? onUse : onReveal) : null,
+        onPressed: enabled
+            ? applyMode
+                ? onApply
+                : (revealed ? onUse : onReveal)
+            : null,
         style: FilledButton.styleFrom(
           backgroundColor: Color(AppColors.primary),
           disabledBackgroundColor: Color(AppColors.border),
@@ -594,7 +706,12 @@ class _ActionButton extends StatelessWidget {
                   color: Colors.white,
                 ),
               )
-            : Icon(_iconFor(revealed: revealed, isPhone: isPhone), size: 18),
+            : Icon(
+                applyMode
+                    ? Icons.forum_outlined
+                    : _iconFor(revealed: revealed, isPhone: isPhone),
+                size: 18,
+              ),
         label: Text(
           loading ? '获取中…' : label,
           style: const TextStyle(fontWeight: FontWeight.w600),

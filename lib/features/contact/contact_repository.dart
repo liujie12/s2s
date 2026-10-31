@@ -58,6 +58,12 @@ enum ContactFailure {
   /// 未绑定手机号（B2-6a；服务端 40302，需先完成绑定）。
   phoneBindingRequired('请先绑定手机号后再查看联系方式'),
 
+  /// 需申请帖的取号闸门（V30 / R22 / KTD4；服务端 40305 + 专用文案）。
+  ///
+  /// 正常路径不会触发（页面在未同意时就不发取号请求），只有「列表里的同意态
+  /// 已过期」等情况会落到这里；页面据此把主按钮切回「申请查看联系方式」。
+  applyRequired('需发布者同意后才能查看联系方式'),
+
   /// 网络或服务端异常。
   networkError('网络异常，请稍后重试');
 
@@ -262,6 +268,8 @@ ContactFailure contactFailureOf(ApiException exception) {
     ApiErrorCode.postGone => ContactFailure.postGone,
     // B2-6a：40302 在联系接口的唯一含义是「未绑定手机号」（资质门禁不作用于本接口）
     ApiErrorCode.qualificationNeeded => ContactFailure.phoneBindingRequired,
+    // V30：需申请帖未获同意时的取号闸门（40305 在本接口的唯一含义）
+    ApiErrorCode.noPermission => ContactFailure.applyRequired,
     // 显式列出默认档：新增错误码时不会静默落进某个语义不符的分支
     // （§10.3 枚举显式 switch + default 降级）。
     _ => ContactFailure.networkError,
