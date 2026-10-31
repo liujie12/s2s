@@ -24,4 +24,22 @@
           AND user_id = #{userId}
     </select>
 
+    <!--
+      推进已读水位并复位已推送标记（R10 / KTD7）。
+
+      GREATEST 保证已读只增不减：重复提交或乱序提交（先点开旧页、再点开新页）都不会把
+      水位往回拨，符合「已读状态单向推进」的成功标准。
+
+      pushed_unread 复位后，下一轮未读可以再推首条（KTD7：不依赖 Redis TTL）。
+
+      EXPLAIN 结论：UPDATE 按复合主键等值命中，锁单行；EXPLAIN 对 UPDATE 走 PRIMARY const。
+    -->
+    <update id="markRead">
+        UPDATE conversation_member
+        SET last_read_seq = GREATEST(last_read_seq, #{lastReadSeq}),
+            pushed_unread = 0
+        WHERE conversation_id = #{conversationId}
+          AND user_id = #{userId}
+    </update>
+
 </mapper>

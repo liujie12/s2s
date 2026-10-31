@@ -31,4 +31,70 @@
         FOR UPDATE
     </select>
 
+    <!--
+      消息 Tab 会话列表（R3 / R4 / KTD8）。
+
+      隐藏窗口作为查询下界（c.last_message_at >= visibleSince），不写状态、不做定时任务：
+      新的往来写入后 last_message_at 自然越过下界，会话重新可见。
+
+      对方 = CASE 派生（发起人视角对方是发布者，反之亦然），避免把双方都查出来后由
+      Java 判方向。
+
+      红点 unread_flag：存在「seq 大于我的已读水位、对我可见、且不是我发的」消息。
+      排除 sender_id = 自己，是因为发送后我的水位仍在原地，否则自己刚发的消息会把自己
+      标成未读（U5 的未读汇总同一口径）。
+
+      EXPLAIN 结论：驱动表 conversation_member 走 PRIMARY(conversation_id, user_id) 的
+      user_id 半键无法使用（user_id 是第二列），实际由 idx_user(user_id) 定位我的成员行；
+      conversation 走 PRIMARY 等值回表，last_message_at 下界在其上过滤；排序
+      ORDER BY c.last_message_at DESC 在「我的会话集合」内做 filesort——单用户会话量为
+      百级，且 idx_last_message_at 无法利用（跨 join 后排序键不在同一表的最左前缀），
+      接受该代价，不为列表单独加复合索引（只增写放大）。
+    -->
+    <select id="selectPageForUser" resultType="map">
+        SELECT c.id                     AS conversation_id,
+               c.post_id                AS post_id,
+               c.last_message_type      AS last_message_type,
+               c.last_message_preview   AS last_message_preview,
+               c.last_message_at        AS last_message_at,
+               c.apply_status           AS apply_status,
+               peer.id                  AS peer_id,
+               peer.nickname            AS peer_nickname,
+               peer.avatar_url          AS peer_avatar_url,
+               p.title                  AS post_title,
+               p.status                 AS post_status,
+               CASE WHEN EXISTS (
+                   SELECT 1
+                   FROM message m
+                   WHERE m.conversation_id = c.id
+                     AND m.seq &gt; cm.last_read_seq
+                     AND (m.visible_to IS NULL OR m.visible_to = #{userId})
+                     AND m.sender_id &lt;&gt; #{userId}
+               ) THEN 1 ELSE 0 END      AS unread_flag
+        FROM conversation c
+        JOIN conversation_member cm
+          ON cm.conversation_id = c.id
+         AND cm.user_id = #{userId}
+        JOIN user peer
+          ON peer.id = CASE WHEN c.initiator_id = #{userId} THEN c.owner_id ELSE c.initiator_id END
+        JOIN post p
+          ON p.id = c.post_id
+        WHERE c.last_message_at &gt;= #{visibleSince}
+        ORDER BY c.last_message_at DESC, c.id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <!--
+      总数：与 selectPageForUser 同一筛选口径，但不需要对方/帖子/未读的联表，
+      只保留成员行与隐藏窗口下界（EXPLAIN：idx_user(user_id) 定位 + PRIMARY 等值回表）。
+    -->
+    <select id="countForUser" resultType="long">
+        SELECT COUNT(*)
+        FROM conversation c
+        JOIN conversation_member cm
+          ON cm.conversation_id = c.id
+         AND cm.user_id = #{userId}
+        WHERE c.last_message_at &gt;= #{visibleSince}
+    </select>
+
 </mapper>

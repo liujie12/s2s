@@ -28,4 +28,19 @@ public interface ConversationMemberMapper extends BaseMapper<ConversationMemberE
      */
     ConversationMemberEntity selectMember(@Param("conversationId") Long conversationId,
             @Param("userId") Long userId);
+
+    /**
+     * 推进已读水位并复位已推送标记（R10 / KTD7）。
+     *
+     * <p>水位取 {@code GREATEST(last_read_seq, 入参)}：已读只增不减，重复提交或乱序提交
+     * 都不会把已读退回未读。{@code pushed_unread} 同时复位，使下一轮未读可以再推一次。</p>
+     *
+     * @param conversationId 会话 ID
+     * @param userId         成员 user_id
+     * @param lastReadSeq    本次推进到的最新序号
+     * @return int 受影响行数（0 表示不是成员或会话已不存在）
+     */
+    int markRead(@Param("conversationId") Long conversationId,
+            @Param("userId") Long userId,
+            @Param("lastReadSeq") int lastReadSeq);
 }

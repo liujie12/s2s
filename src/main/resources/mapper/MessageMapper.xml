@@ -32,4 +32,55 @@
           ), 0)
     </select>
 
+    <!--
+      翻历史（U4）：取 beforeSeq 之前的一页，倒序。
+
+      可见性：联系方式卡只对 visible_to 指向的申请人可见（R22），非目标用户查不到该行；
+      文本与申请卡 visible_to 为 NULL，双方都能看到。
+
+      EXPLAIN 结论：conversation_id 等值命中 idx_conversation_visible_seq 最左前缀；
+      `visible_to IS NULL OR visible_to = ?` 使第二列无法作为等值连续前缀，故退化为
+      该索引上的 range + 回表过滤（Extra=Using index condition）；seq 条件在同一索引内
+      继续收窄，排序沿索引第三列反向扫描，无 filesort。单会话消息量为百级，代价可接受。
+    -->
+    <select id="selectBefore" resultType="com.s2s.server.chat.entity.MessageEntity">
+        SELECT id,
+               conversation_id,
+               seq,
+               sender_id,
+               type,
+               content,
+               visible_to,
+               created_at
+        FROM message
+        WHERE conversation_id = #{conversationId}
+          AND (visible_to IS NULL OR visible_to = #{userId})
+        <if test="beforeSeq != null">
+          AND seq &lt; #{beforeSeq}
+        </if>
+        ORDER BY seq DESC
+        LIMIT #{limit}
+    </select>
+
+    <!--
+      增量拉取（U4）：取 afterSeq 之后的一页，正序。索引与可见性口径同 selectBefore
+      （EXPLAIN 结论同上：idx_conversation_visible_seq 前缀 + 回表过滤，沿索引正序扫描无 filesort）。
+    -->
+    <select id="selectAfter" resultType="com.s2s.server.chat.entity.MessageEntity">
+        SELECT id,
+               conversation_id,
+               seq,
+               sender_id,
+               type,
+               content,
+               visible_to,
+               created_at
+        FROM message
+        WHERE conversation_id = #{conversationId}
+          AND (visible_to IS NULL OR visible_to = #{userId})
+          AND seq &gt; #{afterSeq}
+        ORDER BY seq ASC
+        LIMIT #{limit}
+    </select>
+
 </mapper>

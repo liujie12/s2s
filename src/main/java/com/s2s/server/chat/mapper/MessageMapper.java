@@ -2,6 +2,7 @@ package com.s2s.server.chat.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.s2s.server.chat.entity.MessageEntity;
+import java.util.List;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
@@ -27,4 +28,35 @@ public interface MessageMapper extends BaseMapper<MessageEntity> {
      */
     int countUnrepliedText(@Param("conversationId") Long conversationId,
             @Param("senderId") Long senderId);
+
+    /**
+     * 翻历史：取 {@code beforeSeq} 之前（不含）的一页消息，按 seq 倒序。
+     *
+     * <p>倒序取一页再由 service 翻转成正序：直接正序 + OFFSET 在长会话里翻到越深处越慢，
+     * 且并发写入会让同一 OFFSET 指向不同行。</p>
+     *
+     * @param conversationId 会话 ID
+     * @param userId         当前用户（过滤 {@code visible_to}：联系方式卡只对被同意人可见）
+     * @param beforeSeq      游标（可空；空=从最新一条开始）
+     * @param limit          每页条数（service 已钳制）
+     * @return {@link List} 消息行（seq 倒序）
+     */
+    List<MessageEntity> selectBefore(@Param("conversationId") Long conversationId,
+            @Param("userId") Long userId,
+            @Param("beforeSeq") Integer beforeSeq,
+            @Param("limit") int limit);
+
+    /**
+     * 增量拉取：取 {@code afterSeq} 之后（不含）的一页消息，按 seq 正序。
+     *
+     * @param conversationId 会话 ID
+     * @param userId         当前用户（过滤 {@code visible_to}）
+     * @param afterSeq       已持有的最大序号
+     * @param limit          每页条数（service 已钳制）
+     * @return {@link List} 消息行（seq 正序）
+     */
+    List<MessageEntity> selectAfter(@Param("conversationId") Long conversationId,
+            @Param("userId") Long userId,
+            @Param("afterSeq") int afterSeq,
+            @Param("limit") int limit);
 }
