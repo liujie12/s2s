@@ -63,13 +63,13 @@ info:
     | 40302 | 403 | 高敏类目需先完成资质认证 | 是 | - |
     | 40303 | 403 | 该类目当前禁止发布 | 是 | - |
     | 40304 | 403 | 未实名用户发布数量已达上限 | 是 | - |
-    | 40305 | 403 | 无权限访问该资源（后台 RBAC 越权，含读与写） | 是（**后台专用**，App 端不返回） | - |
+    | 40305 | 403 | 无权限访问该资源（后台 RBAC 越权 / 消息维护只读 / 申请制取号闸门 / 非会话成员） | 是（后台 RBAC 专用；App 端仅消息域三处返回，均覆盖场景文案） | - |
     | 40901 | 409 | 内容命中敏感词 | 是 | - |
     | 40902 | 409 | 图片未通过审核 | 是 | - |
     | 40903 | 409 | 数据已被其他操作修改（乐观锁冲突） | 是 | - |
     | 41001 | 410 | 帖子已下架或已过期 | 是 | - |
     | 42901 | 429 | AI 生成配额已用尽 | 是 | 是 |
-    | 42902 | 429 | 联系次数超出每日限额 | 是 | 是 |
+    | 42902 | 429 | 联系次数超出每日限额（看号三维限频 / 每日新会话数） | 是 | 是 |
     | 42903 | 429 | 异常操作已触发熔断，当日冻结 | 是 | 是 |
     | 42904 | 429 | 推送频次受限 | 是 | 是 |
     | 42905 | 429 | 验证码发送过于频繁 | 是 | 是 |
@@ -150,6 +150,8 @@ tags:
     description: T2 AI 辅助（功能域 ai，Batch2）
   - name: notify
     description: 通知与推送（功能域 notify）
+  - name: chat
+    description: 站内 1:1 会话与消息（功能域 chat，V30）
   - name: track
     description: 埋点上报（功能域 common）
   - name: city
@@ -2407,6 +2409,499 @@ paths:
         '200': { description: 占位，Batch2 交付 }
 
   # ===========================================================================
+  # 分组八之二：站内 1:1 会话与消息（V30 / 2026-10-31，7 个 App 接口）
+  #
+  # 未读只有一个口径：GET /unread-summary。Tab 角标、会话行红点、安卓桌面
+  # 图标角标都消费这一份数据，客户端不做二次求和（KTD9 / R8）。
+  # 会话、消息、已读水位与申请卡的任何读写都由服务端按会话成员校验；
+  # 非成员一律回 40305 并复用「不存在」文案，不泄露会话是否存在（R32）。
+  # ===========================================================================
+
+  /conversations:
+    post:
+      tags: [chat]
+      summary: 开启或复用 1:1 会话
+      operationId: openConversation
+      x-batch: Batch2
+      x-domain: chat
+      description: |
+        由「帖子 + 当前发起人」定位会话：已有会话直接复用（含 90 天无往来被隐藏后
+        恢复可见），不会产生第二条（R1 / R5）。请求体只收 `post_id`，会话双方由服务端
+        从帖子派生，客户端传不了第三方 ID。
+
+        ### 三条拒绝路径
+
+        | 场景 | 错误码 | 文案来源 |
+        | --- | --- | --- |
+        | 帖子不存在或对当前用户不可见 | `41001` | 全局 |
+        | 与自己发布帖子开会话 | `40001` | 全局 |
+        | 当日新会话数达到上限 | `42902` | 本接口覆盖为「今日发起会话数已达上限」（R27，带 `Retry-After`） |
+        | 全局消息开关关闭 | `40305` | 本接口覆盖为「消息功能维护中，请稍后再试」（R30） |
+
+        `42902` 的额度只按 `user_id` 计（不按设备 / IP 分层）。复用既有会话不消耗额度，
+        新建才消耗。客户端**不得**在收到本接口 `42902` 时清零本地看号剩余次数——
+        那条口径只作用于 `GET /posts/{id}/contact`。
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/XDeviceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ConversationCreateRequest' }
+      responses:
+        '200':
+          description: 成功（新建或复用）
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/ConversationCreateResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: |
+            `40305` 全局消息开关关闭（文案覆盖为「消息功能维护中，请稍后再试」）。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+              examples:
+                maintenance:
+                  summary: 消息功能维护中（40305）
+                  value: { code: 40305, message: 消息功能维护中，请稍后再试, data: null, request_id: req_7f3b01 }
+        '410': { $ref: '#/components/responses/Gone' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    get:
+      tags: [chat]
+      summary: 会话列表
+      operationId: listConversations
+      x-batch: Batch2
+      x-domain: chat
+      description: |
+        按最后一条消息时间倒序；90 天双方无往来的会话不出现（R5 / KTD8，隐藏是查询
+        条件而非删除，数据保留用于举报取证）。帖子下架不影响会话，行内以
+        `post_gone=true` 让客户端置灰缩略图并标注「已下架」（R4）。
+        每行只出未读布尔值（R9：普通会话行只显示红点，条数只在未读汇总与「服务号」行出现）。
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/XDeviceId'
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/ConversationPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /conversations/{conversation_id}/messages:
+    post:
+      tags: [chat]
+      summary: 发送文本消息
+      operationId: sendMessage
+      x-batch: Batch2
+      x-domain: chat
+      description: |
+        请求体只收正文；消息类型、发送者与可见范围全部由服务端派生（客户端传
+        `type` 或 `sender_id` 一律忽略），防止伪造联系方式卡或冒名发言。
+
+        ### 治理
+
+        - **未回复额度**（R26）：以对方最后一条文本为界，我方连续未获回复的文本
+          累计达上限即拒发（`40305`，文案「等待对方回复后可继续发送」）；申请卡与
+          联系方式卡不计入，对方每回复一次重新计数。
+        - **敏感词**（R28）：命中即拒发 `40901`，正文原样保留在输入框；文案不暴露
+          命中词，且不包含手机号 / 微信号识别。
+        - **维护只读**（R30）：全局开关关闭时拒发 `40305`，文案「消息功能维护中，请稍后再试」。
+        - **非成员**：`40305` + 「会话不存在或已不可访问」，与不存在同一响应。
+        - **幂等**（R7）：网络重试或离线重发沿用同一 `Idempotency-Key`，返回首次的
+          `message_id` 与 `seq`，不产生第二条消息，也不让会话 `last_seq` 多走一格。
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/XDeviceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - name: conversation_id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MessageSendRequest' }
+      responses:
+        '200':
+          description: 发送成功（含幂等重放）
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/MessageSendResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: |
+            `40305` 三态共用此码、按场景覆盖文案：会话不存在或非成员 /
+            未回复额度用尽 / 全局消息开关关闭。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+              examples:
+                notMember:
+                  summary: 会话不存在或非成员（40305）
+                  value: { code: 40305, message: 会话不存在或已不可访问, data: null, request_id: req_7f3b02 }
+                unrepliedLimit:
+                  summary: 未回复额度用尽（40305）
+                  value: { code: 40305, message: 等待对方回复后可继续发送, data: null, request_id: req_7f3b03 }
+                maintenance:
+                  summary: 消息功能维护中（40305）
+                  value: { code: 40305, message: 消息功能维护中，请稍后再试, data: null, request_id: req_7f3b04 }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    get:
+      tags: [chat]
+      summary: 会话消息（翻历史 / 增量拉取）
+      operationId: listMessages
+      x-batch: Batch2
+      x-domain: chat
+      description: |
+        `before_seq` 与 `after_seq` 互斥：前者向更早翻历史，后者按游标增量拉取；
+        两者同时出现回 `40001`。`items` 恒按 `seq` 正序返回，客户端不用按请求方向
+        切换渲染顺序（R6）。联系方式卡按 `visible_to` 过滤，非目标用户查不到该行；
+        卡片本身不含号码（R22）。
+
+        90 天隐藏不改变本接口：已知会话 ID 时仍可读到历史（隐藏只作用于列表）。
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/XDeviceId'
+        - name: conversation_id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+        - name: before_seq
+          in: query
+          required: false
+          description: 翻历史游标（取 `items[0].seq` 继续向前）
+          schema: { type: integer, format: int32, minimum: 1 }
+        - name: after_seq
+          in: query
+          required: false
+          description: 增量游标（取本地最大 `seq`；与 `before_seq` 互斥）
+          schema: { type: integer, format: int32, minimum: 0 }
+        - name: page_size
+          in: query
+          required: false
+          description: 每页条数，缺省 30、上限 100（越界由服务端钳制，不报错）
+          schema: { type: integer, format: int32, minimum: 1, maximum: 100 }
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/MessagePage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: |
+            `40305` 会话不存在或当前用户不是成员（复用同一文案，不泄露存在性）。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+              examples:
+                notMember:
+                  summary: 会话不存在或非成员（40305）
+                  value: { code: 40305, message: 会话不存在或已不可访问, data: null, request_id: req_7f3b05 }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /conversations/{conversation_id}/read:
+    post:
+      tags: [chat]
+      summary: 置会话已读
+      operationId: markConversationRead
+      x-batch: Batch2
+      x-domain: chat
+      description: |
+        打开会话即把该会话全部消息置为已读，不限于已滚动到的部分（R10）。水位
+        `last_read_seq` 只增不减，重复提交幂等且不会把已读退回未读（R17）。
+        同时复位成员行的「未读期间已推送」标记，下一条新消息可再次推送（KTD7）。
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/XDeviceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - name: conversation_id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/ConversationReadResult' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: '`40305` 会话不存在或当前用户不是成员。'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+              examples:
+                notMember:
+                  summary: 会话不存在或非成员（40305）
+                  value: { code: 40305, message: 会话不存在或已不可访问, data: null, request_id: req_7f3b06 }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /unread-summary:
+    get:
+      tags: [chat]
+      summary: 未读汇总（唯一出口）
+      operationId: getUnreadSummary
+      x-batch: Batch2
+      x-domain: chat
+      description: |
+        `total = conversation_unread + notification_unread` 由服务端相加后下发（R8 / KTD9）。
+        底部 Tab 数字角标、会话行红点与安卓桌面图标角标全部消费本接口；
+        客户端**不做二次求和**，也不各自轮询。会话未读按已读水位推导，排除本人发出的
+        消息与 90 天隐藏会话；通知未读沿用既有 `notification` 口径。
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/XDeviceId'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/UnreadSummary' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /conversations/{conversation_id}/apply:
+    post:
+      tags: [chat]
+      summary: 提交（或再次提交）联系方式申请
+      operationId: applyForContact
+      x-batch: Batch2
+      x-domain: chat
+      description: |
+        同一会话始终只有一张申请卡（R21）：首次提交插入 `type=apply` 的消息卡；
+        待审批满 72 小时可再提交一次；被拒满 7 天可对同一张卡再次提交，卡状态回到
+        待审批，**不新增卡片**（R21a）。发起人之外的人不能替他人申请；发布者不申请。
+
+        - 帖子未设置「需申请」时回 `40001`（无需申请，直接走取号）。
+        - 全局消息开关关闭时回 `40305`，文案「消息功能维护中，请稍后再试」（R30）。
+        - 冷却 / 重申窗口内重复提交回 `40001`，客户端以 `GET` 的 `reapply_at` 驱动倒计时。
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/XDeviceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - name: conversation_id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        '200':
+          description: 成功（返回提交后的卡片状态）
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/ContactApplyState' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: '`40305` 会话不存在或非成员 / 全局消息开关关闭。'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+              examples:
+                notMember:
+                  summary: 会话不存在或非成员（40305）
+                  value: { code: 40305, message: 会话不存在或已不可访问, data: null, request_id: req_7f3b07 }
+                maintenance:
+                  summary: 消息功能维护中（40305）
+                  value: { code: 40305, message: 消息功能维护中，请稍后再试, data: null, request_id: req_7f3b08 }
+        '500': { $ref: '#/components/responses/InternalError' }
+    get:
+      tags: [chat]
+      summary: 查询申请卡状态
+      operationId: getContactApplyState
+      x-batch: Batch2
+      x-domain: chat
+      description: |
+        中转页与详情页只读这一份状态：`can_view_contact` 决定「查看完整号码」是否可点，
+        `can_apply` 与 `reapply_at` 决定「申请」入口是否置灰并显示倒计时（R21a / R24）。
+        **完整号码不在此返回**，仍只由 `GET /posts/{id}/contact` 给出（R22）。
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/XDeviceId'
+        - name: conversation_id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/ContactApplyState' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: '`40305` 会话不存在或当前用户不是成员。'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+              examples:
+                notMember:
+                  summary: 会话不存在或非成员（40305）
+                  value: { code: 40305, message: 会话不存在或已不可访问, data: null, request_id: req_7f3b09 }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /conversations/{conversation_id}/apply/decision:
+    post:
+      tags: [chat]
+      summary: 审批联系方式申请
+      operationId: decideContactApply
+      x-batch: Batch2
+      x-domain: chat
+      description: |
+        仅帖子发布者可审批。同意时写入**仅申请人可见**的联系方式卡，并把同会话的
+        联系事件渠道升级为「申请」（不新增事件，KTD11）；拒绝只改状态并保留卡片，
+        以便展示「未同意 · 剩余 N 天可再次申请」（R21a）。帖子后续下架不影响已给出的
+        可见性（R22 / R23）。卡片本身不含号码，取号仍走唯一出口。
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/XDeviceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - name: conversation_id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ContactApplyDecisionRequest' }
+      responses:
+        '200':
+          description: 成功（返回审批后的卡片状态）
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/ContactApplyState' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: '`40305` 会话不存在或非成员 / 全局消息开关关闭。'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+              examples:
+                notMember:
+                  summary: 会话不存在或非成员（40305）
+                  value: { code: 40305, message: 会话不存在或已不可访问, data: null, request_id: req_7f3b0a }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /conversations/{conversation_id}/report:
+    post:
+      tags: [chat]
+      summary: 会话内举报 / 误拦反馈
+      operationId: reportConversation
+      x-batch: Batch2
+      x-domain: chat
+      description: |
+        举报对象恒为会话对方、帖子取会话所锚定的那一条，客户端传不了第三方（R29）。
+        复用既有以帖子为锚的举报工单与后台处置链路；**帖子已下架仍可举报**。
+        误拦反馈复用同一入口：`reason=misblock` 并携带 `blocked_text`，后台按原因筛选，
+        与普通举报落到同一处置队列（R28）。
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/XDeviceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - name: conversation_id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ConversationReportRequest' }
+      responses:
+        '200':
+          description: 举报已受理
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          report_id: { type: integer, format: int64 }
+                          status:
+                            type: string
+                            enum: [pending, handled, dismissed]
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: '`40305` 会话不存在或当前用户不是成员。'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+              examples:
+                notMember:
+                  summary: 会话不存在或非成员（40305）
+                  value: { code: 40305, message: 会话不存在或已不可访问, data: null, request_id: req_7f3b0b }
+        '410': { $ref: '#/components/responses/Gone' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  # ===========================================================================
   # 分组九：设置与合规（共 3 个接口，Batch1 覆盖 0 个）
   # ===========================================================================
 
@@ -3108,6 +3603,15 @@ paths:
           required: false
           description: 工单状态筛选（默认 pending）
           schema: { type: string }
+        - name: reason
+          in: query
+          required: false
+          description: |
+            举报原因筛选（V30 / U7）。缺省返回全部原因；`misblock` 为会话内「误拦反馈」
+            专用队列，与普通举报落在同一张工单表、同一处置入口，仅原因值不同。
+          schema:
+            type: string
+            enum: [false_info, fraud, wrong_category, harassment, other, misblock]
         - name: page
           in: query
           required: false
@@ -3154,6 +3658,90 @@ paths:
       responses:
         '200':
           description: 处理成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/reports/{id}/conversation:
+    get:
+      tags: [admin]
+      summary: 查看举报双方会话正文（逐次留痕）
+      operationId: adminGetReportConversation
+      x-batch: Batch2
+      x-domain: admin
+      description: |
+        V30 / U7：举报工单关联的双方会话最近一页消息（按 `seq` 正序）。正文复核要看清
+        全貌，故不做 `visible_to` 过滤——联系方式卡本身不含号码，真正的敏感出口仍是取号接口。
+        **查看即敏感操作**：读取与审计留痕**同事务**，逐次记录操作人、角色与会话 ID
+        （口径参照 PRD §9.10.1「查看用户脱敏信息」）。**权限：内容审核员或超级管理员**。
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 举报 ID
+          schema: { type: integer, format: int64 }
+        - $ref: '#/components/parameters/XInteractionId'
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminReportConversation' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: 举报不存在（回 40001） }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/message-switch:
+    get:
+      tags: [admin]
+      summary: 读取消息功能总开关
+      operationId: getMessageSwitch
+      x-batch: Batch2
+      x-domain: admin
+      description: |
+        V30 / R30：`enabled=false` 时创建会话、发放申请卡与发送消息一律拒绝，存量会话
+        转只读（顶部横幅，不做静默下线）。配置缺行按开启（一次漏种不应让聊天整体只读）。
+        **权限：超级管理员或运营**。
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MessageSwitch' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    put:
+      tags: [admin]
+      summary: 更新消息功能总开关
+      operationId: updateMessageSwitch
+      x-batch: Batch2
+      x-domain: admin
+      description: |
+        V30 / R30。开关变更属 PRD §9.10.1「必留操作」，与配置落库**同事务**写 `audit_log`。
+        **权限：超级管理员或运营**。
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enabled]
+              properties:
+                enabled:
+                  type: boolean
+                  description: true=开启消息功能；false=维护只读（拒绝新会话、申请卡与发送）
+      responses:
+        '200':
+          description: 更新成功
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ApiEnvelope' }
@@ -3763,7 +4351,10 @@ components:
         `40302` 高敏类目需先完成资质认证 /
         `40303` 该类目当前禁止发布 /
         `40304` 未实名用户发布数量已达上限 /
-        `40305` 无权限访问该资源（**后台 RBAC 越权专用**，App 端接口不返回此码）
+        `40305` 无权限访问该资源。**后台 RBAC 越权**（含读与写）与**消息维护只读 /
+        申请制取号闸门**共用此码；App 端仅消息域三处返回（会话不存在或非成员、
+        全局消息开关关闭、需申请帖尚未获批时取号），其余 App 接口不返回此码。
+        三处均覆盖为场景专用文案，码值与 HTTP 状态不变（V30 / KTD4、KTD5）。
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ApiError' }
@@ -4559,13 +5150,20 @@ components:
       properties:
         notify:
           type: object
-          description: 通知开关（PRD §9.3）；`user_setting` 缺行时四项均回 `true`（全开）
-          required: [enabled, system, interaction, cert]
+          description: 通知开关（PRD §9.3）；`user_setting` 缺行时五项均回 `true`（全开）
+          required: [enabled, system, interaction, cert, message]
           properties:
-            enabled: { type: boolean, description: 消息通知总开关 }
+            enabled:
+              type: boolean
+              description: 通知总开关（设置页文案「接收通知」；V30 / R15 起语义明确为总开关）
             system: { type: boolean, description: 系统通知分通道 }
             interaction: { type: boolean, description: 互动通知分通道 }
             cert: { type: boolean, description: 认证通知分通道 }
+            message:
+              type: boolean
+              description: |
+                新消息通知开关（V30 / R15）。关闭只停推送，消息照常落库并计入未读；
+                与总开关是「且」关系（任一关闭即不推送）。
         default_radius: { $ref: '#/components/schemas/RadiusEnum' }
         privacy:
           type: object
@@ -4600,6 +5198,9 @@ components:
             system: { type: boolean }
             interaction: { type: boolean }
             cert: { type: boolean }
+            message:
+              type: boolean
+              description: 新消息通知开关（V30 / R15）；关闭只停推送，消息照常落库
         default_radius: { $ref: '#/components/schemas/RadiusEnum' }
         privacy:
           type: object
@@ -5081,6 +5682,11 @@ components:
                 缺省或空数组 = 本次不展示，不阻断发布、不进 precheck 阻断项。
                 只接受本人 `status=approved` 的资质，否则回 `40001`。
                 写入时逐张冻结证名快照，之后换证不回溯；详情按挂载顺序展示全部证名。
+            contact_apply_required:
+              type: boolean
+              description: |
+                查看联系方式是否需申请（V30 / R19）。缺省或 `false` = 维持既有「一键取号」
+                效率；`true` = 详情页显示「申请查看联系方式」，中转页不再直接发号（R20 / R25）。
 
     PostUpdateRequest:
       allOf:
@@ -5103,6 +5709,11 @@ components:
                 缺省 = 本次不改动；空数组 = 取消全部挂载。只接受本人 `status=approved`
                 的资质，否则回 `40001`。声明写在不修改 `post` 行的独立表内，
                 不影响 `version` / `updated_at` / `expire_at`。
+            contact_apply_required:
+              type: boolean
+              description: |
+                改回「不需要申请」或开启「需申请」（V30 / R19、R23）。缺省 = 本次不改；
+                改回 `false` **不收回已同意的人**（R23），已批准的会话仍可直接取号。
           description: |
             [B2-8] 编辑载荷。字段集与 `PostCreateRequest` 一致，**但 `contact_type`/`contact_value`
             可空**——`contact_value` 为 `null` 表示**保留原密文不改**（完整联系方式明文唯一出口是
@@ -5256,6 +5867,11 @@ components:
             完整明文仍只由 `GET /posts/{id}/contact` 返回。**可空**：存量行（迁移前发布）
             为 `null`，客户端须按可空处理。
           example: 138****8000
+        contact_apply_required:
+          type: boolean
+          description: |
+            查看联系方式是否需申请（V30 / R19）。`true` 时详情页主按钮改为
+            「申请查看联系方式」，中转页不再直接发号；缺省/`false` 维持一键取号（R25）。
         completeness_level: { $ref: '#/components/schemas/CompletenessLevelEnum' }
         ai_assisted:
           type: boolean
@@ -5424,6 +6040,258 @@ components:
           type: integer
           format: int32
           description: 实际置为已读的行数（幂等：无未读行可标记时回 0）
+
+    # ---------- 站内会话与消息（V30 / 2026-10-31） ----------
+
+    ConversationCreateRequest:
+      type: object
+      description: 开会话载荷；会话双方由服务端从帖子派生，只收帖子标识
+      required: [post_id]
+      properties:
+        post_id:
+          type: integer
+          format: int64
+          description: 帖子 ID；不存在或对当前用户不可见回 `41001`（不泄露状态）
+
+    ConversationCreateResult:
+      type: object
+      description: 开会话结果
+      required: [conversation_id, created]
+      properties:
+        conversation_id: { type: integer, format: int64 }
+        created:
+          type: boolean
+          description: true=本次新建（消耗一次每日额度）；false=复用既有会话（含 90 天隐藏后恢复）
+
+    ConversationItem:
+      type: object
+      description: 会话列表行（90 天隐藏窗口已由服务端过滤）
+      required:
+        - conversation_id
+        - post_id
+        - post_gone
+        - peer_id
+        - peer_nickname
+        - last_message_at
+        - unread
+        - apply_status
+      properties:
+        conversation_id: { type: integer, format: int64 }
+        post_id: { type: integer, format: int64 }
+        post_title:
+          type: string
+          nullable: true
+          description: 帖子标题（列表行展示；帖子删除后仍保留会话时可能为 null）
+        post_gone:
+          type: boolean
+          description: 帖子对他人不可见（下架/过期）；true 时客户端置灰缩略图并标注「已下架」
+        peer_id: { type: integer, format: int64, description: 对方 user_id }
+        peer_nickname: { type: string }
+        peer_avatar_url: { type: string, nullable: true }
+        last_message_type:
+          type: string
+          nullable: true
+          description: 最后一条消息类型（text/apply/contact）；空会话为 null
+          enum: [text, apply, contact]
+        last_message_preview:
+          type: string
+          nullable: true
+          description: 最后一条消息摘要（写入时截断，仅供列表展示，不作为正文真源）
+        last_message_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: 最后一条消息时刻（UTC）；空会话为 null
+        unread:
+          type: boolean
+          description: 是否有未读（红点，不含本人发出的消息）；R9：普通会话行不出条数
+        apply_status:
+          type: string
+          enum: [none, pending, approved, rejected]
+          description: 联系方式申请卡状态（none=未申请/无需申请）
+
+    ConversationPage:
+      type: object
+      description: 会话列表分页
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/ConversationItem' }
+        total: { type: integer, format: int64 }
+        page: { type: integer, format: int32 }
+        page_size: { type: integer, format: int32 }
+
+    MessageSendRequest:
+      type: object
+      description: 发送消息载荷；类型、发送者与可见范围由服务端派生
+      required: [content]
+      properties:
+        content:
+          type: string
+          maxLength: 500
+          description: 文本正文（上限与 `message.content` 列宽一致；卡片类消息只能由服务端写入）
+
+    MessageSendResult:
+      type: object
+      description: 发送结果（幂等重放时返回首次的 message_id 与 seq）
+      required: [message_id, conversation_id, seq, created_at]
+      properties:
+        message_id: { type: integer, format: int64 }
+        conversation_id: { type: integer, format: int64 }
+        seq:
+          type: integer
+          format: int32
+          description: 会话内序号（单调递增，兼作增量游标与已读水位；客户端据此替换本地「发送中」行）
+        created_at: { type: string, format: date-time }
+
+    ChatMessageItem:
+      type: object
+      description: |
+        单条消息。`type=contact` 时 `content` 恒为 null —— 联系方式卡不承载号码，
+        完整号码仍只由 `GET /posts/{id}/contact` 返回。
+      required: [message_id, seq, sender_id, type, created_at]
+      properties:
+        message_id: { type: integer, format: int64 }
+        seq: { type: integer, format: int32 }
+        sender_id: { type: integer, format: int64, description: 发送者 user_id（客户端据此判断左右气泡） }
+        type:
+          type: string
+          enum: [text, apply, contact]
+          description: 文本 / 申请卡 / 联系方式卡
+        content:
+          type: string
+          nullable: true
+          description: 文本正文；卡片类为 null
+        created_at: { type: string, format: date-time }
+
+    MessagePage:
+      type: object
+      description: 消息分页结果（items 恒按 seq 正序）
+      required: [items, has_more]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/ChatMessageItem' }
+        has_more:
+          type: boolean
+          description: 是否还有更多（历史方向=更早；增量方向=更新）
+
+    ConversationReadResult:
+      type: object
+      description: 置已读结果
+      required: [last_read_seq]
+      properties:
+        last_read_seq:
+          type: integer
+          format: int32
+          description: 推进后的已读水位；只增不减，重复提交不会退回未读
+
+    ContactApplyState:
+      type: object
+      description: |
+        联系方式申请卡状态。中转页与详情页只读这一份状态；**完整号码不在此返回**。
+      required:
+        - conversation_id
+        - apply_required
+        - apply_status
+        - owner
+        - can_apply
+        - can_view_contact
+      properties:
+        conversation_id: { type: integer, format: int64 }
+        apply_required:
+          type: boolean
+          description: 该帖是否设置了「查看联系方式需申请」（R19）
+        apply_status:
+          type: string
+          enum: [none, pending, approved, rejected]
+        owner:
+          type: boolean
+          description: 当前用户是否为帖子发布者（发布者审批，不申请）
+        can_apply:
+          type: boolean
+          description: 此刻能否提交申请（非发布者、需申请，且不在冷却 / 重申窗口内）
+        can_view_contact:
+          type: boolean
+          description: 此刻能否取号（发布者本人 / 无需申请 / 已同意）；取号仍走唯一出口
+        reapply_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: 下次可再次申请的时刻（待审批满 72h 或被拒满 7 天后）；当前即可申请或不可申请时为 null
+
+    ContactApplyDecisionRequest:
+      type: object
+      description: 申请审批载荷；申请人、会话与卡片均由路径与登录态确定
+      required: [approved]
+      properties:
+        approved:
+          type: boolean
+          description: true=同意（写入仅申请人可见的联系方式卡）；false=拒绝（满冷却期可再次申请）
+
+    ConversationReportRequest:
+      type: object
+      description: |
+        会话内举报 / 误拦反馈载荷。不接收被举报人——恒为会话对方，由服务端派生。
+      required: [reason]
+      properties:
+        reason:
+          type: string
+          enum: [false_info, fraud, wrong_category, harassment, other, misblock]
+          description: 举报原因，与 `report.reason` 枚举严格一致；`misblock` = 敏感词误拦反馈
+        remark:
+          type: string
+          maxLength: 200
+          description: 补充说明，可空
+        evidence:
+          type: array
+          description: 证据媒体 ID 列表，落 `report.evidence`（JSON 列）
+          maxItems: 3
+          items: { type: string }
+        blocked_text:
+          type: string
+          maxLength: 500
+          description: 被敏感词拦截的原文（仅 `reason=misblock` 使用；服务端截取摘要写入举报描述）
+
+    UnreadSummary:
+      type: object
+      description: 未读汇总（唯一出口；Tab 角标、会话行红点与桌面角标共用）
+      required: [total, conversation_unread, notification_unread]
+      properties:
+        total:
+          type: integer
+          format: int64
+          description: 未读总数 = 会话未读 + 通知未读；客户端不做二次求和
+        conversation_unread:
+          type: integer
+          format: int64
+          description: 会话未读条数（按已读水位推导，排除本人发出的消息与隐藏会话）
+        notification_unread:
+          type: integer
+          format: int64
+          description: 通知未读条数（沿用既有 notification 口径）
+
+    AdminReportConversation:
+      type: object
+      description: 举报工单对应的会话正文（后台复核用；读取即写审计留痕）
+      required: [report_id, conversation_id, messages]
+      properties:
+        report_id: { type: integer, format: int64 }
+        conversation_id: { type: integer, format: int64 }
+        messages:
+          type: array
+          description: 最近一页消息（按 seq 正序）
+          items: { $ref: '#/components/schemas/ChatMessageItem' }
+
+    MessageSwitch:
+      type: object
+      description: 消息功能总开关状态
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+          description: false=维护只读（拒绝新会话、申请卡与发送）；配置缺行按开启
 
     # ---------- 地图（紧凑格式） ----------
 
