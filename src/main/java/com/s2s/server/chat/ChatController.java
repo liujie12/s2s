@@ -7,6 +7,7 @@ import com.s2s.server.chat.dto.MessagePageResponse;
 import com.s2s.server.chat.dto.MessageSendRequest;
 import com.s2s.server.chat.dto.MessageSendResponse;
 import com.s2s.server.chat.dto.ReadResult;
+import com.s2s.server.chat.dto.UnreadSummaryResponse;
 import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
 import com.s2s.server.common.idempotency.Idempotent;
@@ -35,19 +36,22 @@ public class ChatController {
     private final ChatService chatService;
     private final ChatMessageService chatMessageService;
     private final ChatQueryService chatQueryService;
+    private final UnreadSummaryService unreadSummaryService;
 
     /**
      * 构造会话控制器。
      *
-     * @param chatService        会话主链服务
-     * @param chatMessageService 消息发送服务
-     * @param chatQueryService   会话读取服务
+     * @param chatService          会话主链服务
+     * @param chatMessageService   消息发送服务
+     * @param chatQueryService     会话读取服务
+     * @param unreadSummaryService 未读汇总唯一出口
      */
     public ChatController(ChatService chatService, ChatMessageService chatMessageService,
-            ChatQueryService chatQueryService) {
+            ChatQueryService chatQueryService, UnreadSummaryService unreadSummaryService) {
         this.chatService = chatService;
         this.chatMessageService = chatMessageService;
         this.chatQueryService = chatQueryService;
+        this.unreadSummaryService = unreadSummaryService;
     }
 
     /**
@@ -146,6 +150,20 @@ public class ChatController {
             HttpServletRequest httpRequest) {
         Long userId = requireUserId(httpRequest);
         return chatQueryService.markRead(userId, conversationId);
+    }
+
+    /**
+     * 未读汇总（{@code GET /unread-summary}，R8 / KTD9）。
+     *
+     * <p>Tab 角标、会话行红点与安卓桌面角标都读本接口，客户端不做二次求和。</p>
+     *
+     * @param httpRequest 当前请求（取登录态）
+     * @return {@link UnreadSummaryResponse} 总数 + 会话未读 + 通知未读
+     */
+    @GetMapping("/unread-summary")
+    public UnreadSummaryResponse unreadSummary(HttpServletRequest httpRequest) {
+        Long userId = requireUserId(httpRequest);
+        return unreadSummaryService.summary(userId);
     }
 
     /**

@@ -86,6 +86,20 @@ public class NotifyService {
     }
 
     /**
+     * 取未读通知总数（跨三类的统一口径）。
+     *
+     * <p>供未读汇总（chat 域 {@code UnreadSummaryService}，KTD9）跨域调用：未读总数
+     * 的唯一出口把「消息未读」与「通知未读」相加，通知侧只暴露这一个计数方法，
+     * 不让调用方直接摸 {@code NotificationMapper}（域间只调 service）。</p>
+     *
+     * @param userId 当前登录用户 ID（调用方保证非 null）
+     * @return long 未读通知条数
+     */
+    public long countUnread(Long userId) {
+        return notificationMapper.countUnread(userId);
+    }
+
+    /**
      * 由库内 {@code type} 与 {@code target_id} 推导契约 {@code target}（纯函数，便于单测）。
      *
      * <p><b>映射口径</b>（依据 PRD §8.3.3「点击通知 → 跳对应详情（被联系 → 跳对应发布详情；

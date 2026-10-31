@@ -83,4 +83,29 @@
         LIMIT #{limit}
     </select>
 
+    <!--
+      未读汇总（U5 / KTD9）：我的全部可见会话里，seq 超过已读水位、对我可见、且非我发送的消息数。
+
+      「非我发送」：发送后我的水位仍在原地，若不排除，自己刚发的消息会把自己标成未读。
+      「可见会话」：参与 JOIN 的 conversation 必须落在隐藏窗口内，列表看不到的会话不贡献角标。
+
+      EXPLAIN 结论：驱动表 conversation_member 以 idx_user(user_id) 定位我的成员行（复合主键
+      第二列无法单独等值）；conversation 走 PRIMARY 等值回表并过滤 last_message_at 下界；
+      message 走 idx_conversation_visible_seq(conversation_id, visible_to, seq) 前缀回表，
+      seq 条件在同一索引内收窄。单用户会话量级为百级，无排序无分页，代价可接受。
+    -->
+    <select id="countUnreadForUser" resultType="long">
+        SELECT COUNT(*)
+        FROM conversation_member cm
+        JOIN conversation c
+          ON c.id = cm.conversation_id
+        JOIN message m
+          ON m.conversation_id = c.id
+        WHERE cm.user_id = #{userId}
+          AND c.last_message_at &gt;= #{visibleSince}
+          AND m.seq &gt; cm.last_read_seq
+          AND (m.visible_to IS NULL OR m.visible_to = #{userId})
+          AND m.sender_id &lt;&gt; #{userId}
+    </select>
+
 </mapper>

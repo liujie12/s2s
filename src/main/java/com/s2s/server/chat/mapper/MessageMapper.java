@@ -2,6 +2,7 @@ package com.s2s.server.chat.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.s2s.server.chat.entity.MessageEntity;
+import java.time.LocalDateTime;
 import java.util.List;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -59,4 +60,18 @@ public interface MessageMapper extends BaseMapper<MessageEntity> {
             @Param("userId") Long userId,
             @Param("afterSeq") int afterSeq,
             @Param("limit") int limit);
+
+    /**
+     * 统计某用户全部可见会话的未读消息数（U5 未读汇总的唯一数据源之一）。
+     *
+     * <p>口径（R8 / R9）：消息 {@code seq} 大于我的已读水位、对我可见（{@code visible_to}）、
+     * 且不是我发出的；隐藏会话（{@code last_message_at} 早于下界）不计入——列表里看不到的
+     * 会话不应让角标长期亮着。</p>
+     *
+     * @param userId       当前用户 ID
+     * @param visibleSince 隐藏窗口下界（{@code now - ChatLimits.CONVERSATION_HIDE_AFTER_DAYS}）
+     * @return long 会话未读条数
+     */
+    long countUnreadForUser(@Param("userId") Long userId,
+            @Param("visibleSince") LocalDateTime visibleSince);
 }
