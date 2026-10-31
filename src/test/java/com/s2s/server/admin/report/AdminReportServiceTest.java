@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -14,15 +15,21 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.s2s.server.admin.dto.AdminReportBatchHandleRequest;
+import com.s2s.server.admin.dto.AdminReportConversationResponse;
 import com.s2s.server.admin.dto.AdminReportPageResponse;
+import com.s2s.server.chat.ChatReportService;
+import com.s2s.server.chat.dto.ConversationBody;
+import com.s2s.server.chat.dto.MessageItem;
 import com.s2s.server.common.audit.AuditEntry;
 import com.s2s.server.common.audit.AuditLogWriter;
 import com.s2s.server.common.audit.OperatorRole;
 import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
 import com.s2s.server.contact.ContactService;
+import com.s2s.server.contact.dto.ReportContext;
 import com.s2s.server.contact.dto.ReportTicketPage;
 import com.s2s.server.contact.dto.ReportTicketRow;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,6 +46,9 @@ class AdminReportServiceTest {
     /** contact 域服务（mock）。 */
     private ContactService contactService;
 
+    /** chat 域服务（mock）。 */
+    private ChatReportService chatReportService;
+
     /** 审计写入器（mock）。 */
     private AuditLogWriter auditLogWriter;
 
@@ -51,8 +61,9 @@ class AdminReportServiceTest {
     @BeforeEach
     void setUp() {
         contactService = mock(ContactService.class);
+        chatReportService = mock(ChatReportService.class);
         auditLogWriter = mock(AuditLogWriter.class);
-        service = new AdminReportService(contactService, auditLogWriter);
+        service = new AdminReportService(contactService, chatReportService, auditLogWriter);
     }
 
     /**
@@ -64,14 +75,29 @@ class AdminReportServiceTest {
     void auditorListsPendingTickets() {
         ReportTicketRow row = new ReportTicketRow(1L, 9L, "标题", "fraud", 50, "pending", 0, 50,
                 LocalDateTime.of(2026, 10, 1, 9, 0));
-        when(contactService.listReportsForAdmin(eq("pending"), eq(1), eq(20)))
+        when(contactService.listReportsForAdmin(eq("pending"), isNull(), eq(1), eq(20)))
                 .thenReturn(new ReportTicketPage(List.of(row), 1L, 1, 20));
 
-        AdminReportPageResponse response = service.list(OperatorRole.AUDITOR, null, null, null);
+        AdminReportPageResponse response = service.list(OperatorRole.AUDITOR, null, null, null, null);
 
         assertThat(response.items()).hasSize(1);
         assertThat(response.items().get(0).riskScore()).isEqualTo(50);
         assertThat(response.pageSize()).isEqualTo(20);
+    }
+
+    /**
+     * 原因筛选透传：查误拦反馈队列时原样交给 contact 域。
+     *
+     * @return void；断言失败即后台无法把误拦反馈单独拉出复核（R28）
+     */
+    @Test
+    void listPassesReasonFilter() {
+        when(contactService.listReportsForAdmin(eq("pending"), eq("misblock"), eq(1), eq(20)))
+                .thenReturn(new ReportTicketPage(List.of(), 0L, 1, 20));
+
+        service.list(OperatorRole.AUDITOR, null, "misblock", null, null);
+
+        verify(contactService).listReportsForAdmin(eq("pending"), eq("misblock"), eq(1), eq(20));
     }
 
     /**
@@ -82,13 +108,13 @@ class AdminReportServiceTest {
     @Test
     void nonAuditorDenied() {
         for (OperatorRole role : new OperatorRole[] {OperatorRole.OPERATOR, OperatorRole.ALGO}) {
-            assertThatThrownBy(() -> service.list(role, null, null, null))
+            assertThatThrownBy(() -> service.list(role, null, null, null, null))
                     .as("角色 %s 不应可读举报工单", role)
                     .isInstanceOf(BizException.class)
                     .extracting(e -> ((BizException) e).getErrorCode())
                     .isEqualTo(ErrorCode.NO_PERMISSION);
         }
-        verify(contactService, never()).listReportsForAdmin(anyString(), anyInt(), anyInt());
+        verify(contactService, never()).listReportsForAdmin(anyString(), any(), anyInt(), anyInt());
     }
 
     /**
@@ -173,5 +199,42 @@ class AdminReportServiceTest {
                 .isEqualTo(ErrorCode.NO_PERMISSION);
         verify(contactService, never()).handleReport(any(Long.class), any(Long.class),
                 any(OperatorRole.class), anyString());
+    }
+
+    /**
+     * 查看被举报会话正文 → 用举报上下文定位会话，并逐次写一条审计（计划 U7）。
+     *
+     * @return void；断言失败即「谁看了谁的会话」在审计里查不到
+     */
+    @Test
+    void conversationBodyWritesAudit() {
+        when(contactService.reportContext(1L))
+                .thenReturn(new ReportContext(1L, 9L, 11L, 22L, "harassment"));
+        when(chatReportService.bodyForReport(9L, 11L, 22L)).thenReturn(new ConversationBody(900L,
+                List.of(new MessageItem(1L, 1, 11L, "text", "你好", Instant.now()))));
+
+        AdminReportConversationResponse response =
+                service.conversationBody(OperatorRole.AUDITOR, 5L, 1L);
+
+        assertThat(response.conversationId()).isEqualTo(900L);
+        assertThat(response.messages()).hasSize(1);
+        verify(auditLogWriter).write(any(AuditEntry.class));
+    }
+
+    /**
+     * 查看正文同样受 RBAC 约束：非内容审核员/超管 → 40305，且不触达任何域服务。
+     *
+     * @param role 被测角色
+     * @return void；断言失败即越权可读他人会话正文
+     */
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(names = {"OPERATOR", "ALGO"})
+    void conversationBodyNonAuditorDenied(OperatorRole role) {
+        assertThatThrownBy(() -> service.conversationBody(role, 5L, 1L))
+                .isInstanceOf(BizException.class)
+                .extracting(e -> ((BizException) e).getErrorCode())
+                .isEqualTo(ErrorCode.NO_PERMISSION);
+        verify(contactService, never()).reportContext(any(Long.class));
+        verify(chatReportService, never()).bodyForReport(any(), any(), any());
     }
 }

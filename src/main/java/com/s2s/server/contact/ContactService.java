@@ -14,6 +14,7 @@ import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
 import com.s2s.server.common.ratelimit.RateLimitEntries;
 import com.s2s.server.contact.dto.ContactInfo;
+import com.s2s.server.contact.dto.ReportContext;
 import com.s2s.server.contact.dto.ReportRequest;
 import com.s2s.server.contact.dto.ReportResult;
 import com.s2s.server.contact.dto.ReportTicketPage;
@@ -285,30 +286,86 @@ public class ContactService {
 
         // [153] B2-5 ④ §9.10.3 风险分 = 原因分 × 举报方权重（企业认证 ×1.5）。
         // 权重落 report.weight 列（评审/回撤都靠它，不能只存在内存里）。
-        int contribution = ReportRiskScore.of(request.reason(),
-                certService.isEnterpriseVerified(reporterId));
+        return createReport(reporterId, postId, reportedUserId, request.reason(),
+                request.remark(), request.evidence(), true);
+    }
+
+    /**
+     * 会话内举报落库（U7；R29 / KTD10）。
+     *
+     * <p>与 {@link #report} 的差别只有两处：<b>不做帖子可见性前置校验</b>（帖子下架后
+     * 仍可举报），被举报人由调用方按「会话对方」传入。实名门槛、风险分、自动下架判定与
+     * 审计留痕完全复用同一实现——两处各写一遍会让「举报是否计入风险分」出现两个答案。</p>
+     *
+     * <p><b>误拦反馈（{@code misblock}）不累计风险分</b>：它反馈的是审核误判，不是对被举报
+     * 帖子的指控；若照原因分表累计，被拦的一方会替审核系统背分，甚至触发自动下架。</p>
+     *
+     * @param reporterId     举报人 user_id
+     * @param postId         会话所锚定的帖子 ID（下架不影响）
+     * @param reportedUserId 被举报人 user_id（会话对方）
+     * @param reason         举报原因（调用方已按 {@link ReportReason} 白名单校验）
+     * @param description    落 {@code report.description} 的描述（误拦反馈含原文摘要）
+     * @param evidence       证据 media_ids（可空）
+     * @return {@link ReportResult} 举报 ID + 初始状态 pending
+     * @throws BizException {@code 40305} 未实名；{@code 41001} 帖子行不存在
+     */
+    @Transactional
+    public ReportResult reportInConversation(Long reporterId, Long postId, Long reportedUserId,
+            String reason, String description, List<String> evidence) {
+        if (!certService.isRealnamePassed(reporterId)) {
+            throw BizException.of(ErrorCode.NO_PERMISSION);
+        }
+        if (contactPostMapper.selectContactRow(postId) == null) {
+            throw BizException.of(ErrorCode.POST_GONE);
+        }
+        boolean accumulateRisk = !ReportReason.MISBLOCK.dbValue().equals(reason);
+        return createReport(reporterId, postId, reportedUserId, reason, description, evidence,
+                accumulateRisk);
+    }
+
+    /**
+     * 举报落库的唯一写入实现（帖子举报与会话内举报共用）。
+     *
+     * @param reporterId     举报人 user_id
+     * @param postId         被举报帖子 ID
+     * @param reportedUserId 被举报人 user_id
+     * @param reason         举报原因（{@code report.reason} 枚举值）
+     * @param description    举报描述（落 {@code report.description}）
+     * @param evidence       证据 media_ids（可空；空列表与 {@code null} 均落 {@code null}）
+     * @param accumulateRisk 是否累计风险分并参与自动下架判定
+     * @return {@link ReportResult} 举报 ID + 初始状态 pending
+     */
+    private ReportResult createReport(Long reporterId, Long postId, Long reportedUserId,
+            String reason, String description, List<String> evidence, boolean accumulateRisk) {
+        // [153] B2-5 ④ §9.10.3 风险分 = 原因分 × 举报方权重（企业认证 ×1.5）。
+        // 权重落 report.weight 列（评审/回撤都靠它，不能只存在内存里）。
+        int contribution = accumulateRisk
+                ? ReportRiskScore.of(reason, certService.isEnterpriseVerified(reporterId))
+                : 0;
 
         ReportEntity entity = new ReportEntity();
         entity.setPostId(postId);
         entity.setReporterId(reporterId);
-        // 被举报人取自帖子的发布者（DDL 该列非空，且不许客户端传——由客户端指定
-        // 「举报谁」等于给了一条伪造他人被举报记录的路径）。
+        // 被举报人由服务端派生（帖子发布者 / 会话对方），不接受客户端指定——
+        // 由客户端指定「举报谁」等于给了一条伪造他人被举报记录的路径。
         entity.setReportedUserId(reportedUserId);
-        entity.setReason(request.reason());
+        entity.setReason(reason);
         // 契约字段名 remark → 列名 description（KTD4 同类漂移，映射只在此处）
-        entity.setDescription(request.remark());
-        entity.setEvidence(toEvidenceJson(request.evidence()));
+        entity.setDescription(description);
+        entity.setEvidence(toEvidenceJson(evidence));
         entity.setWeight(contribution);
         entity.setStatus(REPORT_STATUS_PENDING);
         // is_false_report / handler_id / handled_at 不写：由运营侧（后台工单处理）写入。
         reportMapper.insert(entity);
 
-        // 累计到 post.risk_score；≥ 阈值即自动下架（§9.10.3），随后进人工复核队列。
-        // 审计归属：改动由该举报触发，故记 reporterId + user（真实触发人），
-        // 而非 SYSTEM —— 留痕要能回答「谁的操作导致了这次下架」。
-        int cumulative = postModerationService.applyRiskDelta(postId, contribution);
-        if (ReportRiskScore.shouldAutoOffline(cumulative)) {
-            postModerationService.auditTakedown(postId, reporterId, OperatorRole.USER);
+        if (accumulateRisk) {
+            // 累计到 post.risk_score；≥ 阈值即自动下架（§9.10.3），随后进人工复核队列。
+            // 审计归属：改动由该举报触发，故记 reporterId + user（真实触发人），
+            // 而非 SYSTEM —— 留痕要能回答「谁的操作导致了这次下架」。
+            int cumulative = postModerationService.applyRiskDelta(postId, contribution);
+            if (ReportRiskScore.shouldAutoOffline(cumulative)) {
+                postModerationService.auditTakedown(postId, reporterId, OperatorRole.USER);
+            }
         }
 
         // 举报成功同写 audit_log（详设 §5.5.2），与举报落库同事务；
@@ -320,17 +377,40 @@ public class ContactService {
     }
 
     /**
+     * 取举报工单的定位信息（后台复核会话正文用，U7）。
+     *
+     * <p>只回「帖子 + 双方用户 + 原因」，不回描述与凭证：后台列表已经展示原因，
+     * 正文复核只需要据此定位会话，多回内容等于把举报材料多开一个出口。</p>
+     *
+     * @param reportId 举报 ID
+     * @return {@link ReportContext} 工单定位信息
+     * @throws BizException {@code 41001} 举报不存在
+     */
+    public ReportContext reportContext(long reportId) {
+        ReportEntity report = reportMapper.selectById(reportId);
+        if (report == null) {
+            throw BizException.of(ErrorCode.POST_GONE);
+        }
+        return new ReportContext(report.getId(), report.getPostId(), report.getReporterId(),
+                report.getReportedUserId(), report.getReason());
+    }
+
+    /**
      * 分页列出举报工单（[153] B2-5 ④；供后台经 service 接口调用）。
      *
+     * <p>{@code reason} 可空：空=不按原因筛选；传「误拦」即把误拦反馈单独拉出复核（R28）。</p>
+     *
      * @param status   工单状态（如 {@code pending}）
+     * @param reason   举报原因筛选（可空）
      * @param page     页码（1 起）
      * @param pageSize 每页条数
      * @return {@link ReportTicketPage} 当前页 + 总数（按帖子累计风险分降序）
      */
-    public ReportTicketPage listReportsForAdmin(String status, int page, int pageSize) {
-        long total = reportMapper.countByStatus(status);
+    public ReportTicketPage listReportsForAdmin(String status, String reason, int page,
+            int pageSize) {
+        long total = reportMapper.countByStatus(status, reason);
         List<ReportTicketRow> items =
-                reportMapper.selectPageByStatus(status, (page - 1) * pageSize, pageSize);
+                reportMapper.selectPageByStatus(status, reason, (page - 1) * pageSize, pageSize);
         return new ReportTicketPage(items, total, page, pageSize);
     }
 

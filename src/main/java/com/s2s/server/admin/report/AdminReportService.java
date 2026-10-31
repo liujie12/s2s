@@ -1,8 +1,12 @@
 package com.s2s.server.admin.report;
 
 import com.s2s.server.admin.dto.AdminReportBatchHandleRequest;
+import com.s2s.server.admin.dto.AdminReportConversationResponse;
 import com.s2s.server.admin.dto.AdminReportPageResponse;
+import com.s2s.server.chat.ChatReportService;
+import com.s2s.server.chat.dto.ConversationBody;
 import com.s2s.server.contact.ContactService;
+import com.s2s.server.contact.dto.ReportContext;
 import com.s2s.server.contact.dto.ReportTicketPage;
 import com.s2s.server.contact.dto.ReportTicketRow;
 import com.s2s.server.common.audit.AuditEntry;
@@ -36,8 +40,14 @@ public class AdminReportService {
     /** 审计动作：举报工单处理。 */
     static final String ACTION_REPORT_HANDLE = "report.handle";
 
+    /** 审计动作：查看被举报会话正文（逐次留痕，PRD §9.10.1 同类口径）。 */
+    static final String ACTION_CONVERSATION_VIEW = "report.conversation.view";
+
     /** 审计目标类型：举报工单。 */
     static final String TARGET_REPORT = "report";
+
+    /** 审计目标类型：会话。 */
+    static final String TARGET_CONVERSATION = "conversation";
 
     /** 默认筛选状态：待处理。 */
     private static final String STATUS_PENDING = "pending";
@@ -45,17 +55,23 @@ public class AdminReportService {
     /** contact 域服务（举报读写）。 */
     private final ContactService contactService;
 
+    /** chat 域服务（举报双方会话正文定位）。 */
+    private final ChatReportService chatReportService;
+
     /** 审计写入器（唯一写入处）。 */
     private final AuditLogWriter auditLogWriter;
 
     /**
      * 构造后台举报工单服务。
      *
-     * @param contactService contact 域服务
-     * @param auditLogWriter 审计写入器
+     * @param contactService    contact 域服务
+     * @param chatReportService chat 域服务（会话正文）
+     * @param auditLogWriter    审计写入器
      */
-    public AdminReportService(ContactService contactService, AuditLogWriter auditLogWriter) {
+    public AdminReportService(ContactService contactService,
+            ChatReportService chatReportService, AuditLogWriter auditLogWriter) {
         this.contactService = contactService;
+        this.chatReportService = chatReportService;
         this.auditLogWriter = auditLogWriter;
     }
 
@@ -64,13 +80,14 @@ public class AdminReportService {
      *
      * @param callerRole 调用者角色
      * @param status     工单状态（null/空 → pending）
+     * @param reason     举报原因筛选（null/空 → 不筛；{@code misblock} → 误拦反馈）
      * @param page       页码（null/小于 1 → 1）
      * @param pageSize   每页条数（null → 默认；超上限截断）
      * @return {@link AdminReportPageResponse} 工单分页
      * @throws BizException 非内容审核员/超管 → 40305
      */
-    public AdminReportPageResponse list(OperatorRole callerRole, String status, Integer page,
-            Integer pageSize) {
+    public AdminReportPageResponse list(OperatorRole callerRole, String status, String reason,
+            Integer page, Integer pageSize) {
         requireAuditorOrSuper(callerRole);
         String normalizedStatus = (status == null || status.isBlank()) ? STATUS_PENDING : status;
         int normalizedPage = (page == null || page < 1) ? 1 : page;
@@ -78,12 +95,38 @@ public class AdminReportService {
                 ? NfrAdmin.PAGE_SIZE_DEFAULT
                 : Math.min(pageSize, NfrAdmin.PAGE_SIZE_MAX);
 
-        ReportTicketPage domainPage =
-                contactService.listReportsForAdmin(normalizedStatus, normalizedPage, normalizedSize);
+        ReportTicketPage domainPage = contactService.listReportsForAdmin(normalizedStatus, reason,
+                normalizedPage, normalizedSize);
         List<AdminReportPageResponse.Item> items = domainPage.items().stream()
                 .map(AdminReportService::toItem)
                 .toList();
         return new AdminReportPageResponse(items, domainPage.total(), normalizedPage, normalizedSize);
+    }
+
+    /**
+     * 查看被举报双方会话正文（U7；RBAC + 逐次审计留痕）。
+     *
+     * <p><b>为什么审计与读取同事务</b>：这是一次「查看用户信息」——审计丢了就无法回答
+     * 「谁在何时看了谁的会话」。任一步失败整体回滚，宁可让运营重试。</p>
+     *
+     * @param callerRole 调用者角色
+     * @param adminId    操作人 ID（审计）
+     * @param reportId   举报 ID
+     * @return {@link AdminReportConversationResponse} 会话 ID + 最近一页消息
+     * @throws BizException 非内容审核员/超管 → 40305；举报不存在 → 41001；
+     *                      双方之间无会话 → 41001
+     */
+    @Transactional
+    public AdminReportConversationResponse conversationBody(OperatorRole callerRole, Long adminId,
+            long reportId) {
+        requireAuditorOrSuper(callerRole);
+        ReportContext context = contactService.reportContext(reportId);
+        ConversationBody body = chatReportService.bodyForReport(context.postId(),
+                context.reporterId(), context.reportedUserId());
+        auditLogWriter.write(new AuditEntry(adminId, callerRole, ACTION_CONVERSATION_VIEW,
+                TARGET_CONVERSATION, body.conversationId(), null, null, null));
+        return new AdminReportConversationResponse(reportId, body.conversationId(),
+                body.messages());
     }
 
     /**

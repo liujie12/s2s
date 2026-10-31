@@ -11,11 +11,13 @@ import static org.mockito.Mockito.when;
 
 import com.s2s.server.chat.dto.ConversationCreateRequest;
 import com.s2s.server.chat.dto.ConversationCreateResponse;
+import com.s2s.server.chat.dto.ConversationReportRequest;
 import com.s2s.server.chat.dto.MessageSendRequest;
 import com.s2s.server.chat.dto.MessageSendResponse;
 import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
 import com.s2s.server.common.web.AuthContext;
+import com.s2s.server.contact.dto.ReportResult;
 import java.time.Instant;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -42,8 +44,9 @@ class ChatControllerTest {
     private final ChatQueryService chatQueryService = mock(ChatQueryService.class);
     private final UnreadSummaryService unreadSummaryService = mock(UnreadSummaryService.class);
     private final ContactApplyService contactApplyService = mock(ContactApplyService.class);
+    private final ChatReportService chatReportService = mock(ChatReportService.class);
     private final ChatController controller = new ChatController(chatService, chatMessageService,
-            chatQueryService, unreadSummaryService, contactApplyService);
+            chatQueryService, unreadSummaryService, contactApplyService, chatReportService);
 
     /**
      * 未登录开会话 → {@code 40101}，且不触达 service。
@@ -115,5 +118,41 @@ class ChatControllerTest {
 
         assertThat(response.seq()).isEqualTo(1);
         verify(chatMessageService).sendText(USER_ID, CONVERSATION_ID, body);
+    }
+
+    /**
+     * 未登录举报 → {@code 40101}，且不触达举报服务。
+     *
+     * @return void；断言失败即游客可提交举报（举报人身份无从确定）
+     */
+    @Test
+    void reportRequiresLogin() {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+
+        assertThatThrownBy(() -> controller.reportConversation(CONVERSATION_ID,
+                new ConversationReportRequest("harassment", null, null, null), request))
+                .isInstanceOf(BizException.class)
+                .extracting(thrown -> ((BizException) thrown).getErrorCode())
+                .isEqualTo(ErrorCode.UNAUTHORIZED);
+        verify(chatReportService, never()).report(any(), any(), any());
+    }
+
+    /**
+     * 已登录举报 → 透传登录用户、路径会话 ID 与原样入参。
+     *
+     * @return void；断言失败即举报人可被请求体篡改
+     */
+    @Test
+    void reportDelegatesWithLoginUserAndPathId() {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        AuthContext.setUserId(request, USER_ID);
+        ConversationReportRequest body = new ConversationReportRequest("fraud", "备注", null, null);
+        when(chatReportService.report(eq(USER_ID), eq(CONVERSATION_ID), any()))
+                .thenReturn(new ReportResult(88L, "pending"));
+
+        ReportResult result = controller.reportConversation(CONVERSATION_ID, body, request);
+
+        assertThat(result.reportId()).isEqualTo(88L);
+        verify(chatReportService).report(USER_ID, CONVERSATION_ID, body);
     }
 }

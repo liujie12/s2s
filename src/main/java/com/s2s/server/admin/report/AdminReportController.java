@@ -2,6 +2,7 @@ package com.s2s.server.admin.report;
 
 import com.s2s.server.admin.AdminContext;
 import com.s2s.server.admin.dto.AdminReportBatchHandleRequest;
+import com.s2s.server.admin.dto.AdminReportConversationResponse;
 import com.s2s.server.admin.dto.AdminReportHandleRequest;
 import com.s2s.server.admin.dto.AdminReportPageResponse;
 import com.s2s.server.common.audit.OperatorRole;
@@ -42,6 +43,7 @@ public class AdminReportController {
      *
      * @param http     当前请求（取后台角色）
      * @param status   状态筛选（可选，默认 pending）
+     * @param reason   原因筛选（可选；{@code misblock} 即误拦反馈队列，U7）
      * @param page     页码（可选）
      * @param pageSize 每页条数（可选）
      * @return {@link AdminReportPageResponse} 工单分页
@@ -49,9 +51,27 @@ public class AdminReportController {
     @GetMapping
     public AdminReportPageResponse list(HttpServletRequest http,
             @RequestParam(required = false) String status,
+            @RequestParam(required = false) String reason,
             @RequestParam(required = false) Integer page,
             @RequestParam(name = "page_size", required = false) Integer pageSize) {
-        return adminReportService.list(AdminContext.currentRole(http), status, page, pageSize);
+        return adminReportService.list(AdminContext.currentRole(http), status, reason, page,
+                pageSize);
+    }
+
+    /**
+     * 查看被举报双方会话正文（{@code GET /admin/reports/{id}/conversation}，U7）。
+     *
+     * <p>查看动作逐次写审计（与读取同事务）；RBAC 由 service 判定。</p>
+     *
+     * @param http     当前请求（取后台角色/操作人）
+     * @param reportId 举报 ID
+     * @return {@link AdminReportConversationResponse} 会话 ID + 最近一页消息
+     */
+    @GetMapping("/{id}/conversation")
+    public AdminReportConversationResponse conversation(HttpServletRequest http,
+            @PathVariable("id") long reportId) {
+        return adminReportService.conversationBody(AdminContext.currentRole(http),
+                AdminContext.currentAdminId(http), reportId);
     }
 
     /**

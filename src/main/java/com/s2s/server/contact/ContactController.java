@@ -84,7 +84,7 @@ public class ContactController {
         // 原因白名单校验放在 controller：契约外的值属客户端参数错误（40001），
         // 不能落到 service 的落库路径——那会被 MySQL 的 ENUM 约束拦成 50001
         // （客户端按可重试处理），或非严格模式下静默存空串（举报原因永久丢失）。
-        if (!ReportReason.isValid(request.reason())) {
+        if (!ReportReason.isReportable(request.reason())) {
             throw BizException.of(ErrorCode.PARAM_INVALID);
         }
         return contactService.report(reporterId, postId, request);

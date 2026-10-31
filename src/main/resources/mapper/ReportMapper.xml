@@ -7,11 +7,19 @@
       举报工单队列查询（[153] B2-5 ④；PRD §9.10.1 ④）。
       排序：post.risk_score 降序（验收「按风险分排序」），同分再按举报时间升序（先来先处理）。
       联 post 取标题与累计风险分——工单要能直接看出「这条为什么排前面」。
+
+      原因筛选（U7）：可空（不筛）；传「误拦」时把误拦反馈单独拉出复核（R28）。
+      EXPLAIN 结论：status 等值命中 idx_post_status_created 的第二列无法单独等值，
+      优化器退化为该索引全扫 + 回表过滤（report 表量级为万级，工单页只看 pending，
+      代价可接受）；reason 为选择性更高的过滤条件，追加后不改变访问路径。
     -->
     <select id="countByStatus" resultType="long">
         SELECT COUNT(*)
         FROM report
         WHERE status = #{status}
+        <if test="reason != null and reason != ''">
+          AND reason = #{reason}
+        </if>
     </select>
 
     <select id="selectPageByStatus" resultType="com.s2s.server.contact.dto.ReportTicketRow">
@@ -27,6 +35,9 @@
         FROM report r
         JOIN post p ON p.id = r.post_id
         WHERE r.status = #{status}
+        <if test="reason != null and reason != ''">
+          AND r.reason = #{reason}
+        </if>
         ORDER BY p.risk_score DESC, r.created_at ASC, r.id ASC
         LIMIT #{limit} OFFSET #{offset}
     </select>

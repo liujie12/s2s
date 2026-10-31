@@ -62,6 +62,20 @@ public interface MessageMapper extends BaseMapper<MessageEntity> {
             @Param("limit") int limit);
 
     /**
+     * 取会话内最近的一页消息（后台举报复核用，U7）。
+     *
+     * <p>与 App 端分页的两点不同：不做 {@code visible_to} 过滤（复核要看双方全貌，
+     * 联系方式卡本身不含号码），且只取最新一页——复核关注「最近发生了什么」，
+     * 不提供无限回溯，避免后台接口无界拉取。</p>
+     *
+     * @param conversationId 会话 ID
+     * @param limit          每页条数（后台固定按 {@code ChatLimits.MESSAGE_PAGE_MAX_SIZE}）
+     * @return {@link List} 消息行（seq 倒序，由 service 翻成正序）
+     */
+    List<MessageEntity> selectRecentByConversation(@Param("conversationId") Long conversationId,
+            @Param("limit") int limit);
+
+    /**
      * 统计某用户全部可见会话的未读消息数（U5 未读汇总的唯一数据源之一）。
      *
      * <p>口径（R8 / R9）：消息 {@code seq} 大于我的已读水位、对我可见（{@code visible_to}）、

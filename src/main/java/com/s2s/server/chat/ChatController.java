@@ -5,6 +5,7 @@ import com.s2s.server.chat.dto.ApplyStateResponse;
 import com.s2s.server.chat.dto.ConversationCreateRequest;
 import com.s2s.server.chat.dto.ConversationCreateResponse;
 import com.s2s.server.chat.dto.ConversationPageResponse;
+import com.s2s.server.chat.dto.ConversationReportRequest;
 import com.s2s.server.chat.dto.MessagePageResponse;
 import com.s2s.server.chat.dto.MessageSendRequest;
 import com.s2s.server.chat.dto.MessageSendResponse;
@@ -14,6 +15,7 @@ import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
 import com.s2s.server.common.idempotency.Idempotent;
 import com.s2s.server.common.web.AuthContext;
+import com.s2s.server.contact.dto.ReportResult;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -26,9 +28,9 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * 会话域控制器（V30 / 计划 U2；详设 §5.5 的同构写法）。
  *
- * <p>职责：承载会话相关 HTTP 入口。本版有「开启或复用会话」「发送文本消息」两个写接口，
- * 以及会话列表、消息分页 / 增量、置已读三个读接口；申请审批（U6）、举报（U7）后续
- * 并入本控制器或各自的 {@code ChatQueryController}，路由前缀统一 {@code /conversations}。</p>
+ * <p>职责：承载会话相关 HTTP 入口 —— 开会话 / 发送消息 / 置已读 / 申请与审批 /
+ * 举报与误拦反馈五类写接口，以及列表、消息分页与增量、未读汇总、申请卡状态四类读接口，
+ * 路由前缀统一 {@code /conversations}（未读汇总为 {@code /unread-summary}）。</p>
  *
  * <p>返回 DTO 由 {@code ResponseBodyWrapper} 统一套壳，本类不写 {@code ApiResponse}。</p>
  */
@@ -40,6 +42,7 @@ public class ChatController {
     private final ChatQueryService chatQueryService;
     private final UnreadSummaryService unreadSummaryService;
     private final ContactApplyService contactApplyService;
+    private final ChatReportService chatReportService;
 
     /**
      * 构造会话控制器。
@@ -49,15 +52,17 @@ public class ChatController {
      * @param chatQueryService     会话读取服务
      * @param unreadSummaryService 未读汇总唯一出口
      * @param contactApplyService  联系方式申请链路
+     * @param chatReportService    会话内举报与误拦反馈
      */
     public ChatController(ChatService chatService, ChatMessageService chatMessageService,
             ChatQueryService chatQueryService, UnreadSummaryService unreadSummaryService,
-            ContactApplyService contactApplyService) {
+            ContactApplyService contactApplyService, ChatReportService chatReportService) {
         this.chatService = chatService;
         this.chatMessageService = chatMessageService;
         this.chatQueryService = chatQueryService;
         this.unreadSummaryService = unreadSummaryService;
         this.contactApplyService = contactApplyService;
+        this.chatReportService = chatReportService;
     }
 
     /**
@@ -218,6 +223,27 @@ public class ChatController {
             HttpServletRequest httpRequest) {
         Long userId = requireUserId(httpRequest);
         return contactApplyService.state(userId, conversationId);
+    }
+
+    /**
+     * 会话内举报 / 误拦反馈（{@code POST /conversations/{id}/report}，R28 / R29）。
+     *
+     * <p>被举报对象恒为会话对方，帖子取会话所锚定的那一条，客户端传不了第三方；
+     * 帖子已下架仍可举报。误拦反馈复用同一入口，{@code reason=misblock} 区分。</p>
+     *
+     * @param conversationId 会话 ID（路径参数）
+     * @param request        举报入参（原因 + 可选的说明 / 凭证 / 被拦原文）
+     * @param httpRequest    当前请求（取登录态）
+     * @return {@link ReportResult} 举报 ID + 初始状态
+     */
+    @PostMapping("/conversations/{conversation_id}/report")
+    @Idempotent
+    public ReportResult reportConversation(
+            @PathVariable("conversation_id") Long conversationId,
+            @Valid @RequestBody ConversationReportRequest request,
+            HttpServletRequest httpRequest) {
+        Long userId = requireUserId(httpRequest);
+        return chatReportService.report(userId, conversationId, request);
     }
 
     /**

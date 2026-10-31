@@ -500,6 +500,97 @@ class ContactServiceTest {
     }
 
     /**
+     * 会话内举报：帖子已下架仍可落库（R29 / KTD10）。
+     *
+     * <p>与 {@link #reportInvisiblePostIsGone} 的差别是本方法的存在理由——举报发生在会话里，
+     * 帖子下架不该同时剥夺用户对骚扰行为的投诉权。风险分、审计与帖子举报完全一致。</p>
+     *
+     * @return void；断言失败即下架帖的骚扰行为无法被举报
+     */
+    @Test
+    void reportInConversationAllowsOfflinePost() {
+        Long postId = 1004L;
+        when(contactPostMapper.selectContactRow(postId))
+                .thenReturn(row(postId, encryptedAad(postId), 1, "phone", "archived"));
+
+        service.reportInConversation(VIEWER_ID, postId, OWNER_ID, "harassment", "持续骚扰", null);
+
+        ArgumentCaptor<ReportEntity> captor = ArgumentCaptor.forClass(ReportEntity.class);
+        verify(reportMapper).insert(captor.capture());
+        ReportEntity saved = captor.getValue();
+        assertThat(saved.getPostId()).isEqualTo(postId);
+        assertThat(saved.getReportedUserId()).isEqualTo(OWNER_ID);
+        assertThat(saved.getReason()).isEqualTo("harassment");
+        assertThat(saved.getDescription()).isEqualTo("持续骚扰");
+        // 骚扰基础分 10 × 普通实名 ×1
+        assertThat(saved.getWeight()).isEqualTo(10);
+        verify(postModerationService).applyRiskDelta(postId, 10);
+        verify(auditLogWriter).write(any(AuditEntry.class));
+    }
+
+    /**
+     * 误拦反馈不累计风险分、不触发下架（R28）。
+     *
+     * <p>它反馈的是审核误判，不是对被举报帖子的指控；若照原因分表累计，
+     * 被拦的一方会替审核系统背分，甚至被自动下架。</p>
+     *
+     * @return void；断言失败即误拦反馈会让被举报帖子的风险分上涨
+     */
+    @Test
+    void misblockWritesZeroWeightWithoutRiskAccumulation() {
+        Long postId = 1005L;
+        when(contactPostMapper.selectContactRow(postId))
+                .thenReturn(row(postId, encryptedAad(postId), 1, "phone", "active"));
+
+        service.reportInConversation(VIEWER_ID, postId, OWNER_ID, "misblock",
+                "误拦反馈｜原文：这房子还在吗", null);
+
+        ArgumentCaptor<ReportEntity> captor = ArgumentCaptor.forClass(ReportEntity.class);
+        verify(reportMapper).insert(captor.capture());
+        assertThat(captor.getValue().getReason()).isEqualTo("misblock");
+        assertThat(captor.getValue().getWeight()).isZero();
+        verify(postModerationService, never()).applyRiskDelta(anyLong(), anyInt());
+        verify(postModerationService, never()).auditTakedown(anyLong(), any(), any());
+        verify(auditLogWriter).write(any(AuditEntry.class));
+    }
+
+    /**
+     * 举报上下文：后台复核据此定位会话（帖子 + 双方用户 + 原因）。
+     *
+     * @return void；断言失败即后台无法把工单与会话对上
+     */
+    @Test
+    void reportContextCarriesAnchorAndParties() {
+        ReportEntity entity = new ReportEntity();
+        entity.setId(5L);
+        entity.setPostId(1001L);
+        entity.setReporterId(VIEWER_ID);
+        entity.setReportedUserId(OWNER_ID);
+        entity.setReason("harassment");
+        when(reportMapper.selectById(5L)).thenReturn(entity);
+
+        assertThat(service.reportContext(5L))
+                .extracting(context -> context.postId(), context -> context.reporterId(),
+                        context -> context.reportedUserId(), context -> context.reason())
+                .containsExactly(1001L, VIEWER_ID, OWNER_ID, "harassment");
+    }
+
+    /**
+     * 举报上下文：工单不存在 → {@code 41001}。
+     *
+     * @return void
+     */
+    @Test
+    void reportContextMissingIsGone() {
+        when(reportMapper.selectById(anyLong())).thenReturn(null);
+
+        assertThatThrownBy(() -> service.reportContext(404L))
+                .isInstanceOf(BizException.class)
+                .extracting(thrown -> ((BizException) thrown).getErrorCode())
+                .isEqualTo(ErrorCode.POST_GONE);
+    }
+
+    /**
      * 构造帖子行夹具（列名与 {@code ContactPostMapper.xml} 的 SELECT 列集合逐字一致）。
      *
      * @param postId       帖子 ID

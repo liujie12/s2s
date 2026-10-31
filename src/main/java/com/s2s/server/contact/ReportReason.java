@@ -61,10 +61,13 @@ public enum ReportReason {
     }
 
     /**
-     * 判断入参是否为契约声明的合法举报原因。
+     * 判断入参是否为契约声明的合法举报原因（含「误拦」）。
+     *
+     * <p>会话内举报与误拦反馈用本方法：两者共用同一落库路径，原因都落在
+     * {@code report.reason} 列的合法值域内。</p>
      *
      * @param apiValue 客户端传入的 {@code reason} 原值（可能为 null）
-     * @return boolean；五值之一为 {@code true}，其余（含 null）为 {@code false}
+     * @return boolean；六个合法值之一为 {@code true}，其余（含 null）为 {@code false}
      */
     public static boolean isValid(String apiValue) {
         for (ReportReason reason : values()) {
@@ -73,5 +76,19 @@ public enum ReportReason {
             }
         }
         return false;
+    }
+
+    /**
+     * 判断入参是否为「可对帖子/用户发起举报」的原因（五值，不含误拦）。
+     *
+     * <p>误拦反馈只能经会话内的误拦入口提交：它反馈的是审核误判，不是对被举报对象的
+     * 指控；若允许 {@code POST /posts/{id}/report} 直接带该值，帖子举报队列里会混入
+     * 不计风险分的噪声工单。</p>
+     *
+     * @param apiValue 客户端传入的 {@code reason} 原值（可能为 null）
+     * @return boolean；五值之一为 {@code true}，{@code misblock} 与非法值为 {@code false}
+     */
+    public static boolean isReportable(String apiValue) {
+        return isValid(apiValue) && !MISBLOCK.dbValue.equals(apiValue);
     }
 }

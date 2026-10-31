@@ -84,6 +84,28 @@
     </select>
 
     <!--
+      后台举报复核（U7）：取会话最近一页消息，不做 visible_to 过滤。
+
+      EXPLAIN 结论：conversation_id 等值命中 uk_conversation_seq(conversation_id, seq)
+      最左前缀，ORDER BY seq DESC 沿索引反向扫描无 filesort；LIMIT 由后台固定为
+      ChatLimits.MESSAGE_PAGE_MAX_SIZE，不会无界拉取。
+    -->
+    <select id="selectRecentByConversation" resultType="com.s2s.server.chat.entity.MessageEntity">
+        SELECT id,
+               conversation_id,
+               seq,
+               sender_id,
+               type,
+               content,
+               visible_to,
+               created_at
+        FROM message
+        WHERE conversation_id = #{conversationId}
+        ORDER BY seq DESC
+        LIMIT #{limit}
+    </select>
+
+    <!--
       未读汇总（U5 / KTD9）：我的全部可见会话里，seq 超过已读水位、对我可见、且非我发送的消息数。
 
       「非我发送」：发送后我的水位仍在原地，若不排除，自己刚发的消息会把自己标成未读。
