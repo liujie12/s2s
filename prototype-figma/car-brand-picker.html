@@ -118,6 +118,12 @@ body::before{
 .problem{display:flex;gap:8px;align-items:flex-start;margin-top:12px;padding:10px 12px;border-radius:12px;
   background:#FDF7EF;border:1px solid #F0DFC7;font-size:11px;line-height:1.65;color:#8A4A17}
 .problem b{color:#7A3E12;font-weight:600}
+.submitbar{position:absolute;left:0;right:0;bottom:0;z-index:6;padding:12px 16px 20px;
+  background:linear-gradient(180deg,rgba(248,250,252,0) 0%,#F8FAFC 26%)}
+.btn-pub{height:46px;border-radius:23px;background:var(--primary);color:#fff;font-size:15px;font-weight:600;
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  box-shadow:0 10px 24px -12px rgba(11,124,140,.85)}
+.btn-pub .cnt{font-size:11px;font-weight:500;opacity:.82}
 .banner{display:flex;align-items:center;gap:7px;margin-bottom:12px;padding:10px 12px;border-radius:12px;
   background:#FEF2F2;border:1px solid #FECACA;font-size:11.5px;line-height:1.5;color:var(--error-text)}
 .banner svg{width:14px;height:14px;stroke:currentColor;stroke-width:1.9;fill:none;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}
@@ -221,18 +227,18 @@ code{font-family:var(--mono);font-size:11.5px;background:#F3F5F1;border:1px soli
 <body>
 
 <header class="doc-head">
-  <div class="kicker">S2S · PUBLISH / VEHICLE FIELDS · PROTOTYPE V3</div>
+  <div class="kicker">S2S · PUBLISH / VEHICLE FIELDS · PROTOTYPE V4</div>
   <h1>车辆信息四行：品牌、车型、颜色走下拉可手填，车牌前两位也下拉</h1>
   <p class="lede">
-    v3 按本轮裁定收敛：<b>车型</b>用车身形式下拉；<b>品牌</b>与<b>颜色</b>都是「下拉常用值 + 手填兜底」（小众/新增品牌直接手录）；
-    新增<b>车牌号</b>，前两位（省份简称 + 发牌机关字母）走下拉，后段字母数字手填；发布页所有 select 字段<b>统一由 chip 改为下拉</b>。
+    v4 在 v3 基础上放宽必填：<b>车辆四行全部选填</b>（2026-10-31 裁定「必填项要求都去掉，后期根据需求再定」），只校路线 / 出发时间 / 空座数。
+    <b>车型</b>用车身形式下拉；<b>品牌</b>与<b>颜色</b>为「下拉常用值 + 手填兜底」；<b>车牌号</b>前两位走下拉、后段手填；发布页所有 select 字段统一由 chip 改为下拉。
     历史帖的 <code>car_model</code> 自由文本原样展示，不迁移、不清洗。
   </p>
   <div class="meta">
     <span class="tag primary">390 × 844 · 7 帧</span>
-    <span class="tag">模板 301 · 待出 V28 迁移</span>
-    <span class="tag">复用现有 text / select 类型</span>
-    <span class="tag warn">本稿只做设计，未改代码</span>
+    <span class="tag">模板 301 · V28 / V29 已发版</span>
+    <span class="tag">车辆四行均为选填</span>
+    <span class="tag warn">已落地 · 见真机验证记录</span>
   </div>
 </header>
 
@@ -280,16 +286,16 @@ code{font-family:var(--mono);font-size:11.5px;background:#F3F5F1;border:1px soli
       </div>
       <div class="form-head">
         <span class="cat"><i></i>车辆 · 拼车</span>
-        <span class="sub">品牌/车型必填 · 颜色/车牌选填</span>
+        <span class="sub">车辆四行均为选填 · 可留空后补</span>
       </div>
       <div class="form-body">
         <div class="card">
-          <div class="card-title"><b>拼车信息</b><span class="opt">必填 5 项</span></div>
+          <div class="card-title"><b>拼车信息</b><span class="opt">必填 3 项</span></div>
           <div class="frow"><span class="lb">路线</span><span class="ctl">回龙观 → 中关村</span><span class="chev">›</span></div>
           <div class="frow"><span class="lb">出发时间</span><span class="ctl">明天 08:00</span><span class="chev">›</span></div>
           <div class="frow"><span class="lb">空座数</span><span class="ctl">3</span></div>
-          <div class="frow tap"><span class="lb">品牌</span><span class="ctl"><span class="ph">选择或手填</span></span><span class="chev">›</span></div>
-          <div class="frow tap"><span class="lb">车型</span><span class="ctl"><span class="ph">请选择</span></span><span class="chev">›</span></div>
+          <div class="frow tap"><span class="lb">品牌</span><span class="ctl"><span class="ph">选择或手填</span></span><span class="pill-txt">选填</span></div>
+          <div class="frow tap"><span class="lb">车型</span><span class="ctl"><span class="ph">请选择</span></span><span class="pill-txt">选填</span></div>
           <div class="frow tap"><span class="lb">颜色</span><span class="ctl"><span class="ph">选择或手填</span></span><span class="pill-txt">选填</span></div>
           <div class="frow tap"><span class="lb">车牌</span><span class="ctl"><span class="plate"><span class="pseg ph">省份</span><span class="pseg ph">字母</span><span class="plate-code ph">号码</span></span></span><span class="pill-txt">选填</span></div>
         </div>
@@ -317,7 +323,7 @@ code{font-family:var(--mono);font-size:11.5px;background:#F3F5F1;border:1px soli
       </div>
       <div class="form-body">
         <div class="card">
-          <div class="card-title"><b>拼车信息</b><span class="opt">必填 5 项</span></div>
+          <div class="card-title"><b>拼车信息</b><span class="opt">必填 3 项</span></div>
           <div class="frow"><span class="lb">路线</span><span class="ctl">回龙观 → 中关村</span><span class="chev">›</span></div>
           <div class="frow"><span class="lb">出发时间</span><span class="ctl">明天 08:00</span><span class="chev">›</span></div>
           <div class="frow"><span class="lb">空座数</span><span class="ctl">3</span></div>
@@ -357,7 +363,7 @@ code{font-family:var(--mono);font-size:11.5px;background:#F3F5F1;border:1px soli
       </div>
       <div class="form-body">
         <div class="card">
-          <div class="card-title"><b>拼车信息</b><span class="opt">必填 5 项</span></div>
+          <div class="card-title"><b>拼车信息</b><span class="opt">必填 3 项</span></div>
           <div class="frow"><span class="lb">路线</span><span class="ctl">回龙观 → 中关村</span><span class="chev">›</span></div>
           <div class="frow"><span class="lb">出发时间</span><span class="ctl">明天 08:00</span><span class="chev">›</span></div>
           <div class="frow"><span class="lb">空座数</span><span class="ctl">3</span></div>
@@ -392,7 +398,7 @@ code{font-family:var(--mono);font-size:11.5px;background:#F3F5F1;border:1px soli
       </div>
       <div class="form-body">
         <div class="card">
-          <div class="card-title"><b>拼车信息</b><span class="opt">必填 5 项</span></div>
+          <div class="card-title"><b>拼车信息</b><span class="opt">必填 3 项</span></div>
           <div class="frow"><span class="lb">路线</span><span class="ctl">回龙观 → 中关村</span><span class="chev">›</span></div>
           <div class="frow"><span class="lb">出发时间</span><span class="ctl">明天 08:00</span><span class="chev">›</span></div>
           <div class="frow"><span class="lb">空座数</span><span class="ctl">3</span></div>
@@ -433,7 +439,7 @@ code{font-family:var(--mono);font-size:11.5px;background:#F3F5F1;border:1px soli
       </div>
       <div class="form-body">
         <div class="card">
-          <div class="card-title"><b>拼车信息</b><span class="opt">必填 5 项</span></div>
+          <div class="card-title"><b>拼车信息</b><span class="opt">必填 3 项</span></div>
           <div class="frow"><span class="lb">路线</span><span class="ctl">回龙观 → 中关村</span><span class="chev">›</span></div>
           <div class="frow"><span class="lb">出发时间</span><span class="ctl">明天 08:00</span><span class="chev">›</span></div>
           <div class="frow"><span class="lb">空座数</span><span class="ctl">3</span></div>
@@ -458,9 +464,9 @@ code{font-family:var(--mono);font-size:11.5px;background:#F3F5F1;border:1px soli
     </div></div>
   </figure>
 
-  <!-- ================= 07 校验 ================= -->
+  <!-- ================= 07 选填留空 ================= -->
   <figure class="frame-wrap">
-    <figcaption class="frame-cap"><span class="idx">07</span><b>必填校验</b><em>品牌 / 车型缺失，颜色车牌可选</em></figcaption>
+    <figcaption class="frame-cap"><span class="idx">07</span><b>四行留空也能发</b><em>车辆信息不拦提交</em></figcaption>
     <div class="phone"><div class="screen">
       <div class="statusbar"><span class="time">8:44</span><span class="sysicons"><i></i><i></i><i></i><u></u></span></div>
       <div class="appbar">
@@ -470,31 +476,26 @@ code{font-family:var(--mono);font-size:11.5px;background:#F3F5F1;border:1px soli
       </div>
       <div class="form-head">
         <span class="cat"><i></i>车辆 · 拼车</span>
-        <span class="sub">发布前拦截，不发请求</span>
+        <span class="sub">只校路线 / 出发时间 / 空座数</span>
       </div>
       <div class="form-body">
-        <div class="banner">
-          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>
-          还有 2 项必填未完成：品牌、车型
-        </div>
         <div class="card">
-          <div class="card-title"><b>拼车信息</b><span class="opt">必填 5 项 · 缺 2</span></div>
+          <div class="card-title"><b>拼车信息</b><span class="opt">必填 3 项 · 已完成</span></div>
           <div class="frow"><span class="lb">路线</span><span class="ctl">回龙观 → 中关村</span><span class="chev">›</span></div>
           <div class="frow"><span class="lb">出发时间</span><span class="ctl">明天 08:00</span><span class="chev">›</span></div>
           <div class="frow"><span class="lb">空座数</span><span class="ctl">3</span></div>
-          <div class="frow bad tap"><span class="lb">品牌</span><span class="ctl"><span class="ph">选择或手填</span></span><span class="chev">›</span></div>
-          <div class="ferr">
-            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>
-            请选择或填写品牌
-          </div>
-          <div class="frow bad tap"><span class="lb">车型</span><span class="ctl"><span class="ph">请选择</span></span><span class="chev">›</span></div>
-          <div class="ferr">
-            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>
-            请选择车型
-          </div>
+          <div class="frow tap"><span class="lb">品牌</span><span class="ctl"><span class="ph">选择或手填</span></span><span class="pill-txt">选填</span></div>
+          <div class="frow tap"><span class="lb">车型</span><span class="ctl"><span class="ph">请选择</span></span><span class="pill-txt">选填</span></div>
           <div class="frow tap"><span class="lb">颜色</span><span class="ctl"><span class="ph">选择或手填</span></span><span class="pill-txt">选填</span></div>
           <div class="frow tap"><span class="lb">车牌</span><span class="ctl"><span class="plate"><span class="pseg ph">省份</span><span class="pseg ph">字母</span><span class="plate-code ph">号码</span></span></span><span class="pill-txt">选填</span></div>
         </div>
+        <div class="problem">
+          <span>i</span>
+          <span>车辆四行全空也 <b>不拦提交</b>，不发任何提示；完整度显示「半完整」，补任意一行即可升「完整」。<b>不校验真伪</b>，品牌/颜色手填值原样存。</span>
+        </div>
+      </div>
+      <div class="submitbar">
+        <div class="btn-pub">发布<span class="cnt">必填已完成</span></div>
       </div>
     </div></div>
   </figure>
@@ -514,12 +515,12 @@ code{font-family:var(--mono);font-size:11.5px;background:#F3F5F1;border:1px soli
       <h3>字段与控件</h3>
       <table class="table">
         <tr><th>键</th><th>控件</th><th>必填</th><th>值口径</th></tr>
-        <tr><td>car_brand</td><td>下拉 + 手填</td><td>是</td><td>常用品牌 60 条；不在表内直接手填，≤12 字</td></tr>
-        <tr><td>car_model</td><td>下拉单选</td><td>是</td><td>车身形式 7 选 1，沿用原键、类型改 select</td></tr>
+        <tr><td>car_brand</td><td>下拉 + 手填</td><td>否</td><td>常用品牌 43 条；不在表内直接手填，≤12 字</td></tr>
+        <tr><td>car_model</td><td>下拉单选</td><td>否</td><td>车身形式 7 选 1，沿用原键、类型改 select</td></tr>
         <tr><td>car_color</td><td>下拉 + 手填</td><td>否</td><td>常用色 5 条 + 手填，≤8 字</td></tr>
         <tr><td>plate_no</td><td>省份下拉 + 字母下拉 + 手填</td><td>否</td><td>拼接成单值（如 <code>皖A12345</code>），5–6 位后段</td></tr>
       </table>
-      <p>与原有 route / depart_time / seats 并列；<code>blocker</code> 仍「非空即已填」，两个选填键留空不扣完整度。</p>
+      <p>与原有 route / depart_time / seats 并列，<b>车辆四行全部选填</b>（2026-10-31 裁定：必填先全放开，后期按需求再定）；<code>blocker</code> 仍「非空即已填」，四项留空只影响完整度标签，不拦提交。</p>
     </div>
     <div class="card2">
       <h3>为什么这么定</h3>
@@ -552,7 +553,7 @@ code{font-family:var(--mono);font-size:11.5px;background:#F3F5F1;border:1px soli
     <div class="card2">
       <h3>数据来源与边界</h3>
       <ul>
-        <li><b>品牌表</b>：前端本地常量（约 60 条：主流 / 豪华 / 自主 / 商用车），改动发版生效，不做服务端下发。</li>
+        <li><b>品牌表</b>：前端本地常量（43 条：主流 / 豪华 / 自主 / 商用车），改动发版生效，不做服务端下发。</li>
         <li><b>颜色表</b>：5 条常用色（白/黑/银/灰/蓝），带色点便于扫读；其余色手填。</li>
         <li><b>车型表</b>：7 条车身形式，直接进模板 <code>options</code>（服务端也是这份）。</li>
         <li><b>不做</b>：品牌联想、拼音搜索、最近使用、品牌→车系联动（本期都不做）。</li>
@@ -599,8 +600,8 @@ code{font-family:var(--mono);font-size:11.5px;background:#F3F5F1;border:1px soli
       <h3>这次要动什么</h3>
       <ul>
         <li><b>发布页渲染</b>：现有 <code>select</code> 的 ChoiceChip 换成本稿的「值行 + 下拉面板」，全部类目统一（301 拼车 / 101 招聘 / 401 闲置 / 501 家政）。</li>
-        <li><b>301 模板</b>：<code>fields</code> 7 项（route / depart_time / seats / car_brand / car_model / car_color / plate_no），必填 5 项。</li>
-        <li><b>迁移</b>：新增 <code>car_brand</code>（text）、<code>car_color</code>（text）、<code>plate_no</code>（text）；<code>car_model</code> 由 text 改 select + 7 个 options；<b>bump <code>template_version</code></b>。</li>
+        <li><b>301 模板</b>：<code>fields</code> 7 项（route / depart_time / seats / car_brand / car_model / car_color / plate_no），必填 3 项（前三个），车辆四行均为选填。</li>
+        <li><b>迁移</b>：新增 <code>car_brand</code>（select，43 个 options）、<code>car_color</code>（select，5 个 options）、<code>plate_no</code>（text）；<code>car_model</code> 由 text 改 select + 7 个 options；四行 <code>required</code> 全部为 false；<b>bump <code>template_version</code></b>。</li>
         <li><b>不改</b>：不新增接口、不改请求体、不动数据库、不新增错误码。</li>
         <li><b>回归</b>：4 个类目的发布表单与相关 widget 测试都要跟着走一遍。</li>
       </ul>
@@ -619,24 +620,24 @@ code{font-family:var(--mono);font-size:11.5px;background:#F3F5F1;border:1px soli
   <div class="section-head">
     <span class="no">REVIEW</span>
     <h2>剩余待定</h2>
-    <p>3 项，均给推荐</p>
+    <p>R-1 已定；R-2 / R-3 待确认</p>
   </div>
   <div class="grid">
     <div class="decision">
       <div class="dno">R-1</div>
-      <h3>车牌号是选填还是必填？</h3>
-      <p class="q">必填能提高可信度，但车牌属个人信息，强制填写会挡掉一部分发布。</p>
-      <div class="opt pick"><span class="k">A</span><div><b>选填（推荐）</b>：不挡发布、不扣完整度，愿意填的人自然填。</div></div>
-      <div class="opt"><span class="k">B</span><div>必填：信息更整齐，但需在文案里说明用途，且可能压低发布完成率。</div></div>
-      <div class="verdict"><b>建议 A</b>：先按选填上线，跑一段看填写率再决定是否提为必填。</div>
+      <h3>车辆四行的必填要不要保留？</h3>
+      <p class="q">原稿把品牌、车型定为必填；2026-10-31 裁定「必填项要求都去掉，后期根据需求再定」。</p>
+      <div class="opt pick"><span class="k">A</span><div><b>四行全选填（已定）</b>：只校路线 / 出发时间 / 空座数，车辆信息留空不拦提交、只影响完整度标签。</div></div>
+      <div class="opt"><span class="k">B</span><div>保留品牌或车型必填：信息更整齐，但会挡掉一部分「先发出去再说」的发布。</div></div>
+      <div class="verdict"><b>已按 A 落地</b>（V29）：后期若填写率过低、数据太散，再单独把品牌提回必填。</div>
     </div>
     <div class="decision">
       <div class="dno">R-2</div>
       <h3>品牌下拉先放多少条？</h3>
-      <p class="q">全量 60 条塞进下拉需要滚动；首屏只放 6 条命中率高但热门品牌可能要多点一次手填。</p>
+      <p class="q">全量 43 条塞进下拉需要滚动；首屏只放 6 条命中率高但热门品牌可能要多点一次手填。</p>
       <div class="opt pick"><span class="k">A</span><div><b>面板内 6 条常用 + 可滚动看全部（推荐）</b>：首屏不挤，需要的人往下滑。</div></div>
       <div class="opt"><span class="k">B</span><div>只放 6 条热门，其余全靠手填：面板最轻，但小众品牌每次都要打字。</div></div>
-      <div class="verdict"><b>建议 A</b>：下拉里能滚到 60 条，手填只是最后的兜底，不是主路径。</div>
+      <div class="verdict"><b>建议 A</b>：下拉里能滚到 43 条，手填只是最后的兜底，不是主路径。</div>
     </div>
     <div class="decision">
       <div class="dno">R-3</div>
