@@ -96,6 +96,9 @@ public class PostEntity {
     /** 发布时计算的脱敏联系方式（[147] DEC-13；详情/联系中转页未拉取态展示用，不参与查询）。 */
     private String contactMask;
 
+    /** 查看联系方式是否需申请：0=否（默认，一键取号）/1=是（先申请后可见，V30 / R19）。 */
+    private Integer contactApplyRequired;
+
     /** 三条件达成态 JSON {required_full, address_precise, leaf_matched}。 */
     private String completenessConditions;
 
@@ -296,6 +299,24 @@ public class PostEntity {
      */
     public void setContactMask(String contactMask) {
         this.contactMask = contactMask;
+    }
+
+    /**
+     * 取「查看联系方式需申请」开关。
+     *
+     * @return {@link Integer} 0=无需申请（一键取号）/1=需申请（先申请后可见）
+     */
+    public Integer getContactApplyRequired() {
+        return contactApplyRequired;
+    }
+
+    /**
+     * 设置「查看联系方式需申请」开关。
+     *
+     * @param contactApplyRequired 0=无需申请 /1=需申请（V30 / R19）
+     */
+    public void setContactApplyRequired(Integer contactApplyRequired) {
+        this.contactApplyRequired = contactApplyRequired;
     }
 
     public String getCompletenessConditions() {

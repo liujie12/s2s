@@ -222,6 +222,27 @@
         </foreach>
     </delete>
     <!--
+      匿名化注销用户的会话消息正文（保留策略 message_body_until_deactivate）。
+
+      EXPLAIN 结论：`message` 的索引 uk_conversation_seq(conversation_id, seq) 与
+      idx_conversation_visible_seq(conversation_id, visible_to, seq) 最左列都不是 sender_id，
+      故 type=ALL、Extra=Using where。取舍同 contact_event 清理：注销是低频事件、
+      单用户消息量有界，全表扫可接受；不为单条低频语句新增 sender_id 索引（只增写放大）。
+
+      置 NULL 而不删行：seq 连续性是已读水位与增量游标的依赖，删行会让对方历史出现
+      空洞；正文才是个人信息本体，置空即完成匿名化。
+    -->
+    <update id="anonymizeMessagesByUserIds">
+        UPDATE message
+        SET content = NULL
+        WHERE sender_id IN
+        <foreach collection="userIds" item="userId" open="(" separator="," close=")">
+            #{userId}
+        </foreach>
+          AND content IS NOT NULL
+    </update>
+
+    <!--
       删除超过保留期的联系事件（保留策略 transit_log_30d，PRD §13.4）。
 
       EXPLAIN 结论：`contact_event` 的两个索引 idx_from_user_created(from_user_id, created_at)

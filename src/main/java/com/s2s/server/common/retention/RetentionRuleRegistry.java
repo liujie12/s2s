@@ -9,21 +9,22 @@ import java.util.stream.Collectors;
  * 数据保留策略注册表（Batch1 R17；《数据库设计文档》§5 + PRD §13.4 + DevSecOps 接入方案 §6）。
  *
  * <p><b>存在理由</b>：《数据库设计文档》§5 明写「每一行都必须在架构 §8 定时任务表里有对应的
- * 执行者，否则保留期只是文档承诺而不是系统行为」（架构 §8 同义）。本类把这 9 条保留策略键
+ * 执行者，否则保留期只是文档承诺而不是系统行为」（架构 §8 同义）。本类把这 11 条保留策略键
  * 从文档搬进代码，使「哪条策略由谁执行」成为可被门禁比对的实体——{@link #keys()} 与
  * PRD §13.4 表格的「保留策略键」列由 {@code RetentionRuleCoverageTest} 断言逐值相等，
  * 任一侧改动而另一侧未跟进即构建失败。</p>
  *
- * <p><b>为什么值不是「Spring bean 名」</b>：9 条策略中只有 4 条的执行者是定时任务
+ * <p><b>为什么值不是「Spring bean 名」</b>：11 条策略中只有 4 条的执行者是定时任务
  * （清理类），另有 4 条的执行者是<b>域内既有代码路径</b>（如 EXIF 剥离在上传链路、
  * 位置不采集在写入前断言）、1 条为「仅状态流转、无清理任务」，还有 2 条属 Batch2。
  * 若把值强制为 bean 名，就得为不存在的东西编造 bean；故值统一为「执行者说明」文本
  * （任务类名 / 域内方法 / Batch2 标注），并允许 {@link #PENDING} 标注未落地项。</p>
  *
- * <p><b>当前 9 条的落地状态</b>（2026-10-23 更新）：</p>
+ * <p><b>当前 11 条的落地状态</b>（2026-10-31 更新）：</p>
  * <ul>
  *   <li>已实现：{@code favorite_deleted_30d}、{@code deactivate_7d}、{@code audit_log_180d}、
- *       {@code transit_log_30d}（联系事件清理任务）；</li>
+ *       {@code transit_log_30d}（联系事件清理任务）、{@code message_body_until_deactivate}
+ *       （随 V30 落地：注销时匿名化正文，列表侧只隐藏不删除）；</li>
  *   <li>非任务型执行者（既有代码路径）：{@code exif_strip}、{@code location_no_collect}、
  *       {@code post_archived_keep}、{@code cert_image_keep}（2026-10-28：取消审核后证照原件改为
  *       随用户删除资质一并删除，原 {@code ocr_image_7d} 定时清理任务已下线）；</li>
@@ -57,6 +58,8 @@ public final class RetentionRuleRegistry {
         RULES.put("location_no_collect", "post 域写入前断言（只存发布点经纬度，不采集轨迹）");
         RULES.put("post_view_detail_30d",
                 "task.PostViewCleanupTask（删 post_view 明细；post_view_daily 永久保留）");
+        RULES.put("message_body_until_deactivate",
+                "task.DeactivateCleanupTask（注销时把正文置空匿名化）+ chat 域查询条件（90 天隐藏不物理删除）");
     }
 
     /**

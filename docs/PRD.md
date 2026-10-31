@@ -2864,6 +2864,7 @@ POC 拆为**算法级（POC-A）与定标级（POC-B）两级**，二者回答�
 | 图片 EXIF | `exif_strip` | 不保留 | 上传后服务端**强制剥离** GPS/设备/拍摄时间 | §9.6 媒体元数据剥离 |
 | 用户位置轨迹 | `location_no_collect` | 不采集 | 只存发布时选择的经纬度点 | §9.6 |
 | 详情浏览明细 `post_view` | `post_view_detail_30d` | **30 天** | 按 `view_day` 分批删除明细；`post_view_daily` 日计数**永久保留**（计数单调不降） | §8.3.1 / §12.3 |
+| 会话消息正文 `message.content` | `message_body_until_deactivate` | 保留至账号注销 | 会话 90 天无往来只从列表隐藏、**不物理删除**（举报取证需要）；账号注销时把正文置空匿名化，保留消息行以维持序号连续性 | §7.4.2 / §9.7 |
 
 - **「保留策略键」列是 CI 门禁的比对键**（Batch1 R17）：`RetentionRuleRegistry` 注册的 key 集合须与本列逐值相等，任一侧改动而另一侧未跟进则 `RetentionRuleCoverageTest` 构建失败。
 

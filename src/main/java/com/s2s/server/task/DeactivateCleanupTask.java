@@ -23,7 +23,7 @@ import org.springframework.stereotype.Component;
  * {@code wechat} 等多行身份，只删 {@code phone} 那一行会让残留身份可登录、注销承诺失效
  * （架构 §8 口径说明第 2 条）。</p>
  *
- * <p><b>四步清理（第 4 步为 2026-09-29 用户裁定）</b>：</p>
+ * <p><b>五步清理（第 4 步为 2026-09-29 用户裁定，第 5 步随 V30 增加）</b>：</p>
  * <ol>
  *   <li>按 {@code user_id} 删除 {@code user_identity} 全部行（含手机号原文密文）；</li>
  *   <li>清空 {@code user} 的实名结果（{@code real_name_enc} / {@code id_card_hash} /
@@ -36,6 +36,9 @@ import org.springframework.stereotype.Component;
  *       的优先级冲突已经用户裁定：注销属个人信息删除义务（PIPL），优先级更高</b>——
  *       帖子只要还在，联系方式就仍可被 {@code /contact} 解密，注销承诺即未履行。
  *       裁定与登记见说明文档 §2.9。</li>
+ *   <li><b>匿名化会话消息正文</b>（V30；保留策略 {@code message_body_until_deactivate}）：
+ *       把该用户发出的 {@code message.content} 置 {@code NULL}，保留消息行以维持
+ *       {@code seq} 连续性与已读水位（整行删除会让对方历史出现空洞）。</li>
  * </ol>
  *
  * <p><b>删除次序</b>：先取帖子 ID → 取媒体登记（登记行是找回 OSS 对象的唯一凭据，
@@ -109,12 +112,16 @@ public class DeactivateCleanupTask {
         }
         int postRows = taskMapper.deletePostsByUserIds(userIds);
 
+        // 第 5 步（V30）：会话消息正文匿名化——保留行以维持 seq 连续性，只清正文
+        int messageRows = taskMapper.anonymizeMessagesByUserIds(userIds);
+
         int identityRows = taskMapper.deleteIdentitiesByUserIds(userIds);
         int userRows = taskMapper.clearUserPersonalData(userIds);
 
         log.info("注销冷静期清理：用户 {} 个，身份行 {} 行，实名与掩码清空 {} 行，"
-                        + "帖子 {} 行，媒体登记 {} 行（OSS 删除失败 {} 行）",
-                userIds.size(), identityRows, userRows, postRows, mediaRows, ossFailureRows);
+                        + "帖子 {} 行，媒体登记 {} 行（OSS 删除失败 {} 行），消息正文匿名化 {} 行",
+                userIds.size(), identityRows, userRows, postRows, mediaRows, ossFailureRows,
+                messageRows);
         if (ossFailureRows > 0) {
             log.warn("注销清理存在 OSS 对象删除失败 {} 行——登记行已随帖子删除，"
                     + "这些对象不再有任何线索可追溯，须人工在桶内核对清理", ossFailureRows);

@@ -28,7 +28,16 @@ public enum ReportReason {
     HARASSMENT("harassment"),
 
     /** 其他。 */
-    OTHER("other");
+    OTHER("other"),
+
+    /**
+     * 敏感词误拦反馈（R28）。
+     *
+     * <p>与其余五项的区别：本值由「消息正文被拒发」的误拦入口写入，不是用户举报
+     * 他人，而是用户反馈审核误判。复用同一张 {@code report} 表与同一处置队列，
+     * 后台按原因筛选即可把误拦反馈单独拉出复核。</p>
+     */
+    MISBLOCK("misblock");
 
     /** 落库值（与 DDL {@code ENUM} 逐字一致）。 */
     private final String dbValue;

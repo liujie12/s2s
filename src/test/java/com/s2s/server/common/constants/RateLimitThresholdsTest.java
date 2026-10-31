@@ -108,6 +108,22 @@ class RateLimitThresholdsTest {
     }
 
     /**
+     * 对账行 8b：每日新会话「30/d」→ 42902（R27 / K3）。
+     * 依据：计划 Product Contract K3「每日主动发起 30 个新会话」，复用看号额度码不新增错误码。
+     *
+     * @return void；断言失败即额度或超限码漂移
+     */
+    @Test
+    void chatNewConversationQuotaMatchesPlanK3() {
+        assertThat(RateLimitThresholds.CHAT_NEW_UID_LIMIT_PER_DAY)
+                .as("K3：每日主动发起 30 个新会话（含申请）").isEqualTo(30);
+        assertThat(RateLimitThresholds.CHAT_NEW_OVERFLOW.getCode())
+                .as("R27：超限复用既有 42902，不新增错误码").isEqualTo(42902);
+        assertThat(RateLimitThresholds.CHAT_NEW_OVERFLOW.isNeedRetryAfter())
+                .as("42902 必带整数秒 Retry-After").isTrue();
+    }
+
+    /**
      * 对账行 9：埋点上报「60 请求/min」→ 42906。
      * 依据：详设 §3.4 第 9 行原文；编码规范 §4.7「埋点：60 请求/min」同口径；
      * 42906 是唯一不向用户呈现的错误码。

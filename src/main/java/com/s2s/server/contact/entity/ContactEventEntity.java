@@ -13,7 +13,8 @@ import java.time.LocalDateTime;
  *
  * <p><b>Scope 红线（数据库设计 §3.8 原文）</b>：本表只记录「联系动作是否发生」，
  * <b>禁止增加 {@code contacted_success}/{@code deal_done} 等成交反馈字段</b>。
- * 本实体刻意只有六列，任何新增列都属 Scope 变更须评审。</p>
+ * 本实体刻意只保留动作事实列；V30 按计划 KTD11 新增 {@code conversation_id}
+ * （会话去重与渠道升级定位用），仍属「动作事实」而非成交反馈，经用户裁定后落地。</p>
  *
  * <p>与 {@code audit_log} 的分工（可观测 §5 的命名陷阱消歧）：同一次「查看联系方式」
  * 产生两条数据——本表服务业务指标（保留 90 天口径的埋点侧另计），
@@ -36,7 +37,10 @@ public class ContactEventEntity {
     /** 被联系发布者 user_id。 */
     private Long toUserId;
 
-    /** 联系方式渠道（phone / wechat）。 */
+    /** 会话 ID（渠道为 {@code conversation}/{@code apply} 时写入；其余渠道为 null，V30 / KTD11）。 */
+    private Long conversationId;
+
+    /** 联系方式渠道（phone / wechat / conversation / apply）。 */
     private String channelType;
 
     /** 联系时刻（库内 DEFAULT CURRENT_TIMESTAMP，服务端不写）。 */
@@ -72,6 +76,24 @@ public class ContactEventEntity {
 
     public void setToUserId(Long toUserId) {
         this.toUserId = toUserId;
+    }
+
+    /**
+     * 取会话 ID。
+     *
+     * @return {@link Long} 会话 ID；非会话/申请渠道为 {@code null}
+     */
+    public Long getConversationId() {
+        return conversationId;
+    }
+
+    /**
+     * 设置会话 ID。
+     *
+     * @param conversationId 会话 ID（会话与申请渠道写入，其余渠道传 {@code null}）
+     */
+    public void setConversationId(Long conversationId) {
+        this.conversationId = conversationId;
     }
 
     public String getChannelType() {

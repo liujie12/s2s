@@ -109,6 +109,15 @@ public final class RateLimitThresholds {
      * 语义，改本常量与 {@code RateLimitTrackTest} 对账断言即可。 */
     public static final int REPORT_UID_LIMIT_PER_DAY = 10;
 
+    // --- 行 8b：每日新会话（账号）30/d → 42902 -------------------------------------
+
+    /** 每日主动发起新会话·账号维度 1 自然日阈值（R27 / K3：含申请，只作脚本兜底）。
+     *
+     * <p>与联系方式额度同量级（{@link #CONTACT_UID_LIMIT_PER_DAY} 同为 30/d）是有意为之：
+     * 收得更紧会把用户推回「先看号再聊」，与本方案的初衷相反。超限复用既有
+     * {@code 42902}，不新增错误码；该接口另带专用文案（KTD4）。</p> */
+    public static final int CHAT_NEW_UID_LIMIT_PER_DAY = 30;
+
     // --- 行 9：埋点上报 60 请求/min → 42906 ----------------------------------------
 
     /** 埋点上报·账号维度 1 分钟窗阈值（请求数/min）。详设 §3.4 第 9 行
@@ -167,6 +176,10 @@ public final class RateLimitThresholds {
 
     /** 举报频次超限码（详设 §3.4 第 8 行）。{@code 42903}，needRetryAfter。 */
     public static final ErrorCode REPORT_OVERFLOW = ErrorCode.CIRCUIT_BROKEN;
+
+    /** 每日新会话超限码（R27：复用既有看号额度码）。{@code 42902}，needRetryAfter；
+     * 接口用专用文案「今日发起会话数已达上限」（KTD4），错误码本身不新增。 */
+    public static final ErrorCode CHAT_NEW_OVERFLOW = ErrorCode.CONTACT_LIMIT;
 
     /** 埋点上报超限码（详设 §3.4 第 9 行）。{@code 42906}，needRetryAfter；
      * 唯一不向用户呈现的错误码（客户端静默退回队列）。 */

@@ -150,6 +150,20 @@ public interface TaskMapper {
     int deletePostsByUserIds(@Param("userIds") List<Long> userIds);
 
     /**
+     * 匿名化注销用户发出的会话消息正文（保留策略 {@code message_body_until_deactivate}；
+     * V30 / 计划 R5 的保留口径）。
+     *
+     * <p><b>为什么置空而不是删行</b>：{@code message.seq} 是会话内的连续序号，
+     * 已读水位与增量游标都依赖它；整行删除会让对方的历史出现空洞、水位倒退，
+     * 而正文才是个人信息本体。故保留行、把 {@code content} 置 {@code NULL}，
+     * 客户端渲染为「该用户已注销」。</p>
+     *
+     * @param userIds 待清理用户 ID（非空）
+     * @return int 实际更新的消息行数
+     */
+    int anonymizeMessagesByUserIds(@Param("userIds") List<Long> userIds);
+
+    /**
      * 删除超过保留期的联系事件（保留策略 {@code transit_log_30d}；2026-10-23 补实现）。
      *
      * @param threshold 保留阈值（{@code created_at} 早于它的行被删）
