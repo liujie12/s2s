@@ -50,6 +50,20 @@ void main() {
     expect(loaded.form.leafCategoryId, 30101);
   });
 
+  test('保存再读取：查看联系方式需申请（R19）不丢失', () async {
+    const form = PublishFormState(
+      leafCategoryId: 40101,
+      contact: '13800138000',
+      contactApplyRequired: true,
+    );
+
+    await store.save(DraftSnapshot.of(form));
+    final loaded = await store.load();
+
+    expect(loaded, isNotNull);
+    expect(loaded!.form.contactApplyRequired, isTrue);
+  });
+
   test('旧草稿缺 route_pair 键 → routePair 为 null，文本键仍保留', () async {
     // 键名与 DraftStore 内部实现一致；这里刻意用字面量钉死，改键时本用例
     // 会失败，提醒同步升级草稿格式而不是静默丢数据。

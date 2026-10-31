@@ -231,6 +231,20 @@ void main() {
       expect(find.text('成功页占位'), findsOneWidget);
     });
 
+    testWidgets('开启「查看联系方式需申请」→ POST 载荷带该键（R19）', (tester) async {
+      await pumpReady(tester, submittable().copyWith(contactApplyRequired: true));
+      await tapSubmit(tester);
+
+      // precheck 的 PostDraft 没有这个键，故只在写接口补上；
+      // 这里钉死「页面开关 → 请求体」这根线，防它断在表单与载荷之间。
+      expect(postRepo.lastCreateDraft?['contact_apply_required'], isTrue);
+      expect(
+        postRepo.lastDraft?.containsKey('contact_apply_required'),
+        isFalse,
+        reason: 'precheck 不应收到写接口专用键',
+      );
+    });
+
     testWidgets('POST 回五码（40901）：复用阻断弹层，不跳完成页',
         (tester) async {
       postRepo.createErrorToThrow = const ApiException(

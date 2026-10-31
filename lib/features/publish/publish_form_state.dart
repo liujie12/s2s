@@ -118,6 +118,7 @@ class PublishFormState {
     this.mediaIds = const <String>[],
     this.certIds = const <int>[],
     this.contact = '',
+    this.contactApplyRequired = false,
     this.agreed = false,
   });
 
@@ -227,6 +228,12 @@ class PublishFormState {
 
   /// 联系方式（§5.4.1 第 8 段）。
   final String contact;
+
+  /// 查看联系方式是否需申请（R19 / R20）。
+  ///
+  /// 默认 `false`：维持既有「一键取号」效率（K7）。为 `true` 时详情页主按钮
+  /// 改为「申请查看联系方式」，中转页不再直接发号；改回 `false` 不收回已同意的人（R23）。
+  final bool contactApplyRequired;
 
   /// 是否勾选发布协议（§5.8「协议未勾选 → 主按钮 Disabled」）。
   final bool agreed;
@@ -362,6 +369,7 @@ class PublishFormState {
     List<String>? mediaIds,
     List<int>? certIds,
     String? contact,
+    bool? contactApplyRequired,
     bool? agreed,
   }) {
     return PublishFormState(
@@ -382,6 +390,8 @@ class PublishFormState {
       mediaIds: mediaIds ?? this.mediaIds,
       certIds: certIds ?? this.certIds,
       contact: contact ?? this.contact,
+      contactApplyRequired:
+          contactApplyRequired ?? this.contactApplyRequired,
       agreed: agreed ?? this.agreed,
     );
   }
@@ -427,6 +437,7 @@ class PublishFormState {
       mediaIds: mediaIds,
       certIds: certIds,
       contact: contact,
+      contactApplyRequired: contactApplyRequired,
       agreed: agreed,
     );
   }
@@ -535,6 +546,8 @@ class PublishFormState {
       mediaIds: mediaIds,
       certIds: certIds,
       contact: contact,
+      // 联系方式策略与分类无关，换分类时保留用户的勾选。
+      contactApplyRequired: contactApplyRequired,
       agreed: agreed,
     );
   }

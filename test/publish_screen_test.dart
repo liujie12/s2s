@@ -120,6 +120,19 @@ void main() {
       expect(find.byType(DropdownButton<int>), findsNothing);
     });
 
+    testWidgets('联系方式段：「查看联系方式需申请」默认关闭且可切换（R19）', (tester) async {
+      await pumpPublish(tester);
+      await scrollTo(tester, '联系方式');
+
+      expect(find.text('查看联系方式需申请'), findsOneWidget);
+      final toggle = find.byType(Switch);
+      expect(tester.widget<Switch>(toggle).value, isFalse, reason: '默认一键取号');
+
+      await tester.tap(toggle);
+      await tester.pump();
+      expect(tester.widget<Switch>(toggle).value, isTrue);
+    });
+
     testWidgets('媒体段显示 0 / 9 计数（§5.4.1 第 6 段）', (tester) async {
       await pumpPublish(tester);
       await scrollTo(tester, '媒体');

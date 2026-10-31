@@ -374,13 +374,21 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
                   'version': widget.args.editVersion,
                   // 资质栏整体替换：编辑态总是上送（空列表 = 取消全部挂载）
                   'cert_ids': _form.certIds,
+                  // 联系方式策略显式上送：改回 false 即恢复一键取号（R23 不收回已同意者）。
+                  'contact_apply_required': _form.contactApplyRequired,
                 },
               );
         } else {
-          // `cert_ids` 只在 `PostCreateRequest` 上：precheck 的载荷 schema 没有这个键，
-          // 故在这里补，不塞进 `postDraftPayload`。
+          // `cert_ids` / `contact_apply_required` 只在 `PostCreateRequest` 上：
+          // precheck 的载荷 schema 没有这两个键，故在这里补，不塞进 `postDraftPayload`。
           final payload = _form.postDraftPayload();
           if (_form.certIds.isNotEmpty) payload['cert_ids'] = _form.certIds;
+          // 只在开启时上送：新建的缺省就是 false（一键取号），不上送可让
+          // POST 载荷与 precheck 完全同源（契约门禁与既有测试都按同源断言）。
+          // 编辑态则总是上送 —— 否则「改回不需要申请」这个关闭动作会被忽略（R23）。
+          if (_form.contactApplyRequired) {
+            payload['contact_apply_required'] = true;
+          }
           await ref.read(postRepositoryProvider).createPost(payload);
         }
       } on ApiException catch (error) {
@@ -769,15 +777,54 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
             index: 8,
             title: '联系方式',
             done: _form.contact.trim().isNotEmpty,
-            child: TextField(
-              controller: _contactCtrl,
-              keyboardType: TextInputType.phone,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              maxLength: 11,
-              decoration: _fieldDecoration(
-                hint: '请输入可联系到你的手机号',
-              ).copyWith(counterText: ''),
-              onChanged: (v) => _updateForm(_form.copyWith(contact: v)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: _contactCtrl,
+                  keyboardType: TextInputType.phone,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  maxLength: 11,
+                  decoration: _fieldDecoration(
+                    hint: '请输入可联系到你的手机号',
+                  ).copyWith(counterText: ''),
+                  onChanged: (v) => _updateForm(_form.copyWith(contact: v)),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                // R19：默认不勾选，维持一键取号；开启后对方需先申请、你同意后才看得到号码。
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '查看联系方式需申请',
+                            style: TextStyle(
+                              fontSize: AppTypeScale.body.size,
+                              color: Color(AppColors.textPrimary),
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '开启后，对方需先申请并得到你同意，才能看到手机号',
+                            style: TextStyle(
+                              fontSize: AppTypeScale.caption.size,
+                              color: Color(AppColors.textSecondary),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Switch.adaptive(
+                      value: _form.contactApplyRequired,
+                      onChanged: (v) => _updateForm(
+                        _form.copyWith(contactApplyRequired: v),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
           // 资质栏（2026-10-29 并入窗口末尾、支持多选）：可选、不阻断，

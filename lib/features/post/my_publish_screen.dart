@@ -278,6 +278,8 @@ class _MyPublishScreenState extends ConsumerState<MyPublishScreen> {
         for (final credential in detail.credentials)
           if (credential.certId != null) credential.certId!,
       ],
+      // 编辑态回显「查看联系方式需申请」（R19），否则保存其他字段会把它悄悄关掉。
+      contactApplyRequired: detail.contactApplyRequired,
       contact: '',
     );
   }
@@ -305,6 +307,8 @@ class _MyPublishScreenState extends ConsumerState<MyPublishScreen> {
       ),
       mediaIds: draft.mediaIds,
       contact: '',
+      // 重发契约（RepostDraft）不含联系方式策略，按默认「一键取号」重建；
+      // 需要申请制的用户需在发布页重新勾选（R19）。
     );
   }
 

@@ -100,6 +100,38 @@ void main() {
     });
   });
 
+  group('查看联系方式需申请（R19）：默认关闭、随表单保留', () {
+    test('默认不勾选：维持一键取号（K7）', () {
+      expect(const PublishFormState().contactApplyRequired, isFalse);
+    });
+
+    test('copyWith 可开启，且后续字段修改不丢失', () {
+      final form = complete().copyWith(contactApplyRequired: true);
+
+      expect(form.contactApplyRequired, isTrue);
+      expect(
+        form.copyWith(title: '改了标题').contactApplyRequired,
+        isTrue,
+        reason: '改标题会把策略悄悄关掉的话，用户看到的开关与提交的值会不一致',
+      );
+    });
+
+    test('换分类保留勾选（策略与分类无关）', () {
+      final form = complete()
+          .copyWith(contactApplyRequired: true)
+          .withCategory(30101);
+
+      expect(form.contactApplyRequired, isTrue);
+    });
+
+    test('不进入 precheck 载荷（postDraft 无此键，写接口单独补）', () {
+      final payload =
+          complete().copyWith(contactApplyRequired: true).postDraftPayload();
+
+      expect(payload.containsKey('contact_apply_required'), isFalse);
+    });
+  });
+
   group('§5.4.1 八段逐项挖空，各自报出自己的 blocker', () {
     test('未选分类 → noCategory', () {
       // 用全新实例而非 copyWith(leafCategoryId: null)：copyWith 的

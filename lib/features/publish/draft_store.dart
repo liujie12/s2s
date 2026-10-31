@@ -103,6 +103,7 @@ Map<String, Object?> _formToJson(PublishFormState form) => <String, Object?>{
   'media_ids': form.mediaIds,
   'cert_ids': form.certIds,
   'contact': form.contact,
+  'contact_apply_required': form.contactApplyRequired,
   'agreed': form.agreed,
 };
 
@@ -156,6 +157,8 @@ PublishFormState _formFromJson(Object? raw) {
     mediaIds: mediaIds,
     certIds: certIds,
     contact: (map['contact'] as String?) ?? '',
+    // 旧草稿没有这个键：退默认「不需要申请」（R19 默认不勾选）。
+    contactApplyRequired: (map['contact_apply_required'] as bool?) ?? false,
     agreed: (map['agreed'] as bool?) ?? false,
     // loadedTemplate 刻意不恢复：见文件头说明，由页面重新拉取。
   );
