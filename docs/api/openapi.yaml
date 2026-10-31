@@ -6182,6 +6182,15 @@ components:
         has_more:
           type: boolean
           description: 是否还有更多（历史方向=更早；增量方向=更新）
+        peer_last_read_seq:
+          type: integer
+          format: int32
+          minimum: 0
+          description: |
+            对方已读水位（R17）。客户端与我发出的最后一条消息的 `seq` 比较：
+            水位覆盖该条即显示「已读」，否则「未读」。水位只增不减，已读不会退回未读；
+            消息页与增量拉取都随本字段下发，客户端不另发请求。
+            新增字段不进 required（旧客户端可忽略）；收到缺失值时按 0 处理。
 
     ConversationReadResult:
       type: object

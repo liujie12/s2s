@@ -121,7 +121,7 @@ public class ChatQueryService {
      * @param beforeSeq      翻历史游标（可空）
      * @param afterSeq       增量游标（可空）
      * @param pageSize       每页条数（可空）
-     * @return {@link MessagePageResponse} 正序消息 + 是否还有更多
+     * @return {@link MessagePageResponse} 正序消息 + 是否还有更多 + 对方已读水位
      * @throws BizException {@code 40001} 两个游标同时传入；{@code 40305} 非成员
      */
     public MessagePageResponse listMessages(Long userId, Long conversationId, Integer beforeSeq,
@@ -130,6 +130,9 @@ public class ChatQueryService {
             throw BizException.of(ErrorCode.PARAM_INVALID);
         }
         requireMember(conversationId, userId);
+
+        // R17 已读回执：对方水位随消息页一并下发，客户端无需再发一次请求
+        Integer peerLastReadSeq = memberMapper.selectPeerLastReadSeq(conversationId, userId);
 
         int limit = clampMessagePageSize(pageSize);
         // 多取一条用于判断 hasMore，避免再发一次 COUNT
@@ -157,7 +160,8 @@ public class ChatQueryService {
             items.add(new MessageItem(message.getId(), message.getSeq(), message.getSenderId(),
                     message.getType(), message.getContent(), toInstant(message.getCreatedAt())));
         }
-        return new MessagePageResponse(items, hasMore);
+        return new MessagePageResponse(items, hasMore,
+                peerLastReadSeq == null ? 0 : peerLastReadSeq);
     }
 
     /**

@@ -154,6 +154,25 @@ class ChatQueryServiceTest {
     }
 
     /**
+     * 已读回执：消息页随页返回对方水位（R17）。
+     *
+     * <p>客户端只读这个字段判断「已读 / 未读」，本用例钉住它不从消息列表里丢。</p>
+     *
+     * @return void；断言失败即客户端拿不到对方已读进度
+     */
+    @Test
+    void listMessagesReturnsPeerLastReadSeq() {
+        when(messageMapper.selectAfter(CONVERSATION_ID, USER_ID, 0, 31))
+                .thenReturn(List.of());
+        when(memberMapper.selectPeerLastReadSeq(CONVERSATION_ID, USER_ID)).thenReturn(6);
+
+        MessagePageResponse response =
+                queryService.listMessages(USER_ID, CONVERSATION_ID, null, 0, 30);
+
+        assertThat(response.peerLastReadSeq()).isEqualTo(6);
+    }
+
+    /**
      * 两个游标同时传入：参数非法，且不触达成员校验之后的查询。
      *
      * @return void；断言失败即语义含糊的请求照常返回

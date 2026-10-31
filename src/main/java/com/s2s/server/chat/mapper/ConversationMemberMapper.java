@@ -30,6 +30,19 @@ public interface ConversationMemberMapper extends BaseMapper<ConversationMemberE
             @Param("userId") Long userId);
 
     /**
+     * 读取会话内「对方」的已读水位（R17 已读回执）。
+     *
+     * <p>会话恒为两名成员，故「除我之外的另一行」就是对方。客户端用它判断
+     * 我发出的最后一条消息是否已被读：{@code 对方水位 >= 该条 seq} 即已读。</p>
+     *
+     * @param conversationId 会话 ID
+     * @param userId         当前用户 ID（排除掉自己那一行）
+     * @return 对方已读水位；会话成员行缺失时 {@code null}
+     */
+    Integer selectPeerLastReadSeq(@Param("conversationId") Long conversationId,
+            @Param("userId") Long userId);
+
+    /**
      * 推进已读水位并复位已推送标记（R10 / KTD7）。
      *
      * <p>水位取 {@code GREATEST(last_read_seq, 入参)}：已读只增不减，重复提交或乱序提交

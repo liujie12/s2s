@@ -201,7 +201,16 @@ class _MessageListScreenState extends ConsumerState<MessageListScreen> {
           if (index == data.items.length + 1) {
             return const ListEndRow();
           }
-          return _ConversationRow(item: data.items[index - 1]);
+          final item = data.items[index - 1];
+          return _ConversationRow(
+            item: item,
+            // 会话详情挂在「消息」分支的子路由上（切 Tab 不丢栈）；
+            // 把列表行作为 extra 带过去，详情页无需再为标题/缩略图补一次请求。
+            onTap: () => context.push(
+              '/messages/${item.conversationId}',
+              extra: item,
+            ),
+          );
         },
       ),
     );
@@ -258,15 +267,20 @@ class _ListSkeleton extends StatelessWidget {
 class _ConversationRow extends StatelessWidget {
   /// 构造会话行。
   ///
-  /// 参数：[item] 会话行数据。
-  const _ConversationRow({required this.item});
+  /// 参数：[item] 会话行数据；[onTap] 进入会话详情。
+  const _ConversationRow({required this.item, required this.onTap});
 
   /// 会话行数据。
   final ConversationDto item;
 
+  /// 进入会话详情。
+  final VoidCallback onTap;
+
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return InkWell(
+      onTap: onTap,
+      child: Container(
       decoration: BoxDecoration(
         color: Color(AppColors.surface),
         border: Border(bottom: BorderSide(color: Color(AppColors.border))),
@@ -336,6 +350,7 @@ class _ConversationRow extends StatelessWidget {
           const SizedBox(width: AppSpacing.sm),
           _PostThumb(url: item.postThumbnailUrl, gone: item.postGone),
         ],
+      ),
       ),
     );
   }

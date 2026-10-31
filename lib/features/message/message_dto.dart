@@ -224,8 +224,13 @@ class ChatMessageDto {
 class MessagePageDto {
   /// 构造分页。
   ///
-  /// 参数：[items] 消息（恒按 seq 正序）；[hasMore] 是否还有更多。
-  const MessagePageDto({required this.items, required this.hasMore});
+  /// 参数：[items] 消息（恒按 seq 正序）；[hasMore] 是否还有更多；
+  ///   [peerLastReadSeq] 对方已读水位（R17 已读回执唯一数据源）。
+  const MessagePageDto({
+    required this.items,
+    required this.hasMore,
+    required this.peerLastReadSeq,
+  });
 
   /// 由信封 data 构造。
   ///
@@ -240,6 +245,8 @@ class MessagePageDto {
           ChatMessageDto.fromJson(item),
       ],
       hasMore: requireBool(map, 'has_more', 'MessagePage'),
+      // 新增字段不进 required（旧客户端可忽略）；旧服务端缺省按 0 处理
+      peerLastReadSeq: optInt(map, 'peer_last_read_seq', 'MessagePage') ?? 0,
     );
   }
 
@@ -248,6 +255,9 @@ class MessagePageDto {
 
   /// 是否还有更多（历史方向=更早；增量方向=更新）。
   final bool hasMore;
+
+  /// 对方已读水位：覆盖我某条消息的 `seq` 即表示该条已读。
+  final int peerLastReadSeq;
 }
 
 /// 发送结果（openapi `MessageSendResult`）。

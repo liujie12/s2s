@@ -25,6 +25,23 @@
     </select>
 
     <!--
+      对方已读水位（R17 已读回执）。
+
+      会话恒为两名成员，`user_id <> #{userId}` 只剩另一行；LIMIT 1 是防御性写法，
+      防止历史脏数据（同会话出现第三条成员行）把结果集放大。
+
+      EXPLAIN 结论：WHERE conversation_id = ? 命中复合主键前缀，type=ref；
+      过滤 user_id 后至多两行，代价可忽略（仅在打开会话时执行一次）。
+    -->
+    <select id="selectPeerLastReadSeq" resultType="java.lang.Integer">
+        SELECT last_read_seq
+        FROM conversation_member
+        WHERE conversation_id = #{conversationId}
+          AND user_id &lt;&gt; #{userId}
+        LIMIT 1
+    </select>
+
+    <!--
       推进已读水位并复位已推送标记（R10 / KTD7）。
 
       GREATEST 保证已读只增不减：重复提交或乱序提交（先点开旧页、再点开新页）都不会把

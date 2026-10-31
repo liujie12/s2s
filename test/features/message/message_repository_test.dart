@@ -166,6 +166,7 @@ void main() {
               },
             ],
             'has_more': false,
+            'peer_last_read_seq': 2,
           }),
         ),
       );
@@ -177,6 +178,7 @@ void main() {
       expect(page.items.last.type, 'contact');
       expect(page.items.last.content, isNull);
       expect(page.hasMore, isFalse);
+      expect(page.peerLastReadSeq, 2);
     });
 
     test('40305 非成员复用「不存在」文案', () async {

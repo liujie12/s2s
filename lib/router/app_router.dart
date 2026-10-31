@@ -28,6 +28,8 @@ import '../features/detail/detail_screen.dart';
 import '../features/discovery/list_screen.dart';
 import '../features/favorite/favorite_screen.dart';
 import '../features/map/map_screen.dart';
+import '../features/message/conversation_screen.dart';
+import '../features/message/message_dto.dart';
 import '../features/message/message_list_screen.dart';
 import '../features/notify/notification_screen.dart';
 import '../features/post/my_publish_screen.dart';
@@ -65,6 +67,9 @@ class AppRoutes {
   static const String home = '/';
   static const String messages = '/messages';
   static const String profile = '/profile';
+
+  /// 会话详情（挂在「消息」分支下，切 Tab 不丢会话栈）。
+  static const String messageDetail = '/messages/:id';
 
   // ── 首页内视图（不占底部 Tab，与地图共享筛选态，见 PRD §10.1）──
   static const String list = '/list';
@@ -171,12 +176,27 @@ final List<RouteBase> _routes = [
           builder: (context, state) => const ListScreen(),
         ),
       ]),
-      // 消息：会话列表（服务号 + 会话行）。会话详情在 U13 以子路由挂在本分支，
+      // 消息：会话列表（服务号 + 会话行）。会话详情作为子路由挂在本分支，
       // 使切 Tab 不丢会话栈（R33 / 计划 U11 测试场景）。
       StatefulShellBranch(routes: [
         GoRoute(
           path: AppRoutes.messages,
           builder: (context, state) => const MessageListScreen(),
+          routes: [
+            GoRoute(
+              // 子路由用相对路径（go_router 约定），对外路径为 [AppRoutes.messageDetail]。
+              path: ':id',
+              builder: (context, state) => ConversationScreen(
+                conversationId:
+                    int.tryParse(state.pathParameters['id'] ?? '') ?? -1,
+                // extra 传 [ConversationDto]（列表行），供标题、头像与取号跳转；
+                // 深链/推送允许为空，此时只缺帖子上下文，消息主链照常可用。
+                peer: state.extra is ConversationDto
+                    ? state.extra! as ConversationDto
+                    : null,
+              ),
+            ),
+          ],
         ),
       ]),
       // 我的：个人中心。
