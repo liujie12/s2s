@@ -43,4 +43,18 @@ public interface ConversationMemberMapper extends BaseMapper<ConversationMemberE
     int markRead(@Param("conversationId") Long conversationId,
             @Param("userId") Long userId,
             @Param("lastReadSeq") int lastReadSeq);
+
+    /**
+     * 抢占「未读期间首条推送」标记（R14 / KTD7）。
+     *
+     * <p>以 {@code pushed_unread = 0} 为条件做原子更新：返回 1 表示本次抢到推送权，
+     * 返回 0 表示该会话在未读期间已经推过（或不是成员）。用库内标记而不是 Redis TTL，
+     * 重启或过期都不会造成重复推送；读会话时 {@link #markRead} 会把它复位。</p>
+     *
+     * @param conversationId 会话 ID
+     * @param userId         接收者 user_id
+     * @return int 受影响行数（1=抢到推送权，0=已推过/非成员）
+     */
+    int markPushed(@Param("conversationId") Long conversationId,
+            @Param("userId") Long userId);
 }

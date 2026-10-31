@@ -63,6 +63,7 @@ class ChatMessageServiceTest {
     private final SensitiveWordChecker sensitiveWordChecker = mock(SensitiveWordChecker.class);
     private final ChatMessageWriter messageWriter =
             new ChatMessageWriter(conversationMapper, messageMapper, contactEventMapper);
+    private final ChatPushService chatPushService = mock(ChatPushService.class);
 
     private ChatMessageService messageService;
 
@@ -72,7 +73,7 @@ class ChatMessageServiceTest {
     @BeforeEach
     void setUp() {
         messageService = new ChatMessageService(chatService, conversationMapper, memberMapper,
-                messageMapper, sensitiveWordChecker, messageWriter);
+                messageMapper, sensitiveWordChecker, messageWriter, chatPushService);
         when(memberMapper.selectMember(CONVERSATION_ID, USER_ID))
                 .thenReturn(new ConversationMemberEntity());
         when(messageMapper.countUnrepliedText(CONVERSATION_ID, USER_ID)).thenReturn(0);
@@ -110,6 +111,8 @@ class ChatMessageServiceTest {
         assertThat(patchCaptor.getValue().getLastMessagePreview()).isEqualTo("你好");
 
         verify(contactEventMapper, never()).insert(any(ContactEventEntity.class));
+        // 推送只发给对方，且不在此处落站内通知（KTD6）
+        verify(chatPushService).notifyNewMessage(OTHER_ID, CONVERSATION_ID);
     }
 
     /**

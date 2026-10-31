@@ -138,4 +138,45 @@ class AdminConfigServiceTest {
         assertThat(response.modelDowngradeEnabled()).isTrue();
         assertThat(response.perfDowngradeEnabled()).isFalse();
     }
+
+    /**
+     * 消息总开关缺行 → 按开启（与发送链路同一判定）。
+     *
+     * @return void；断言失败即后台显示「关闭」而用户实际可发
+     */
+    @Test
+    void messageSwitchDefaultsToOnWhenAbsent() {
+        when(systemConfigService.isOnOrAbsent(AdminConfigKeys.MESSAGE_ENABLED)).thenReturn(true);
+
+        assertThat(service.getMessageSwitch(OperatorRole.ALGO)).isTrue();
+    }
+
+    /**
+     * 关闭消息总开关 → 写入 off 并同事务写审计（R30）。
+     *
+     * @return void；断言失败即运营无法把消息域置为只读
+     */
+    @Test
+    void updateMessageSwitchWritesOffAndAudits() {
+        service.updateMessageSwitch(OperatorRole.SUPER_ADMIN, 9L, false);
+
+        verify(systemConfigService).putValue(eq(AdminConfigKeys.MESSAGE_ENABLED), eq("off"),
+                anyString());
+        verify(auditLogWriter).write(any(AuditEntry.class));
+    }
+
+    /**
+     * 非算法运营/超管改消息总开关 → 40305，且不落库不留痕。
+     *
+     * @return void；断言失败即越权可关闭全站消息
+     */
+    @Test
+    void updateMessageSwitchDeniedForOtherRoles() {
+        assertThatThrownBy(() -> service.updateMessageSwitch(OperatorRole.OPERATOR, 9L, false))
+                .isInstanceOf(BizException.class)
+                .extracting(e -> ((BizException) e).getErrorCode())
+                .isEqualTo(ErrorCode.NO_PERMISSION);
+        verify(systemConfigService, never()).putValue(anyString(), anyString(), anyString());
+        verify(auditLogWriter, never()).write(any());
+    }
 }

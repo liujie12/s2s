@@ -21,13 +21,15 @@ public record SettingsResponse(
     /**
      * 通知开关（openapi {@code SettingsResponse.notify}；PRD §9.3）。
      *
-     * @param enabled     消息通知总开关
+     * @param enabled     通知总开关（设置页文案「接收通知」，V30 / R15 起语义明确为总开关）
      * @param system      系统通知分通道
      * @param interaction 互动通知分通道
      * @param cert        认证通知分通道
+     * @param message     新消息通知开关（V30 / R15）：关闭只停推送，消息照常落库与计入未读
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public record NotifySettings(boolean enabled, boolean system, boolean interaction, boolean cert) {
+    public record NotifySettings(boolean enabled, boolean system, boolean interaction, boolean cert,
+            boolean message) {
     }
 
     /**

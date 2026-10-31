@@ -39,6 +39,7 @@ public class ChatMessageService {
     private final MessageMapper messageMapper;
     private final SensitiveWordChecker sensitiveWordChecker;
     private final ChatMessageWriter messageWriter;
+    private final ChatPushService chatPushService;
 
     /**
      * 构造消息发送服务。
@@ -49,19 +50,22 @@ public class ChatMessageService {
      * @param messageMapper        消息持久层（未回复额度计数）
      * @param sensitiveWordChecker 敏感词检测抽象（命中抛 {@code 40901}）
      * @param messageWriter        消息写入唯一落点（取号、摘要、首条联系事件）
+     * @param chatPushService      新消息推送（未读期间只推首条，只推不落通知）
      */
     public ChatMessageService(ChatService chatService,
             ConversationMapper conversationMapper,
             ConversationMemberMapper memberMapper,
             MessageMapper messageMapper,
             SensitiveWordChecker sensitiveWordChecker,
-            ChatMessageWriter messageWriter) {
+            ChatMessageWriter messageWriter,
+            ChatPushService chatPushService) {
         this.chatService = chatService;
         this.conversationMapper = conversationMapper;
         this.memberMapper = memberMapper;
         this.messageMapper = messageMapper;
         this.sensitiveWordChecker = sensitiveWordChecker;
         this.messageWriter = messageWriter;
+        this.chatPushService = chatPushService;
     }
 
     /**
@@ -95,8 +99,13 @@ public class ChatMessageService {
         MessageEntity message = messageWriter.appendLocked(conversation, userId,
                 MessageType.TEXT, content, null);
 
-        // 推送触发在 U9 接入（接收方未读且未推送过时只推首条，KTD6 / KTD7）；
-        // 本单元只保证消息落库与会话尾部更新，避免在 U9 之前引入半成品推送路径。
+        // 推送只在本会话未读期间推首条（KTD7），且只推不落站内通知（KTD6）；
+        // 配额/通道不可用时静默降级，不影响已落库的消息。
+        Long receiverId = userId.equals(conversation.getInitiatorId())
+                ? conversation.getOwnerId()
+                : conversation.getInitiatorId();
+        chatPushService.notifyNewMessage(receiverId, conversationId);
+
         return new MessageSendResponse(message.getId(), conversationId, message.getSeq(),
                 message.getCreatedAt().toInstant(ZoneOffset.UTC));
     }

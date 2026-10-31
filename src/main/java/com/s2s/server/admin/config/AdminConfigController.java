@@ -3,6 +3,8 @@ package com.s2s.server.admin.config;
 import com.s2s.server.admin.AdminContext;
 import com.s2s.server.admin.dto.MatchConfigResponse;
 import com.s2s.server.admin.dto.MatchConfigUpdateRequest;
+import com.s2s.server.admin.dto.MessageSwitchResponse;
+import com.s2s.server.admin.dto.MessageSwitchUpdateRequest;
 import com.s2s.server.admin.dto.SwitchConfigResponse;
 import com.s2s.server.admin.dto.SwitchConfigUpdateRequest;
 import com.s2s.server.common.audit.OperatorRole;
@@ -82,5 +84,31 @@ public class AdminConfigController {
             @Valid @RequestBody SwitchConfigUpdateRequest request) {
         OperatorRole role = AdminContext.currentRole(http);
         adminConfigService.updateSwitches(role, AdminContext.currentAdminId(http), request);
+    }
+
+    /**
+     * 读取消息功能总开关（{@code GET /admin/message-switch}，V30 / R30）。
+     *
+     * @param http 当前请求（取后台角色）
+     * @return {@link MessageSwitchResponse} 当前状态
+     */
+    @GetMapping("/message-switch")
+    public MessageSwitchResponse getMessageSwitch(HttpServletRequest http) {
+        return new MessageSwitchResponse(
+                adminConfigService.getMessageSwitch(AdminContext.currentRole(http)));
+    }
+
+    /**
+     * 更新消息功能总开关（{@code PUT /admin/message-switch}，V30 / R30）。
+     *
+     * @param http    当前请求（取后台角色/操作人）
+     * @param request 入参（目标状态）
+     */
+    @PutMapping("/message-switch")
+    public void updateMessageSwitch(HttpServletRequest http,
+            @Valid @RequestBody MessageSwitchUpdateRequest request) {
+        OperatorRole role = AdminContext.currentRole(http);
+        adminConfigService.updateMessageSwitch(role, AdminContext.currentAdminId(http),
+                request.enabled());
     }
 }

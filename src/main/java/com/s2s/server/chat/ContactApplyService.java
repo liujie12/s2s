@@ -43,6 +43,7 @@ public class ContactApplyService {
     private final ChatMessageWriter messageWriter;
     private final ContactEventMapper contactEventMapper;
     private final PostService postService;
+    private final ChatPushService chatPushService;
 
     /**
      * 构造申请链路服务。
@@ -53,19 +54,22 @@ public class ContactApplyService {
      * @param messageWriter      消息写入唯一落点（申请卡与联系方式卡）
      * @param contactEventMapper 联系事件持久层（同意时升级渠道）
      * @param postService        帖子域服务（取「需申请」开关，跨域只调 service）
+     * @param chatPushService    新消息推送（申请卡与联系方式卡，未读期间只推首条）
      */
     public ContactApplyService(ChatService chatService,
             ConversationMapper conversationMapper,
             ConversationMemberMapper memberMapper,
             ChatMessageWriter messageWriter,
             ContactEventMapper contactEventMapper,
-            PostService postService) {
+            PostService postService,
+            ChatPushService chatPushService) {
         this.chatService = chatService;
         this.conversationMapper = conversationMapper;
         this.memberMapper = memberMapper;
         this.messageWriter = messageWriter;
         this.contactEventMapper = contactEventMapper;
         this.postService = postService;
+        this.chatPushService = chatPushService;
     }
 
     /**
@@ -119,6 +123,8 @@ public class ContactApplyService {
                 conversation.setApplyStatus(ApplyStatus.PENDING.dbValue());
                 conversation.setApplyAt(now);
                 messageWriter.appendLocked(conversation, userId, MessageType.APPLY, null, null);
+                // 申请卡也是一条消息：推给接收方（未读期间只推首条，KTD7）
+                chatPushService.notifyNewMessage(conversation.getOwnerId(), conversationId);
             }
             default -> throw new IllegalStateException("未覆盖的申请状态: " + status);
         }
@@ -160,6 +166,8 @@ public class ContactApplyService {
             messageWriter.appendLocked(conversation, userId, MessageType.CONTACT, null,
                     conversation.getInitiatorId());
             upgradeContactEventChannel(conversationId);
+            // 联系方式卡仅申请人可见，推送也只发给申请人
+            chatPushService.notifyNewMessage(conversation.getInitiatorId(), conversationId);
         }
         conversation.setApplyStatus(target.dbValue());
         conversation.setApplyDecidedAt(now);

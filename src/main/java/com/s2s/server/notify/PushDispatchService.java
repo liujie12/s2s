@@ -113,6 +113,41 @@ public class PushDispatchService {
     }
 
     /**
+     * 只推送、不写站内通知（V30 / U9；KTD6）。
+     *
+     * <p><b>为什么需要这条独立入口</b>：站内消息的未读由「消息 seq &gt; 已读水位」唯一推导，
+     * 若同时再写一行 {@code notification}，同一条消息会同时进入「会话未读」与「通知未读」，
+     * 与 R8 的单一未读口径冲突。故消息推送复用设备查询、配额与发送器的全部编排，
+     * 只跳过站内写入这一步。</p>
+     *
+     * <p>配额用尽、无发送器、厂商失败都静默返回（消息已落库，站内照常可见），不抛异常。</p>
+     *
+     * @param userId  接收者 user ID
+     * @param message 推送载荷（落点类型由调用方指定）
+     * @return {@link PushDispatchResult} {@code stationNotified} 恒 {@code false}
+     */
+    @Transactional
+    public PushDispatchResult pushOnly(Long userId, PushMessage message) {
+        List<DeviceEntity> targets = loadDispatchableDevices(userId);
+        if (targets.isEmpty()) {
+            return new PushDispatchResult(false, false, 0, 0);
+        }
+        if (!quotaGate.tryConsume(userId, RateLimitKeys.today())) {
+            return new PushDispatchResult(false, false, 0, 0);
+        }
+        int accepted = 0;
+        for (DeviceEntity device : targets) {
+            PushSender sender = senderRegistry
+                    .forPlatform(PushPlatform.fromWire(device.getPushPlatform()))
+                    .orElseThrow();
+            if (sender.send(device.getPushToken(), message)) {
+                accepted++;
+            }
+        }
+        return new PushDispatchResult(false, true, targets.size(), accepted);
+    }
+
+    /**
      * 取该用户「可下发」的设备（有 token + 通道合法 + 该通道已有发送器实现）。
      *
      * <p>通道未知（{@code push_platform} 为空，即老行或未上报）与尚无发送器的设备被过滤掉

@@ -25,13 +25,15 @@ public record SettingsUpdateRequest(
     /**
      * 通知开关补丁（openapi {@code SettingsUpdateRequest.notify}）。
      *
-     * @param enabled     消息通知总开关；{@code null}=不动
+     * @param enabled     通知总开关（「接收通知」）；{@code null}=不动
      * @param system      系统通知分通道；{@code null}=不动
      * @param interaction 互动通知分通道；{@code null}=不动
      * @param cert        认证通知分通道；{@code null}=不动
+     * @param message     新消息通知开关（V30 / R15）；{@code null}=不动
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public record NotifyPatch(Boolean enabled, Boolean system, Boolean interaction, Boolean cert) {
+    public record NotifyPatch(Boolean enabled, Boolean system, Boolean interaction, Boolean cert,
+            Boolean message) {
     }
 
     /**

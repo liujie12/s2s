@@ -222,6 +222,9 @@ public class HuaweiPushSender implements PushSender {
     /**
      * 构造客户端跳转载荷（与站内通知同源字段）。
      *
+     * <p>V30 起追加可选 {@code landingType}：站内消息推送不写通知表（KTD6），
+     * 客户端靠它把点击落到指定会话而不是「按 type 猜」。</p>
+     *
      * @param message 推送载荷
      * @return {@link String} JSON 字符串，如 {@code {"type":"interaction","targetId":123}}
      */
@@ -230,6 +233,9 @@ public class HuaweiPushSender implements PushSender {
         data.put("type", message.type().wire());
         if (message.targetId() != null) {
             data.put("targetId", message.targetId());
+        }
+        if (message.landingType() != null) {
+            data.put("landingType", message.landingType());
         }
         return data.toString();
     }

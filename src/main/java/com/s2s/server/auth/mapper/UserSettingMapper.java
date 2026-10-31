@@ -18,7 +18,8 @@ public interface UserSettingMapper {
      *
      * @param userId 用户 ID
      * @return {@link Map} 含 {@code notify_enabled}/{@code notify_system}/{@code notify_interaction}/
-     *         {@code notify_cert}/{@code personalized_recommend}；无该行时返回 {@code null}（由 service 兜底为默认）
+     *         {@code notify_cert}/{@code notify_message}/{@code personalized_recommend}/
+     *         {@code ai_improve_enabled}；无该行时返回 {@code null}（由 service 兜底为默认）
      */
     Map<String, Object> selectByUserId(@Param("userId") Long userId);
 
@@ -29,10 +30,11 @@ public interface UserSettingMapper {
      * 的 {@code AS new} 别名，避免已废弃的 {@code VALUES()} 写法）。</p>
      *
      * @param userId                用户 ID
-     * @param notifyEnabled         消息通知总开关（true=开）
+     * @param notifyEnabled         通知总开关（「接收通知」，true=开）
      * @param notifySystem          系统通知分通道
      * @param notifyInteraction     互动通知分通道
      * @param notifyCert            认证通知分通道
+     * @param notifyMessage         新消息通知开关（false=不推送，消息照常落库）
      * @param personalizedRecommend 个性化排序开关（false=关闭，列表仅按距离排序）
      * @param aiImproveEnabled      AI 数据用于改进解析开关（false=仅用于当次解析）
      * @return int 受影响行数
@@ -42,6 +44,7 @@ public interface UserSettingMapper {
             @Param("notifySystem") boolean notifySystem,
             @Param("notifyInteraction") boolean notifyInteraction,
             @Param("notifyCert") boolean notifyCert,
+            @Param("notifyMessage") boolean notifyMessage,
             @Param("personalizedRecommend") boolean personalizedRecommend,
             @Param("aiImproveEnabled") boolean aiImproveEnabled);
 }

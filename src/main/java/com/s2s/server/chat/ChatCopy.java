@@ -32,4 +32,10 @@ public final class ChatCopy {
 
     /** 会话不存在或当前用户不是成员时的提示（R32：两者同一响应，不泄露会话存在性）。 */
     public static final String CONVERSATION_NOT_FOUND = "会话不存在或已不可访问";
+
+    /** 新消息推送标题（R14：固定文案，不含正文、联系方式与对方以外的人名）。 */
+    public static final String PUSH_TITLE = "收到一条新消息";
+
+    /** 新消息推送摘要（固定文案；点开落到对应会话，未读会话已隐藏时落到消息列表）。 */
+    public static final String PUSH_SUMMARY = "点击查看会话详情";
 }

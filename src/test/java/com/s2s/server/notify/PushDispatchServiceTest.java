@@ -180,6 +180,53 @@ class PushDispatchServiceTest {
     }
 
     /**
+     * 只推不落通知（V30 / U9；KTD6）：不插入 {@code notification}，但照常下发。
+     *
+     * @return void；断言失败即消息推送会重复计入通知未读
+     */
+    @Test
+    void pushOnlySkipsStationNotification() {
+        PushSender sender = mock(PushSender.class);
+        when(deviceMapper.selectList(any())).thenReturn(List.of(device(1L, "tok-1", "mi")));
+        when(senderRegistry.forPlatform(PushPlatform.MI)).thenReturn(Optional.of(sender));
+        when(quotaGate.tryConsume(eq(USER_ID), any(LocalDate.class))).thenReturn(true);
+        when(sender.send(eq("tok-1"), any(PushMessage.class))).thenReturn(true);
+
+        PushDispatchResult result = dispatchService.pushOnly(USER_ID,
+                new PushMessage(NotifyType.INTERACTION, "收到一条新消息", "点击查看会话详情", 900L,
+                        PushMessage.LANDING_CONVERSATION));
+
+        assertThat(result.stationNotified()).isFalse();
+        assertThat(result.attempted()).isEqualTo(1);
+        assertThat(result.accepted()).isEqualTo(1);
+        verify(notificationMapper, never()).insertNotification(anyLong(), anyString(), anyString(),
+                any(), any(), any(LocalDateTime.class));
+        verify(sender).send(eq("tok-1"), any(PushMessage.class));
+    }
+
+    /**
+     * 只推路径配额用尽：静默返回，不抛异常（消息已落库，站内照常可见）。
+     *
+     * @return void；断言失败即配额耗尽会让发送链路报错
+     */
+    @Test
+    void pushOnlySilentlySkipsWhenQuotaRejected() {
+        PushSender sender = mock(PushSender.class);
+        when(deviceMapper.selectList(any())).thenReturn(List.of(device(1L, "tok-1", "mi")));
+        when(senderRegistry.forPlatform(PushPlatform.MI)).thenReturn(Optional.of(sender));
+        when(quotaGate.tryConsume(eq(USER_ID), any(LocalDate.class))).thenReturn(false);
+
+        PushDispatchResult result = dispatchService.pushOnly(USER_ID,
+                new PushMessage(NotifyType.INTERACTION, "t", "s", 900L,
+                        PushMessage.LANDING_CONVERSATION));
+
+        assertThat(result.stationNotified()).isFalse();
+        assertThat(result.quotaAvailable()).isFalse();
+        assertThat(result.attempted()).isZero();
+        verify(sender, never()).send(anyString(), any(PushMessage.class));
+    }
+
+    /**
      * 构造一台设备行。
      *
      * @param id           设备 ID

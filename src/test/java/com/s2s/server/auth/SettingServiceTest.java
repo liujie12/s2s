@@ -90,6 +90,7 @@ class SettingServiceTest {
         assertThat(response.notifySettings().system()).isTrue();
         assertThat(response.notifySettings().interaction()).isTrue();
         assertThat(response.notifySettings().cert()).isTrue();
+        assertThat(response.notifySettings().message()).isTrue();
         assertThat(response.defaultRadius()).isEqualTo("3");
         assertThat(response.privacy().contactDisplay()).isEqualTo("transit_only");
         assertThat(response.privacy().personalizedRecommend()).isTrue();
@@ -105,13 +106,69 @@ class SettingServiceTest {
     @DisplayName("读取：已有行按值回读（TINYINT 0 → false）")
     void getReflectsExistingRow() {
         when(userMapper.selectById(USER_ID)).thenReturn(user("5"));
-        when(userSettingMapper.selectByUserId(USER_ID)).thenReturn(settingRow(0, 1, 1, 0));
+        when(userSettingMapper.selectByUserId(USER_ID)).thenReturn(settingRow(0, 1, 1, 0, 1));
 
         SettingsResponse response = service.get(USER_ID);
 
         assertThat(response.notifySettings().enabled()).isFalse();
         assertThat(response.notifySettings().cert()).isFalse();
         assertThat(response.notifySettings().system()).isTrue();
+        assertThat(response.notifySettings().message()).isTrue();
+    }
+
+    /**
+     * 「消息通知」关闭后按 0 回读（R15：只停推送，不影响消息落库）。
+     *
+     * @return void；断言失败即用户无法单独关闭消息推送
+     */
+    @Test
+    @DisplayName("读取：消息通知关闭 → message=false，其余通道不受影响")
+    void getReflectsMessageNotifyOff() {
+        when(userMapper.selectById(USER_ID)).thenReturn(user("5"));
+        when(userSettingMapper.selectByUserId(USER_ID)).thenReturn(settingRow(1, 1, 1, 1, 0));
+
+        SettingsResponse response = service.get(USER_ID);
+
+        assertThat(response.notifySettings().message()).isFalse();
+        assertThat(response.notifySettings().enabled()).isTrue();
+        verify(userSettingMapper, never()).upsert(any(), anyBoolean(), anyBoolean(),
+                anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean());
+    }
+
+    /**
+     * 只改「消息通知」→ upsert 合并，其余开关与总开关不动。
+     *
+     * @return void；断言失败即关闭消息推送会顺带改掉其他通道
+     */
+    @Test
+    @DisplayName("更新：只关消息通知 → upsert 写入 0，其余保持")
+    void updateMessageNotifyOnly() {
+        when(userMapper.selectById(USER_ID)).thenReturn(user("3"));
+        when(userSettingMapper.selectByUserId(USER_ID)).thenReturn(settingRow(1, 1, 1, 1, 1));
+
+        SettingsResponse response = service.update(USER_ID,
+                new SettingsUpdateRequest(
+                        new SettingsUpdateRequest.NotifyPatch(null, null, null, null, false),
+                        null, null));
+
+        assertThat(response.notifySettings().message()).isFalse();
+        assertThat(response.notifySettings().enabled()).isTrue();
+        verify(userSettingMapper).upsert(USER_ID, true, true, true, true, false, true, true);
+    }
+
+    /**
+     * 推送链路判定：缺行按开启；行内关闭返回 {@code false}。
+     *
+     * @return void；断言失败即关闭「消息通知」后仍会推送
+     */
+    @Test
+    @DisplayName("推送判定：缺行开启、行内 0 关闭")
+    void isMessageNotifyEnabledFollowsRow() {
+        when(userSettingMapper.selectByUserId(USER_ID)).thenReturn(null);
+        assertThat(service.isMessageNotifyEnabled(USER_ID)).isTrue();
+
+        when(userSettingMapper.selectByUserId(USER_ID)).thenReturn(settingRow(1, 1, 1, 1, 0));
+        assertThat(service.isMessageNotifyEnabled(USER_ID)).isFalse();
     }
 
     /**
@@ -131,7 +188,7 @@ class SettingServiceTest {
         assertThat(response.defaultRadius()).isEqualTo("10");
         verify(userMapper).updateById(any(UserEntity.class));
         verify(userSettingMapper, never()).upsert(any(), anyBoolean(), anyBoolean(),
-                anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean());
+                anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean());
     }
 
     /**
@@ -143,15 +200,16 @@ class SettingServiceTest {
     @DisplayName("更新：只改通知 → upsert 合并值，不写 user")
     void updateNotifyOnlyMergesWithExisting() {
         when(userMapper.selectById(USER_ID)).thenReturn(user("3"));
-        when(userSettingMapper.selectByUserId(USER_ID)).thenReturn(settingRow(1, 1, 1, 1));
+        when(userSettingMapper.selectByUserId(USER_ID)).thenReturn(settingRow(1, 1, 1, 1, 1));
 
         SettingsResponse response = service.update(USER_ID,
-                new SettingsUpdateRequest(new SettingsUpdateRequest.NotifyPatch(false, null, null, null),
+                new SettingsUpdateRequest(
+                        new SettingsUpdateRequest.NotifyPatch(false, null, null, null, null),
                         null, null));
 
         assertThat(response.notifySettings().enabled()).isFalse();
         assertThat(response.notifySettings().system()).isTrue();
-        verify(userSettingMapper).upsert(USER_ID, false, true, true, true, true, true);
+        verify(userSettingMapper).upsert(USER_ID, false, true, true, true, true, true, true);
         verify(userMapper, never()).updateById(any(UserEntity.class));
     }
 
@@ -164,7 +222,7 @@ class SettingServiceTest {
     @DisplayName("更新：关闭个性化排序 → upsert 写入 0，其余保持")
     void updatePersonalizedOnly() {
         when(userMapper.selectById(USER_ID)).thenReturn(user("3"));
-        when(userSettingMapper.selectByUserId(USER_ID)).thenReturn(settingRow(1, 1, 1, 1));
+        when(userSettingMapper.selectByUserId(USER_ID)).thenReturn(settingRow(1, 1, 1, 1, 1));
 
         SettingsResponse response = service.update(USER_ID,
                 new SettingsUpdateRequest(null, null,
@@ -173,7 +231,7 @@ class SettingServiceTest {
         assertThat(response.privacy().personalizedRecommend()).isFalse();
         assertThat(response.notifySettings().enabled()).isTrue();
         assertThat(response.defaultRadius()).isEqualTo("3");
-        verify(userSettingMapper).upsert(USER_ID, true, true, true, true, false, true);
+        verify(userSettingMapper).upsert(USER_ID, true, true, true, true, true, false, true);
         verify(userMapper, never()).updateById(any(UserEntity.class));
     }
 
@@ -186,7 +244,7 @@ class SettingServiceTest {
     @DisplayName("更新：关闭 AI 数据用于改进 → upsert 写入 0，其余保持")
     void updateAiImproveOnly() {
         when(userMapper.selectById(USER_ID)).thenReturn(user("3"));
-        when(userSettingMapper.selectByUserId(USER_ID)).thenReturn(settingRow(1, 1, 1, 1));
+        when(userSettingMapper.selectByUserId(USER_ID)).thenReturn(settingRow(1, 1, 1, 1, 1));
 
         SettingsResponse response = service.update(USER_ID,
                 new SettingsUpdateRequest(null, null,
@@ -195,7 +253,7 @@ class SettingServiceTest {
         assertThat(response.privacy().aiImprove()).isFalse();
         assertThat(response.privacy().personalizedRecommend()).isTrue();
         assertThat(response.defaultRadius()).isEqualTo("3");
-        verify(userSettingMapper).upsert(USER_ID, true, true, true, true, true, false);
+        verify(userSettingMapper).upsert(USER_ID, true, true, true, true, true, true, false);
         verify(userMapper, never()).updateById(any(UserEntity.class));
     }
 
@@ -217,7 +275,7 @@ class SettingServiceTest {
                         .isSameAs(ErrorCode.PARAM_INVALID));
         verify(userMapper, never()).updateById(any(UserEntity.class));
         verify(userSettingMapper, never()).upsert(any(), anyBoolean(), anyBoolean(),
-                anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean());
+                anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean());
     }
 
     /**
@@ -229,7 +287,7 @@ class SettingServiceTest {
     @DisplayName("响应 JSON 键名与契约逐字一致")
     void responseJsonKeysMatchContract() throws Exception {
         SettingsResponse response = new SettingsResponse(
-                new SettingsResponse.NotifySettings(true, true, false, true),
+                new SettingsResponse.NotifySettings(true, true, false, true, true),
                 "5",
                 new SettingsResponse.PrivacySettings("transit_only", true, true));
 
@@ -237,7 +295,7 @@ class SettingServiceTest {
 
         assertThat(fieldNamesOf(root)).containsExactlyInAnyOrder("notify", "default_radius", "privacy");
         assertThat(fieldNamesOf(root.get("notify")))
-                .containsExactlyInAnyOrder("enabled", "system", "interaction", "cert");
+                .containsExactlyInAnyOrder("enabled", "system", "interaction", "cert", "message");
         assertThat(fieldNamesOf(root.get("privacy")))
                 .containsExactlyInAnyOrder("contact_display", "personalized_recommend", "ai_improve");
     }
@@ -274,14 +332,17 @@ class SettingServiceTest {
      * @param system      系统通道（0/1）
      * @param interaction 互动通道（0/1）
      * @param cert        认证通道（0/1）
+     * @param message     消息通知（0/1）
      * @return {@link Map} 列名 → 值
      */
-    private static Map<String, Object> settingRow(int enabled, int system, int interaction, int cert) {
+    private static Map<String, Object> settingRow(int enabled, int system, int interaction, int cert,
+            int message) {
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("notify_enabled", enabled);
         row.put("notify_system", system);
         row.put("notify_interaction", interaction);
         row.put("notify_cert", cert);
+        row.put("notify_message", message);
         row.put("personalized_recommend", 1);
         return row;
     }

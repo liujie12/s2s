@@ -15,8 +15,8 @@ import org.springframework.stereotype.Service;
  * 设置域服务（[B2-11]；openapi {@code GET/PATCH /settings}；PRD §13/§9.3）。
  *
  * <p>归 auth 域：设置是「登录用户偏好」，与 {@code /users/me} 同源（{@code default_radius} 同列、
- * 同域 {@link UserMapper}）。通知开关落 {@code user_setting} 表（V6 迁移，2026-10-11 DEC-33），
- * 缺行即全默认（四项全开）。</p>
+ * 同域 {@link UserMapper}）。通知开关落 {@code user_setting} 表（V6 迁移，2026-10-11 DEC-33；
+ * V30 起新增独立的「消息通知」列），缺行即全默认（五项全开）。</p>
  *
  * <p><b>口径</b>：{@code PATCH} 为局部更新，仅提交字段生效；隐私项只读、提交即忽略；
  * {@code default_radius} 必须落在 {@code RadiusEnum} 内，否则 {@code 40001}。写动作只在确有变更时发生
@@ -64,6 +64,7 @@ public class SettingService {
                         ? true : isTrue(row.get("notify_interaction")),
                 row == null || row.get("notify_cert") == null
                         ? true : isTrue(row.get("notify_cert")),
+                messageNotifyOf(row),
                 personalizedOf(row),
                 aiImproveOf(row));
     }
@@ -85,6 +86,7 @@ public class SettingService {
         boolean interaction = row == null || row.get("notify_interaction") == null
                 ? true : isTrue(row.get("notify_interaction"));
         boolean cert = row == null || row.get("notify_cert") == null ? true : isTrue(row.get("notify_cert"));
+        boolean message = messageNotifyOf(row);
         boolean personalized = personalizedOf(row);
         boolean aiImprove = aiImproveOf(row);
         String radius = user.getDefaultRadius();
@@ -117,6 +119,10 @@ public class SettingService {
                     cert = patch.cert();
                     touched = true;
                 }
+                if (patch.message() != null) {
+                    message = patch.message();
+                    touched = true;
+                }
             }
             SettingsUpdateRequest.PrivacyPatch privacyPatch = request.privacyPatch();
             if (privacyPatch != null) {
@@ -132,10 +138,11 @@ public class SettingService {
         }
 
         if (touched) {
-            userSettingMapper.upsert(userId, enabled, system, interaction, cert, personalized,
-                    aiImprove);
+            userSettingMapper.upsert(userId, enabled, system, interaction, cert, message,
+                    personalized, aiImprove);
         }
-        return build(radius, enabled, system, interaction, cert, personalized, aiImprove);
+        return build(radius, enabled, system, interaction, cert, message, personalized,
+                aiImprove);
     }
 
     /**
@@ -159,21 +166,48 @@ public class SettingService {
      * 组装设置响应（{@code contactDisplay} 为固定只读值）。
      *
      * @param radius       默认检索半径档位
-     * @param enabled      通知总开关
+     * @param enabled      通知总开关（「接收通知」）
      * @param system       系统通知分通道
      * @param interaction  互动通知分通道
      * @param cert         认证通知分通道
+     * @param message      新消息通知开关（只停推送，不影响落库与未读）
      * @param personalized 个性化排序开关
      * @param aiImprove    AI 数据用于改进解析开关
      * @return {@link SettingsResponse}
      */
     private SettingsResponse build(String radius, boolean enabled, boolean system, boolean interaction,
-            boolean cert, boolean personalized, boolean aiImprove) {
+            boolean cert, boolean message, boolean personalized, boolean aiImprove) {
         return new SettingsResponse(
-                new SettingsResponse.NotifySettings(enabled, system, interaction, cert),
+                new SettingsResponse.NotifySettings(enabled, system, interaction, cert, message),
                 radius,
                 new SettingsResponse.PrivacySettings(CONTACT_DISPLAY_TRANSIT_ONLY, personalized,
                         aiImprove));
+    }
+
+    /**
+     * 判断某用户是否接收新消息推送（供 chat 域推送链路判定，R15 / KTD6）。
+     *
+     * <p>只影响推送：关闭后消息照常落库、照常计入未读。缺设置行按开启——一次漏行
+     * 不应该让用户静默收不到消息提醒。</p>
+     *
+     * @param userId 接收者 user_id（调用方保证非 null）
+     * @return boolean {@code false} 表示用户已关闭「消息通知」，不推送
+     */
+    public boolean isMessageNotifyEnabled(Long userId) {
+        return messageNotifyOf(userSettingMapper.selectByUserId(userId));
+    }
+
+    /**
+     * 从设置行读「消息通知」开关（缺行/缺列一律默认开启）。
+     *
+     * @param row {@code user_setting} 行（可空）
+     * @return boolean true＝接收新消息推送
+     */
+    private static boolean messageNotifyOf(Map<String, Object> row) {
+        if (row == null || row.get("notify_message") == null) {
+            return true;
+        }
+        return isTrue(row.get("notify_message"));
     }
 
     /**

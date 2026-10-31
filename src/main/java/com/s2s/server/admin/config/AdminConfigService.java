@@ -38,6 +38,9 @@ public class AdminConfigService {
     /** 审计动作：降级开关变更。 */
     static final String ACTION_SWITCH_CONFIG = "switch.config.update";
 
+    /** 审计动作：消息功能总开关变更（V30 / U8 / R30）。 */
+    static final String ACTION_MESSAGE_SWITCH = "message.switch.update";
+
     /** 审计目标类型：系统配置（无自然 ID，target_id 用 0 哨兵）。 */
     static final String TARGET_SYSTEM_CONFIG = "system_config";
 
@@ -149,6 +152,41 @@ public class AdminConfigService {
                 String.format(Locale.ROOT, "{\"modelDowngrade\":%s,\"perfDowngrade\":%s}",
                         req.modelDowngradeEnabled(), req.perfDowngradeEnabled()),
                 null));
+    }
+
+    /**
+     * 读取消息功能总开关（V30 / U8；R30）。
+     *
+     * <p>缺行按开启（与发送链路的判定同源 {@code isOnOrAbsent}）：后台看到的状态
+     * 必须与用户实际遇到的行为一致。</p>
+     *
+     * @param callerRole 调用者角色
+     * @return boolean {@code true}=可用
+     * @throws BizException 非算法运营/超管 → 40305
+     */
+    public boolean getMessageSwitch(OperatorRole callerRole) {
+        requireAlgoOrSuper(callerRole);
+        return systemConfigService.isOnOrAbsent(AdminConfigKeys.MESSAGE_ENABLED);
+    }
+
+    /**
+     * 更新消息功能总开关（同事务写审计）。
+     *
+     * <p>关闭后发送链路立即拒绝新写入，读取路径不受影响（R30：不做静默下线）。</p>
+     *
+     * @param callerRole 调用者角色
+     * @param adminId    操作人 ID（审计）
+     * @param enabled    目标状态
+     * @throws BizException 非算法运营/超管 → 40305
+     */
+    @Transactional
+    public void updateMessageSwitch(OperatorRole callerRole, Long adminId, boolean enabled) {
+        requireAlgoOrSuper(callerRole);
+        write(AdminConfigKeys.MESSAGE_ENABLED, onOff(enabled));
+
+        auditLogWriter.write(new AuditEntry(adminId, callerRole, ACTION_MESSAGE_SWITCH,
+                TARGET_SYSTEM_CONFIG, NO_TARGET_ID, null,
+                String.format(Locale.ROOT, "{\"messageEnabled\":%s}", enabled), null));
     }
 
     /**

@@ -42,4 +42,20 @@
           AND user_id = #{userId}
     </update>
 
+    <!--
+      抢占未读期间首条推送标记（R14 / KTD7）。
+
+      条件 update 是原子操作：并发两条新消息只有一个能把 pushed_unread 从 0 改成 1，
+      避免同一会话在未读期间推两条。读会话时 markRead 复位该列，下一轮未读可再推。
+
+      EXPLAIN 结论：UPDATE 按复合主键等值命中，锁单行。
+    -->
+    <update id="markPushed">
+        UPDATE conversation_member
+        SET pushed_unread = 1
+        WHERE conversation_id = #{conversationId}
+          AND user_id = #{userId}
+          AND pushed_unread = 0
+    </update>
+
 </mapper>
