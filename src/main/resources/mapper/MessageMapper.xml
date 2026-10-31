@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.s2s.server.chat.mapper.MessageMapper">
+
+    <!--
+      未回复额度计数（R26）：对方最后一条文本之后、我方发出的文本条数。
+
+      EXPLAIN 结论：外层与子查询都带 conversation_id 等值条件，命中
+      idx_conversation_visible_seq(conversation_id, visible_to, seq) 的最左前缀；
+      type='text' 与 sender_id 不在该索引中，作为回表过滤（Extra=Using where）。
+      单会话消息量为百级，回表规模即会话内行数，可接受；不为它单开索引
+      （与 U4 的分页索引高度重叠，只增写放大）。
+
+      为什么只数 type = 'text'：申请卡与联系方式卡不计入未回复额度（R26 原文），
+      若把卡片算进去，一次「申请 + 同意」就会占掉三条额度中的两条。
+
+      COALESCE(..., 0)：对方从未发过文本时以 0 为下界，我方全部文本计入。
+    -->
+    <select id="countUnrepliedText" resultType="int">
+        SELECT COUNT(*)
+        FROM message
+        WHERE conversation_id = #{conversationId}
+          AND type = 'text'
+          AND sender_id = #{senderId}
+          AND seq > COALESCE((
+              SELECT MAX(seq)
+              FROM message
+              WHERE conversation_id = #{conversationId}
+                AND type = 'text'
+                AND sender_id &lt;&gt; #{senderId}
+          ), 0)
+    </select>
+
+</mapper>

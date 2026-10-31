@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.s2s.server.chat.mapper.ConversationMemberMapper">
+
+    <!--
+      成员行读取（成员校验与已读水位，KTD1）。
+
+      EXPLAIN 结论：WHERE conversation_id = ? AND user_id = ? 命中复合主键 PRIMARY，
+      type=const，Extra 为空（覆盖索引回表一次即出整行）。
+
+      为什么不用 BaseMapper：复合主键只标了 conversation_id，selectById 只能按半键查，
+      会取到另一位成员的行。
+    -->
+    <select id="selectMember" resultType="com.s2s.server.chat.entity.ConversationMemberEntity">
+        SELECT conversation_id,
+               user_id,
+               last_read_seq,
+               pushed_unread,
+               created_at,
+               updated_at
+        FROM conversation_member
+        WHERE conversation_id = #{conversationId}
+          AND user_id = #{userId}
+    </select>
+
+</mapper>

@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.s2s.server.chat.mapper.ConversationMapper">
+
+    <!--
+      会话行加锁读（发送消息时串行取号，KTD3）。
+
+      EXPLAIN 结论：WHERE id = ? 命中 PRIMARY，type=const，Extra 为空（无 filesort、无临时表）；
+      FOR UPDATE 只锁该行（主键等值），不产生间隙锁扩散——并发发送同一会话时才排队，
+      不同会话互不阻塞。
+
+      列集合纪律：显式列白名单，禁 SELECT *（与 NotificationMapper 同口径）。
+    -->
+    <select id="selectByIdForUpdate" resultType="com.s2s.server.chat.entity.ConversationEntity">
+        SELECT id,
+               post_id,
+               initiator_id,
+               owner_id,
+               last_seq,
+               last_message_at,
+               last_message_type,
+               last_message_preview,
+               apply_status,
+               apply_at,
+               apply_decided_at,
+               created_at,
+               updated_at
+        FROM conversation
+        WHERE id = #{id}
+        FOR UPDATE
+    </select>
+
+</mapper>
