@@ -251,7 +251,6 @@ const Map<int, PublishTemplate> _templatesBySecondLevel = {
         key: kCarBrandFieldKey,
         label: '品牌',
         type: TemplateFieldType.select,
-        required: true,
         placeholder: '选择或手填',
         options: kCarBrandOptions,
         maxLength: NfrPublishCarLimits.brandMaxLength,
@@ -260,7 +259,6 @@ const Map<int, PublishTemplate> _templatesBySecondLevel = {
         key: kCarModelFieldKey,
         label: '车型',
         type: TemplateFieldType.select,
-        required: true,
         options: kCarModelOptions,
       ),
       TemplateFieldSpec(
