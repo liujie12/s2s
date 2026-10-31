@@ -46,6 +46,22 @@ public class SystemConfigService {
     }
 
     /**
+     * 读取布尔开关配置，<b>缺行按开启</b>。
+     *
+     * <p>与 {@link #isOn(String)} 的差别只在缺行口径：本方法用于「关掉会打断主流程」的
+     * 功能开关（如消息总开关 {@code message_enabled}——缺行时若按关闭处理，一次配置漏种
+     * 就会把聊天整体变为只读）。显式写 {@code off} 才关闭。</p>
+     *
+     * @param configKey 配置键
+     * @return boolean；配置行缺失时为 {@code true}，值为 {@code on}（忽略大小写）为
+     *         {@code true}，显式 {@code off} 或其他值为 {@code false}
+     */
+    public boolean isOnOrAbsent(String configKey) {
+        String value = getValue(configKey);
+        return value == null || VALUE_ON.equalsIgnoreCase(value);
+    }
+
+    /**
      * 读取配置值原文。
      *
      * @param configKey 配置键

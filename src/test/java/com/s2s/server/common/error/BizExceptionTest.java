@@ -89,4 +89,46 @@ class BizExceptionTest {
         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.CONTACT_LIMIT);
         assertThat(exception.getRetryAfterSeconds()).isEqualTo(42L);
     }
+
+    /**
+     * 未给覆盖文案时，异常 message 逐字取错误码全局文案（KTD4 的默认行为不变）。
+     *
+     * @return void；断言失败即普通异常文案被意外改写
+     */
+    @Test
+    void messageDefaultsToErrorCodeCopy() {
+        BizException exception = BizException.of(ErrorCode.NO_PERMISSION);
+
+        assertThat(exception.getMessage()).isEqualTo(ErrorCode.NO_PERMISSION.getMessage());
+        assertThat(exception.getMessageOverride()).isNull();
+    }
+
+    /**
+     * 给覆盖文案时，异常 message 为专用文案（KTD4：三处接口专用提示）。
+     *
+     * @return void；断言失败即接口专用文案不生效，用户看到错位提示
+     */
+    @Test
+    void messageOverrideReplacesErrorCodeCopy() {
+        BizException exception = BizException.of(ErrorCode.NO_PERMISSION, "消息功能维护中，请稍后再试");
+
+        assertThat(exception.getMessage()).isEqualTo("消息功能维护中，请稍后再试");
+        assertThat(exception.getMessageOverride()).isEqualTo("消息功能维护中，请稍后再试");
+    }
+
+    /**
+     * 带秒工厂同样支持覆盖文案，且构造期守卫仍先于文案生效。
+     *
+     * @return void；断言失败即额度提示丢失秒数或守卫被绕过
+     */
+    @Test
+    void ofRetryAfterSupportsMessageOverrideWithSameGuards() {
+        BizException exception = BizException.ofRetryAfter(ErrorCode.CONTACT_LIMIT, 60, "今日发起会话数已达上限");
+
+        assertThat(exception.getRetryAfterSeconds()).isEqualTo(60L);
+        assertThat(exception.getMessage()).isEqualTo("今日发起会话数已达上限");
+        assertThatThrownBy(() ->
+                BizException.ofRetryAfter(ErrorCode.NO_PERMISSION, 60, "x"))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
 }

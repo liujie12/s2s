@@ -13,17 +13,20 @@ public class BizException extends RuntimeException {
 
     private final ErrorCode errorCode;
     private final Long retryAfterSeconds;
+    private final String messageOverride;
 
     /**
      * 私有构造：强制经工厂方法创建，保证「带秒数」是显式选择而非随手可填。
      *
-     * @param errorCode         业务错误码，异常 message 逐字取其 message（父类 {@link RuntimeException#getMessage()}）
+     * @param errorCode         业务错误码，未给覆盖文案时异常 message 逐字取其 message
      * @param retryAfterSeconds 剩余秒数（可空）；非空时由 handler 写入整数秒 {@code Retry-After} 响应头
+     * @param messageOverride   接口专用文案（可空）；非空时覆盖错误码的全局文案（KTD4）
      */
-    private BizException(ErrorCode errorCode, Long retryAfterSeconds) {
-        super(errorCode.getMessage());
+    private BizException(ErrorCode errorCode, Long retryAfterSeconds, String messageOverride) {
+        super(messageOverride == null ? errorCode.getMessage() : messageOverride);
         this.errorCode = errorCode;
         this.retryAfterSeconds = retryAfterSeconds;
+        this.messageOverride = messageOverride;
     }
 
     /**
@@ -44,7 +47,27 @@ public class BizException extends RuntimeException {
             throw new IllegalArgumentException(
                     "needRetryAfter 码须经 ofRetryAfter 创建（编码规范 §3.2），收到: " + errorCode.getCode());
         }
-        return new BizException(errorCode, null);
+        return new BizException(errorCode, null, null);
+    }
+
+    /**
+     * 工厂：创建带接口专用文案的业务异常（KTD4；适用于 {@code needRetryAfter=false} 的码）。
+     *
+     * <p><b>只允许三处使用</b>：会话维护只读、需申请帖的取号闸门（均为 {@code 40305}）。
+     * 其余场景一律用 {@link #of(ErrorCode)}——错误码的全局文案是契约的一部分，
+     * 任意覆盖会让同一个码在不同接口说法不一。</p>
+     *
+     * @param errorCode 业务错误码（须为 {@code needRetryAfter=false}）
+     * @param message   接口专用文案（非空；覆盖错误码的全局文案）
+     * @return 携带该码与专用文案的 {@link BizException} 实例
+     * @throws IllegalArgumentException errorCode 为 needRetryAfter 码时抛出
+     */
+    public static BizException of(ErrorCode errorCode, String message) {
+        if (errorCode.isNeedRetryAfter()) {
+            throw new IllegalArgumentException(
+                    "needRetryAfter 码须经 ofRetryAfter 创建（编码规范 §3.2），收到: " + errorCode.getCode());
+        }
+        return new BizException(errorCode, null, message);
     }
 
     /**
@@ -65,7 +88,27 @@ public class BizException extends RuntimeException {
             throw new IllegalArgumentException(
                     "非 needRetryAfter 码禁用 ofRetryAfter（编码规范 §3.2），收到: " + errorCode.getCode());
         }
-        return new BizException(errorCode, retryAfterSeconds);
+        return new BizException(errorCode, retryAfterSeconds, null);
+    }
+
+    /**
+     * 工厂：携带剩余秒数 + 接口专用文案（KTD4；适用于 {@code needRetryAfter=true} 的码）。
+     *
+     * <p><b>只允许一处使用</b>：每日新会话额度（{@code 42902}）的专用文案。
+     * 其余 429 场景沿用错误码全局文案。</p>
+     *
+     * @param errorCode         业务错误码（须为 {@code needRetryAfter=true}）
+     * @param retryAfterSeconds 剩余秒数，handler 原样写入整数秒 {@code Retry-After} 响应头
+     * @param message           接口专用文案（非空；覆盖错误码的全局文案）
+     * @return 携带该码、剩余秒数与专用文案的 {@link BizException} 实例
+     * @throws IllegalArgumentException errorCode 非 needRetryAfter 码时抛出
+     */
+    public static BizException ofRetryAfter(ErrorCode errorCode, long retryAfterSeconds, String message) {
+        if (!errorCode.isNeedRetryAfter()) {
+            throw new IllegalArgumentException(
+                    "非 needRetryAfter 码禁用 ofRetryAfter（编码规范 §3.2），收到: " + errorCode.getCode());
+        }
+        return new BizException(errorCode, retryAfterSeconds, message);
     }
 
     /**
@@ -84,5 +127,14 @@ public class BizException extends RuntimeException {
      */
     public Long getRetryAfterSeconds() {
         return retryAfterSeconds;
+    }
+
+    /**
+     * 取接口专用文案。
+     *
+     * @return {@link String} 专用文案；{@code null} 表示使用错误码的全局文案
+     */
+    public String getMessageOverride() {
+        return messageOverride;
     }
 }

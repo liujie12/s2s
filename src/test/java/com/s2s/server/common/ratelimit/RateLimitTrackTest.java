@@ -23,13 +23,29 @@ import org.junit.jupiter.api.Test;
 class RateLimitTrackTest {
 
     /**
-     * 断言轨总数恰为 16（详设 §3.4 键表 11 行 + B2-6a 微信登录两轨 + 浏览上报三轨）。
+     * 断言轨总数恰为 17（详设 §3.4 键表 11 行 + B2-6a 微信登录两轨 + 浏览上报三轨
+     * + V30 每日新会话一轨）。
      *
      * @return void；断言失败即轨被增删，键表映射不再一一对应
      */
     @Test
     void trackCountIsExactly13() {
-        assertThat(RateLimitTrack.values()).hasSize(16);
+        assertThat(RateLimitTrack.values()).hasSize(17);
+    }
+
+    /**
+     * 断言每日新会话轨绑定 30/d 与 42902（R27 / K3）。
+     *
+     * @return void；断言失败即会话额度阈值或超限码漂移
+     */
+    @Test
+    void chatNewConversationTrackBindsDailyQuota() {
+        RateLimitTrack.WindowRule[] rules = RateLimitTrack.CHAT_NEW_UID.rules();
+
+        assertThat(rules).hasSize(1);
+        assertThat(rules[0].limit()).isEqualTo(RateLimitThresholds.CHAT_NEW_UID_LIMIT_PER_DAY);
+        assertThat(rules[0].windowSeconds()).isEqualTo(RateLimitThresholds.WINDOW_DAY_SECONDS);
+        assertThat(rules[0].overflowCode()).isSameAs(RateLimitThresholds.CHAT_NEW_OVERFLOW);
     }
 
     /**

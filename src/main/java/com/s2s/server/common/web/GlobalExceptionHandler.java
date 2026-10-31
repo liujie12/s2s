@@ -57,17 +57,19 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleBizException(BizException exception) {
         ErrorCode errorCode = exception.getErrorCode();
         Long retryAfterSeconds = exception.getRetryAfterSeconds();
+        // 文案取异常自身（KTD4：三处接口专用文案在构造期覆盖），未覆盖时等于错误码全局文案
+        String message = exception.getMessage();
         // 无剩余秒数时不构造 HttpHeaders：空头对象与无头响应线上输出完全一致。
         // needRetryAfter=true 的码已在 BizException.of() 构造期被拒收（[122] P2 #4），
         // 故此处不可能出现「true 码缺秒数」——不再保留运行期 WARN 绊线。
         if (retryAfterSeconds == null) {
-            return ResponseEntity.status(errorCode.getHttpStatus()).body(errorBody(errorCode));
+            return ResponseEntity.status(errorCode.getHttpStatus()).body(errorBody(errorCode, message));
         }
         HttpHeaders headers = new HttpHeaders();
         headers.set(HttpHeaders.RETRY_AFTER, String.valueOf(retryAfterSeconds));
         return ResponseEntity.status(errorCode.getHttpStatus())
                 .headers(headers)
-                .body(errorBody(errorCode));
+                .body(errorBody(errorCode, message));
     }
 
     /**
@@ -165,7 +167,19 @@ public class GlobalExceptionHandler {
      *         requestId 经 {@link ResponseBodyWrapper#resolveOrCreateRequestId()} 解析注入
      */
     private static ApiResponse<Void> errorBody(ErrorCode errorCode) {
-        return new ApiResponse<>(errorCode.getCode(), errorCode.getMessage(), null,
+        return errorBody(errorCode, errorCode.getMessage());
+    }
+
+    /**
+     * 构造错误响应体，文案显式传入（KTD4：接口专用文案覆盖错误码全局文案）。
+     *
+     * @param errorCode 业务错误码，取其 code 填入响应体
+     * @param message   响应文案（异常自身文案或错误码全局文案）
+     * @return {@link ApiResponse}：data 恒 null，requestId 经
+     *         {@link ResponseBodyWrapper#resolveOrCreateRequestId()} 解析注入
+     */
+    private static ApiResponse<Void> errorBody(ErrorCode errorCode, String message) {
+        return new ApiResponse<>(errorCode.getCode(), message, null,
                 ResponseBodyWrapper.resolveOrCreateRequestId());
     }
 }

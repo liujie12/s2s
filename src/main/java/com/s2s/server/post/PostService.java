@@ -16,6 +16,7 @@ import com.s2s.server.common.error.ErrorCode;
 import com.s2s.server.common.geo.GridIdCalculator;
 import com.s2s.server.common.ratelimit.RateLimitKeys;
 import com.s2s.server.post.dto.MediaItem;
+import com.s2s.server.post.dto.PostChatAnchor;
 import com.s2s.server.post.dto.PostCreateRequest;
 import com.s2s.server.post.dto.PostCredential;
 import com.s2s.server.post.dto.PostDetail;
@@ -136,6 +137,26 @@ public class PostService {
         } catch (RuntimeException exception) {
             LOG.warn("发布时小区解析失败，已降级为空：{}", exception.getClass().getSimpleName());
         }
+    }
+
+    /**
+     * 读取会话锚点（chat 域开会话前调用，V30 / 计划 U2）。
+     *
+     * <p>只读、不做任何门禁：可见性与「不能与自己聊」由 chat 域按同一套
+     * {@link PostStatus} 语义判定，避免两处各写一份规则。</p>
+     *
+     * @param postId 帖子 ID
+     * @return {@link PostChatAnchor}（发布者、状态原值、是否需申请）
+     * @throws BizException {@code 41001} 帖子不存在（与「对他人不可见」同码，不泄露存在性）
+     */
+    public PostChatAnchor chatAnchor(Long postId) {
+        PostEntity post = postMapper.selectById(postId);
+        if (post == null) {
+            throw BizException.of(ErrorCode.POST_GONE);
+        }
+        Integer applyRequired = post.getContactApplyRequired();
+        return new PostChatAnchor(post.getId(), post.getUserId(), post.getStatus(),
+                applyRequired != null && applyRequired == 1);
     }
 
     /**

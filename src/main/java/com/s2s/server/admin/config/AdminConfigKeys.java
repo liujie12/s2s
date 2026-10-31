@@ -37,6 +37,10 @@ public final class AdminConfigKeys {
     /** 性能降级开关（PRD §6.10.1，on/off）。 */
     public static final String PERF_DOWNGRADE_ENABLED = "perf_downgrade_enabled";
 
+    /** 消息功能总开关（V30 / R30，on/off）：off 时创建会话、发放申请卡与发送消息一律拒绝，
+     * 存量会话只读；缺行按开启（{@code SystemConfigService#isOnOrAbsent}）。 */
+    public static final String MESSAGE_ENABLED = "message_enabled";
+
     /** 开关配置的「开」值。 */
     public static final String VALUE_ON = "on";
 

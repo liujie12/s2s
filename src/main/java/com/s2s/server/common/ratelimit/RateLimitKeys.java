@@ -215,6 +215,24 @@ public final class RateLimitKeys {
     }
 
     // ------------------------------------------------------------------
+    // 行 8b：每日新会话（账号维度）
+    // ------------------------------------------------------------------
+
+    /**
+     * 行 8b · 每日新会话·账号·1 自然日窗键（R27 / K3）。
+     *
+     * <p>只统计「新建」会话：复用既有会话不计入每日额度，故本键由会话创建链路在
+     * <b>确认新建之后</b>才推进（幂等重放不会重复计数）。</p>
+     *
+     * @param userId 用户 ID（账号级维度，Long 类型分维）
+     * @param date   自然日（Asia/Shanghai）
+     * @return {@link String} 键形 {@code rl:chatnew:uid:{userId}:1d:{yyyyMMdd}}
+     */
+    public static String chatNewUidDay(Long userId, LocalDate date) {
+        return KEY_PREFIX + "chatnew:uid:" + userId + ":1d:" + date.format(DATE_FORMAT);
+    }
+
+    // ------------------------------------------------------------------
     // 行 9：埋点上报（账号维度）
     // ------------------------------------------------------------------
 

@@ -109,6 +109,14 @@ public enum RateLimitTrack {
                     RateLimitThresholds.WINDOW_DAY_SECONDS, RateLimitThresholds.REPORT_OVERFLOW)),
 
     /**
+     * 行 8b · 每日新会话（账号级，R27 / K3）：键形 {@code rl:chatnew:uid:{userId}:1d}，
+     * 30/d → 42902。只统计「新建」会话，复用既有会话不计数；接口另带专用文案（KTD4）。
+     */
+    CHAT_NEW_UID(
+            new WindowRule(RateLimitThresholds.CHAT_NEW_UID_LIMIT_PER_DAY,
+                    RateLimitThresholds.WINDOW_DAY_SECONDS, RateLimitThresholds.CHAT_NEW_OVERFLOW)),
+
+    /**
      * 行 9 · 埋点上报（账号级）：键形 {@code rl:track:uid:{userId}:1m}，
      * 60 请求/min → 42906（唯一不向用户呈现的错误码，客户端静默退回队列）。
      * 强制登录态，user_id 只取登录态（编码规范 §4.7）。

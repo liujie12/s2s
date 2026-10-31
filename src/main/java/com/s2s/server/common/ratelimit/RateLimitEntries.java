@@ -98,6 +98,15 @@ public final class RateLimitEntries {
                     }
                 }
             }
+            case CHAT_NEW_UID -> {
+                if (dimensions.userId() != null) {
+                    for (RateLimitTrack.WindowRule rule : rules) {
+                        entries.add(RateLimiter.entry(
+                                RateLimitKeys.chatNewUidDay(dimensions.userId(), dimensions.today()),
+                                rule, dimensions.today()));
+                    }
+                }
+            }
             case TRACK_UID -> {
                 if (dimensions.userId() != null) {
                     for (RateLimitTrack.WindowRule rule : rules) {
