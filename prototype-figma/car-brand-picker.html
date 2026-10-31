@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>找丫找 · 车辆信息（品牌/车型/颜色/车牌）原型 v3</title>
+<style>
+/* ============================================================
+   车辆信息（发布表单 · 拼车 301）· 设计稿 v3
+   基准：390 × 844（逻辑像素），颜色与圆角取自 lib/design_tokens.dart
+   primary #0B7C8C / primary-light #E6F6F8 / vehicle #B85510
+   error #EF4444 / error-text #B91C1C
+   ============================================================ */
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --primary:#0B7C8C;
+  --primary-dark:#075E6B;
+  --primary-light:#E6F6F8;
+  --accent:#B4531A;
+  --error:#EF4444;
+  --error-text:#B91C1C;
+  --text:#1F2937;
+  --text-2:#6B7280;
+  --text-3:#9CA3AF;
+  --border:#E5E7EB;
+  --bg:#F8FAFC;
+  --surface:#FFFFFF;
+  --vehicle:#B85510;
+  --mono:"JetBrains Mono","SFMono-Regular",Consolas,"Liberation Mono",monospace;
+}
+html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+body{
+  font-family:"HarmonyOS Sans SC","PingFang SC","Noto Sans SC","Microsoft YaHei",sans-serif;
+  color:var(--text);
+  padding:44px 32px 72px;
+  background:
+    radial-gradient(1100px 620px at 8% -8%, #E2EEE7 0%, rgba(226,238,231,0) 62%),
+    radial-gradient(900px 520px at 98% 2%, #F2E7DA 0%, rgba(242,231,218,0) 58%),
+    #F4F5F1;
+}
+body::before{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+  background-image:
+    linear-gradient(rgba(31,41,55,.04) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(31,41,55,.04) 1px,transparent 1px);
+  background-size:34px 34px;
+  -webkit-mask-image:radial-gradient(circle at 50% 24%,#000 22%,transparent 82%);
+  mask-image:radial-gradient(circle at 50% 24%,#000 22%,transparent 82%);
+}
+.doc-head{position:relative;z-index:1;max-width:1180px;margin:0 auto 40px}
+.kicker{font-family:var(--mono);font-size:11px;letter-spacing:.18em;color:var(--primary);margin-bottom:12px}
+.doc-head h1{font-size:34px;line-height:1.22;letter-spacing:-.02em;font-weight:700;color:#16232E;max-width:920px}
+.lede{margin-top:14px;max-width:840px;font-size:14px;line-height:1.8;color:#4B5563}
+.lede b{color:#1F2937}
+.meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+.tag{font-size:11px;line-height:1;padding:7px 11px;border-radius:999px;background:#fff;border:1px solid #E2E5DE;color:#4B5563}
+.tag.primary{background:var(--primary);border-color:var(--primary);color:#fff}
+.tag.warn{background:#FDF3E7;border-color:#F0D9BF;color:#8A4A17}
+
+/* ---------- 画框 ---------- */
+.stage{position:relative;z-index:1;max-width:884px;margin:0 auto;display:flex;flex-wrap:wrap;gap:34px 40px;align-items:flex-start}
+.frame-wrap{width:408px}
+.frame-cap{display:flex;align-items:baseline;gap:8px;margin-bottom:10px;padding:0 4px}
+.idx{font-family:var(--mono);font-size:11px;color:var(--primary);letter-spacing:.06em}
+.frame-cap b{font-size:13.5px;font-weight:600;color:#1F2937}
+.frame-cap em{font-style:normal;font-size:11px;color:var(--text-2);margin-left:auto}
+.phone{
+  width:408px;height:862px;padding:9px;border-radius:46px;background:#101820;
+  box-shadow:0 28px 64px -20px rgba(15,23,42,.48),0 0 0 1px rgba(15,23,42,.10),inset 0 0 0 1px rgba(255,255,255,.08);
+}
+.screen{position:relative;width:390px;height:844px;border-radius:38px;overflow:hidden;background:var(--bg)}
+
+/* ---------- 状态栏 ---------- */
+.statusbar{position:absolute;top:0;left:0;right:0;height:44px;z-index:9;display:flex;align-items:center;justify-content:space-between;padding:10px 24px 0;color:#1F2937}
+.statusbar .time{font-size:13px;font-weight:600;letter-spacing:.02em;font-variant-numeric:tabular-nums}
+.sysicons{display:flex;align-items:center;gap:5px}
+.sysicons i{display:block;width:15px;height:9px;border-radius:2px;background:#1F2937;opacity:.82}
+.sysicons u{display:block;width:20px;height:10px;border-radius:3px;border:1px solid #9CA3AF;text-decoration:none;position:relative}
+.sysicons u::after{content:"";position:absolute;inset:2px 55% 2px 2px;border-radius:2px;background:#1F2937}
+
+/* ---------- 发布页 ---------- */
+.appbar{position:absolute;top:44px;left:0;right:0;height:48px;z-index:7;display:flex;align-items:center;padding:0 8px;
+  background:#fff;border-bottom:1px solid #EEF1EC}
+.appbar .txt-btn{font-size:14px;color:var(--text-2);padding:6px 10px}
+.appbar .title{flex:1;text-align:center;font-size:16px;font-weight:600}
+.appbar .back{width:36px;height:36px;display:grid;place-items:center;color:#1F2937}
+.appbar .back svg{width:20px;height:20px;stroke:currentColor;stroke-width:1.9;fill:none;stroke-linecap:round;stroke-linejoin:round}
+
+.form-head{position:absolute;top:92px;left:0;right:0;height:62px;z-index:6;background:#fff;
+  display:flex;align-items:center;gap:10px;padding:0 16px 8px}
+.form-head .cat{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:999px;
+  background:rgba(184,85,16,.10);color:#8A4A17;font-size:12px;font-weight:600}
+.form-head .cat i{width:6px;height:6px;border-radius:50%;background:var(--vehicle)}
+.form-head .sub{font-size:11.5px;color:var(--text-3)}
+
+.form-body{position:absolute;top:154px;left:0;right:0;bottom:0;padding:14px 16px 0;background:var(--bg)}
+.card{background:#fff;border-radius:16px;padding:2px 0;box-shadow:0 8px 24px -20px rgba(15,23,42,.5);border:1px solid #EEF1EC}
+.card + .card{margin-top:12px}
+.card-title{display:flex;align-items:center;gap:8px;padding:14px 16px 8px;font-size:11.5px;color:var(--text-3);letter-spacing:.04em}
+.card-title b{font-size:12px;color:var(--text);font-weight:600;letter-spacing:0}
+.card-title .opt{margin-left:auto;font-size:10.5px;color:var(--text-3)}
+.frow{display:flex;align-items:center;gap:10px;min-height:52px;padding:0 16px;border-top:1px solid #F3F5F1}
+.frow .lb{flex:0 0 62px;font-size:12.5px;color:var(--text-2)}
+.frow .ctl{flex:1;min-width:0;display:flex;align-items:center;gap:8px;font-size:13.5px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.frow .ctl .ph{color:var(--text-3);font-size:13px}
+.frow .chev{flex:0 0 auto;font-size:12px;color:var(--text-3);line-height:1}
+.frow.tap{background:#FAFCFB}
+.frow.focus{background:#FAFCFB;border-top-color:transparent;box-shadow:inset 0 0 0 1px rgba(11,124,140,.35);border-radius:10px;margin:0 8px;padding:0 8px}
+.frow.focus .lb{color:var(--primary-dark);font-weight:600}
+.frow.bad .lb{color:var(--error-text)}
+.frow.bad .ctl .ph{color:#D99A9A}
+.caret-line{width:1.5px;height:17px;background:var(--primary);border-radius:1px;margin-left:1px}
+.cnt{flex:0 0 auto;font-size:10.5px;color:var(--text-3);font-variant-numeric:tabular-nums}
+.ferr{display:flex;align-items:center;gap:5px;padding:0 16px 10px;font-size:11px;line-height:1.4;color:var(--error-text)}
+.ferr svg{width:12px;height:12px;stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;flex:0 0 auto}
+.pill-txt{display:inline-flex;align-items:center;height:24px;padding:0 8px;border-radius:6px;background:#F3F5F1;
+  font-size:10px;color:var(--text-3);margin-left:6px;flex:0 0 auto}
+.problem{display:flex;gap:8px;align-items:flex-start;margin-top:12px;padding:10px 12px;border-radius:12px;
+  background:#FDF7EF;border:1px solid #F0DFC7;font-size:11px;line-height:1.65;color:#8A4A17}
+.problem b{color:#7A3E12;font-weight:600}
+.banner{display:flex;align-items:center;gap:7px;margin-bottom:12px;padding:10px 12px;border-radius:12px;
+  background:#FEF2F2;border:1px solid #FECACA;font-size:11.5px;line-height:1.5;color:var(--error-text)}
+.banner svg{width:14px;height:14px;stroke:currentColor;stroke-width:1.9;fill:none;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}
+
+/* ---------- 下拉面板（品牌 / 车型 / 颜色） ---------- */
+.dd{position:relative}
+.opt-list{position:absolute;left:10px;right:10px;top:52px;z-index:5;padding:6px 6px 6px;background:#fff;
+  border:1px solid #E7EAE3;border-radius:12px;box-shadow:0 18px 36px -18px rgba(15,23,42,.42),0 2px 6px rgba(15,23,42,.06)}
+.opt-item{display:flex;align-items:center;height:44px;padding:0 10px;border-radius:10px;font-size:13.5px;color:var(--text)}
+.opt-item .ck{margin-left:auto;color:var(--primary);font-size:13px;font-weight:700}
+.opt-item .hint{margin-left:auto;font-size:10.5px;color:var(--text-3)}
+.opt-item.on{background:var(--primary-light);color:var(--primary-dark);font-weight:600}
+.opt-item.on .hint{color:#3E7C86}
+.opt-item + .opt-item{margin-top:2px}
+.sw{width:14px;height:14px;border-radius:50%;border:1px solid rgba(15,23,42,.14);flex:0 0 auto}
+.dd-foot{display:flex;align-items:center;gap:6px;height:44px;margin-top:4px;padding:0 10px;border-top:1px solid #F1F3EE;
+  font-size:12.5px;font-weight:600;color:var(--primary)}
+.dd-foot svg{width:14px;height:14px;stroke:currentColor;stroke-width:1.9;fill:none;stroke-linecap:round;stroke-linejoin:round}
+
+/* ---------- 车牌 ---------- */
+.plate{display:flex;align-items:center;gap:6px}
+.pseg{display:inline-flex;align-items:center;gap:3px;height:30px;padding:0 7px;border-radius:8px;background:#F3F5F1;
+  font-size:13.5px;font-weight:600;color:var(--text)}
+.pseg .car{font-size:9px;color:var(--text-3);font-weight:400}
+.pseg.ph{color:var(--text-3);font-weight:500}
+.pseg.on{background:var(--primary-light);color:var(--primary-dark);box-shadow:inset 0 0 0 1px rgba(11,124,140,.34)}
+.pseg.on .car{color:#5E98A1}
+.plate-code{font-family:var(--mono);font-size:14px;letter-spacing:.08em;color:var(--text)}
+.plate-code.ph{color:var(--text-3);letter-spacing:.04em;font-family:inherit;font-size:13px}
+.prov-panel{position:absolute;left:10px;right:10px;top:52px;z-index:5;padding:8px;background:#fff;
+  border:1px solid #E7EAE3;border-radius:12px;box-shadow:0 18px 36px -18px rgba(15,23,42,.42),0 2px 6px rgba(15,23,42,.06)}
+.prov-grid{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:6px}
+.prov{height:38px;border-radius:8px;display:grid;place-items:center;font-size:14px;color:var(--text);background:#FAFBF9}
+.prov.on{background:var(--primary-light);color:var(--primary-dark);font-weight:700;box-shadow:inset 0 0 0 1px rgba(11,124,140,.34)}
+.panel-hint{font-size:10.5px;line-height:1.5;color:var(--text-3);padding:8px 4px 0}
+
+/* ---------- 键盘（示意） ---------- */
+.kbd-panel{position:absolute;left:0;right:0;bottom:0;height:270px;background:#D8DDE2;z-index:11;
+  padding:9px 4px 0;border-top:1px solid #C6CCD3}
+.kbd-row{display:flex;justify-content:center;gap:6px;margin-bottom:8px}
+.key{flex:1;max-width:34px;height:40px;border-radius:6px;background:#fff;box-shadow:0 1px 0 #B4BBC3;
+  display:grid;place-items:center;font-size:15px;color:#1F2937}
+.key.wide{max-width:52px;font-size:12px;background:#AEB7C0;box-shadow:0 1px 0 #98A2AC}
+.key.space{max-width:170px;font-size:12px}
+.kbd-hint{text-align:center;font-size:10px;color:#5A6470;margin-top:2px}
+
+/* ---------- toast ---------- */
+.toast{position:absolute;left:50%;transform:translateX(-50%);top:158px;z-index:12;height:30px;display:inline-flex;align-items:center;gap:6px;
+  padding:0 12px;border-radius:999px;background:rgba(7,94,107,.95);color:#fff;font-size:11px;white-space:nowrap;
+  box-shadow:0 8px 20px -8px rgba(7,94,107,.55)}
+.toast svg{width:12px;height:12px;stroke:#9FE3EA;stroke-width:2.2;fill:none;stroke-linecap:round;stroke-linejoin:round}
+
+/* ---------- 规格说明 ---------- */
+.specs{position:relative;z-index:1;max-width:1180px;margin:64px auto 0}
+.section-head{display:flex;align-items:flex-end;gap:14px;border-top:1px solid rgba(31,41,55,.12);padding-top:22px;margin-bottom:20px}
+.section-head .no{font-family:var(--mono);font-size:11px;color:var(--primary);letter-spacing:.12em}
+.section-head h2{font-size:20px;font-weight:700;letter-spacing:-.01em}
+.section-head p{margin-left:auto;font-size:12px;color:var(--text-2)}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+.card2{background:#fff;border:1px solid #E7EAE3;border-radius:16px;padding:20px 22px;box-shadow:0 10px 30px -24px rgba(15,23,42,.4)}
+.card2 h3{font-size:13px;font-weight:700;letter-spacing:.02em;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.card2 h3::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--primary)}
+.card2 p{font-size:12.5px;line-height:1.75;color:#4B5563}
+.card2 p + p{margin-top:8px}
+.card2 ul{list-style:none;display:flex;flex-direction:column;gap:9px}
+.card2 li{position:relative;padding-left:14px;font-size:12.5px;line-height:1.65;color:#4B5563}
+.card2 li::before{content:"";position:absolute;left:0;top:8px;width:4px;height:4px;border-radius:50%;background:#B9C2CC}
+.card2 li b{color:#1F2937;font-weight:600}
+code{font-family:var(--mono);font-size:11.5px;background:#F3F5F1;border:1px solid #E7EAE3;border-radius:5px;padding:1px 5px;color:#334155}
+.table{width:100%;border-collapse:collapse;font-size:12px}
+.table th{text-align:left;font-weight:600;color:var(--text-2);padding:0 0 8px;border-bottom:1px solid #EDEFEA;font-size:11px;letter-spacing:.04em}
+.table td{padding:8px 0;border-bottom:1px solid #F1F3EE;color:#4B5563;line-height:1.5;vertical-align:top}
+.table tr:last-child td{border-bottom:0}
+.table td:first-child{white-space:nowrap;color:#1F2937;font-weight:600;padding-right:14px}
+.table th:not(:last-child),.table td:not(:last-child){padding-right:14px}
+.note{max-width:1180px;margin:26px auto 0;font-size:11.5px;line-height:1.8;color:#7A8390}
+.note b{color:#4B5563}
+
+/* ---------- 评审卡 ---------- */
+.decision{background:#fff;border:1px solid #E7EAE3;border-radius:16px;padding:18px 20px}
+.decision .dno{font-family:var(--mono);font-size:10.5px;color:var(--primary);letter-spacing:.1em}
+.decision h3{font-size:14px;font-weight:700;margin:6px 0 10px}
+.decision .q{font-size:12.5px;line-height:1.7;color:#4B5563;margin-bottom:10px}
+.opt{display:flex;gap:9px;padding:9px 11px;border-radius:10px;background:#F8FAF7;border:1px solid #EDEFEA;margin-bottom:7px;font-size:12px;line-height:1.6;color:#4B5563}
+.opt .k{font-family:var(--mono);font-size:11px;color:#8A93A0;flex:0 0 auto}
+.opt.pick{background:var(--primary-light);border-color:rgba(11,124,140,.34);color:#1F3F45}
+.opt.pick .k{color:var(--primary-dark);font-weight:600}
+.opt b{color:#1F2937;font-weight:600}
+.verdict{margin-top:10px;font-size:12px;line-height:1.65;color:#3E7C86;background:var(--primary-light);border-radius:9px;padding:9px 11px}
+.verdict b{font-weight:700}
+
+@media (max-width:920px){
+  body{padding:28px 16px 52px}
+  .doc-head h1{font-size:26px}
+  .stage{justify-content:center;gap:28px}
+  .grid{grid-template-columns:1fr}
+  .section-head p{display:none}
+}
+</style>
+</head>
+<body>
+
+<header class="doc-head">
+  <div class="kicker">S2S · PUBLISH / VEHICLE FIELDS · PROTOTYPE V3</div>
+  <h1>车辆信息四行：品牌、车型、颜色走下拉可手填，车牌前两位也下拉</h1>
+  <p class="lede">
+    v3 按本轮裁定收敛：<b>车型</b>用车身形式下拉；<b>品牌</b>与<b>颜色</b>都是「下拉常用值 + 手填兜底」（小众/新增品牌直接手录）；
+    新增<b>车牌号</b>，前两位（省份简称 + 发牌机关字母）走下拉，后段字母数字手填；发布页所有 select 字段<b>统一由 chip 改为下拉</b>。
+    历史帖的 <code>car_model</code> 自由文本原样展示，不迁移、不清洗。
+  </p>
+  <div class="meta">
+    <span class="tag primary">390 × 844 · 7 帧</span>
+    <span class="tag">模板 301 · 待出 V28 迁移</span>
+    <span class="tag">复用现有 text / select 类型</span>
+    <span class="tag warn">本稿只做设计，未改代码</span>
+  </div>
+</header>
+
+<section class="stage">
+
+  <!-- ================= 01 现状 ================= -->
+  <figure class="frame-wrap">
+    <figcaption class="frame-cap"><span class="idx">01</span><b>现状 · 车型一行自由文本</b><em>品牌 / 颜色 / 车牌都没有</em></figcaption>
+    <div class="phone"><div class="screen">
+      <div class="statusbar"><span class="time">8:41</span><span class="sysicons"><i></i><i></i><i></i><u></u></span></div>
+      <div class="appbar">
+        <div class="back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></div>
+        <div class="title">发布</div>
+        <div class="txt-btn">存草稿</div>
+      </div>
+      <div class="form-head">
+        <span class="cat"><i></i>车辆 · 拼车</span>
+        <span class="sub">模板：起点终点 / 出发时间 / 空座数 / 车型</span>
+      </div>
+      <div class="form-body">
+        <div class="card">
+          <div class="card-title"><b>拼车信息</b><span class="opt">必填 3 项</span></div>
+          <div class="frow"><span class="lb">路线</span><span class="ctl">回龙观 → 中关村</span><span class="chev">›</span></div>
+          <div class="frow"><span class="lb">出发时间</span><span class="ctl">明天 08:00</span><span class="chev">›</span></div>
+          <div class="frow"><span class="lb">空座数</span><span class="ctl">3</span></div>
+          <div class="frow"><span class="lb">车型</span><span class="ctl">白色轩逸三厢</span></div>
+        </div>
+        <div class="problem">
+          <span>!</span>
+          <span>一辆车能写出 <b>轩逸 / 尼桑轩逸 / 白色轩逸三厢</b> 三种值，品牌、颜色、车牌全都拆不出来 —— <b>无法按车型聚合</b>，也没法判断是不是同一台车。</span>
+        </div>
+      </div>
+    </div></div>
+  </figure>
+
+  <!-- ================= 02 改后表单 ================= -->
+  <figure class="frame-wrap">
+    <figcaption class="frame-cap"><span class="idx">02</span><b>改后表单 · 四行</b><em>下拉为主，手填兜底</em></figcaption>
+    <div class="phone"><div class="screen">
+      <div class="statusbar"><span class="time">8:41</span><span class="sysicons"><i></i><i></i><i></i><u></u></span></div>
+      <div class="appbar">
+        <div class="back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></div>
+        <div class="title">发布</div>
+        <div class="txt-btn">存草稿</div>
+      </div>
+      <div class="form-head">
+        <span class="cat"><i></i>车辆 · 拼车</span>
+        <span class="sub">品牌/车型必填 · 颜色/车牌选填</span>
+      </div>
+      <div class="form-body">
+        <div class="card">
+          <div class="card-title"><b>拼车信息</b><span class="opt">必填 5 项</span></div>
+          <div class="frow"><span class="lb">路线</span><span class="ctl">回龙观 → 中关村</span><span class="chev">›</span></div>
+          <div class="frow"><span class="lb">出发时间</span><span class="ctl">明天 08:00</span><span class="chev">›</span></div>
+          <div class="frow"><span class="lb">空座数</span><span class="ctl">3</span></div>
+          <div class="frow tap"><span class="lb">品牌</span><span class="ctl"><span class="ph">选择或手填</span></span><span class="chev">›</span></div>
+          <div class="frow tap"><span class="lb">车型</span><span class="ctl"><span class="ph">请选择</span></span><span class="chev">›</span></div>
+          <div class="frow tap"><span class="lb">颜色</span><span class="ctl"><span class="ph">选择或手填</span></span><span class="pill-txt">选填</span></div>
+          <div class="frow tap"><span class="lb">车牌</span><span class="ctl"><span class="plate"><span class="pseg ph">省份</span><span class="pseg ph">字母</span><span class="plate-code ph">号码</span></span></span><span class="pill-txt">选填</span></div>
+        </div>
+        <div class="problem">
+          <span>i</span>
+          <span>四行都是 <b>点开选择</b>，其中品牌、颜色、车牌允许 <b>手填</b> 兜底；车型只能从 7 项里选。四个值各存一个键，互不影响。</span>
+        </div>
+      </div>
+    </div></div>
+  </figure>
+
+  <!-- ================= 03 品牌下拉 ================= -->
+  <figure class="frame-wrap">
+    <figcaption class="frame-cap"><span class="idx">03</span><b>品牌下拉 · 常用品牌</b><em>底部常驻「手动输入」出口</em></figcaption>
+    <div class="phone"><div class="screen">
+      <div class="statusbar"><span class="time">8:42</span><span class="sysicons"><i></i><i></i><i></i><u></u></span></div>
+      <div class="appbar">
+        <div class="back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></div>
+        <div class="title">发布</div>
+        <div class="txt-btn">存草稿</div>
+      </div>
+      <div class="form-head">
+        <span class="cat"><i></i>车辆 · 拼车</span>
+        <span class="sub">品牌：常用品牌 + 手填兜底</span>
+      </div>
+      <div class="form-body">
+        <div class="card">
+          <div class="card-title"><b>拼车信息</b><span class="opt">必填 5 项</span></div>
+          <div class="frow"><span class="lb">路线</span><span class="ctl">回龙观 → 中关村</span><span class="chev">›</span></div>
+          <div class="frow"><span class="lb">出发时间</span><span class="ctl">明天 08:00</span><span class="chev">›</span></div>
+          <div class="frow"><span class="lb">空座数</span><span class="ctl">3</span></div>
+          <div class="dd">
+            <div class="frow tap"><span class="lb">品牌</span><span class="ctl">比亚迪</span><span class="chev">⌃</span></div>
+            <div class="opt-list">
+              <div class="opt-item on">比亚迪<span class="ck">✓</span></div>
+              <div class="opt-item">大众</div>
+              <div class="opt-item">丰田</div>
+              <div class="opt-item">本田</div>
+              <div class="opt-item">日产</div>
+              <div class="opt-item">吉利</div>
+              <div class="dd-foot">
+                <svg viewBox="0 0 24 24"><path d="M4 20h4L20 8l-4-4L4 16v4z"/></svg>
+                没找到？手动输入
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div></div>
+  </figure>
+
+  <!-- ================= 04 品牌手填 ================= -->
+  <figure class="frame-wrap">
+    <figcaption class="frame-cap"><span class="idx">04</span><b>品牌手填 · 小众品牌</b><em>手填值原样保存，不回写选项</em></figcaption>
+    <div class="phone"><div class="screen">
+      <div class="statusbar"><span class="time">8:42</span><span class="sysicons"><i></i><i></i><i></i><u></u></span></div>
+      <div class="appbar">
+        <div class="back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></div>
+        <div class="title">发布</div>
+        <div class="txt-btn">存草稿</div>
+      </div>
+      <div class="form-head">
+        <span class="cat"><i></i>车辆 · 拼车</span>
+        <span class="sub">品牌：手填模式</span>
+      </div>
+      <div class="form-body">
+        <div class="card">
+          <div class="card-title"><b>拼车信息</b><span class="opt">必填 5 项</span></div>
+          <div class="frow"><span class="lb">路线</span><span class="ctl">回龙观 → 中关村</span><span class="chev">›</span></div>
+          <div class="frow"><span class="lb">出发时间</span><span class="ctl">明天 08:00</span><span class="chev">›</span></div>
+          <div class="frow"><span class="lb">空座数</span><span class="ctl">3</span></div>
+          <div class="frow focus"><span class="lb">品牌</span><span class="ctl">极石<span class="caret-line"></span></span><span class="cnt">2/12</span></div>
+          <div class="frow tap"><span class="lb">车型</span><span class="ctl"><span class="ph">请选择</span></span><span class="chev">›</span></div>
+          <div class="frow tap"><span class="lb">颜色</span><span class="ctl"><span class="ph">选择或手填</span></span><span class="pill-txt">选填</span></div>
+        </div>
+      </div>
+      <div class="kbd-panel">
+        <div class="kbd-row"><span class="key">Q</span><span class="key">W</span><span class="key">E</span><span class="key">R</span><span class="key">T</span><span class="key">Y</span><span class="key">U</span><span class="key">I</span><span class="key">O</span><span class="key">P</span></div>
+        <div class="kbd-row"><span class="key">A</span><span class="key">S</span><span class="key">D</span><span class="key">F</span><span class="key">G</span><span class="key">H</span><span class="key">J</span><span class="key">K</span><span class="key">L</span></div>
+        <div class="kbd-row"><span class="key wide">⇧</span><span class="key">Z</span><span class="key">X</span><span class="key">C</span><span class="key">V</span><span class="key">B</span><span class="key">N</span><span class="key">M</span><span class="key wide">⌫</span></div>
+        <div class="kbd-row"><span class="key wide">123</span><span class="key wide">🌐</span><span class="key space">空格</span><span class="key wide">完成</span></div>
+        <div class="kbd-hint">示意 · 实际为系统中文输入法</div>
+      </div>
+    </div></div>
+  </figure>
+
+  <!-- ================= 05 颜色下拉 ================= -->
+  <figure class="frame-wrap">
+    <figcaption class="frame-cap"><span class="idx">05</span><b>颜色下拉 · 常用色</b><em>5 个常用色 + 手填</em></figcaption>
+    <div class="phone"><div class="screen">
+      <div class="statusbar"><span class="time">8:43</span><span class="sysicons"><i></i><i></i><i></i><u></u></span></div>
+      <div class="appbar">
+        <div class="back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></div>
+        <div class="title">发布</div>
+        <div class="txt-btn">存草稿</div>
+      </div>
+      <div class="form-head">
+        <span class="cat"><i></i>车辆 · 拼车</span>
+        <span class="sub">颜色：常用色 + 手填兜底</span>
+      </div>
+      <div class="form-body">
+        <div class="card">
+          <div class="card-title"><b>拼车信息</b><span class="opt">必填 5 项</span></div>
+          <div class="frow"><span class="lb">路线</span><span class="ctl">回龙观 → 中关村</span><span class="chev">›</span></div>
+          <div class="frow"><span class="lb">出发时间</span><span class="ctl">明天 08:00</span><span class="chev">›</span></div>
+          <div class="frow"><span class="lb">空座数</span><span class="ctl">3</span></div>
+          <div class="frow"><span class="lb">品牌</span><span class="ctl">比亚迪</span><span class="chev">›</span></div>
+          <div class="frow tap"><span class="lb">车型</span><span class="ctl">轿车</span><span class="chev">›</span></div>
+          <div class="dd">
+            <div class="frow tap"><span class="lb">颜色</span><span class="ctl">白色</span><span class="chev">⌃</span></div>
+            <div class="opt-list">
+              <div class="opt-item on"><span class="sw" style="background:#FFFFFF"></span>白色<span class="ck">✓</span></div>
+              <div class="opt-item"><span class="sw" style="background:#1F2937"></span>黑色</div>
+              <div class="opt-item"><span class="sw" style="background:#D6D9DD"></span>银色</div>
+              <div class="opt-item"><span class="sw" style="background:#8A9097"></span>灰色</div>
+              <div class="opt-item"><span class="sw" style="background:#3B6FD4"></span>蓝色</div>
+              <div class="dd-foot">
+                <svg viewBox="0 0 24 24"><path d="M4 20h4L20 8l-4-4L4 16v4z"/></svg>
+                其他颜色？手动输入
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div></div>
+  </figure>
+
+  <!-- ================= 06 车牌 ================= -->
+  <figure class="frame-wrap">
+    <figcaption class="frame-cap"><span class="idx">06</span><b>车牌 · 省份面板</b><em>省份 + 字母下拉，后段手填</em></figcaption>
+    <div class="phone"><div class="screen">
+      <div class="statusbar"><span class="time">8:43</span><span class="sysicons"><i></i><i></i><i></i><u></u></span></div>
+      <div class="appbar">
+        <div class="back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></div>
+        <div class="title">发布</div>
+        <div class="txt-btn">存草稿</div>
+      </div>
+      <div class="form-head">
+        <span class="cat"><i></i>车辆 · 拼车</span>
+        <span class="sub">车牌：前两位下拉，后段手填</span>
+      </div>
+      <div class="form-body">
+        <div class="card">
+          <div class="card-title"><b>拼车信息</b><span class="opt">必填 5 项</span></div>
+          <div class="frow"><span class="lb">路线</span><span class="ctl">回龙观 → 中关村</span><span class="chev">›</span></div>
+          <div class="frow"><span class="lb">出发时间</span><span class="ctl">明天 08:00</span><span class="chev">›</span></div>
+          <div class="frow"><span class="lb">空座数</span><span class="ctl">3</span></div>
+          <div class="frow"><span class="lb">品牌</span><span class="ctl">比亚迪</span><span class="chev">›</span></div>
+          <div class="frow tap"><span class="lb">车型</span><span class="ctl">轿车</span><span class="chev">›</span></div>
+          <div class="frow"><span class="lb">颜色</span><span class="ctl">白色</span><span class="chev">›</span></div>
+          <div class="dd">
+            <div class="frow tap"><span class="lb">车牌</span><span class="ctl"><span class="plate"><span class="pseg on">皖<span class="car">▾</span></span><span class="pseg">A</span><span class="plate-code">12345</span></span></span><span class="pill-txt">选填</span></div>
+            <div class="prov-panel">
+              <div class="prov-grid">
+                <span class="prov">京</span><span class="prov">津</span><span class="prov">冀</span><span class="prov">晋</span><span class="prov">蒙</span><span class="prov">辽</span><span class="prov">吉</span>
+                <span class="prov">黑</span><span class="prov">沪</span><span class="prov">苏</span><span class="prov">浙</span><span class="prov on">皖</span><span class="prov">闽</span><span class="prov">赣</span>
+                <span class="prov">鲁</span><span class="prov">豫</span><span class="prov">鄂</span><span class="prov">湘</span><span class="prov">粤</span><span class="prov">桂</span><span class="prov">琼</span>
+                <span class="prov">渝</span><span class="prov">川</span><span class="prov">贵</span><span class="prov">云</span><span class="prov">藏</span><span class="prov">陕</span><span class="prov">甘</span>
+                <span class="prov">青</span><span class="prov">宁</span><span class="prov">新</span>
+              </div>
+              <div class="panel-hint">31 个省级简称；字母段为发牌机关代号（A–Z，不含 I / O），后段 5–6 位字母数字手填（新能源 6 位）。</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div></div>
+  </figure>
+
+  <!-- ================= 07 校验 ================= -->
+  <figure class="frame-wrap">
+    <figcaption class="frame-cap"><span class="idx">07</span><b>必填校验</b><em>品牌 / 车型缺失，颜色车牌可选</em></figcaption>
+    <div class="phone"><div class="screen">
+      <div class="statusbar"><span class="time">8:44</span><span class="sysicons"><i></i><i></i><i></i><u></u></span></div>
+      <div class="appbar">
+        <div class="back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></div>
+        <div class="title">发布</div>
+        <div class="txt-btn">存草稿</div>
+      </div>
+      <div class="form-head">
+        <span class="cat"><i></i>车辆 · 拼车</span>
+        <span class="sub">发布前拦截，不发请求</span>
+      </div>
+      <div class="form-body">
+        <div class="banner">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>
+          还有 2 项必填未完成：品牌、车型
+        </div>
+        <div class="card">
+          <div class="card-title"><b>拼车信息</b><span class="opt">必填 5 项 · 缺 2</span></div>
+          <div class="frow"><span class="lb">路线</span><span class="ctl">回龙观 → 中关村</span><span class="chev">›</span></div>
+          <div class="frow"><span class="lb">出发时间</span><span class="ctl">明天 08:00</span><span class="chev">›</span></div>
+          <div class="frow"><span class="lb">空座数</span><span class="ctl">3</span></div>
+          <div class="frow bad tap"><span class="lb">品牌</span><span class="ctl"><span class="ph">选择或手填</span></span><span class="chev">›</span></div>
+          <div class="ferr">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>
+            请选择或填写品牌
+          </div>
+          <div class="frow bad tap"><span class="lb">车型</span><span class="ctl"><span class="ph">请选择</span></span><span class="chev">›</span></div>
+          <div class="ferr">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>
+            请选择车型
+          </div>
+          <div class="frow tap"><span class="lb">颜色</span><span class="ctl"><span class="ph">选择或手填</span></span><span class="pill-txt">选填</span></div>
+          <div class="frow tap"><span class="lb">车牌</span><span class="ctl"><span class="plate"><span class="pseg ph">省份</span><span class="pseg ph">字母</span><span class="plate-code ph">号码</span></span></span><span class="pill-txt">选填</span></div>
+        </div>
+      </div>
+    </div></div>
+  </figure>
+
+</section>
+
+<!-- ================= SPEC ================= -->
+<section class="specs">
+
+  <div class="section-head">
+    <span class="no">SPEC 01</span>
+    <h2>字段口径：七个键</h2>
+    <p>301 模板由 4 项扩为 7 项</p>
+  </div>
+  <div class="grid">
+    <div class="card2">
+      <h3>字段与控件</h3>
+      <table class="table">
+        <tr><th>键</th><th>控件</th><th>必填</th><th>值口径</th></tr>
+        <tr><td>car_brand</td><td>下拉 + 手填</td><td>是</td><td>常用品牌 60 条；不在表内直接手填，≤12 字</td></tr>
+        <tr><td>car_model</td><td>下拉单选</td><td>是</td><td>车身形式 7 选 1，沿用原键、类型改 select</td></tr>
+        <tr><td>car_color</td><td>下拉 + 手填</td><td>否</td><td>常用色 5 条 + 手填，≤8 字</td></tr>
+        <tr><td>plate_no</td><td>省份下拉 + 字母下拉 + 手填</td><td>否</td><td>拼接成单值（如 <code>皖A12345</code>），5–6 位后段</td></tr>
+      </table>
+      <p>与原有 route / depart_time / seats 并列；<code>blocker</code> 仍「非空即已填」，两个选填键留空不扣完整度。</p>
+    </div>
+    <div class="card2">
+      <h3>为什么这么定</h3>
+      <ul>
+        <li><b>下拉为主</b>：常用值点两下就完，减少手打与错别字。</li>
+        <li><b>手填兜底</b>：品牌与颜色长尾太大，做封闭选项必然漏；手填保证任何车都能发出去。</li>
+        <li><b>车型只做下拉</b>：车身形式本身是可穷举的 7 类，没有手填需求。</li>
+        <li><b>车牌拆三段</b>：省份只有 31 个、字母只有 24 个，前两位下拉能挡住绝大多数写错；后段仍手填。</li>
+        <li><b>不新增控件类型</b>：仍用现有 <code>text</code> / <code>select</code>，前端决定渲染成下拉还是下拉+手填。</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="section-head">
+    <span class="no">SPEC 02</span>
+    <h2>「下拉 + 手填」的统一交互</h2>
+    <p>品牌 / 颜色共用一套规则</p>
+  </div>
+  <div class="grid">
+    <div class="card2">
+      <h3>展开与选择</h3>
+      <ul>
+        <li><b>值行</b>：整行可点（≥44），未选显灰字「选择或手填」，已选显实值。</li>
+        <li><b>面板</b>：就地展开首屏 6 条常用（可下滑看全部）+ 底部固定「没找到？手动输入」，浮层覆盖下方字段、不撑长卡片。</li>
+        <li><b>选中即收起</b>：点一行落值并折叠；再点已选项 = 清空。</li>
+        <li><b>手填入口</b>：点底部一行 → 面板收起、该行变输入框并唤起键盘，同时出现「返回列表」小字入口。</li>
+        <li><b>手填值</b>：原样保存（如「极石」「香槟金」），<b>不写回选项表</b>、不参与排序。</li>
+      </ul>
+    </div>
+    <div class="card2">
+      <h3>数据来源与边界</h3>
+      <ul>
+        <li><b>品牌表</b>：前端本地常量（约 60 条：主流 / 豪华 / 自主 / 商用车），改动发版生效，不做服务端下发。</li>
+        <li><b>颜色表</b>：5 条常用色（白/黑/银/灰/蓝），带色点便于扫读；其余色手填。</li>
+        <li><b>车型表</b>：7 条车身形式，直接进模板 <code>options</code>（服务端也是这份）。</li>
+        <li><b>不做</b>：品牌联想、拼音搜索、最近使用、品牌→车系联动（本期都不做）。</li>
+        <li><b>一致性</b>：手填与下拉选出的值在存储上完全等价，都只写 <code>template_values</code>。</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="section-head">
+    <span class="no">SPEC 03</span>
+    <h2>车牌号控件</h2>
+    <p>前两位下拉，后段手填</p>
+  </div>
+  <div class="grid">
+    <div class="card2">
+      <h3>三段结构</h3>
+      <ul>
+        <li><b>省份</b>：31 个省级简称，7 列网格下拉，默认空、不猜。</li>
+        <li><b>字母</b>：发牌机关代号 A–Z，<b>排除 I / O</b>（避免与 1 / 0 混淆），单列或网格下拉。</li>
+        <li><b>号码</b>：5–6 位字母数字（新能源 6 位），等宽字体、自动转大写、去空格与「·」。</li>
+        <li><b>存值</b>：三段拼成一个字符串写 <code>plate_no</code>（<code>皖A12345</code>），不拆三键。</li>
+        <li><b>不校验真伪</b>：只校验长度与字符集，不查号段、不校验字母归属省份。</li>
+      </ul>
+    </div>
+    <div class="card2">
+      <h3>隐私与展示</h3>
+      <ul>
+        <li><b>选填</b>：车牌属个人信息，不强制填写；留空不扣完整度。</li>
+        <li><b>不采集</b>：车牌<b>不进埋点、不进日志</b>（与手机号同一条红线），仅随帖子落库。</li>
+        <li><b>详情页</b>：与车型同列为一行「车牌 皖A12345」，不做打码（用户自己填的就是给同路人看的）。</li>
+        <li><b>可清空</b>：三段任一段为空即视为整体未填，不存半截值。</li>
+        <li><b>键盘</b>：号码段用字母数字键盘，字号与「出发时间」值行一致。</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="section-head">
+    <span class="no">SPEC 04</span>
+    <h2>全局 select 改下拉 + 落地边界</h2>
+    <p>影响 4 个类目的发布表单</p>
+  </div>
+  <div class="grid">
+    <div class="card2">
+      <h3>这次要动什么</h3>
+      <ul>
+        <li><b>发布页渲染</b>：现有 <code>select</code> 的 ChoiceChip 换成本稿的「值行 + 下拉面板」，全部类目统一（301 拼车 / 101 招聘 / 401 闲置 / 501 家政）。</li>
+        <li><b>301 模板</b>：<code>fields</code> 7 项（route / depart_time / seats / car_brand / car_model / car_color / plate_no），必填 5 项。</li>
+        <li><b>迁移</b>：新增 <code>car_brand</code>（text）、<code>car_color</code>（text）、<code>plate_no</code>（text）；<code>car_model</code> 由 text 改 select + 7 个 options；<b>bump <code>template_version</code></b>。</li>
+        <li><b>不改</b>：不新增接口、不改请求体、不动数据库、不新增错误码。</li>
+        <li><b>回归</b>：4 个类目的发布表单与相关 widget 测试都要跟着走一遍。</li>
+      </ul>
+    </div>
+    <div class="card2">
+      <h3>本期不做</h3>
+      <ul>
+        <li><b>车牌校验/查询</b>：不接车管所数据、不做真实性校验。</li>
+        <li><b>品牌聚合筛选</b>：手填值会发散，聚合需先规范化。</li>
+        <li><b>历史回填</b>：老帖只有 <code>car_model</code> 自由文本，原样展示、不清洗、不补空行。</li>
+        <li><b>多车管理</b>：「常用车辆」一类的一键复用不在本期。</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="section-head">
+    <span class="no">REVIEW</span>
+    <h2>剩余待定</h2>
+    <p>3 项，均给推荐</p>
+  </div>
+  <div class="grid">
+    <div class="decision">
+      <div class="dno">R-1</div>
+      <h3>车牌号是选填还是必填？</h3>
+      <p class="q">必填能提高可信度，但车牌属个人信息，强制填写会挡掉一部分发布。</p>
+      <div class="opt pick"><span class="k">A</span><div><b>选填（推荐）</b>：不挡发布、不扣完整度，愿意填的人自然填。</div></div>
+      <div class="opt"><span class="k">B</span><div>必填：信息更整齐，但需在文案里说明用途，且可能压低发布完成率。</div></div>
+      <div class="verdict"><b>建议 A</b>：先按选填上线，跑一段看填写率再决定是否提为必填。</div>
+    </div>
+    <div class="decision">
+      <div class="dno">R-2</div>
+      <h3>品牌下拉先放多少条？</h3>
+      <p class="q">全量 60 条塞进下拉需要滚动；首屏只放 6 条命中率高但热门品牌可能要多点一次手填。</p>
+      <div class="opt pick"><span class="k">A</span><div><b>面板内 6 条常用 + 可滚动看全部（推荐）</b>：首屏不挤，需要的人往下滑。</div></div>
+      <div class="opt"><span class="k">B</span><div>只放 6 条热门，其余全靠手填：面板最轻，但小众品牌每次都要打字。</div></div>
+      <div class="verdict"><b>建议 A</b>：下拉里能滚到 60 条，手填只是最后的兜底，不是主路径。</div>
+    </div>
+    <div class="decision">
+      <div class="dno">R-3</div>
+      <h3>车牌号码段要不要做「·」分隔展示？</h3>
+      <p class="q">车牌习惯写法是 <code>皖A·12345</code>，但存储应为纯字母数字。</p>
+      <div class="opt pick"><span class="k">A</span><div><b>展示带点、存储不带（推荐）</b>：值行显示 <code>皖A·12345</code>，写入 <code>皖A12345</code>。</div></div>
+      <div class="opt"><span class="k">B</span><div>前后都不带点：最省事，但和用户习惯写法略有差异。</div></div>
+      <div class="verdict"><b>建议 A</b>：只是展示层格式化，不增加存储复杂度。</div>
+    </div>
+  </div>
+
+  <div class="note">
+    <b>落地注意</b>：① 301 模板改 <code>fields</code> 必须 bump <code>template_version</code>，否则客户端模板缓存看不到新字段；
+    ② <code>car_model</code> 类型由 text 改 select，历史值不清洗、不迁移，详情照原样展示；
+    ③ 品牌/颜色手填值不写回选项表，也不做「最近使用」，避免脏值回流；
+    ④ 车牌属个人信息：选填、不进埋点与日志、不做真伪校验；
+    ⑤ 全局 select 改下拉会影响 4 个类目，需连带回归发布表单测试，不新增错误码。
+  </div>
+
+</section>
+
+</body>
+</html>

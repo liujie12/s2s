@@ -23,7 +23,9 @@
 /// 留出 `memoryHint` 展示位，让「【记忆带入】」的版面占位可被验收。
 library;
 
+import 'car_options.dart';
 import 'category_tree.dart';
+import 'departure_time.dart';
 
 /// 模板字段的输入类型（决定用哪种控件与哪套校验）。
 enum TemplateFieldType {
@@ -38,6 +40,12 @@ enum TemplateFieldType {
 
   /// 单选（新旧程度、取件方式等 §5.4.3「附加字段」列的选单）
   select,
+
+  /// 时刻（拼车「出发时间」，KTD1）。
+  ///
+  /// 值是 RFC3339 UTC 时刻串（落 `template_values` 字符串键），控件是
+  /// 「值行 + 三枚快捷 chip + 内联展开的时间滚轮」，不是文本框。
+  datetime,
 
   /// 起终点地点对（拼车专用，KTD2）。
   ///
@@ -227,12 +235,10 @@ const Map<int, PublishTemplate> _templatesBySecondLevel = {
         memoryHint: '上次：回龙观 → 中关村',
       ),
       TemplateFieldSpec(
-        key: 'depart_time',
+        key: kDepartTimeFieldKey,
         label: '出发时间',
-        type: TemplateFieldType.text,
+        type: TemplateFieldType.datetime,
         required: true,
-        placeholder: '如：工作日 8:00',
-        memoryHint: '上次：工作日 8:00',
       ),
       TemplateFieldSpec(
         key: 'seats',
@@ -242,11 +248,34 @@ const Map<int, PublishTemplate> _templatesBySecondLevel = {
         placeholder: '1-6',
       ),
       TemplateFieldSpec(
-        key: 'car_model',
+        key: kCarBrandFieldKey,
+        label: '品牌',
+        type: TemplateFieldType.select,
+        required: true,
+        placeholder: '选择或手填',
+        options: kCarBrandOptions,
+        maxLength: NfrPublishCarLimits.brandMaxLength,
+      ),
+      TemplateFieldSpec(
+        key: kCarModelFieldKey,
         label: '车型',
+        type: TemplateFieldType.select,
+        required: true,
+        options: kCarModelOptions,
+      ),
+      TemplateFieldSpec(
+        key: kCarColorFieldKey,
+        label: '颜色',
+        type: TemplateFieldType.select,
+        placeholder: '选择或手填',
+        options: kCarColorOptions,
+        maxLength: NfrPublishCarLimits.colorMaxLength,
+      ),
+      TemplateFieldSpec(
+        key: kPlateFieldKey,
+        label: '车牌',
         type: TemplateFieldType.text,
-        placeholder: '如：轩逸（白色）',
-        memoryHint: '上次：轩逸（白色）',
+        placeholder: '如：皖A12345',
       ),
     ],
   ),

@@ -13,7 +13,9 @@ library;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/text/route_label.dart';
+import '../../domain/car_options.dart';
 import '../../domain/category_tree.dart';
+import '../../domain/departure_time.dart';
 import '../../domain/listing.dart';
 import '../../domain/listing_category.dart';
 import '../../domain/listing_detail.dart';
@@ -65,7 +67,11 @@ final postDetailProvider = FutureProvider.family<ListingDetail, int>((
 ///     [147] DEC-13）：未拉取态据此显示真实脱敏号码；完整明文仍待用户点「查看」后
 ///     由 `GET /posts/{id}/contact` 返回（[128]）。存量行无掩码时为 null。
 ///   - [ListingDetail.negotiable] 恒 false：契约与 DDL 均无「可议价」字段。
-ListingDetail postDetailToListingDetail(PostDetailDto dto) {
+///
+/// 参数：[dto] 契约详情；
+///   [now] 展示格式化的当前时刻（默认真实时钟，仅测试注入固定基准）。
+/// 返回：[ListingDetail]。
+ListingDetail postDetailToListingDetail(PostDetailDto dto, {DateTime? now}) {
   final listing = Listing(
     id: dto.id,
     title: dto.title,
@@ -101,6 +107,7 @@ ListingDetail postDetailToListingDetail(PostDetailDto dto) {
     templateFields: _templateFieldsFromAttributes(
       dto.attributes,
       dto.leafCategoryId,
+      now: now ?? DateTime.now(),
     ),
     address: dto.address,
     // 只取 url：他人视角契约已保证 `media[]` 仅含 audit_status=pass 的项，
@@ -135,13 +142,15 @@ PostCredential _credentialFromDto(PostCredentialDto dto) {
 ///
 /// 参数：
 /// - [attributes]：契约下发的属性键值对；
-/// - [leafCategoryId]：叶子类目 ID（决定用哪份模板；空则只按 key 直出）。
+/// - [leafCategoryId]：叶子类目 ID（决定用哪份模板；空则只按 key 直出）；
+/// - [now]：出发时刻格式化用的当前时刻基准。
 ///
 /// 返回：[TemplateField] 列表，顺序与 [attributes] 的插入顺序一致。
 List<TemplateField> _templateFieldsFromAttributes(
   Map<String, Object?> attributes,
-  int? leafCategoryId,
-) {
+  int? leafCategoryId, {
+  required DateTime now,
+}) {
   final labels = <String, String>{
     if (leafCategoryId != null)
       for (final field in templateForLeaf(leafCategoryId).extraFields)
@@ -151,9 +160,31 @@ List<TemplateField> _templateFieldsFromAttributes(
     for (final entry in attributes.entries)
       (
         label: labels[entry.key] ?? entry.key,
-        value: _attributeValueText(entry.value),
+        value: _attributeText(entry.key, entry.value, now),
       ),
   ];
+}
+
+/// 单个属性 → 详情页展示文案（按字段键分流格式化）。
+///
+/// 参数：[key] 属性键；[value] 属性原值；[now] 判定「今天/明天」的基准时刻。
+/// 返回：出发时间为中文时刻、车牌带间隔点、其余按原值直出。
+String _attributeText(String key, Object? value, DateTime now) {
+  if (key == kDepartTimeFieldKey) return _departTimeText(value, now);
+  // 车牌按「皖A·12345」展示，存储值仍不带点（见原型 R-3）。
+  if (key == kPlateFieldKey) return formatPlate(value?.toString() ?? '');
+  return _attributeValueText(value);
+}
+
+/// 出发时刻属性 → 详情页展示文案（R7 / R8）。
+///
+/// 参数：[value] `attributes['depart_time']` 的值（新帖是 RFC3339 UTC 串，
+///   旧帖是「工作日 8:00」这类自由文本）；[now] 判定今天/明天的基准时刻。
+/// 返回：可解析时「今天 18:32」样式；解析不了原样直出，不清洗旧值。
+String _departTimeText(Object? value, DateTime now) {
+  final raw = value?.toString() ?? '';
+  final parsed = tryParseDepartTime(raw);
+  return parsed == null ? raw : formatDepartTime(parsed, now: now);
 }
 
 /// 属性值 → 详情页展示文案。

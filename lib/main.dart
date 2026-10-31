@@ -12,6 +12,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/network/api_client.dart';
@@ -81,6 +82,16 @@ class _ZhaoYaZhaoAppState extends ConsumerState<ZhaoYaZhaoApp> {
       title: '找丫找',
       routerConfig: ref.watch(routerProvider),
       theme: _buildTheme(),
+      // 中文本地化（2026-10-30 新增）：出发时间滚轮用的 CupertinoDatePicker
+      // 依赖 CupertinoLocalizations，缺配置时日期段显示英文「Oct 30」。
+      // 只做中文，不开放语言切换（PRD 多语言本期不做）。
+      locale: const Locale('zh'),
+      supportedLocales: const [Locale('zh')],
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       // 暗色模式与多语言本期不做（PRD §14.6 附近条目已明确）
       debugShowCheckedModeBanner: false,
     );

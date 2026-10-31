@@ -8,6 +8,7 @@ library;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zhaoyazhao/core/network/api_exception.dart';
 import 'package:zhaoyazhao/domain/listing_category.dart';
+import 'package:zhaoyazhao/domain/departure_time.dart';
 import 'package:zhaoyazhao/domain/listing_detail.dart';
 import 'package:zhaoyazhao/features/detail/post_detail_provider.dart';
 import 'package:zhaoyazhao/features/post/post_dto.dart';
@@ -103,6 +104,33 @@ void main() {
       final detail = postDetailToListingDetail(PostDetailDto.fromJson(payload));
 
       expect(detail.templateFields.single.value, '回龙观 → 中关村');
+    });
+
+    test('U5 出发时间 ISO 串 → 「明天 08:00」样式，ISO 不裸奔', () {
+      final payload = postDetailPayload();
+      payload['attributes'] = <String, Object?>{
+        'depart_time': departTimeToWire(DateTime(2026, 10, 31, 8, 0)),
+      };
+      final detail = postDetailToListingDetail(
+        PostDetailDto.fromJson(payload),
+        now: DateTime(2026, 10, 30, 17, 32),
+      );
+
+      expect(detail.templateFields.single.value, '明天 08:00');
+      expect(detail.templateFields.single.value, isNot(contains('T')));
+    });
+
+    test('U5 出发时间历史自由文本 → 原样展示（R7）', () {
+      final payload = postDetailPayload();
+      payload['attributes'] = <String, Object?>{
+        'depart_time': '工作日 8:00',
+      };
+      final detail = postDetailToListingDetail(
+        PostDetailDto.fromJson(payload),
+        now: DateTime(2026, 10, 30, 17, 32),
+      );
+
+      expect(detail.templateFields.single.value, '工作日 8:00');
     });
 
     test('media[] → mediaUrls（只取 url 且保序）', () {

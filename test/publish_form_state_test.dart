@@ -184,8 +184,39 @@ void main() {
     test('模板非必填项留空不拦（§5.4.3 只有部分附加字段是必填）', () {
       final template = templateForLeaf(30101);
       final optional = template.extraFields.where((f) => !f.required);
-      expect(optional, isNotEmpty, reason: '拼车模板应有非必填字段（车型）');
+      expect(optional, isNotEmpty, reason: '拼车模板应有非必填字段（颜色 / 车牌）');
       expect(complete(leafId: 30101).blocker, isNull);
+    });
+
+    test('AE4 编辑载入历史自由文本 → 原键原文保留且不拦提交', () {
+      final form = complete(leafId: 30101).copyWith(
+        templateValues: const {
+          'route': '回龙观 → 中关村',
+          'depart_time': '工作日 8:00',
+          'seats': '2',
+          'car_brand': '比亚迪',
+          'car_model': '轿车',
+        },
+      );
+
+      // 载入路径零改动：字符串键原样保留，不尝试解析或清洗旧值
+      expect(form.templateValues['depart_time'], '工作日 8:00');
+      // 非空即已填（KTD3）：历史文本同样让必填项通过
+      expect(form.blocker, isNull);
+    });
+
+    test('出发时间已是 ISO 时刻串 → 同样视为已填', () {
+      final form = complete(leafId: 30101).copyWith(
+        templateValues: const {
+          'route': '回龙观 → 中关村',
+          'depart_time': '2026-10-30T10:30:00Z',
+          'seats': '2',
+          'car_brand': '比亚迪',
+          'car_model': '轿车',
+        },
+      );
+
+      expect(form.blocker, isNull);
     });
   });
 
@@ -411,6 +442,8 @@ void main() {
         templateValues: {
           'depart_time': '工作日 8:00',
           'seats': '2',
+          'car_brand': '比亚迪',
+          'car_model': '轿车',
           if (legacyText.isNotEmpty) 'route': legacyText,
         },
         routePair: pair,

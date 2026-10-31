@@ -790,7 +790,10 @@ void main() {
     /// 45 = 46 − cert_type_option.dart（2026-10-28 资质简化为「名称 + 图片」，
     /// 证件类型枚举与按类型候选不再需要，文件删除）。
     /// 44 = 45 − cert_name_store.dart（2026-10-28 去掉常用名称候选后删除）。
-    const int featuresDartFileBaseline = 44;
+    /// 45 = 44 + depart_time_field.dart（2026-10-30 拼车出发时间内联控件）。
+    /// 47 = 45 + option_field.dart + plate_field.dart（2026-10-31 选单下拉与
+    /// 车牌三段控件）。
+    const int featuresDartFileBaseline = 47;
 
     /// lib/ 全部 Dart 文件数基线（同上，评审 #10）。
     /// 71 = 67 + [127] 前端段四件（core/time_format + 我的发布三件）；
@@ -813,7 +816,11 @@ void main() {
     /// 79 = 80 − cert_type_option.dart（2026-10-28 资质简化，与
     /// featuresDartFileBaseline 同步减 1）。
     /// 78 = 79 − cert_name_store.dart（去掉常用名称候选后删除）。
-    const int libDartFileBaseline = 78;
+    /// 80 = 78 + domain/departure_time.dart + features/publish/depart_time_field.dart
+    ///   （2026-10-30 拼车出发时刻工具与内联控件）。
+    /// 83 = 80 + domain/car_options.dart + features/publish/option_field.dart
+    ///   + features/publish/plate_field.dart（2026-10-31 车辆信息四行）。
+    const int libDartFileBaseline = 83;
 
     /// `ApiException.parse(` 命中总数基线（判据 C1）：工厂定义 1 + 调用 55。
     ///

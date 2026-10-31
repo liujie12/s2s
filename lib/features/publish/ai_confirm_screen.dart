@@ -32,6 +32,7 @@ import '../../core/network/api_exception.dart';
 import '../../design_tokens.dart';
 import '../../domain/ai_guess.dart';
 import '../../domain/category_tree.dart';
+import '../../domain/departure_time.dart';
 import '../../domain/listing_detail.dart';
 import '../../domain/publish_completeness.dart';
 import '../../router/app_router.dart';
@@ -223,12 +224,27 @@ class _AiConfirmScreenState extends ConsumerState<AiConfirmScreen> {
         fields.add(FieldGuess(
           fieldKey: entry.key,
           label: entry.key,
-          value: entry.value?.toString(),
+          value: _templateValueText(entry.key, entry.value),
           source: sourceOf(entry.key) ?? GuessSource.template,
         ));
       }
     }
     return fields;
+  }
+
+  /// 模板字段值 → 确认页展示文案（R7 / R8）。
+  ///
+  /// 出发时刻在库里是 RFC3339 UTC 串，直接 toString 会让用户在确认页看到
+  /// `2026-10-30T10:30:00Z`；这里过 U1 工具函数，解析不了（AI 回传自由文本）
+  /// 则原样直出。
+  ///
+  /// 参数：[key] 模板字段键；[value] 服务端回传的原始值。
+  /// 返回：可读文案。
+  String _templateValueText(String key, Object? value) {
+    final raw = value?.toString() ?? '';
+    if (key != kDepartTimeFieldKey) return raw;
+    final parsed = tryParseDepartTime(raw);
+    return parsed == null ? raw : formatDepartTime(parsed, now: DateTime.now());
   }
 
   /// 把服务端猜测回填进表单（发布载荷的唯一真源）。
@@ -288,6 +304,17 @@ class _AiConfirmScreenState extends ConsumerState<AiConfirmScreen> {
         priceText: match.group(1)!,
         priceUnit: unit.isEmpty ? _form.priceUnit : unit,
       );
+    }
+    if (fieldKey == kDepartTimeFieldKey) {
+      // 出发时间的展示值是格式化文案（「明天 08:00」），存储值是 ISO 串：
+      // 手改值若仍是同一句展示文案，说明用户没改，保留原 ISO 串；
+      // 否则按用户所写存文本（展示端 R7 原样直出，不会被静默清洗）。
+      final current = _form.templateValues[kDepartTimeFieldKey] ?? '';
+      final parsed = tryParseDepartTime(current);
+      if (parsed != null &&
+          value.trim() == formatDepartTime(parsed, now: DateTime.now())) {
+        return _form;
+      }
     }
     return _form.copyWith(
       templateValues: {..._form.templateValues, fieldKey: value.trim()},

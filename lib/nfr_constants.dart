@@ -597,6 +597,27 @@ class NfrPostLifecycle {
   static const int autoArchiveDays = 14;
 }
 
+/// §5.4.3 拼车「出发时间」控件的交互参数（chip 与滚轮）。
+///
+/// 这些不是 NFR 判定线而是控件行为参数；仍集中在此，是因为它们决定用户能
+/// 选到什么时刻（范围与粒度），属于「产品口径」而非「UI 调参」，散落各处
+/// 会与 PRD §5.4.3 的描述漂移。
+class NfrPublish {
+  const NfrPublish._();
+
+  /// 滚轮可选天数上限（天）：可选取值范围为 `[当前时刻, 当前时刻 + 该值]`。
+  static const int departTimeWheelMaxDays = 7;
+
+  /// 滚轮分钟步长（分钟）。chip 值不受本步长约束（精确到分钟）。
+  static const int departTimeWheelMinuteStep = 5;
+
+  /// 「1 小时后」chip 相对点击时刻的小时偏移。
+  static const int departTimeChipHourOffset = 1;
+
+  /// 「明早 H:00」chip 的固定小时：无论当前是几点，一律取次日该整点。
+  static const int departTimeMorningHour = 8;
+}
+
 /// §3.7 未实名详情额度（cert 域，[149]）。
 ///
 /// 双端口径：后端 `NfrCert.detailQuotaLimitPerDay` 镜像，前端拼「今日 N 条」

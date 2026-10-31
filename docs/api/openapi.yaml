@@ -4702,12 +4702,18 @@ components:
         label: { type: string, example: 品牌 }
         type:
           type: string
-          enum: [text, number, select, multi_select, date, route_pair]
+          enum: [text, number, select, multi_select, date, datetime, route_pair]
           description: |
-            字段控件类型。`route_pair`（2026-10-30 新增，拼车「起点 → 终点」）
-            的值为对象而非字符串：`{origin:{name,address,lng,lat},
-            destination:{...},distance_m?,duration_s?}`；其余类型为字符串。
-            必填判定对 `route_pair` 要求两端都带数值坐标（历史字符串形态按已填放行）。
+            字段控件类型。
+            - `date`（2026-10-30 补注）：纯日期，不含时分；客户端当前降级为文本输入。
+            - `datetime`（2026-10-30 新增，拼车「出发时间」）：值为 RFC3339 UTC
+              时刻串（形如 `2026-10-30T10:30:00Z`），客户端渲染为时间选择控件。
+            - `route_pair`（2026-10-30 新增，拼车「起点 → 终点」）的值为对象而非
+              字符串：`{origin:{name,address,lng,lat}, destination:{...},
+              distance_m?,duration_s?}`。
+            其余类型为字符串。必填判定：`route_pair` 要求两端都带数值坐标
+            （历史字符串形态按已填放行）；其余类型（含 `datetime`）非空即已填，
+            历史文本同样放行。
         required:
           type: boolean
           description: |

@@ -117,6 +117,29 @@ void main() {
       expect(template.extraFields.single.required, isTrue);
     });
 
+    test('契约 datetime → 本地 datetime（KTD1：时刻字段不被降级成文本）',
+        () async {
+      stubTemplate(
+        harness,
+        leafCategoryId: 30101,
+        fields: [
+          {
+            'key': 'depart_time',
+            'label': '出发时间',
+            'type': 'datetime',
+            'required': true,
+          },
+        ],
+      );
+
+      final template = await readTemplate(30101);
+
+      // 映射漏了 datetime 会降级成 text —— 表单渲染文本框，用户被要求
+      // 手敲「工作日 8:00」，且没有任何报错可循。
+      expect(template.extraFields.single.type, TemplateFieldType.datetime);
+      expect(template.extraFields.single.required, isTrue);
+    });
+
     test('通用模板叶子也能合并服务端字段（generic 文案保留）', () async {
       stubTemplate(
         harness,

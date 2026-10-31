@@ -39,6 +39,9 @@ enum TemplateFieldTypeDto {
   /// 日期
   date,
 
+  /// 时刻（拼车「出发时间」，2026-10-30 新增；值为 RFC3339 UTC 时刻串）
+  datetime,
+
   /// 起终点地点对（拼车，KTD2；值为对象而非字符串）
   routePair,
 }
@@ -57,6 +60,7 @@ TemplateFieldTypeDto templateFieldTypeFromApi(String value) =>
       'select' => TemplateFieldTypeDto.select,
       'multi_select' => TemplateFieldTypeDto.multiSelect,
       'date' => TemplateFieldTypeDto.date,
+      'datetime' => TemplateFieldTypeDto.datetime,
       'route_pair' => TemplateFieldTypeDto.routePair,
       _ => TemplateFieldTypeDto.text,
     };

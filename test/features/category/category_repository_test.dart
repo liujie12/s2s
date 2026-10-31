@@ -228,7 +228,7 @@ void main() {
   });
 
   group('templateFieldTypeFromApi', () {
-    test('契约五值逐一映射（显式 switch 全 case）', () {
+    test('契约枚举逐一映射（显式 switch 全 case）', () {
       expect(templateFieldTypeFromApi('text'), TemplateFieldTypeDto.text);
       expect(templateFieldTypeFromApi('number'), TemplateFieldTypeDto.number);
       expect(templateFieldTypeFromApi('select'), TemplateFieldTypeDto.select);
@@ -237,6 +237,14 @@ void main() {
         TemplateFieldTypeDto.multiSelect,
       );
       expect(templateFieldTypeFromApi('date'), TemplateFieldTypeDto.date);
+      expect(
+        templateFieldTypeFromApi('datetime'),
+        TemplateFieldTypeDto.datetime,
+      );
+      expect(
+        templateFieldTypeFromApi('route_pair'),
+        TemplateFieldTypeDto.routePair,
+      );
     });
 
     test('未知值降级 text（default 分支）', () {

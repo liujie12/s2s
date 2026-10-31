@@ -75,6 +75,12 @@ void main() {
         t.extraFields.firstWhere((f) => f.key == 'route').type,
         TemplateFieldType.routePair,
       );
+      // KTD1/KTD4：出发时间是时刻字段而非自由文本；类型漂回 text 会让
+      // 时间控件消失、placeholder 文案（「工作日 8:00」）重新出现。
+      final departTime = t.extraFields.firstWhere((f) => f.key == 'depart_time');
+      expect(departTime.type, TemplateFieldType.datetime);
+      expect(departTime.placeholder, isNull);
+      expect(departTime.memoryHint, isNull);
     });
 
     test('全职招聘：价格单位为月薪（§5.4.3「月薪范围/月」）', () {

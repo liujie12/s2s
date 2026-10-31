@@ -74,6 +74,7 @@ TemplateFieldSpec templateFieldSpecFromDto(TemplateFieldDto dto) {
       TemplateFieldTypeDto.select => TemplateFieldType.select,
       TemplateFieldTypeDto.multiSelect => TemplateFieldType.select,
       TemplateFieldTypeDto.date => TemplateFieldType.text,
+      TemplateFieldTypeDto.datetime => TemplateFieldType.datetime,
       TemplateFieldTypeDto.routePair => TemplateFieldType.routePair,
     },
     placeholder: dto.placeholder,

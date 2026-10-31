@@ -47,6 +47,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../design_tokens.dart';
+import '../../domain/car_options.dart';
 import '../../domain/category_tree.dart';
 import '../../domain/publish_template.dart';
 import '../../domain/route_pair.dart';
@@ -62,9 +63,12 @@ import '../location/location_permission.dart';
 import '../location/reverse_geocode.dart';
 import '../post/post_dto.dart';
 import '../post/post_repository.dart';
+import 'depart_time_field.dart';
 import 'draft_store.dart';
 import 'map_selector_screen.dart';
 import 'media_section.dart';
+import 'option_field.dart';
+import 'plate_field.dart';
 import 'precheck_sheet.dart';
 import 'publish_form_state.dart';
 import 'publish_screen_args.dart';
@@ -731,9 +735,11 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
                       value: _form.templateValues[field.key] ?? '',
                       controller:
                           field.type == TemplateFieldType.select ||
-                              field.type == TemplateFieldType.routePair
-                          ? null
-                          : _templateCtrl(field.key),
+                                  field.type == TemplateFieldType.routePair ||
+                                  field.type == TemplateFieldType.datetime ||
+                                  field.key == kPlateFieldKey
+                              ? null
+                              : _templateCtrl(field.key),
                       routePair: _form.routePair,
                       onPickRoute: _pickRoutePair,
                       onChanged: (v) => _setTemplateValue(field.key, v),
@@ -1209,8 +1215,8 @@ class _TemplateField extends StatelessWidget {
   final TemplateFieldSpec spec;
   final String value;
 
-  /// 文本类字段的控制器；[TemplateFieldType.select] 与
-  /// [TemplateFieldType.routePair] 传 null。
+  /// 文本类字段的控制器；[TemplateFieldType.select]、
+  /// [TemplateFieldType.routePair] 与 [TemplateFieldType.datetime] 传 null。
   final TextEditingController? controller;
   final ValueChanged<String> onChanged;
 
@@ -1252,25 +1258,25 @@ class _TemplateField extends StatelessWidget {
           const SizedBox(height: AppSpacing.sm),
           if (spec.type == TemplateFieldType.routePair)
             _buildRouteSummary()
+          else if (spec.type == TemplateFieldType.datetime)
+            // 时刻字段：值行 + 快捷 chip + 内联滚轮（R1，KTD5）。
+            // 历史文本值由控件按「未选」展示、原值不被改动（R7）。
+            DepartTimeField(value: value, onChanged: onChanged)
           else if (spec.type == TemplateFieldType.select)
-            Wrap(
-              spacing: AppSpacing.sm,
-              runSpacing: AppSpacing.sm,
-              children: [
-                for (final option in spec.options)
-                  ChoiceChip(
-                    label: Text(
-                      option,
-                      style: TextStyle(fontSize: AppTypeScale.small.size),
-                    ),
-                    selected: option == value,
-                    selectedColor: const Color(AppColors.primaryLight),
-                    // 再点一次可取消：选错了又没有「清空」入口时，
-                    // 用户只能靠换分类来复位。
-                    onSelected: (on) => onChanged(on ? option : ''),
-                  ),
-              ],
+            // 选单统一走「值行 + 下拉面板」（2026-10-31 裁定）：
+            // 品牌与颜色额外开放「手动输入」兜底，车型只允许七选一。
+            OptionField(
+              value: value,
+              options: spec.options,
+              allowCustom: allowsCustomOption(spec.key),
+              maxLength:
+                  spec.maxLength ?? customOptionMaxLength(spec.key),
+              placeholder: spec.placeholder ?? '请选择',
+              onChanged: onChanged,
             )
+          else if (spec.key == kPlateFieldKey)
+            // 车牌：省份 + 字母下拉、号码手填，存储仍是单个字符串。
+            PlateField(value: value, onChanged: onChanged)
           else
             TextField(
               controller: controller,
@@ -1287,9 +1293,10 @@ class _TemplateField extends StatelessWidget {
               ).copyWith(counterText: spec.maxLength == null ? '' : null),
               onChanged: onChanged,
             ),
-          // 起终点字段的示例值没有意义（摘要行本身就是值），不渲染。
+          // 起终点与出发时间字段的示例值没有意义（控件本身就是值），不渲染。
           if (spec.memoryHint != null &&
-              spec.type != TemplateFieldType.routePair) ...[
+              spec.type != TemplateFieldType.routePair &&
+              spec.type != TemplateFieldType.datetime) ...[
             const SizedBox(height: AppSpacing.xs),
             // 只显示模板给的示例值，不自称「记忆带入」：真记忆需云端（见文件头）。
             _HintText('示例：${spec.memoryHint}'),
