@@ -1,59 +1,113 @@
-/// 底部三 Tab 导航壳（PRD §10.2）。
+/// 底部四 Tab 导航壳（PRD §10.2）。
 ///
-/// 结构依据 prototype-figma/code.js 的 `FLOW_LINKS` 与 `bottomTabRaw`：
-/// - `bottomTab('丫圈')` 只出现在 home/list、`bottomTab('我的')` 只出现在 profile，
-///   **全文件没有任何 `bottomTab('发布')`** —— 发布页没有底部 Tab 栏；
-/// - `FLOW_LINKS` 里 `_tab-发布 → publish-screen`、`_tab-我的 → profile-screen`，
-///   「发布」是点击后 push 全屏发布页的键，不是持久分支。
+/// 结构依据 PRD §10.2（2026-10-31 由三 Tab 改为四 Tab）：
+/// `[丫圈] [消息] [发布] [我的]`，四项等分；
+/// - 持久分支三个：丫圈（地图/列表）、消息（会话列表/会话详情）、我的（profile）；
+/// - 「发布」仍是**点击后 push 全屏发布页**的键，不占分支（点完回到原 Tab，
+///   R12 / R34）。历史上 code.js 全文件没有 `bottomTab('发布')`，本次沿用
+///   「复用同一排 44px 命中区、onTap 走 push」的既有做法。
 ///
-/// 故本壳只承载两个持久分支（丫圈 = 地图/列表、我的 = profile），
-/// 中间的「发布」键复用同一排 44px 命中区，但 onTap 是 `push('/publish')`
-/// 而非 `goBranch` —— 发布页是顶层路由，push 后底部导航随壳一起被覆盖。
+/// 三键图标一律矢量（PRD §10.2「不得用 emoji」）：`map` / 对话气泡 /
+/// 鸭子微缩 / `person`。鸭子几何真源是
+/// prototype-figma/assets/duck-symbol-mini.svg，见 [_DuckMiniPainter] 文件头说明。
 ///
-/// 三键图标一律矢量（PRD §10.2「不得用 emoji」）：`map` / 鸭子微缩 / `person`。
-/// 鸭子微缩几何真源是 prototype-figma/assets/duck-symbol-mini.svg，见
-/// [_DuckMiniPainter] 文件头说明。
+/// **未读唯一来源**（KTD14）：Tab 数字角标读 [unreadSummaryProvider]，不在本壳
+/// 或任何页面做二次求和；0 时不渲染角标，超过 [NfrChat.unreadBadgeMax] 显示
+/// 「99+」（R9 / R11）。
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../design_tokens.dart';
+import '../features/message/message_list_provider.dart';
+import '../nfr_constants.dart';
 import 'app_router.dart';
+
+/// 底部持久分支下标（与 `_routes` 中 `StatefulShellRoute` 的 branches 顺序一致）。
+///
+/// 用命名常量而非裸下标：分支顺序是路由表与导航栏之间的隐式契约，写错只会在
+/// 运行时跳错页；两边引用同一组常量则改序时一处生效。
+class HomeBranch {
+  const HomeBranch._();
+
+  /// 丫圈（地图 / 列表）。
+  static const int discovery = 0;
+
+  /// 消息（会话列表）。
+  static const int messages = 1;
+
+  /// 我的。
+  static const int profile = 2;
+}
 
 /// 应用底部导航壳。
 ///
 /// 由 [StatefulShellRoute] 的 builder 调用：`body` 承载当前分支的 Navigator，
-/// `bottomNavigationBar` 承载三键栏。分支页面（MapScreen/ListScreen/profile
-/// 占位屏）各自持自己的 Scaffold + AppBar，此处不再叠一层 AppBar。
-class HomeShell extends StatelessWidget {
+/// `bottomNavigationBar` 承载四键栏。分支页面（MapScreen/ListScreen/
+/// MessageListScreen/ProfileScreen）各自持自己的 Scaffold + AppBar，
+/// 此处不再叠一层 AppBar。
+class HomeShell extends ConsumerWidget {
   const HomeShell({super.key, required this.navigationShell});
 
   /// go_router 的分支 Navigator 壳，`body` 直接渲染它。
   final StatefulNavigationShell navigationShell;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final unread = ref.watch(
+      unreadSummaryProvider.select((value) => value.asData?.value.total ?? 0),
+    );
     return Scaffold(
       body: navigationShell,
-      bottomNavigationBar: _BottomNavBar(navigationShell: navigationShell),
+      bottomNavigationBar: HomeNavBar(
+        selectedIndex: navigationShell.currentIndex,
+        unreadTotal: unread,
+        onSelectBranch: navigationShell.goBranch,
+        onPublish: () => context.push(AppRoutes.publish),
+      ),
     );
   }
 }
 
-/// 底部三键栏（PRD §10.2）。
+/// 底部四键栏（PRD §10.2）。
 ///
-/// 栏高 64px（PRD §6.4.1 ASCII 图「底部三 Tab（实体，64px）」），三键等分，
+/// 栏高 64px（PRD §6.4.1 ASCII 图「底部四 Tab（实体，64px）」），四键等分，
 /// 每键命中区 44px（code.js 里 `_tab-*` 单元格 `h:44`，靠栏高 64 余量补齐
 /// 触控区下限而不抬高栏高）。
-class _BottomNavBar extends StatelessWidget {
-  const _BottomNavBar({required this.navigationShell});
+///
+/// 做成纯展示组件（未读总数由调用方传入）而非自己 watch Provider：导航栏的
+/// 测试不该依赖网络装配，唯一读取点留在 [HomeShell]，KTD14 的「唯一 Provider
+/// 挂载点」才不会被拆成两处。
+class HomeNavBar extends StatelessWidget {
+  /// 构造底部导航栏。
+  ///
+  /// 参数：[selectedIndex] 当前分支下标（见 [HomeBranch]）；
+  ///   [unreadTotal] 未读总数；[onSelectBranch] 分支切换回调；
+  ///   [onPublish] 发布键回调。
+  const HomeNavBar({
+    super.key,
+    required this.selectedIndex,
+    required this.unreadTotal,
+    required this.onSelectBranch,
+    required this.onPublish,
+  });
 
-  final StatefulNavigationShell navigationShell;
+  /// 当前分支下标。
+  final int selectedIndex;
+
+  /// 未读总数（唯一来源是 [unreadSummaryProvider]）。
+  final int unreadTotal;
+
+  /// 分支切换回调。
+  final ValueChanged<int> onSelectBranch;
+
+  /// 发布键回调（push 全屏发布页）。
+  final VoidCallback onPublish;
 
   @override
   Widget build(BuildContext context) {
-    final int index = navigationShell.currentIndex;
     return Container(
       decoration: const BoxDecoration(
         color: Color(AppColors.surface),
@@ -68,15 +122,22 @@ class _BottomNavBar extends StatelessWidget {
               _TabItem(
                 icon: Icons.map,
                 label: '丫圈',
-                selected: index == 0,
-                onTap: () => navigationShell.goBranch(0),
+                selected: selectedIndex == HomeBranch.discovery,
+                onTap: () => onSelectBranch(HomeBranch.discovery),
               ),
-              _PublishTab(onTap: () => context.push(AppRoutes.publish)),
+              _TabItem(
+                icon: Icons.chat_bubble,
+                label: '消息',
+                selected: selectedIndex == HomeBranch.messages,
+                badgeLabel: unreadBadgeLabel(unreadTotal),
+                onTap: () => onSelectBranch(HomeBranch.messages),
+              ),
+              _PublishTab(onTap: onPublish),
               _TabItem(
                 icon: Icons.person,
                 label: '我的',
-                selected: index == 1,
-                onTap: () => navigationShell.goBranch(1),
+                selected: selectedIndex == HomeBranch.profile,
+                onTap: () => onSelectBranch(HomeBranch.profile),
               ),
             ],
           ),
@@ -86,16 +147,18 @@ class _BottomNavBar extends StatelessWidget {
   }
 }
 
-/// 普通 Tab 键（丫圈 / 我的）。
+/// 普通 Tab 键（丫圈 / 消息 / 我的）。
 ///
 /// 选中态主色、未选中态次要文字色：只改色不改形（PRD §1.4.1.1 叠加铁律），
 /// 且两态同时改图标与文字颜色，避免 emoji 那种「文字变色图标不变」的断裂。
+/// [badgeLabel] 非空时在图标右上角渲染数字角标（R9）。
 class _TabItem extends StatelessWidget {
   const _TabItem({
     required this.icon,
     required this.label,
     required this.selected,
     required this.onTap,
+    this.badgeLabel,
   });
 
   final IconData icon;
@@ -103,18 +166,32 @@ class _TabItem extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
 
+  /// 数字角标文案；null / 空串不渲染。
+  final String? badgeLabel;
+
   @override
   Widget build(BuildContext context) {
     final Color color = selected
         ? const Color(AppColors.primary)
         : const Color(AppColors.textSecondary);
+    final String? badge = badgeLabel;
     return Expanded(
       child: InkWell(
         onTap: onTap,
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 24, color: color),
+            SizedBox(
+              height: 24,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Icon(icon, size: 24, color: color),
+                  if (badge != null && badge.isNotEmpty)
+                    Positioned(top: -6, left: 14, child: _TabBadge(label: badge)),
+                ],
+              ),
+            ),
             const SizedBox(height: AppSpacing.xs),
             Text(
               label,
@@ -124,6 +201,39 @@ class _TabItem extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Tab 数字角标（设计稿：16 高、圆角 full、底 error、字 surface 10/16）。
+class _TabBadge extends StatelessWidget {
+  const _TabBadge({required this.label});
+
+  /// 角标文案（已按 [NfrChat.unreadBadgeMax] 折算为「99+」）。
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(minWidth: 16),
+      height: 16,
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: const Color(AppColors.error),
+        borderRadius: BorderRadius.circular(AppRadius.full),
+      ),
+      child: Text(
+        label,
+        maxLines: 1,
+        softWrap: false,
+        style: const TextStyle(
+          fontSize: 10,
+          height: 1.6,
+          fontWeight: FontWeight.w600,
+          color: Color(AppColors.surface),
         ),
       ),
     );

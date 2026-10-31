@@ -629,6 +629,51 @@ class NfrCert {
   static const int detailQuotaLimitPerDay = 5;
 }
 
+/// §8.3.4 站内会话与消息阈值（chat 域，2026-10-31）。
+///
+/// 双端口径：后端镜像为 `common/constants/ChatLimits.java`（Java 侧为主源），
+/// 前端只在此处承载，业务代码一律引用常量名，禁写死数字（详设 §0.1
+/// 「不复制字面量」）。
+///
+/// **改动纪律**：任一值变更须同步后端 `ChatLimits.java` 与 PRD §8.3.4 /
+/// 方案 R5 / R21 / R26 / R28，三处同改。
+class NfrChat {
+  const NfrChat._();
+
+  /// 未获回复时我方连续文本消息上限（R26）：达到即拒发。
+  static const int unrepliedTextLimit = 3;
+
+  /// 会话隐藏窗口天数（R5 / KTD8）：用作查询下界，不是定时任务。
+  static const int conversationHideAfterDays = 90;
+
+  /// 申请被拒后的再次申请冷却天数（R21 / R21a）。
+  static const int applyRejectCooldownDays = 7;
+
+  /// 待审批超过该小时数后允许再提交一次（R21）。
+  static const int applyPendingReapplyHours = 72;
+
+  /// 消息正文长度上限（字符）。
+  static const int messageContentMaxLength = 500;
+
+  /// 会话列表默认分页大小。
+  static const int conversationPageDefaultSize = 20;
+
+  /// 会话列表单页上限。
+  static const int conversationPageMaxSize = 50;
+
+  /// 消息分页默认大小（翻历史 / 增量拉取）。
+  static const int messagePageDefaultSize = 30;
+
+  /// 消息分页单页上限。
+  static const int messagePageMaxSize = 100;
+
+  /// 未读角标展示上限（R9 / R11）：超过显示「99+」。
+  static const int unreadBadgeMax = 99;
+
+  /// 列表摘要保留字符数（仅展示，不改正文真源）。
+  static const int listPreviewMaxLength = 40;
+}
+
 /// §5.8/§5.9/§5.10 AI 智能发布配额（ai 域，B2-4）。
 ///
 /// 双端口径：后端 `NfrAi` 镜像（`common/constants/NfrAi.java`）。前端

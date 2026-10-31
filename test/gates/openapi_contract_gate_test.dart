@@ -113,18 +113,19 @@ void main() {
       collectCodes(spec.responses, found);
       expect(found.contains(0), isFalse,
           reason: '错误响应示例里不应出现 code=0');
-      // 40305 是后台 RBAC 越权专用码，契约错误码表明确「App 端不返回」，
-      // 故 App 端复用响应的 examples 刻意不承载它；它必须出现在 Forbidden
-      // 的 description 文本中作为人工口径保留（见下一条断言）。
+      // 40305 是「后台 RBAC + 消息维护只读 / 申请闸门」共用码（V30 / KTD5），
+      // 以**接口级**示例承载（会话与申请三处），不放进可复用响应的 examples，
+      // 故这里仍从期望集合中排除它；它必须出现在 Forbidden 的 description
+      // 文本中作为人工口径保留（见下一条断言）。
       final expectedInExamples =
           TestFixtures.allBusinessCodes.difference({0, 40305});
       expect(found, equals(expectedInExamples),
           reason: '口径源：openapi.yaml §3 错误码表。\n'
               '多了 = 契约示例写了错误码表未登记的码；少了 = 错误码表承诺的码没有任何响应承载。\n'
-              '40305 为后台 RBAC 专用、App 端不返回，故不在示例集合内。');
+              '40305 由接口级示例承载，不在可复用响应集合内。');
     });
 
-    test('后台专用码 40305 在 Forbidden 描述中显式声明「App 端不返回」', () {
+    test('40305 在 Forbidden 描述中显式声明「后台」与消息三处', () {
       final forbidden = spec.responses?['Forbidden'];
       expect(forbidden, isNotNull);
       final desc = (forbidden!['description'] ?? '').toString();

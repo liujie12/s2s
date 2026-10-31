@@ -85,7 +85,9 @@ enum ApiErrorCode {
   /// 发布数量超限。
   publishLimit(40304, ErrBehavior.deterministicFail),
 
-  /// 无权限。后台 RBAC 专用，App 端正常不应收到（§12.1 注）。
+  /// 无权限。后台 RBAC 专用 + 消息维护只读与申请闸门（2026-10-31，KTD5）：
+  /// App 端只在三处收到 —— 全局消息开关关闭时的开会话/发送/申请卡、
+  /// 非会话成员（复用「不存在」文案）、需申请帖的取号闸门。
   noPermission(40305, ErrBehavior.deterministicFail),
 
   /// 命中敏感词。

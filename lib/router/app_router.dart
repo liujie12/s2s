@@ -28,6 +28,7 @@ import '../features/detail/detail_screen.dart';
 import '../features/discovery/list_screen.dart';
 import '../features/favorite/favorite_screen.dart';
 import '../features/map/map_screen.dart';
+import '../features/message/message_list_screen.dart';
 import '../features/notify/notification_screen.dart';
 import '../features/post/my_publish_screen.dart';
 import '../features/privacy/privacy_consent.dart';
@@ -62,6 +63,7 @@ class AppRoutes {
 
   // ── 底部 Tab ──
   static const String home = '/';
+  static const String messages = '/messages';
   static const String profile = '/profile';
 
   // ── 首页内视图（不占底部 Tab，与地图共享筛选态，见 PRD §10.1）──
@@ -143,9 +145,10 @@ class _ConsentListenable extends ChangeNotifier {
 /// 路由定义。
 ///
 /// 路由表分两层：
-/// - [StatefulShellRoute] 承载底部三 Tab 壳（PRD §10.2）的两个持久分支
-///   「丫圈（地图/列表）」「我的」。中间的「发布」键由 HomeShell 直接
-///   push `/publish` 覆盖整个壳（发布页无底部 Tab，见 home_shell.dart 头注）。
+/// - [StatefulShellRoute] 承载底部四 Tab 壳（PRD §10.2）的三个持久分支
+///   「丫圈（地图/列表）」「消息（会话列表）」「我的」。中间的「发布」键由
+///   HomeShell 直接 push `/publish` 覆盖整个壳（发布页无底部 Tab，见
+///   home_shell.dart 头注）。
 /// - 其余页面（登录/详情/发布流程/联系/我的发布/信任/模态）为顶层路由，
 ///   由壳内 push 后覆盖底部导航，属标准「全屏页」语义。
 final List<RouteBase> _routes = [
@@ -166,6 +169,14 @@ final List<RouteBase> _routes = [
         GoRoute(
           path: AppRoutes.list,
           builder: (context, state) => const ListScreen(),
+        ),
+      ]),
+      // 消息：会话列表（服务号 + 会话行）。会话详情在 U13 以子路由挂在本分支，
+      // 使切 Tab 不丢会话栈（R33 / 计划 U11 测试场景）。
+      StatefulShellBranch(routes: [
+        GoRoute(
+          path: AppRoutes.messages,
+          builder: (context, state) => const MessageListScreen(),
         ),
       ]),
       // 我的：个人中心。
