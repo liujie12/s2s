@@ -23,6 +23,7 @@ import com.s2s.server.chat.mapper.MessageMapper;
 import com.s2s.server.common.constants.ChatLimits;
 import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
+import com.s2s.server.post.MediaService;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -54,6 +55,7 @@ class ChatQueryServiceTest {
     private final ConversationMapper conversationMapper = mock(ConversationMapper.class);
     private final ConversationMemberMapper memberMapper = mock(ConversationMemberMapper.class);
     private final MessageMapper messageMapper = mock(MessageMapper.class);
+    private final MediaService mediaService = mock(MediaService.class);
 
     private ChatQueryService queryService;
 
@@ -62,7 +64,8 @@ class ChatQueryServiceTest {
      */
     @BeforeEach
     void setUp() {
-        queryService = new ChatQueryService(conversationMapper, memberMapper, messageMapper);
+        queryService = new ChatQueryService(
+                conversationMapper, memberMapper, messageMapper, mediaService);
         when(memberMapper.selectMember(CONVERSATION_ID, USER_ID))
                 .thenReturn(new ConversationMemberEntity());
     }
@@ -78,6 +81,8 @@ class ChatQueryServiceTest {
         when(conversationMapper.selectPageForUser(eq(USER_ID), any(), eq(0),
                 eq(ChatLimits.CONVERSATION_PAGE_MAX_SIZE)))
                 .thenReturn(List.of(row("archived", 1)));
+        when(mediaService.signCommittedImageUrl("media/first.jpg"))
+                .thenReturn("https://oss/display/first.jpg");
 
         ConversationPageResponse response =
                 queryService.listConversations(USER_ID, 0, 999);
@@ -87,6 +92,7 @@ class ChatQueryServiceTest {
         assertThat(response.total()).isEqualTo(1L);
         ConversationItem item = response.items().get(0);
         assertThat(item.conversationId()).isEqualTo(CONVERSATION_ID);
+        assertThat(item.postThumbnailUrl()).isEqualTo("https://oss/display/first.jpg");
         assertThat(item.postGone()).isTrue();
         assertThat(item.unread()).isTrue();
         assertThat(item.peerNickname()).isEqualTo("对方");
@@ -245,6 +251,7 @@ class ChatQueryServiceTest {
         row.put("post_id", 3001L);
         row.put("post_title", "求租两居");
         row.put("post_status", postStatus);
+        row.put("post_thumbnail_key", "media/first.jpg");
         row.put("peer_id", 22L);
         row.put("peer_nickname", "对方");
         row.put("peer_avatar_url", "https://img/1.png");

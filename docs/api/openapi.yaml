@@ -6082,6 +6082,12 @@ components:
           type: string
           nullable: true
           description: 帖子标题（列表行展示；帖子删除后仍保留会话时可能为 null）
+        post_thumbnail_url:
+          type: string
+          nullable: true
+          description: |
+            帖子首图只读签名 URL（R3 列表 44px 缩略图）；取该帖第一条已过审媒体，
+            无图时为 null，客户端渲染占位块。下架帖仍返回原 URL，由客户端置灰（R4）。
         post_gone:
           type: boolean
           description: 帖子对他人不可见（下架/过期）；true 时客户端置灰缩略图并标注「已下架」

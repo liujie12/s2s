@@ -18,6 +18,7 @@ import com.s2s.server.chat.mapper.MessageMapper;
 import com.s2s.server.common.constants.ChatLimits;
 import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
+import com.s2s.server.post.MediaService;
 import com.s2s.server.post.PostStatus;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -45,6 +46,7 @@ public class ChatQueryService {
     private final ConversationMapper conversationMapper;
     private final ConversationMemberMapper memberMapper;
     private final MessageMapper messageMapper;
+    private final MediaService mediaService;
 
     /**
      * 构造会话读取服务。
@@ -52,13 +54,16 @@ public class ChatQueryService {
      * @param conversationMapper 会话持久层（列表与隐藏窗口下界）
      * @param memberMapper       会话成员持久层（成员校验与已读水位）
      * @param messageMapper      消息持久层（分页与增量）
+     * @param mediaService       媒体服务（列表行帖子首图签名 URL，R3）
      */
     public ChatQueryService(ConversationMapper conversationMapper,
             ConversationMemberMapper memberMapper,
-            MessageMapper messageMapper) {
+            MessageMapper messageMapper,
+            MediaService mediaService) {
         this.conversationMapper = conversationMapper;
         this.memberMapper = memberMapper;
         this.messageMapper = messageMapper;
+        this.mediaService = mediaService;
     }
 
     /**
@@ -89,6 +94,8 @@ public class ChatQueryService {
                     toLong(row.get("conversation_id")),
                     toLong(row.get("post_id")),
                     (String) row.get("post_title"),
+                    // 首图键由 SQL 按 audit_status='pass' 过滤后取出，这里只做签名（R3）
+                    mediaService.signCommittedImageUrl((String) row.get("post_thumbnail_key")),
                     PostStatus.isGoneForOthers((String) row.get("post_status")),
                     toLong(row.get("peer_id")),
                     (String) row.get("peer_nickname"),

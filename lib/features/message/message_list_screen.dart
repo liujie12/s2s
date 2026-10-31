@@ -9,13 +9,18 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../../core/network/api_exception.dart';
 import '../../core/time_format.dart';
 import '../../core/ui/list_states.dart';
 import '../../design_tokens.dart';
+import '../../router/app_router.dart';
+import '../notify/push_service.dart';
 import 'message_dto.dart';
 import 'message_list_provider.dart';
+import 'message_permission.dart';
 
 /// 消息 Tab 首页。
 class MessageListScreen extends ConsumerStatefulWidget {
@@ -29,6 +34,9 @@ class MessageListScreen extends ConsumerStatefulWidget {
 /// 消息列表页状态（持滚动控制器做触底加载）。
 class _MessageListScreenState extends ConsumerState<MessageListScreen> {
   final ScrollController _controller = ScrollController();
+
+  /// 说明层是否已在本页生命周期内弹过（防同一帧重复弹）。
+  bool _explainerShown = false;
 
   @override
   void initState() {
@@ -73,6 +81,11 @@ class _MessageListScreenState extends ConsumerState<MessageListScreen> {
   @override
   Widget build(BuildContext context) {
     final conversationsAsync = ref.watch(conversationsProvider);
+    final permission = ref.watch(messageNotifyPermissionProvider);
+    final unread = ref.watch(
+      unreadSummaryProvider.select((value) => value.asData?.value),
+    );
+    _maybeShowExplainer(permission);
 
     return Scaffold(
       backgroundColor: Color(AppColors.background),
@@ -92,22 +105,78 @@ class _MessageListScreenState extends ConsumerState<MessageListScreen> {
           ),
         ),
       ),
-      body: conversationsAsync.when(
-        loading: () => const _ListSkeleton(),
-        error: (error, _) => ListErrorView(
-          error: asApiException(error),
-          onRetry: () => ref.read(conversationsProvider.notifier).refresh(),
-        ),
-        data: (data) => _buildList(data),
+      body: Column(
+        children: [
+          if (permission.shouldShowBanner)
+            _NotifyBanner(
+              onOpenSettings: openAppSettings,
+              onDismiss: () =>
+                  ref.read(messageNotifyPermissionProvider.notifier).dismissBanner(),
+            ),
+          Expanded(
+            child: conversationsAsync.when(
+              loading: () => const _ListSkeleton(),
+              error: (error, _) => ListErrorView(
+                error: asApiException(error),
+                onRetry: () => ref.read(conversationsProvider.notifier).refresh(),
+              ),
+              data: (data) => _buildList(data, unread?.notificationUnread ?? 0),
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  /// 列表（含空态与收尾条）。
+  /// 首次进入时弹通知权限说明层（R16）。
   ///
-  /// 参数：[data] 会话累积快照。
+  /// 参数：[permission] 本地引导状态。
+  /// 返回：void；本地标记未读完或已弹过时不动作。
+  void _maybeShowExplainer(MessageNotifyPermissionState permission) {
+    if (_explainerShown || !permission.shouldShowExplainer) return;
+    _explainerShown = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _showExplainer();
+    });
+  }
+
+  /// 说明层 → 系统权限弹窗（设计稿 06 帧）。
+  ///
+  /// 返回：[Future<void>]。
+  Future<void> _showExplainer() async {
+    final notifier = ref.read(messageNotifyPermissionProvider.notifier);
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('开启消息通知'),
+        content: const Text(
+          '开启通知后，对方回你消息时手机会收到提醒。只推消息与认证结果，不做营销推送。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('暂不'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('去开启'),
+          ),
+        ],
+      ),
+    );
+    // 无论选哪项都不再重复弹说明层（R16：不重复拉起）。
+    await notifier.markExplainerSeen();
+    if (go != true) return;
+    final granted = await ref.read(pushServiceProvider).requestPermission();
+    if (!granted) await notifier.markDenied();
+  }
+
+  /// 列表（服务号置顶 + 会话行 + 收尾条）。
+  ///
+  /// 参数：[data] 会话累积快照；[notificationUnread] 通知未读条数。
   /// 返回：Widget。
-  Widget _buildList(ConversationsData data) {
+  Widget _buildList(ConversationsData data, int notificationUnread) {
     if (data.items.isEmpty) {
       return const _EmptyView();
     }
@@ -119,13 +188,20 @@ class _MessageListScreenState extends ConsumerState<MessageListScreen> {
       child: ListView.separated(
         controller: _controller,
         padding: EdgeInsets.zero,
-        itemCount: data.items.length + 1,
+        itemCount: data.items.length + 2,
         separatorBuilder: (context, index) => const SizedBox.shrink(),
         itemBuilder: (context, index) {
-          if (index == data.items.length) {
+          // 服务号永久第一行、不可删除（R12）：不包 Dismissible，也不随滚动移除。
+          if (index == 0) {
+            return _ServiceRow(
+              unreadCount: notificationUnread,
+              onTap: () => context.push(AppRoutes.notifications),
+            );
+          }
+          if (index == data.items.length + 1) {
             return const ListEndRow();
           }
-          return _ConversationRow(item: data.items[index]);
+          return _ConversationRow(item: data.items[index - 1]);
         },
       ),
     );
@@ -140,6 +216,7 @@ class _ListSkeleton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView.separated(
+      key: const ValueKey<String>('message-list-skeleton'),
       padding: EdgeInsets.zero,
       itemCount: 6,
       separatorBuilder: (context, index) => const SizedBox.shrink(),
@@ -221,7 +298,6 @@ class _ConversationRow extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: AppSpacing.sm),
-                    if (item.postGone) const _GoneChip(),
                     const Spacer(),
                     if (item.lastMessageAt != null)
                       Text(
@@ -257,6 +333,8 @@ class _ConversationRow extends StatelessWidget {
               ),
             ),
           ],
+          const SizedBox(width: AppSpacing.sm),
+          _PostThumb(url: item.postThumbnailUrl, gone: item.postGone),
         ],
       ),
     );
@@ -327,27 +405,238 @@ class _Avatar extends StatelessWidget {
   }
 }
 
-/// 「已下架」胶囊（R4：帖子下架不影响会话，行内标注）。
-class _GoneChip extends StatelessWidget {
-  /// 构造胶囊。
-  const _GoneChip();
+/// 服务号行（R12 / R13）：永久置顶、无删除手势，点击进既有通知中心。
+class _ServiceRow extends StatelessWidget {
+  /// 构造服务号行。
+  ///
+  /// 参数：[unreadCount] 通知未读条数；[onTap] 点击进通知中心。
+  const _ServiceRow({required this.unreadCount, required this.onTap});
+
+  /// 通知未读条数（R9：本行显示条数并沿用 99+ 规则）。
+  final int unreadCount;
+
+  /// 点击回调。
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final badge = unreadBadgeLabel(unreadCount);
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        decoration: BoxDecoration(
+          color: Color(AppColors.surface),
+          border: Border(bottom: BorderSide(color: Color(AppColors.border))),
+        ),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.lg,
+          vertical: AppSpacing.md,
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: Color(AppColors.primary),
+                shape: BoxShape.circle,
+              ),
+              child: Text(
+                '鸭',
+                style: TextStyle(
+                  fontSize: AppTypeScale.body.size,
+                  fontWeight: FontWeight.w600,
+                  color: Color(AppColors.surface),
+                ),
+              ),
+            ),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        '服务号',
+                        style: TextStyle(
+                          fontSize: AppTypeScale.body.size,
+                          fontWeight: FontWeight.w500,
+                          color: Color(AppColors.textPrimary),
+                        ),
+                      ),
+                      const SizedBox(width: AppSpacing.sm),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 5,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Color(AppColors.primaryLight),
+                          borderRadius: BorderRadius.circular(AppRadius.sm),
+                        ),
+                        child: Text(
+                          '置顶',
+                          style: TextStyle(
+                            fontSize: AppTypeScale.caption.size,
+                            fontWeight: FontWeight.w600,
+                            color: Color(AppColors.primaryDark),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    badge == null ? '查看系统通知' : '$badge 条未读通知',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: AppTypeScale.small.size,
+                      color: Color(AppColors.textSecondary),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (badge != null)
+              Container(
+                constraints: const BoxConstraints(minWidth: 18),
+                height: 18,
+                padding: const EdgeInsets.symmetric(horizontal: 5),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: Color(AppColors.error),
+                  borderRadius: BorderRadius.circular(AppRadius.full),
+                ),
+                child: Text(
+                  badge,
+                  style: TextStyle(
+                    fontSize: AppTypeScale.caption.size,
+                    fontWeight: FontWeight.w600,
+                    color: Color(AppColors.surface),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 帖子缩略图（R3 / R4）：44px；下架置灰并标注「已下架」，无图渲染占位块。
+class _PostThumb extends StatelessWidget {
+  /// 构造缩略图。
+  ///
+  /// 参数：[url] 首图签名 URL（可空）；[gone] 帖子是否已下架。
+  const _PostThumb({required this.url, required this.gone});
+
+  /// 首图 URL。
+  final String? url;
+
+  /// 帖子是否已下架。
+  final bool gone;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+      width: 44,
+      height: 44,
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: Color(AppColors.background),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         border: Border.all(color: Color(AppColors.border)),
-        borderRadius: BorderRadius.circular(AppRadius.sm),
       ),
-      child: Text(
-        '已下架',
-        style: TextStyle(
-          fontSize: AppTypeScale.caption.size,
-          fontWeight: FontWeight.w600,
-          color: Color(AppColors.textSecondary),
-        ),
+      alignment: Alignment.center,
+      child: gone
+          ? Text(
+              '已\n下架',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: AppTypeScale.caption.size,
+                height: 1.2,
+                color: Color(AppColors.textPlaceholder),
+              ),
+            )
+          : url == null || url!.isEmpty
+              ? Icon(
+                  Icons.image_outlined,
+                  size: 18,
+                  color: Color(AppColors.textPlaceholder),
+                )
+              : Image.network(
+                  url!,
+                  fit: BoxFit.cover,
+                  width: 44,
+                  height: 44,
+                  errorBuilder: (context, error, stack) => Icon(
+                    Icons.image_outlined,
+                    size: 18,
+                    color: Color(AppColors.textPlaceholder),
+                  ),
+                ),
+    );
+  }
+}
+
+/// 顶部「通知未开启」提示（R16：被拒后常驻、可关闭、给系统设置入口）。
+class _NotifyBanner extends StatelessWidget {
+  /// 构造提示条。
+  ///
+  /// 参数：[onOpenSettings] 去设置；[onDismiss] 关闭提示。
+  const _NotifyBanner({
+    required this.onOpenSettings,
+    required this.onDismiss,
+  });
+
+  /// 去系统设置。
+  final VoidCallback onOpenSettings;
+
+  /// 关闭提示。
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Color(AppColors.primaryLight),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.lg,
+        vertical: AppSpacing.sm,
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.notifications_off_outlined,
+            size: 18,
+            color: Color(AppColors.primaryDark),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Text(
+              '通知未开启，可能收不到新消息提醒',
+              style: TextStyle(
+                fontSize: AppTypeScale.small.size,
+                color: Color(AppColors.primaryDark),
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: onOpenSettings,
+            child: const Text('去设置'),
+          ),
+          IconButton(
+            onPressed: onDismiss,
+            icon: Icon(
+              Icons.close,
+              size: 16,
+              color: Color(AppColors.primaryDark),
+            ),
+            tooltip: '关闭提示',
+          ),
+        ],
       ),
     );
   }

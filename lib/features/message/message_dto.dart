@@ -56,6 +56,7 @@ class ConversationDto {
     required this.unread,
     required this.applyStatus,
     this.postTitle,
+    this.postThumbnailUrl,
     this.peerAvatarUrl,
     this.lastMessageType,
     this.lastMessagePreview,
@@ -78,6 +79,7 @@ class ConversationDto {
       unread: requireBool(map, 'unread', 'ConversationItem'),
       applyStatus: requireString(map, 'apply_status', 'ConversationItem'),
       postTitle: optString(map, 'post_title', 'ConversationItem'),
+      postThumbnailUrl: optString(map, 'post_thumbnail_url', 'ConversationItem'),
       peerAvatarUrl: optString(map, 'peer_avatar_url', 'ConversationItem'),
       lastMessageType: optString(map, 'last_message_type', 'ConversationItem'),
       lastMessagePreview: optString(map, 'last_message_preview', 'ConversationItem'),
@@ -108,6 +110,9 @@ class ConversationDto {
 
   /// 帖子标题（可空）。
   final String? postTitle;
+
+  /// 帖子首图签名 URL（可空；无图时客户端渲染占位块）。
+  final String? postThumbnailUrl;
 
   /// 对方头像 URL（可空）。
   final String? peerAvatarUrl;

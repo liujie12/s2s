@@ -209,6 +209,23 @@ public class MediaService {
     }
 
     /**
+     * 为「帖子已过审首图」签发只读 GET 签名 URL（消息 Tab 会话行缩略图，R3）。
+     *
+     * <p>调用方（chat 列表）已在 SQL 里按 {@code audit_status='pass'} 过滤，
+     * 故这里只按「已 commit 图片」口径取展示图键（原图已被 EXIF 链处理掉），
+     * 不再做视角分流；无图时返回 {@code null}，由客户端渲染占位块。</p>
+     *
+     * @param objectKey 帖子首图原对象键；null/空白表示该帖无图
+     * @return {@link String} 只读签名 URL；无图时 {@code null}
+     */
+    public String signCommittedImageUrl(String objectKey) {
+        if (objectKey == null || objectKey.isBlank()) {
+            return null;
+        }
+        return ossClient.signAccessUrl(OssClient.displayKeyOf(objectKey));
+    }
+
+    /**
      * 删除「本人媒体」的 OSS 对象与登记行（资质删除时清理证照原件）。
      *
      * <p>只清理尚未挂到帖子上的媒体（{@code post_id IS NULL}）：一旦被帖子引用，

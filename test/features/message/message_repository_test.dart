@@ -79,6 +79,7 @@ void main() {
                 'conversation_id': 1,
                 'post_id': 2,
                 'post_title': '静安两居',
+                'post_thumbnail_url': 'https://oss/display/1.jpg',
                 'post_gone': false,
                 'peer_id': 3,
                 'peer_nickname': '王师傅',
@@ -107,6 +108,7 @@ void main() {
       expect(item.unread, isTrue);
       expect(item.postGone, isFalse);
       expect(item.applyStatus, 'none');
+      expect(item.postThumbnailUrl, 'https://oss/display/1.jpg');
       expect(item.peerAvatarUrl, isNull);
       expect(item.lastMessageAt, DateTime.utc(2026, 10, 31, 9, 4));
     });

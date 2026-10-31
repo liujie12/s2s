@@ -16,6 +16,7 @@ import java.time.Instant;
  * @param conversationId    会话 ID
  * @param postId            会话所锚定的帖子 ID
  * @param postTitle         帖子标题（列表行展示；帖子删除后仍保留会话时可能为 null）
+ * @param postThumbnailUrl  帖子首图签名 URL（R3 列表缩略图；帖子无图时为 null）
  * @param postGone          帖子是否对他人不可见（下架/过期；R4）
  * @param peerId            对方 user_id
  * @param peerNickname      对方昵称
@@ -31,6 +32,7 @@ public record ConversationItem(
         Long conversationId,
         Long postId,
         String postTitle,
+        String postThumbnailUrl,
         boolean postGone,
         Long peerId,
         String peerNickname,
