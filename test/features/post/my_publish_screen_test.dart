@@ -246,6 +246,43 @@ void main() {
     expect(form.templateValues['route'], '回龙观 → 中关村');
   });
 
+  testWidgets('重发申请制帖：发布页开关回填为开启（V30 / R19）', (tester) async {
+    Object? pushed;
+    final router = GoRouter(
+      initialLocation: AppRoutes.myPublish,
+      routes: [
+        GoRoute(
+          path: AppRoutes.myPublish,
+          builder: (_, _) => const MyPublishScreen(),
+        ),
+        GoRoute(
+          path: AppRoutes.publish,
+          builder: (_, state) {
+            pushed = state.extra;
+            return const Scaffold(body: Text('发布页占位'));
+          },
+        ),
+      ],
+    );
+
+    await pumpScreen(tester, router: router);
+    await tester.tap(find.text('刷新重发'));
+    await tester.pumpAndSettle();
+
+    final form = (pushed! as PublishScreenArgs).initialForm;
+    expect(
+      form.contactApplyRequired,
+      isTrue,
+      reason: '重发是新建语义，不能把申请制帖悄悄退回一键取号',
+    );
+  });
+
+  test('RepostDraft 缺 contact_apply_required → 按一键取号（false）兜底', () {
+    final payload = {...repostDraftPayload()}..remove('contact_apply_required');
+
+    expect(RepostDraftDto.fromJson(payload).contactApplyRequired, isFalse);
+  });
+
   testWidgets('点「删除」：仍为降级提示（[B2-8] 裁定本轮不做删除端点）',
       (tester) async {
     await pumpScreen(tester);

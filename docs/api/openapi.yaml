@@ -5746,6 +5746,11 @@ components:
           items: { type: string }
         contact_type: { type: string, nullable: true, description: 原渠道（phone/wechat） }
         contact_mask: { type: string, nullable: true, description: 脱敏原联系方式（不回显明文） }
+        contact_apply_required:
+          type: boolean
+          description: |
+            原帖「查看联系方式需申请」设置（V30 / R19）。重发属新建语义，客户端据此回填
+            发布页开关，避免把申请制帖悄悄重发成一键取号；缺省/`false` 维持一键取号。
         category_available:
           type: boolean
           description: false = 原分类已被运营停用（PRD §8.7），前端须提示重选分类

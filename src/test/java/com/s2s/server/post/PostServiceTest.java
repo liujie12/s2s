@@ -357,6 +357,7 @@ class PostServiceTest {
         assertThat(draft.leafCategoryId()).isEqualTo(10101);
         assertThat(draft.mediaIds()).containsExactly("7");
         assertThat(draft.contactMask()).isEqualTo("138****8000");
+        assertThat(draft.contactApplyRequired()).isTrue();
         assertThat(draft.attributes()).containsEntry("a", "b");
         assertThat(draft.addressPrecise()).isTrue();
         assertThat(draft.categoryAvailable()).isTrue();
@@ -424,6 +425,8 @@ class PostServiceTest {
         post.setLat(new BigDecimal("30.280000"));
         post.setContactChannel("phone");
         post.setContactMask("138****8000");
+        // 重发草稿要带回「查看联系方式需申请」（R19）。
+        post.setContactApplyRequired(1);
         post.setTemplateValues("{\"a\":\"b\"}");
         post.setCompletenessConditions("{\"required_full\":true,\"address_precise\":true,\"leaf_matched\":true}");
         return post;

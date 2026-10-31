@@ -437,6 +437,8 @@ public class PostService {
                 mediaIdsOfPost(postId),
                 post.getContactChannel(),
                 post.getContactMask(),
+                // 重发是新建语义：把申请制设置一并带回，避免悄悄退回一键取号（R19）。
+                Integer.valueOf(1).equals(post.getContactApplyRequired()),
                 validator.isLeafAvailable(post.getLeafCategoryId()));
     }
 

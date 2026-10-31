@@ -31,6 +31,7 @@ import java.util.Map;
  * @param mediaIds          原帖关联媒体 ID 列表
  * @param contactType       原渠道（phone/wechat）
  * @param contactMask       脱敏原联系方式（不回显明文）
+ * @param contactApplyRequired 原帖「查看联系方式需申请」设置（V30 / R19；重发时前端回填开关）
  * @param categoryAvailable 原分类是否仍可用（false = 已被运营停用，PRD §8.7 须提示重选）
  */
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
@@ -50,5 +51,6 @@ public record RepostDraft(
         List<String> mediaIds,
         String contactType,
         String contactMask,
+        boolean contactApplyRequired,
         boolean categoryAvailable) {
 }

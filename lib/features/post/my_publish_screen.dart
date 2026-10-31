@@ -307,8 +307,9 @@ class _MyPublishScreenState extends ConsumerState<MyPublishScreen> {
       ),
       mediaIds: draft.mediaIds,
       contact: '',
-      // 重发契约（RepostDraft）不含联系方式策略，按默认「一键取号」重建；
-      // 需要申请制的用户需在发布页重新勾选（R19）。
+      // 重发属新建语义：把原帖的申请制设置一并回填，否则会把申请制帖
+      // 悄悄重发成一键取号（V30 / R19）。
+      contactApplyRequired: draft.contactApplyRequired,
     );
   }
 

@@ -707,6 +707,7 @@ class RepostDraftDto {
     this.mediaIds = const <String>[],
     this.contactType,
     this.contactMask,
+    this.contactApplyRequired = false,
     required this.categoryAvailable,
   });
 
@@ -748,6 +749,9 @@ class RepostDraftDto {
       mediaIds: optStringList(map, 'media_ids', 'RepostDraft') ?? const [],
       contactType: optString(map, 'contact_type', 'RepostDraft'),
       contactMask: optString(map, 'contact_mask', 'RepostDraft'),
+      // 契约非 required：旧服务端缺键即维持一键取号（V30 / R19）。
+      contactApplyRequired:
+          optBool(map, 'contact_apply_required', 'RepostDraft') ?? false,
       categoryAvailable: requireBool(map, 'category_available', 'RepostDraft'),
     );
   }
@@ -796,6 +800,12 @@ class RepostDraftDto {
 
   /// 脱敏原联系方式（不回显明文，可空）。
   final String? contactMask;
+
+  /// 原帖「查看联系方式需申请」设置（V30 / R19）。
+  ///
+  /// 重发是新建语义，发布页据此回填开关；契约非 required，
+  /// 缺失按 false（一键取号）处理。
+  final bool contactApplyRequired;
 
   /// 原分类是否仍可用：false = 已被运营停用，前端须提示重选分类
   /// （PRD §8.7）。
