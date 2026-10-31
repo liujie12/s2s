@@ -46,9 +46,10 @@ DrivingSummary? parseDrivingSummary(Object? json) {
   final first = paths.first;
   if (first is! Map) return null;
 
-  final distance = first['distance'];
-  final duration = first['duration'];
-  if (distance is! num || duration is! num) return null;
+  // 高德真实响应的 distance/duration 是字符串（"3252"），兼容数字类型防契约漂移。
+  final distance = num.tryParse('${first['distance']}');
+  final duration = num.tryParse('${first['duration']}');
+  if (distance == null || duration == null) return null;
   return DrivingSummary(
     distanceM: distance.toInt(),
     durationS: duration.toInt(),

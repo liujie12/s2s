@@ -47,6 +47,25 @@ void main() {
       expect(summary?.distanceM, 18500);
       expect(summary?.durationS, 2100);
     });
+
+    test('高德真实响应：distance/duration 为字符串 → 照常解析（真机回归 2026-10-30）', () {
+      final summary = parseDrivingSummary(<String, Object?>{
+        'status': '1',
+        'info': 'OK',
+        'infocode': '10000',
+        'route': <String, Object?>{
+          'origin': '117.30,31.86',
+          'destination': '117.315,31.878',
+          'paths': <Object?>[
+            <String, Object?>{'distance': '3252', 'duration': '563'},
+          ],
+        },
+      });
+
+      expect(summary, isNotNull);
+      expect(summary!.distanceM, 3252);
+      expect(summary.durationS, 563);
+    });
   });
 
   group('parseDrivingSummary 失败路径', () {
