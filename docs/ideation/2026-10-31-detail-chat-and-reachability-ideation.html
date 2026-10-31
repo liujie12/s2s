@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ideation: 详情页发起聊天与消息触达</title>
+<style>
+  :root{
+    --bg:#f7f8f7;
+    --surface:#ffffff;
+    --surface-2:#f1f4f2;
+    --text:#1b2320;
+    --text-2:#4a5751;
+    --text-3:#6f7d76;
+    --border:#dfe5e1;
+    --accent:#0f766e;
+    --accent-soft:#e4f1ee;
+    --accent-text:#0b5c56;
+    --warn-soft:#fdf2e3;
+    --warn-text:#8a5a14;
+    --danger-soft:#fbeceb;
+    --danger-text:#9b3530;
+    --radius:10px;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    font-size:15px;line-height:1.75;
+  }
+  .page{max-width:940px;margin-inline:auto;padding:48px 24px 72px}
+  .eyebrow{
+    font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--accent-text);font-weight:700;margin:0 0 10px;
+  }
+  h1{font-size:28px;line-height:1.35;margin:0 0 10px;letter-spacing:-.01em}
+  .lede{font-size:16px;color:var(--text-2);margin:0 0 22px;max-width:70ch}
+  header.meta dl{
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
+    gap:12px 24px;margin:0;padding:16px 18px;background:var(--surface);
+    border:1px solid var(--border);border-radius:var(--radius);
+  }
+  header.meta dt{font-size:11px;letter-spacing:.08em;color:var(--text-3);text-transform:uppercase;margin:0 0 2px}
+  header.meta dd{margin:0;font-size:14px;color:var(--text)}
+  nav.toc{
+    margin:26px 0 0;padding:12px 18px;background:var(--surface);
+    border:1px solid var(--border);border-radius:var(--radius);
+    display:flex;flex-wrap:wrap;gap:6px 20px;font-size:13px;
+  }
+  nav.toc a{color:var(--text-2);text-decoration:none;border-bottom:1px solid transparent}
+  nav.toc a:hover{color:var(--accent-text);border-bottom-color:var(--accent-text)}
+  section{margin-top:46px}
+  h2{font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-3);margin:0 0 14px;font-weight:700}
+  h3{font-size:17px;margin:0 0 8px;line-height:1.45}
+  h4{margin:0 0 6px;font-size:13px;letter-spacing:.04em;color:var(--text-3);text-transform:uppercase}
+  p{margin:0 0 12px;max-width:70ch}
+  code{
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    font-size:.88em;background:var(--surface-2);padding:1px 5px;border-radius:4px;
+    color:var(--text-2);word-break:break-word;
+  }
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media (max-width:720px){.grid2{grid-template-columns:1fr}}
+  .card{
+    background:var(--surface);border:1px solid var(--border);
+    border-radius:var(--radius);padding:16px 18px;
+  }
+  .card ul{margin:0;padding-left:18px}
+  .card li{margin:5px 0;font-size:13.5px;color:var(--text-2)}
+  .jump{margin:0 0 22px;padding:12px 18px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)}
+  .jump ol{margin:0;padding-left:20px;font-size:14px}
+  .jump li{margin:3px 0}
+  .jump a{color:var(--text-2);text-decoration:none}
+  .jump a:hover{color:var(--accent-text)}
+  article.idea{
+    background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+    padding:22px 24px;margin:0 0 18px;
+  }
+  .idea-head{display:flex;gap:12px;align-items:baseline;flex-wrap:wrap;margin-bottom:4px}
+  .id-chip{
+    font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--accent-text);
+    background:var(--accent-soft);border-radius:999px;padding:2px 10px;font-variant-numeric:tabular-nums;
+  }
+  .axis-chip{
+    font-size:11px;color:var(--text-2);background:var(--surface-2);
+    border-radius:999px;padding:2px 10px;
+  }
+  dl.fields{margin:14px 0 0;display:grid;grid-template-columns:96px 1fr;gap:10px 14px}
+  dl.fields dt{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-3);padding-top:3px}
+  dl.fields dd{margin:0;font-size:14px;color:var(--text-2)}
+  .ev{display:block;margin:0 0 7px}
+  .basis-tag{
+    display:inline-block;font-size:10.5px;letter-spacing:.04em;font-weight:700;
+    border-radius:4px;padding:1px 6px;margin-right:8px;vertical-align:1px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    background:var(--accent-soft);color:var(--accent-text);
+  }
+  .basis-tag.ext{background:#e8eefb;color:#2d4a8a}
+  .basis-tag.rea{background:var(--warn-soft);color:var(--warn-text)}
+  .metric{font-variant-numeric:tabular-nums}
+  figure{margin:18px 0 6px;padding:0}
+  figure svg{display:block;width:100%;height:auto;background:var(--surface-2);border-radius:8px}
+  figcaption{font-size:12px;color:var(--text-3);margin-top:8px;max-width:70ch}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+  thead th{
+    text-align:left;font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--text-3);background:var(--surface-2);padding:9px 12px;font-weight:700;
+  }
+  tbody td{padding:9px 12px;border-top:1px solid var(--border);color:var(--text-2);vertical-align:top}
+  tbody td:first-child{color:var(--text-3);font-variant-numeric:tabular-nums;width:34px}
+  tbody td:nth-child(2){color:var(--text);width:34%}
+  .axis-coverage{
+    margin:14px 0 0;padding:12px 16px;background:var(--accent-soft);border-radius:var(--radius);
+    font-size:13.5px;color:var(--accent-text);max-width:none;
+  }
+  .callout{
+    background:var(--warn-soft);border-radius:var(--radius);padding:14px 18px;margin:18px 0 0;
+    font-size:14px;color:var(--warn-text);
+  }
+  footer.composition-signal{
+    margin-top:56px;padding-top:16px;border-top:1px solid var(--border);
+    font-size:12px;color:var(--text-3);
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+<header>
+  <p class="eyebrow">Ideation</p>
+  <h1>详情页发起聊天与消息触达</h1>
+  <p class="lede">「能不能在详情页直接聊」这个问题，真正难的不是聊天框，而是三件现有系统里根本没有的东西：一个不越权的会话锚点、一个只有单一作者的未读数、一条能关得掉又关不死的推送链路。以下是入选的七个方向。</p>
+  <dl>
+    <div><dt>日期</dt><dd><time datetime="2026-10-31">2026-10-31</time></dd></div>
+    <div><dt>议题</dt><dd><code>detail-chat-and-reachability</code></dd></div>
+    <div><dt>焦点</dt><dd>需求/资源详情页发起聊天 + 消息触达（应用内未读、桌面图标角标、通知栏推送且可关闭）</dd></div>
+    <div><dt>模式</dt><dd><code>repo-grounded</code></dd></div>
+  </dl>
+</header>
+
+<nav class="toc" aria-label="目录">
+  <a href="#grounding">Codebase Context</a>
+  <a href="#axes">Topic Axes</a>
+  <a href="#ideas">Ranked Ideas（7）</a>
+  <a href="#rejections">Rejection Summary（16）</a>
+</nav>
+
+<section id="grounding">
+  <p class="eyebrow">现状</p>
+  <h2>Codebase Context</h2>
+  <p>「S2S / 找呀找」是 Flutter 前端（<code>lib/</code>，Riverpod + go_router）配 Spring Boot 3 后端（<code>src/main/java/com/s2s/server</code>，MySQL + Flyway + Redis）。用户发布 <code>post</code>，用 <code>supply_demand</code> 二态区分「资源」与「需求」，两态共用同一个详情页。今天唯一的联系路径是：详情页底栏「联系 TA」/「响应需求」→ <code>/contact/:id</code> 中转页 → 拉取完整手机号 / 微信号。也就是说，全产品的「往来」到中转页就结束了。</p>
+  <p>下面的事实均已逐条核对到 <code>file:line</code>，它们决定了七个方向里哪些能落地、哪些只是在讲故事。</p>
+
+  <div class="grid2">
+    <div class="card">
+      <h4>没有 IM，且是十处明文</h4>
+      <ul>
+        <li>无 message / conversation 表；<code>pom.xml:59-175</code> 无 websocket / netty / MQ 客户端（全仓 grep 长连接的 16 行命中全是 Dart <code>CustomPaint</code> 子串误报）；<code>openapi.yaml</code> 无 <code>/messages</code>、<code>/conversations</code>；<code>app_router.dart</code> 路由表无任何消息 / 会话路由。</li>
+        <li>PRD <code>109</code> / <code>1765</code> / <code>1813-1819</code> / <code>1841-1844</code> / <code>1972</code> / <code>2196</code> / <code>3006</code> 与 BRD <code>353(D6)</code> / <code>117</code> / <code>397</code> 均明文禁 IM。其中 <code>PRD.md:1844</code> 原文「『回复』在本产品内无处发生」；<code>PRD.md:2196</code> 把「消息列表页、聊天详情页」逐字列进「明确不做的页面」。</li>
+        <li>原始论据（<code>ideation/找丫找v2-需求深度还原-ideation-20260819.html:312</code>）：IM 内容审核成本 / 条是中转的 5.6 倍，触达率反而低 12%。</li>
+        <li>反向风险已登记：BRD R4「砍掉 IM 后联系效率下降｜中」。</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>推送链路：写好了，没人调</h4>
+      <ul>
+        <li><code>PushDispatchService.dispatch()</code>（<code>notify/PushDispatchService.java:84-113</code>）已实现「写站内通知 → 筛可下发设备 → 占当日配额 → 发送」，但 <code>src/main</code> 零业务调用方（仅 <code>PushDispatchServiceTest</code> 5 处）。</li>
+        <li>配额按消息而非设备（<code>:32-34</code>），<code>NfrPush.DAILY_LIMIT</code> 为 10 —— 一轮 10 条对话会烧光当日全部额度。</li>
+        <li><code>notify_enabled / notify_system / notify_interaction / notify_cert</code> 四列已存在（<code>V6__user_setting.sql:21-24</code>），<code>auth/SettingService.java:59-66,102-137</code> 读写，但下发链路从不读取。</li>
+        <li>前端 <code>settings_screen.dart:110-114</code> 只有一行总开关，<code>settings_provider.dart:51-56</code> 只有 <code>setNotifyEnabled</code>；<code>settings_repository.dart:52-66</code> 契约已支持三元组却无 UI。</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>未读与角标：两个消费者，零个桌面落点</h4>
+      <ul>
+        <li>唯一真源是 <code>GET /notifications</code> 的 <code>unread_count</code>，跨三 Tab 不收窄（<code>NotifyService.java:83-85</code>；<code>NotificationMapper.xml:65-71</code> 按行 <code>COUNT(*)</code>）。</li>
+        <li>两个消费者互不共享、互不失效：<code>notification_provider.dart:92-183</code> 与 <code>profile_provider.dart:96-110</code>（后者另发一次 <code>fetchNotifications(pageSize:1)</code>）。无轮询、无 <code>AppLifecycleState</code> 回调。</li>
+        <li>桌面角标双端零落点：Android 全量 grep <code>badge|shortcut|ShortcutBadger|setNumber</code> 无命中；<code>ios/Runner/AppDelegate.swift</code> 全文 16 行无 <code>applicationIconBadgeNumber</code>。</li>
+        <li>Tab 数字角标是刻意不做：<code>PRD.md:1148</code>「红点（8px），不用数字气泡｜导航栏仅剩 24px 见方，双位数气泡会溢出压到搜索框」。</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>推送通道的现实</h4>
+      <ul>
+        <li>仅小米有原生 receiver；华为有服务端 sender 无客户端桥；iOS APNs 未接入（<code>push_service.dart:68-69</code>）。</li>
+        <li><code>AndroidManifest.xml:5-11</code> 连 <code>POST_NOTIFICATIONS</code> 都未声明；推送点击深链未实现。</li>
+        <li>当前唯一的权限申请点是发布成功页（<code>publish_success_screen.dart:55</code>）。</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>信任机制</h4>
+      <ul>
+        <li><code>ContactService.viewContact</code> 九步链：登录 40101 → 绑手机号 40302 → 冻结 42903 → 三维日限 30/30/100 → 突发 → 可见性 41001 → <code>CryptoFacade.decrypt</code> 唯一解密 → 写 <code>contact_event</code> → 同事务写 <code>audit_log</code>。</li>
+        <li><code>ContactService.java:140-142</code> 明确「配额先于可见性判定……否则按 id 遍历探测可绕过限频」。</li>
+        <li>举报需已实名（40305，不新增码）。<code>ReportRiskScore</code>：fraud 50 / false_info 20 / wrong_category 20 / harassment 10 / other 5，企业 ×1.5，≥60 自动下架。</li>
+        <li><code>CryptoFacadeCallSiteTest</code> 守门调用点 == 1。</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>结构与口径约束</h4>
+      <ul>
+        <li>横切链顺序固定：RequestIdFilter → AuthInterceptor → RateLimitInterceptor → IdempotencyInterceptor → Controller；限流必先于幂等。</li>
+        <li><code>RateLimitTrack</code> 17 行且 notify 域明确拒绝新增轨道；错误码固定 24+0；幂等 <code>idem:</code> 前缀、24h 窗口、按登录 / 设备 / 匿名分维度。</li>
+        <li>分页只有 offset（<code>LIMIT #{offset}, #{limit}</code>，page_size 上限 50）；<code>NotificationMapper.xml:17-18</code> 已记录 <code>created_at</code> 秒精度需 <code>id DESC</code> 兜底防翻页重复；全仓无 API 级游标。</li>
+        <li><code>NfrRetention</code> 有埋点 90d / audit 180d / contact_event 30d，唯独没有 notification 的保留期条目。</li>
+        <li><code>TaskSchedulingConfig.java:16</code>「单实例…无需分布式锁」，11 个 <code>@Scheduled</code> 依赖这一前提；<code>OssClient.java:40</code> 与 <code>MediaService.java:88</code> 两处明令禁 <code>@Async</code>。</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>历史经验（<code>docs/solutions/</code>）</h4>
+      <ul>
+        <li>① 延期功能要延期逻辑、不延期数据模型：会话 / 成员 / 消息 / 未读游标 / 偏好字段必须在第一版迁移里预留。</li>
+        <li>② 选型必须当场落进唯一口径源，不能留到编码期。</li>
+        <li>③ 模板 Caffeine 缓存随 provider 存活且不自动刷新，开关照抄会「重启才生效」。</li>
+        <li>④ 角标数必须与它汇总的列表同源 —— 本仓已出现过「角标 2 / 列表 1」类缺陷。</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>外部参照</h4>
+      <ul>
+        <li>闲鱼「我想要」开 1:1 会话替代暴露手机号、聊天内拦号、「叮一下」二次推送；小红书陌生人回复前限 1-3 条 + 每日发起上限；BOSS 直聘强制招呼模板且只预览前 17 字；OfferUp 的出价以消息形式进会话；Craigslist 每帖一个中继别名。</li>
+        <li>iOS 角标由 APNs 绝对值驱动（0 清除）；Android 8+ 标准是通知圆点，<code>setNumber()</code> 不保证。</li>
+        <li>推送授权中位数 iOS 48.85% / Android 53.3%；每周 2-5 条推送即让 46% 用户关闭通知；78% 客户向第一个回应者下单、1 分钟内响应转化 +391%。</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout">
+    <strong>三条硬约束，任何方向都绕不过去。</strong> 横切链顺序不可调换、notify 域不新增限流轨道、错误码不新增（唯一口径源是 PRD §12.5 的 24 码 + 0）；解密只有 <code>CryptoFacade</code> 一个入口且必须同事务写 <code>audit_log</code>；设计文档未覆盖的口径先问，禁在业务代码里自创。另有一条判断会影响全部七条：<code>PRD.md:1972</code>「不做站内 IM」与 <code>contact_screen.dart:8-11</code>「不做站内文本聊天」是<strong>能力级</strong>禁令，「只禁两个页面」是对 PRD 的选择性引用 —— 所以下面凡是碰会话的构想，都要求一次正式的 PRD / BRD 口径变更，且变更先于实现。变更清单：<code>PRD.md:2196</code>（撤销「消息列表页、聊天详情页」两行）、<code>1972</code>、<code>1765</code>、<code>1844</code>、BRD <code>353</code> 五处实质改写，另需为底部 Tab 数字角标与桌面角标各<strong>新增</strong>一条口径。
+  </div>
+</section>
+
+<section id="axes">
+  <p class="eyebrow">分解</p>
+  <h2>Topic Axes</h2>
+  <p>把「详情页发起聊天 + 触达」拆成五条互不重叠的面，发散时每条轴都被迫产出至少一条：</p>
+  <table>
+    <thead><tr><th>轴</th><th>名称</th><th>这条轴在问什么</th></tr></thead>
+    <tbody>
+      <tr><td>A</td><td>会话入口与开场</td><td>对话从详情页的哪一下开始，第一条消息以什么形态出现，会话挂在谁身上。</td></tr>
+      <tr><td>B</td><td>消息读写与实时性</td><td>没有长连接时，消息怎么落、怎么被对方看到、顺序与重发怎么保证。</td></tr>
+      <tr><td>C</td><td>未读与角标</td><td>「有人找你」这件事由哪个数字表达，谁写它，应用内与桌面怎么保持同源。</td></tr>
+      <tr><td>D</td><td>推送触达与打扰控制</td><td>通知栏那条什么时候发、发多少、用户怎么关，关掉之后还剩什么。</td></tr>
+      <tr><td>E</td><td>信任与反骚扰</td><td>陌生人凭什么能发第一条，号码从哪出，出问题后证据从哪来。</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="ideas">
+  <p class="eyebrow">入选</p>
+  <h2>Ranked Ideas</h2>
+  <div class="jump">
+    <ol>
+      <li><a href="#idea-1">消息中心：独立会话列表 + 会话详情，第四 Tab（对齐闲鱼）</a></li>
+      <li><a href="#idea-2">密封投标：需求帖的开场是「应标—开标」，不是聊天</a></li>
+      <li><a href="#idea-3">传呼台：不做长连接，推送唤醒 + <code>after_id</code> 增量</a></li>
+      <li><a href="#idea-4">一个读水位：未读三处同源 + 已读回执</a></li>
+      <li><a href="#idea-5">打扰预算：档位三选一 + 会话聚合 + 权限时机后移</a></li>
+      <li><a href="#idea-6">信任阶梯：额度分账 + 模板卡准入 + 号码只在卡片</a></li>
+      <li><a href="#idea-7">举报带证据：审核成本从「全量」收窄到「被举报的那几屏」</a></li>
+    </ol>
+  </div>
+
+  <article class="idea" id="idea-1">
+    <div class="idea-head">
+      <h3>消息中心：独立会话列表 + 会话详情，第四 Tab（对齐闲鱼）</h3>
+      <span class="id-chip">1</span><span class="axis-chip">轴 · 会话入口与开场</span>
+    </div>
+    <dl class="fields">
+      <dt>描述</dt>
+      <dd>把会话列表与会话详情做成独立的消息中心，挂在底部导航第 4 个 Tab 上（今天是丫圈 / 发布 / 我的：两个持久分支加一个 push 型中键）。列表行结构对齐参考图：头像（未读时右上红点）· 昵称 + 状态标 · 最后一条消息预览（或未读前缀「[N 条]」）· 时间 · 右侧关联帖子封面缩略图；按时间分组（今天 / 一周内 / 「1 个月以前的消息」）；顶部给搜索与管理入口；系统与认证类通知作为「服务号」置顶一行，与用户会话分开。会话内顶部固定一张关联帖子卡片，帖子下架（41001）即置灰并停止发送。详情页底栏仍是唯一入口 —— 点进来直接进入这条会话，不新开一条。会话唯一键仍是 <code>(post_id, visitor_id)</code>。首版迁移一次建三张表：<code>conversation</code>（<code>post_id</code> + <code>visitor_id</code> 唯一）、<code>conversation_member</code>（<code>last_read_message_id</code> 水位线）、<code>message</code>（<code>sender_id</code> / <code>seq</code> / <code>body</code> / <code>created_at</code>，<code>(sender_id, interaction_id)</code> 唯一键）。<code>chat.enabled</code> 关闭时存量会话转<strong>只读 + 顶部横幅</strong>，不隐藏。</dd>
+      <dt>依据</dt>
+      <dd>
+        <span class="ev"><span class="basis-tag">direct:</span><code>home_shell.dart:9-11</code>「本壳只承载两个持久分支（丫圈…我的），中间的『发布』键…onPressed 是 push('/publish') 而非 goBranch」—— 加「消息」Tab 要动这个壳；<code>PRD.md:2196</code>「明确不做的页面…消息列表页、聊天详情页」正是这一形态要撤销的两行；<code>PRD.md:1148</code> 的「红点（8px），不用数字气泡」约束对象是首页顶部导航栏（旁边挤着搜索框），底部 Tab 是新面，需要为它<strong>单独补一条口径</strong>而不是改 1148；<code>V1__init_schema.sql:333-345</code> 的 <code>notification.type</code> 三分类已能承载「服务号」置顶行；<code>contact_screen.dart:3-6</code>「让『拉取完整值』成为一个可限频、可埋点、可熔断的独立动作」。</span>
+        <span class="ev"><span class="basis-tag ext">external:</span>闲鱼消息中心的行结构（头像红点 / 昵称 / 预览或条数 / 时间 / 商品缩略图 / 「1 个月以前的消息」分组 / Tab 数字角标）；小红书与 BOSS 直聘同样用独立消息 Tab 承载会话。</span>
+      </dd>
+      <dt>为什么重要</dt>
+      <dd>参考图把问题从「要不要建收件箱」直接推进到「收件箱长什么样」—— 用户要的不是在详情页里聊两句，而是一个能承载 N 条会话、能一眼看出谁在等你的消息入口。这一形态同时给未读、角标、推送三件事提供了统一落点：会话行红点、Tab 数字、桌面图标都从同一份会话未读派生。代价是 PRD 的实质改写从三条扩到五条（<code>2196</code> 的两个页面、<code>1972</code>、<code>1765</code>、<code>1844</code>，加 BRD <code>353</code>），并新增一条底部 Tab 角标口径。</dd>
+      <dt>代价与风险</dt>
+      <dd>要改 <code>home_shell.dart</code> 新增持久分支，影响所有 Tab 下标与深链；「所有对话」入口出现后，跨帖的会话检索、排序、分页都要定口径；列表缩略图要求会话关联 <code>post_id</code> 并 join 封面；搜索一旦上线就是新的索引与审核面；PRD / BRD 实质改写从三条增到五条，公告面明显变宽。</dd>
+      <dt>置信度</dt>
+      <dd class="metric">78%</dd>
+      <dt>复杂度</dt>
+      <dd>High</dd>
+    </dl>
+
+    <figure>
+      <svg viewBox="0 0 860 300" role="img" aria-label="左侧为今天的唯一联系路径：帖子详情经联系 TA 进入中转页再拉取完整手机号，会话无处发生；右侧为构想：消息中心作为第四个 Tab 独立承载会话列表与会话详情，帖子只作为会话的上下文">
+        <line x1="430" y1="18" x2="430" y2="282" stroke="#dfe5e1" stroke-width="1" stroke-dasharray="4 4"/>
+
+        <text x="20" y="32" font-size="12" font-weight="700" fill="#6f7d76" letter-spacing="1">今天</text>
+        <rect x="20" y="48" width="140" height="52" rx="8" fill="#ffffff" stroke="#dfe5e1"/>
+        <text x="34" y="79" font-size="14" fill="#1b2320">帖子详情</text>
+        <line x1="160" y1="74" x2="206" y2="74" stroke="#9aa8a1" stroke-width="1.5"/>
+        <path d="M208 74 L200 70 L200 78 Z" fill="#9aa8a1"/>
+        <text x="184" y="62" font-size="11" fill="#6f7d76" text-anchor="middle">联系 TA</text>
+        <rect x="208" y="48" width="186" height="52" rx="8" fill="#fbeceb" stroke="#e3b7b3"/>
+        <text x="222" y="79" font-size="13" fill="#9b3530">中转页 /contact/:id</text>
+        <line x1="301" y1="100" x2="301" y2="130" stroke="#9aa8a1" stroke-width="1.5"/>
+        <path d="M301 132 L297 124 L305 124 Z" fill="#9aa8a1"/>
+        <text x="311" y="120" font-size="10.5" fill="#9b3530">拉取完整值</text>
+        <rect x="208" y="132" width="186" height="52" rx="8" fill="#ffffff" stroke="#dfe5e1"/>
+        <text x="222" y="155" font-size="13" fill="#1b2320">完整手机号 · 微信号</text>
+        <text x="222" y="173" font-size="11" fill="#6f7d76">解密 + 计一次配额</text>
+        <text x="20" y="222" font-size="12" fill="#4a5751">联系路径只有这一条</text>
+        <text x="20" y="244" font-size="12" fill="#9b3530">会话无处发生</text>
+
+        <text x="454" y="32" font-size="12" font-weight="700" fill="#0b5c56" letter-spacing="1">构想</text>
+        <rect x="454" y="48" width="150" height="52" rx="8" fill="#ffffff" stroke="#0f766e"/>
+        <text x="468" y="79" font-size="14" fill="#1b2320">帖子详情</text>
+        <line x1="604" y1="74" x2="654" y2="74" stroke="#0f766e" stroke-width="1.5"/>
+        <path d="M656 74 L648 70 L648 78 Z" fill="#0f766e"/>
+        <text x="630" y="62" font-size="10.5" fill="#0b5c56" text-anchor="middle">进入会话</text>
+        <rect x="656" y="48" width="190" height="52" rx="8" fill="#e4f1ee" stroke="#0f766e"/>
+        <text x="670" y="79" font-size="13" fill="#0b5c56">消息中心 · 第 4 Tab</text>
+
+        <rect x="454" y="124" width="180" height="100" rx="8" fill="#ffffff" stroke="#dfe5e1"/>
+        <text x="468" y="146" font-size="12" font-weight="700" fill="#1b2320">帖子</text>
+        <line x1="454" y1="156" x2="634" y2="156" stroke="#dfe5e1"/>
+        <text x="468" y="176" font-size="11" fill="#4a5751">收藏 = user × post</text>
+        <text x="468" y="198" font-size="11" fill="#0b5c56">会话 = visitor × post</text>
+        <text x="468" y="218" font-size="11" fill="#4a5751">下架 → 会话只读</text>
+
+        <text x="654" y="150" font-size="11" fill="#0b5c56">会话列表 · 按时间分组</text>
+        <text x="654" y="170" font-size="11" fill="#0b5c56">行：头像红点 · 预览 · 缩略图</text>
+        <text x="654" y="192" font-size="11" fill="#0b5c56">Tab 数字角标 + 桌面角标同源</text>
+        <text x="654" y="214" font-size="11" fill="#4a5751">系统 / 认证通知置顶「服务号」</text>
+        <text x="454" y="250" font-size="12" fill="#0b5c56">会话列表是独立目的地，帖子只作上下文</text>
+      </svg>
+      <figcaption>左边这条路今天走得通，只是它到「完整数字」就结束了。右边把终点换成独立的第四个 Tab：会话列表按时间分组、行内带帖子缩略图，未读红点、Tab 数字与桌面角标都从同一份会话未读派生。</figcaption>
+    </figure>
+  </article>
+
+  <article class="idea" id="idea-2">
+    <div class="idea-head">
+      <h3>密封投标：需求帖的开场是「应标—开标」，不是聊天</h3>
+      <span class="id-chip">2</span><span class="axis-chip">轴 · 会话入口与开场</span>
+    </div>
+    <dl class="fields">
+      <dt>描述</dt>
+      <dd>需求态（<code>supply_demand=demand</code>）的「我能帮忙」不再跳 <code>/publish</code>，而是提交一张结构化应标单（能提供什么／交付时间／一句留言）。投标人之间互不可见，发布者看不到对方联系方式；发布者看到的是「投标列表」与待开标角标，点「开标」才解锁那一条并生成会话，开标动作计一次 <code>contact_event</code>，沿用既有三维配额。</dd>
+      <dt>依据</dt>
+      <dd>
+        <span class="ev"><span class="basis-tag">direct:</span><code>detail_screen.dart:775</code> 按钮文案是「我能帮忙」，而 <code>PRD.md:1881</code> 要求「我有资源 / 能帮忙 · 一键发布对应资源（跳发布页，预填对应分类）」—— 入口存在但语义已漂移；<code>PRD.md:1977</code>「你的『需求』被人发布了对应资源」是已定义却无承载物的互动通知。</span>
+      </dd>
+      <dt>为什么重要</dt>
+      <dd>需求侧天然一对多，直接套一对一会话会立刻变成骚扰池；一个「开标」状态机把 N 个应标者压成 1 个被选中的人，同时把已经写好却悬空的那条互动通知变成有内容、可点击、可回应的东西。</dd>
+      <dt>代价与风险</dt>
+      <dd>引入开标状态机（新状态 + 新表），已超出「加个聊天」的范围；发布者长期不开标会让应标方僵死，需要超时规则。</dd>
+      <dt>置信度</dt>
+      <dd class="metric">70%</dd>
+      <dt>复杂度</dt>
+      <dd>High</dd>
+    </dl>
+  </article>
+
+  <article class="idea" id="idea-3">
+    <div class="idea-head">
+      <h3>传呼台：不做长连接，推送唤醒 + <code>after_id</code> 增量</h3>
+      <span class="id-chip">3</span><span class="axis-chip">轴 · 消息读写与实时性</span>
+    </div>
+    <dl class="fields">
+      <dt>描述</dt>
+      <dd>把实时性明确建模成寻呼台而非在线聊天。<code>POST</code> 消息同步落库即返回「已发呼」；服务端走既有 <code>dispatch()</code> 发一条「请回呼」推送；客户端只在进入前台、打开会话、下拉刷新三处按 <code>after_id</code> 拉增量；离线草稿进本地发件箱，联网后带同一 <code>Idempotency-Key</code> 重发，服务端以 <code>containsKey</code> 幂等去重。「已送达」由对方游标越过该条时写回，「已读」由对方显式打开会话写回。</dd>
+      <dt>依据</dt>
+      <dd>
+        <span class="ev"><span class="basis-tag">direct:</span><code>pom.xml:59-175</code> 依赖清单无 websocket / netty / MQ；<code>TaskSchedulingConfig.java:16</code>「单实例……无需分布式锁」；<code>NotificationMapper.xml:17-18</code>「<code>created_at</code> 为 DATETIME（秒精度），同一秒多条时若无 id 兜底，翻页会出现重复 / 漏行」；<code>OssClient.java:40</code> 与 <code>MediaService.java:88</code> 两处明令禁 <code>@Async</code>；<code>notification_provider.dart:92-183</code> 全文无 Timer、无 Stream。</span>
+      </dd>
+      <dt>为什么重要</dt>
+      <dd>这是「加聊天」最容易失控的工程决策 —— 一旦引入 WebSocket，单实例假设、11 个 <code>@Scheduled</code> 的无锁前提、以及「扩多实例必须同时加分布式锁」的既有约束会同时被打破。用推送触发拉取，等于把实时性外包给已有链路，后端只多一张表和两个端点。</dd>
+      <dt>代价与风险</dt>
+      <dd>对方在线时消息也最多延迟到一个推送或一次前台切换；<code>after_id</code> 是全仓第一个 API 级游标，破了「只有 offset」的既有约定，需要一次架构记档；首屏会变成两段式（先拉页、再补增量）。</dd>
+      <dt>置信度</dt>
+      <dd class="metric">88%</dd>
+      <dt>复杂度</dt>
+      <dd>Medium</dd>
+    </dl>
+
+    <figure>
+      <svg viewBox="0 0 860 300" role="img" aria-label="上方为选定路线：发送、落库、推送唤醒、前台按 after_id 拉增量四个步骤串成一条时间线；下方为被否决的长连接路线，标注它会同时打破单实例假设、定时任务无锁前提与客户端无定时器的现状">
+        <text x="20" y="26" font-size="12" font-weight="700" fill="#0b5c56" letter-spacing="1">推送唤醒 + 增量拉取（选定路线）</text>
+
+        <rect x="20" y="46" width="180" height="54" rx="8" fill="#ffffff" stroke="#dfe5e1"/>
+        <text x="110" y="79" font-size="13" fill="#1b2320" text-anchor="middle">发送</text>
+        <rect x="226" y="46" width="180" height="54" rx="8" fill="#ffffff" stroke="#dfe5e1"/>
+        <text x="316" y="79" font-size="13" fill="#1b2320" text-anchor="middle">落库</text>
+        <rect x="432" y="46" width="180" height="54" rx="8" fill="#e4f1ee" stroke="#0f766e"/>
+        <text x="522" y="79" font-size="13" fill="#0b5c56" text-anchor="middle">推送唤醒</text>
+        <rect x="638" y="46" width="180" height="54" rx="8" fill="#ffffff" stroke="#dfe5e1"/>
+        <text x="728" y="79" font-size="13" fill="#1b2320" text-anchor="middle">前台同步</text>
+
+        <line x1="200" y1="73" x2="222" y2="73" stroke="#0f766e" stroke-width="1.5"/>
+        <path d="M224 73 L216 69 L216 77 Z" fill="#0f766e"/>
+        <line x1="406" y1="73" x2="428" y2="73" stroke="#0f766e" stroke-width="1.5"/>
+        <path d="M430 73 L422 69 L422 77 Z" fill="#0f766e"/>
+        <line x1="612" y1="73" x2="634" y2="73" stroke="#0f766e" stroke-width="1.5"/>
+        <path d="M636 73 L628 69 L628 77 Z" fill="#0f766e"/>
+
+        <text x="110" y="122" font-size="11" fill="#6f7d76" text-anchor="middle">POST 一条消息</text>
+        <text x="316" y="122" font-size="11" fill="#6f7d76" text-anchor="middle">同步写入消息表</text>
+        <text x="316" y="138" font-size="10.5" fill="#6f7d76" text-anchor="middle">即返回「已发呼」</text>
+        <text x="522" y="122" font-size="11" fill="#6f7d76" text-anchor="middle">复用 dispatch()</text>
+        <text x="522" y="138" font-size="10.5" fill="#6f7d76" text-anchor="middle">「请回呼」二次唤醒</text>
+        <text x="728" y="122" font-size="11" fill="#6f7d76" text-anchor="middle">进入前台 / 打开会话</text>
+        <text x="728" y="138" font-size="10.5" fill="#6f7d76" text-anchor="middle">按 after_id 拉增量</text>
+
+        <text x="20" y="168" font-size="11" fill="#4a5751">「已送达」= 对方游标越过该条 · 「已读」= 对方显式打开会话</text>
+
+        <text x="20" y="196" font-size="12" font-weight="700" fill="#9b3530" letter-spacing="1">长连接路线（不出此路）</text>
+        <rect x="20" y="206" width="798" height="76" rx="8" fill="#fbeceb" stroke="#e3b7b3" stroke-dasharray="6 4"/>
+        <text x="44" y="236" font-size="11" fill="#9b3530">单实例假设 + 11 个 @Scheduled 的无锁前提 + 客户端无 Timer / Stream</text>
+        <text x="44" y="256" font-size="11" fill="#9b3530">引入长连接会同时打破这三条；推送触发拉取把实时性外包给已有链路</text>
+        <circle cx="782" cy="244" r="16" fill="#ffffff" stroke="#9b3530" stroke-width="1.5"/>
+        <text x="782" y="250" font-size="16" font-weight="700" fill="#9b3530" text-anchor="middle">✕</text>
+      </svg>
+      <figcaption>实时的目标不是「对方立刻看到」，而是「对方不会错过」。一条推送加一次按游标的增量拉取就能满足后者，且不动单实例前提。</figcaption>
+    </figure>
+  </article>
+
+  <article class="idea" id="idea-4">
+    <div class="idea-head">
+      <h3>一个读水位：未读三处同源 + 已读回执</h3>
+      <span class="id-chip">4</span><span class="axis-chip">轴 · 未读与角标</span>
+    </div>
+    <dl class="fields">
+      <dt>描述</dt>
+      <dd>整件事只由一个水位线驱动：<code>conversation_member.last_read_message_id</code>。未读的计数单位从「未读消息条数」改成「有待处理消息的会话数」—— 一个会话无论堆 12 条还是 1 条，最多计 1，直到你打开它。这个绝对值喂给三处：底部「消息」Tab 的数字角标、会话行头像右上角的红点（只给红点不给数字）、桌面图标角标（iOS 走 APNs <code>badge</code>、Android 走厂商参数）。<strong>已读回执是同一个水位的反方向</strong>：我的消息 <code>seq ≤ 对方的 last_read_message_id</code> 即「已读」，否则「未读」；消息列表接口多返回一个整数 <code>peer_last_read_id</code>，客户端自行比较即可，不需要逐条 <code>read_at</code>、不需要新表、不需要新接口。标签只挂在「我发的最后一条」下面，避免每行都出现两个字。已读只更新水位，<strong>不产生推送</strong>；发送方在下次拉取（打开会话、回到前台）时看到状态变化。这个值随响应信封返回、或至少收敛成唯一 provider；失败重试一律以服务端绝对值覆盖以修复漂移；同时删掉「我的」页那第二路独立请求。</dd>
+      <dt>依据</dt>
+      <dd>
+        <span class="ev"><span class="basis-tag">direct:</span><code>PRD.md:1148</code>「红点（8px），不用数字气泡｜导航栏仅剩 24px 见方，双位数气泡会溢出压到搜索框」—— 反对数字的真实理由是空间；<code>NotifyService.java:83-85</code> 与 <code>NotificationMapper.xml:65-71</code> 现口径按行 <code>COUNT(*)</code>；<code>profile_provider.dart:96-110</code> 用 <code>fetchNotifications(pageSize:1)</code> 独立再发一次且与 <code>notificationsProvider</code> 无共享状态；Android / iOS 角标 grep 均为空。</span>
+        <span class="ev"><span class="basis-tag ext">external:</span>iOS badge 是绝对值、0 清除；Android 8+ 标准是通知圆点，<code>setNumber()</code> 不保证；行业共识是服务端绝对值为唯一真源、重试用绝对值修漂移。</span>
+      </dd>
+      <dt>为什么重要</dt>
+      <dd>引入三者等于引入三个未读消费者；不先立「唯一作者」，就是把已知的「角标 2 而列表 1」缺陷复制三遍。计数单位换成会话后，双位数几乎不可能发生，Tab 数字角标重新变得可用 —— 这是用语义选择解决 PRD 的视觉红线，而不是视觉妥协。另需注意：<code>PRD.md:1148</code> 那条约束的是首页顶部导航栏（旁边有搜索框），底部 Tab 是全新面，应<strong>新增</strong>一条口径而非沿用或推翻 1148。已读回执几乎零成本：它复用的正是为未读本来就要建的水位线，一个字段同时回答「我有几条没看」与「对方读没读」，不必为回执再开一套表。</dd>
+      <dt>代价与风险</dt>
+      <dd><code>ResponseBodyWrapper.java:103-110</code> 目前只是把 DTO 套壳，没有按请求追加字段的钩子，「单点追加」低估了改动；会话计数会让「12 条未读」显示为 1，用户可能低估紧急度；底部 Tab 数字角标与桌面角标都是新面，需要在 PRD 里各补一条口径；iOS 本期没有 APNs 落点，桌面角标只有 Android 一半。已读回执另有三个副作用：一是「已读不回」在 C2C 议价场景里是真实的社交压力，需要产品决定是否允许关闭（微信无开关、WhatsApp 有、闲鱼无）；二是已读事件不实时，发送方要等下一次拉取才看到状态变化，容易被误读为「对方没看」；三是对已删除 / 已拉黑的会话，状态会停在水位线最后一格，需要一句代替文案而不是一直显示「未读」。</dd>
+      <dt>置信度</dt>
+      <dd class="metric">85%</dd>
+      <dt>复杂度</dt>
+      <dd>Medium</dd>
+    </dl>
+
+    <figure>
+      <svg viewBox="0 0 860 300" role="img" aria-label="左侧为今天三处各自发起请求：我的页、通知列表、桌面图标，互不共享；右侧为构想：唯一未读绝对值同时写入应用内、Tab 红点与桌面角标">
+        <line x1="430" y1="18" x2="430" y2="282" stroke="#dfe5e1" stroke-width="1" stroke-dasharray="4 4"/>
+
+        <text x="20" y="32" font-size="12" font-weight="700" fill="#6f7d76" letter-spacing="1">今天 · 三处各自算</text>
+        <rect x="20" y="50" width="370" height="54" rx="8" fill="#ffffff" stroke="#dfe5e1"/>
+        <text x="36" y="74" font-size="13" fill="#1b2320">「我的」页独立请求</text>
+        <text x="36" y="92" font-size="10.5" fill="#6f7d76" font-family="ui-monospace,monospace">fetchNotifications(pageSize: 1)</text>
+        <rect x="20" y="116" width="370" height="54" rx="8" fill="#ffffff" stroke="#dfe5e1"/>
+        <text x="36" y="140" font-size="13" fill="#1b2320">通知列表 provider</text>
+        <text x="36" y="158" font-size="10.5" fill="#6f7d76" font-family="ui-monospace,monospace">notificationsProvider</text>
+        <rect x="20" y="182" width="370" height="54" rx="8" fill="#fbeceb" stroke="#e3b7b3"/>
+        <text x="36" y="206" font-size="13" fill="#9b3530">桌面图标角标</text>
+        <text x="36" y="224" font-size="10.5" fill="#9b3530">无落点：双端 grep 零命中</text>
+        <text x="20" y="256" font-size="11" fill="#9b3530">三者互不共享、互不失效</text>
+        <text x="20" y="274" font-size="11" fill="#9b3530">→「角标 2 / 列表 1」本仓已经踩过</text>
+
+        <text x="460" y="32" font-size="12" font-weight="700" fill="#0b5c56" letter-spacing="1">构想 · 一个绝对值</text>
+        <rect x="460" y="50" width="380" height="54" rx="8" fill="#e4f1ee" stroke="#0f766e"/>
+        <text x="476" y="74" font-size="13" fill="#0b5c56">唯一未读绝对值</text>
+        <text x="476" y="92" font-size="10.5" fill="#0b5c56">计数单位 = 有待处理消息的会话数</text>
+
+        <line x1="650" y1="104" x2="519" y2="138" stroke="#0f766e" stroke-width="1.3"/>
+        <line x1="650" y1="104" x2="650" y2="138" stroke="#0f766e" stroke-width="1.3"/>
+        <line x1="650" y1="104" x2="781" y2="138" stroke="#0f766e" stroke-width="1.3"/>
+        <path d="M519 140 L522 132 L526 135 Z" fill="#0f766e"/>
+        <path d="M650 140 L646 133 L654 133 Z" fill="#0f766e"/>
+        <path d="M781 140 L774 135 L778 132 Z" fill="#0f766e"/>
+
+        <rect x="460" y="140" width="118" height="46" rx="8" fill="#ffffff" stroke="#dfe5e1"/>
+        <text x="519" y="168" font-size="12" fill="#1b2320" text-anchor="middle">应用内</text>
+        <rect x="591" y="140" width="118" height="46" rx="8" fill="#ffffff" stroke="#dfe5e1"/>
+        <text x="650" y="168" font-size="12" fill="#1b2320" text-anchor="middle">Tab 红点</text>
+        <rect x="722" y="140" width="118" height="46" rx="8" fill="#ffffff" stroke="#dfe5e1"/>
+        <text x="781" y="168" font-size="12" fill="#1b2320" text-anchor="middle">桌面角标</text>
+
+        <text x="460" y="206" font-size="11" fill="#4a5751">iOS：APNs badge 绝对值，0 清除</text>
+        <text x="460" y="224" font-size="11" fill="#4a5751">Android：厂商参数；8+ 标准是通知圆点，setNumber() 不保证</text>
+        <text x="460" y="256" font-size="11" fill="#0b5c56">失败重试：用服务端绝对值覆盖，不累加</text>
+        <text x="460" y="274" font-size="11" fill="#0b5c56">12 条未读也只算 1 —— 双位数气泡不再发生</text>
+      </svg>
+      <figcaption>三个消费者不是问题，三个<em>作者</em>才是问题。把同一份绝对值发给三处，角标漂移就只剩传输失败这一种原因，而它可以用「再发一次绝对值」自愈。</figcaption>
+    </figure>
+  </article>
+
+  <article class="idea" id="idea-5">
+    <div class="idea-head">
+      <h3>打扰预算：档位三选一 + 会话聚合 + 权限时机后移</h3>
+      <span class="id-chip">5</span><span class="axis-chip">轴 · 推送触达与打扰控制</span>
+    </div>
+    <dl class="fields">
+      <dt>描述</dt>
+      <dd>把「关掉通知」从关断改成降档，三选一：<strong>实时</strong>（每条进通知栏）／<strong>摘要</strong>（每天固定窗口汇总）／<strong>仅角标</strong>（只更新应用内与桌面角标）。发送侧统一走一个预算组件，读既有四列开关 + 档位 + <code>NfrPush.DAILY_LIMIT</code>。同一会话在窗口内只下发 1 条「{昵称} 给你发了 N 条消息」，第二条起只更新那条站内通知的摘要、不占新配额。系统权限申请点从「发布成功页」后移到「用户第一次收到回复」。</dd>
+      <dt>依据</dt>
+      <dd>
+        <span class="ev"><span class="basis-tag">direct:</span><code>dispatch()</code> 在 <code>src/main</code> 零业务调用方；<code>SettingService.java:59-66,102-137</code> 写了四列但 <code>PushDispatchService</code> / <code>PushQuotaGate</code> / 各 sender 均未读取；<code>settings_screen.dart:110-114</code> 只有一行总开关；<code>publish_success_screen.dart:55</code> 是当前唯一的权限申请点；<code>AndroidManifest.xml:5-11</code> 未声明 <code>POST_NOTIFICATIONS</code>；<code>PushDispatchService.java:32-34</code>「配额按消息而非设备」—— 一轮 10 条对话会烧光当日全部额度；<code>NfrPush.java:31</code> <code>DAILY_LIMIT=10</code>。</span>
+        <span class="ev"><span class="basis-tag ext">external:</span>Localytics「每周 2-5 条推送已让 46% 用户关闭通知」；Airship 2025 授权中位 iOS 48.85% / Android 53.3%。</span>
+      </dd>
+      <dt>为什么重要</dt>
+      <dd>用户说的「可以关闭通知」如果只做成一个总开关，实际结果是关掉后再也不知道有人找，聊天功能直接失效。不聚合的话，聊天一上线就会把 10 条/天烧满，等于用聊天杀死系统通知。这条也是让那四列死开关第一次拥有真实语义的地方。</dd>
+      <dt>代价与风险</dt>
+      <dd>档位是新产品概念，要动 <code>user_setting</code> 结构与 <code>PATCH /notifications/settings</code>（现标 Batch2 占位）；「首次收到回复才要权限」会让第一条消息完全静默，可能伤到响应速度；聚合窗口按「会话」还是按「接收者」需要定口径。</dd>
+      <dt>置信度</dt>
+      <dd class="metric">82%</dd>
+      <dt>复杂度</dt>
+      <dd>Medium</dd>
+    </dl>
+  </article>
+
+  <article class="idea" id="idea-6">
+    <div class="idea-head">
+      <h3>信任阶梯：额度分账 + 模板卡准入 + 号码只在卡片</h3>
+      <span class="id-chip">6</span><span class="axis-chip">轴 · 信任与反骚扰</span>
+    </div>
+    <dl class="fields">
+      <dt>描述</dt>
+      <dd>三道闸合成一条可见的阶梯。未实名 → 只能发服务端下发的模板卡（按分类：还在吗／价格能谈吗／位置在哪／今天能看吗）；已实名 → 可发自由文本；有过成功往来 → 会话内出现「获取联系方式」卡片，点击调用的仍是今天那个 <code>GET /posts/{id}/contact</code>，九步链路一行不改。额度<strong>分账</strong>：看号保留 <code>CONTACT_UID/DEV/IP/BURST</code> 四轨 30/日不动，绝不与消息互相挤占；消息侧限的是「每日<strong>主动开新会话</strong>数」与「每会话未回复前条数」，两个值都落 <code>Nfr</code> 常量，用数据库计数而非 Redis 新轨，超限复用既有 42902，未绑手机号仍 40302。聊天内畅聊不受条数限制，但任何「一对多」广播式用法在第一道闸被卡住。聊天正文结构上不承载号码，卡片是唯一出口。</dd>
+      <dt>依据</dt>
+      <dd>
+        <span class="ev"><span class="basis-tag">direct:</span><code>RateLimitTrack.java:66-68,74-76,82-84,97-100</code> 是 <code>CONTACT_UID/DEV/IP/BURST</code> 四轨且 notify 域明确拒绝新增轨道；<code>ContactService.java:160</code> 配额先于可见性；<code>ContactService.java:226-230</code>「用既有码 40305（无权限）—— 不新增错误码（红线）」；<code>CryptoFacadeCallSiteTest</code> 守门调用点 == 1；<code>contact_screen.dart:3-6</code>。</span>
+        <span class="ev"><span class="basis-tag ext">external:</span>小红书回复前限 1-3 条、每日主动私信 5-20 人；BOSS 直聘限主动开聊额度并可付费提额；闲鱼聊天内拦微信号 / 手机号、拿到联系方式是会话内后置步骤 —— 三家限的都是「主动发起的人数」，不是「消息条数」。</span>
+      </dd>
+      <dt>为什么重要</dt>
+      <dd>这是唯一「零新码、零新轨、零新解密入口」就能给聊天上风控的形状。它同时正面回答 PRD 拒绝 IM 的第三条论据（「不接 IM SDK = 不产生聊天内容存储 / 审核合规风险」）—— 本设计下聊天内容在结构上就不含合规敏感项，所以「存了聊天记录」的风险等级与「存了一条『还在吗』」相同。分账而非共用，是因为群发的成本来自「给很多人各发一条」，不是「给一个人发很多条」；限主动开场人数既能挡住群发，又不动「看号」这条核心转化路径的稀缺性。</dd>
+      <dt>代价与风险</dt>
+      <dd>比共用多一套计数逻辑（按 `(sender_id, 自然日)` 与 `(conversation_id, sender_id)` 各一次计数）；两个阈值都要新定并写进 <code>Nfr</code> 常量，属于设计文档未覆盖的口径（按红线必须先问）；模板卡准入对未实名用户是硬墙，会压低会话量；「有过成功往来」的判定口径要新定。</dd>
+      <dt>置信度</dt>
+      <dd class="metric">80%</dd>
+      <dt>复杂度</dt>
+      <dd>High</dd>
+    </dl>
+
+    <figure>
+      <svg viewBox="0 0 860 340" role="img" aria-label="三级准入阶梯：未实名只能发模板卡，已实名可发自由文本，有过成功往来才出现获取联系方式卡片；三级共用同一条联系日限">
+        <text x="20" y="26" font-size="12" font-weight="700" fill="#0b5c56" letter-spacing="1">三级准入 · 一条共用预算</text>
+
+        <rect x="20" y="46" width="800" height="64" rx="8" fill="#e4f1ee" stroke="#0f766e"/>
+        <text x="36" y="74" font-size="13" fill="#0b5c56">第三级 · 有过成功往来 → 会话内出现「获取联系方式」卡片</text>
+        <text x="36" y="94" font-size="11" fill="#4a5751">点击仍调 GET /posts/{id}/contact，九步链一行不改；失败仍是 40101 / 40302 / 42903</text>
+
+        <line x1="44" y1="140" x2="44" y2="114" stroke="#0f766e" stroke-width="1.5"/>
+        <path d="M44 110 L40 118 L48 118 Z" fill="#0f766e"/>
+
+        <rect x="20" y="142" width="800" height="64" rx="8" fill="#ffffff" stroke="#dfe5e1"/>
+        <text x="36" y="170" font-size="13" fill="#1b2320">第二级 · 已实名 → 可发自由文本</text>
+        <text x="36" y="190" font-size="11" fill="#4a5751">号码检测仍在服务端做；聊天正文结构上不承载号码</text>
+
+        <line x1="44" y1="236" x2="44" y2="210" stroke="#0f766e" stroke-width="1.5"/>
+        <path d="M44 206 L40 214 L48 214 Z" fill="#0f766e"/>
+
+        <rect x="20" y="238" width="800" height="64" rx="8" fill="#ffffff" stroke="#dfe5e1"/>
+        <text x="36" y="266" font-size="13" fill="#1b2320">第一级 · 未实名 → 只能发服务端下发的模板卡</text>
+        <text x="36" y="286" font-size="11" fill="#4a5751">还在吗 / 价格能谈吗 / 位置在哪 / 今天能看吗（按分类下发）</text>
+
+        <text x="20" y="326" font-size="11" fill="#8a5a14">三级共用同一条 CONTACT 三维日限与突发熔断 —— 发消息与看号抢同一个池；超限仍是 42902 / 42903</text>
+      </svg>
+      <figcaption>阶梯的作用不是限制谁，而是让「凭什么能发这条」有一个当场看得见的答案；预算共用则保证聊天不会成为绕开看号限频的第二条通道。</figcaption>
+    </figure>
+  </article>
+
+  <article class="idea" id="idea-7">
+    <div class="idea-head">
+      <h3>举报带证据：审核成本从「全量」收窄到「被举报的那几屏」</h3>
+      <span class="id-chip">7</span><span class="axis-chip">轴 · 信任与反骚扰</span>
+    </div>
+    <dl class="fields">
+      <dt>描述</dt>
+      <dd>举报弹窗自动携带 <code>thread_post_id</code> 与命中的消息 id 列表，服务端把摘要写进既有的 <code>report.evidence</code> JSON 列，风险分从「原因估值」变成「原因 + 证据条数」。运营侧只给一个「被举报会话」的只读窄视图（不是聊天后台，只审被举报的那几屏），同时给被误判的用户一个可见的申诉面（能看到自己哪条触发了拦截）。</dd>
+      <dt>依据</dt>
+      <dd>
+        <span class="ev"><span class="basis-tag">direct:</span><code>ReportRiskScore.java</code> <code>AUTO_OFFLINE_THRESHOLD=60</code>，基础分 fraud 50 / false_info 20 / wrong_category 20 / harassment 10 / other 5；<code>contact_screen.dart:745-847</code> 举报面板只有原因选择与备注，无任何证据入口；<code>report.evidence</code> 列在服务端存在且 <code>ReportRequest.evidence</code> 是 <code>List&lt;String&gt;</code>，只差前端入口。</span>
+        <span class="ev"><span class="basis-tag rea">reasoned:</span>运营最担心的「聊天审核成本按条计」，可以被收窄成「只审被举报的那几条」—— 这是对 PRD 那条 5.6 倍成本论据最直接的正面回应。</span>
+      </dd>
+      <dt>为什么重要</dt>
+      <dd>举报没有证据就无法判定，而聊天正好生成证据。它把「做聊天」的成本叙事从「全面审核」改成「抽样审核」，是能让评审点头的那句话；也让 harness 基础分 10 这个拍出来的数字第一次有可核对象。</dd>
+      <dt>代价与风险</dt>
+      <dd>需要一条运营侧窄视图（新后台页面）；消息保留期必须补进 <code>NfrRetention</code>（当前连 notification 都没有条目）；客服能否查看被举报会话正文是合规决策，不是工程决策。</dd>
+      <dt>置信度</dt>
+      <dd class="metric">76%</dd>
+      <dt>复杂度</dt>
+      <dd>Medium</dd>
+    </dl>
+  </article>
+</section>
+
+<section id="rejections">
+  <p class="eyebrow">否决</p>
+  <h2>Rejection Summary</h2>
+  <table>
+    <thead><tr><th>#</th><th>构想</th><th>否决理由</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>已联系才可聊（以 contact_event 为前提的售后走廊 + 三态回执）</td><td>依据被证伪：<code>PRD.md:1844</code> 原文「『回复』在本产品内无处发生」，三态回执预设了被明令否认的回复面。</td></tr>
+      <tr><td>2</td><td>「我能帮忙」变资源卡开场（预填分类 + 两帖互链）</td><td>依据真实但动作未落地：<code>/publish</code> 仍是占位屏、预填分类未实现，两帖互链没有数据路径（已并入第 2 条）。</td></tr>
+      <tr><td>3</td><td>首句模板化（首条只能选模板卡）</td><td>依据成立（<code>ideation/找丫找v2-需求深度还原-ideation-20260819.html:312</code> 确有 5.6 倍与 12% 原文），但「模板化后成本按模板计」是推断而非实测；动作已被第 6 条的模板卡准入吸收。</td></tr>
+      <tr><td>4</td><td>发布即预答（预设回答 + 自动应答）</td><td>依据不足：<code>publish_success_screen.dart:52-56</code> 只是权限申请点，不支撑预答面；自动回复还会与「78% 买第一个回应者」的机理冲突（用户会误以为真人已回）。</td></tr>
+      <tr><td>5</td><td>通知即消息（不建 message 表，notification 加两列承载正文）</td><td>超出引用范围：<code>PRD.md:1972</code>「纯通知形态」不支持把通知表变成消息存储；相比第 1 条的「帖子内往来」是更激进的简化。</td></tr>
+      <tr><td>6</td><td>X-Interaction-Id 升级为域级关联 id 对账链</td><td>依据成立，但解决的是 <code>PushDispatchService</code> 自认的「推送已发、站内没了」不一致窗口，属架构改进，不是本需求的决策项。</td></tr>
+      <tr><td>7</td><td>会话即需求信号表（意图枚举喂下一轮匹配）</td><td>依据被证伪：<code>PRD.md:1714-1715</code> 实为 T6 UI 组件条款（Pin 完整度角标 / 发布完成页完整度卡），不支持「意图枚举喂匹配」。</td></tr>
+      <tr><td>8</td><td>未读进响应信封（<code>ResponseBodyWrapper</code> 单点追加）</td><td><code>ResponseBodyWrapper.java:103-110</code> 只是把 DTO 套壳，没有按请求追加字段的钩子，「单点追加」低估了改动（已并入第 4 条）。</td></tr>
+      <tr><td>9</td><td>会话级静音 + 勿扰牌对发送方可见</td><td>依据真实，但「勿扰对发送方可见」需要新的跨用户读路径，可见性口径在现有设计中无出处。</td></tr>
+      <tr><td>10</td><td>首条不推、第二条才推；48h 无人回复自动归档并退回配额</td><td>撞红线：<code>PRD.md:1723</code> 明确「不做 24h 三选一弹窗」「不向用户收集已联系上 / 已成交反馈」。</td></tr>
+      <tr><td>11</td><td>推送能力分级上线、UI 如实标注</td><td>依据成立但属事实陈述而非构想；其可执行部分（权限时机）已并入第 5 条。</td></tr>
+      <tr><td>12</td><td>安检闸机（检测到号码即转正为一次合法 viewContact）</td><td>依据成立，但「检测到号码就扣一次看号额度」会在用户不知情时消耗稀缺配额，投诉风险高于收益。</td></tr>
+      <tr><td>13</td><td>给「不做 IM」加到期条款（三条可测护栏 + 服务端开关回落）</td><td>PRD×7 / BRD×3 引用准确，但 BRD R4 已登记反向风险「砍掉 IM 后联系效率下降」；它是治理文书，不是产品构想，更适合作为第 1 条与第 2 条的前置决策单独讨论。</td></tr>
+      <tr><td>14</td><td>v1 三件套一次定死（post 锚定 + notification 承载 + 会话未读）</td><td>依赖「notification 承载消息」这一弱前提；成立的两件已分别落在第 1 条与第 4 条。</td></tr>
+      <tr><td>15</td><td>一套问题卡渲染器同时服务供给 / 需两态</td><td>三个来源里有两个（预填分类、预设回答）本就依据不足；可复用的部分已并入第 2 条与第 6 条。</td></tr>
+      <tr><td>16</td><td>中转页变 contact hub（页内「先问一句」/「直接看号」）</td><td>硬冲突：<code>contact_screen.dart:8-11</code> 第三条原文即「不做站内文本聊天」，页内「先问一句」与主引用直接矛盾。</td></tr>
+    </tbody>
+  </table>
+  <p class="axis-coverage">轴覆盖：会话入口与开场 2 条、消息读写与实时性 1 条、未读与角标 1 条、推送触达与打扰控制 1 条、信任与反骚扰 2 条 —— 五轴均有幸存者，无空白轴。</p>
+</section>
+
+<footer class="composition-signal">
+  Composed 2026-10-31T14:20+08:00 by ce-ideate · 仓库 <code>liujie12/s2s</code>
+</footer>
+
+</div>
+</body>
+</html>

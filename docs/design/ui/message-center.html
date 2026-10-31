@@ -1,0 +1,1316 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>消息中心与站内会话 · 高保真设计稿</title>
+<style>
+  /* =========================================================================
+     本文件的颜色 / 字号 / 间距 / 圆角全部取自 lib/design_tokens.dart，
+     变量名后面的注释即对应 Dart 常量名，请勿在评审外新增色值。
+     ========================================================================= */
+  :root{
+    /* AppColors */
+    --primary:#0B7C8C;          /* AppColors.primary        */
+    --primary-dark:#075E6B;     /* AppColors.primaryDark    */
+    --primary-light:#E6F6F8;    /* AppColors.primaryLight   */
+    --accent:#B4531A;           /* AppColors.accent         */
+    --success:#22C55E;          /* AppColors.success        */
+    --warning:#F59E0B;          /* AppColors.warning        */
+    --error:#EF4444;            /* AppColors.error          */
+    --success-text:#15803D;     /* AppColors.successText    */
+    --warning-text:#B45309;     /* AppColors.warningText    */
+    --error-text:#B91C1C;       /* AppColors.errorText      */
+    --text-primary:#1F2937;     /* AppColors.textPrimary    */
+    --text-secondary:#6B7280;   /* AppColors.textSecondary  */
+    --text-placeholder:#9CA3AF; /* AppColors.textPlaceholder*/
+    --border:#E5E7EB;           /* AppColors.border         */
+    --background:#F8FAFC;       /* AppColors.background     */
+    --surface:#FFFFFF;          /* AppColors.surface        */
+
+    /* AppSpacing */
+    --xs:4px;   /* AppSpacing.xs  */
+    --sm:8px;   /* AppSpacing.sm  */
+    --md:12px;  /* AppSpacing.md  */
+    --lg:16px;  /* AppSpacing.lg  */
+    --xl:24px;  /* AppSpacing.xl  */
+    --xxl:32px; /* AppSpacing.xxl */
+
+    /* AppRadius */
+    --r-sm:4px;     /* AppRadius.sm   */
+    --r-md:8px;     /* AppRadius.md   */
+    --r-lg:12px;    /* AppRadius.lg   */
+    --r-xl:16px;    /* AppRadius.xl   */
+    --r-full:999px; /* AppRadius.full */
+
+    --shadow-phone:0 8px 24px rgba(31,41,55,.08);
+    --shadow-menu:0 4px 16px rgba(31,41,55,.12);
+  }
+
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--background);
+    color:var(--text-primary);
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Segoe UI",sans-serif;
+    -webkit-font-smoothing:antialiased;
+    padding-bottom:var(--xxl);
+  }
+  h1,h2,h3,p,ul{margin:0;}
+  svg{display:block;}
+
+  /* 字阶：AppTypeScale（行高 = 字号 × 倍率） */
+  .t-h1{font-size:24px;line-height:31.2px;font-weight:700;}
+  .t-h2{font-size:18px;line-height:23.4px;font-weight:600;}
+  .t-h3{font-size:16px;line-height:22.4px;font-weight:600;}
+  .t-body{font-size:14px;line-height:21px;font-weight:400;}
+  .t-small{font-size:12px;line-height:18px;font-weight:400;}
+  .t-caption{font-size:11px;line-height:13.2px;font-weight:500;}
+
+  /* ---------- 页面外框 ---------- */
+  .page{max-width:1720px;margin:0 auto;padding:var(--xxl);}
+  .page-head{margin-bottom:var(--xxl);}
+  .page-head .scope{margin-top:var(--sm);color:var(--text-secondary);font-size:12px;line-height:18px;max-width:96ch;}
+  .page-head .scope b{color:var(--text-primary);font-weight:600;}
+  .title-row{display:flex;align-items:baseline;gap:var(--md);flex-wrap:wrap;margin-top:var(--xl);}
+  .title-row .sub{color:var(--text-secondary);}
+
+  .swatches{display:flex;flex-wrap:wrap;gap:var(--sm);margin-top:var(--lg);}
+  .sw{display:flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:var(--r-full);background:var(--surface);padding:5px 10px 5px 5px;}
+  .sw i{width:18px;height:18px;border-radius:var(--r-sm);border:1px solid var(--border);flex:none;}
+  .sw span{font-size:11px;line-height:13.2px;color:var(--text-secondary);font-weight:500;}
+
+  /* ---------- 画框排布 ---------- */
+  .section{margin-top:var(--xxl);}
+  .section-head{display:flex;align-items:baseline;gap:var(--sm);margin-bottom:var(--lg);}
+  .section-head h2{font-size:18px;line-height:23.4px;font-weight:600;}
+  .section-head .desc{font-size:12px;line-height:18px;color:var(--text-secondary);}
+  .frames{display:flex;flex-wrap:wrap;gap:var(--xxl);align-items:flex-start;}
+  .frame-cell{width:390px;}
+  .frame-cell.wide{width:100%;max-width:836px;}
+  .frame-head{display:flex;align-items:center;gap:var(--sm);margin-bottom:var(--md);}
+  .frame-head .num{width:24px;height:24px;border-radius:var(--r-full);background:var(--primary);color:var(--surface);display:grid;place-items:center;font-size:11px;font-weight:600;flex:none;}
+  .frame-head h3{font-size:16px;line-height:22.4px;font-weight:600;}
+  .frame-head .hint{margin-left:auto;font-size:11px;line-height:13.2px;font-weight:500;color:var(--text-secondary);background:var(--surface);border:1px solid var(--border);border-radius:var(--r-full);padding:4px 8px;white-space:nowrap;}
+  .frame-note{margin-top:var(--sm);font-size:11px;line-height:16px;color:var(--text-secondary);}
+  .frame-note b{color:var(--primary-dark);font-weight:600;}
+
+  /* ---------- 手机画框 ---------- */
+  .phone{width:390px;height:844px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-xl);box-shadow:var(--shadow-phone);overflow:hidden;display:flex;flex-direction:column;}
+  .statusbar{height:24px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 var(--lg);font-size:11px;line-height:13.2px;font-weight:600;color:var(--text-primary);}
+  .statusbar .right{display:flex;align-items:center;gap:4px;}
+  .statusbar .bar{width:2px;background:var(--text-primary);border-radius:1px;}
+  .appbar{height:48px;flex:none;display:flex;align-items:center;padding:0 var(--sm);background:var(--surface);border-bottom:1px solid var(--border);position:relative;}
+  .appbar .side{min-width:56px;height:44px;display:flex;align-items:center;font-size:14px;color:var(--text-secondary);}
+  .appbar .side.right{justify-content:flex-end;}
+  .appbar .title{flex:1;text-align:center;font-size:16px;line-height:22.4px;font-weight:600;}
+  .screen-body{flex:1;min-height:0;display:flex;flex-direction:column;background:var(--background);}
+  .scroll{flex:1;min-height:0;overflow:hidden;}
+
+  /* ---------- 底部导航（四项等分，64 高） ---------- */
+  .tabbar{height:64px;flex:none;display:flex;background:var(--surface);border-top:1px solid var(--border);}
+  .tab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--xs);position:relative;}
+  .tab .lb{font-size:11px;line-height:13.2px;color:var(--text-secondary);}
+  .tab.on .lb{color:var(--primary);font-weight:600;}
+  .tab .ic{width:24px;height:24px;color:var(--text-secondary);}
+  .tab.on .ic{color:var(--primary);}
+  .tab.pub .ic{width:32px;height:32px;color:var(--primary);}
+  .tab.pub .lb{color:var(--primary);font-weight:600;}
+  .tab .num{position:absolute;top:6px;left:calc(50% + 4px);min-width:16px;height:16px;padding:0 4px;border-radius:var(--r-full);background:var(--error);color:var(--surface);font-size:10px;line-height:16px;text-align:center;font-weight:600;}
+
+  /* ---------- 会话行 ---------- */
+  .list{background:var(--surface);}
+  .row{display:flex;align-items:center;gap:var(--md);padding:var(--md) var(--lg);position:relative;min-height:72px;}
+  .row + .row::before{content:"";position:absolute;left:72px;right:0;top:0;height:1px;background:var(--border);}
+  .avatar{width:44px;height:44px;border-radius:var(--r-full);flex:none;display:grid;place-items:center;background:var(--primary-light);color:var(--primary-dark);font-size:14px;font-weight:600;}
+  .avatar.sys{background:var(--primary);color:var(--surface);}
+  .row-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;}
+  .row-top{display:flex;align-items:center;gap:var(--sm);}
+  .row-name{font-size:14px;line-height:21px;font-weight:500;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .row-time{margin-left:auto;font-size:11px;line-height:13.2px;color:var(--text-placeholder);flex:none;}
+  .row-sub{font-size:12px;line-height:18px;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .thumb{width:44px;height:44px;border-radius:var(--r-md);flex:none;background:var(--background);border:1px solid var(--border);display:grid;place-items:center;font-size:10px;color:var(--text-placeholder);text-align:center;line-height:12px;}
+  .thumb.off{background:var(--background);color:var(--text-placeholder);border-style:dashed;}
+  .dot-red{width:8px;height:8px;border-radius:var(--r-full);background:var(--error);flex:none;}
+  .chip-top{font-size:10px;line-height:12px;font-weight:600;color:var(--primary-dark);background:var(--primary-light);border-radius:var(--r-sm);padding:2px 5px;flex:none;}
+  .chip-off{font-size:10px;line-height:12px;font-weight:600;color:var(--text-secondary);background:var(--background);border:1px solid var(--border);border-radius:var(--r-sm);padding:2px 5px;flex:none;}
+
+  /* ---------- 空态 ---------- */
+  .empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--md);padding:0 var(--xl);}
+  .empty .circ{width:64px;height:64px;border:1.5px dashed var(--border);border-radius:var(--r-full);display:grid;place-items:center;color:var(--primary);}
+  .empty .t{font-size:14px;line-height:21px;font-weight:600;}
+  .empty .d{font-size:12px;line-height:18px;color:var(--text-secondary);text-align:center;max-width:280px;}
+
+  /* ---------- 会话详情 ---------- */
+  .thread{flex:1;min-height:0;padding:var(--lg) var(--lg) 0;display:flex;flex-direction:column;gap:var(--sm);overflow:hidden;}
+  .day-sep{align-self:center;font-size:11px;line-height:13.2px;color:var(--text-placeholder);background:var(--background);padding:2px 8px;border-radius:var(--r-full);}
+  .ctx-card{display:flex;align-items:center;gap:var(--sm);padding:var(--sm);background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);}
+  .ctx-card .thumb{width:36px;height:36px;border-radius:var(--r-sm);}
+  .ctx-card .ctx-main{flex:1;min-width:0;}
+  .ctx-card .ctx-title{font-size:12px;line-height:18px;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .ctx-card .ctx-price{font-size:11px;line-height:13.2px;color:var(--text-secondary);}
+  .bubble{max-width:264px;padding:var(--sm) var(--md);border-radius:var(--r-lg);font-size:14px;line-height:21px;}
+  .bubble.them{align-self:flex-start;background:var(--surface);border:1px solid var(--border);color:var(--text-primary);border-bottom-left-radius:var(--r-sm);}
+  .bubble.me{align-self:flex-end;background:var(--primary);color:var(--surface);border-bottom-right-radius:var(--r-sm);}
+  .read-row{align-self:flex-end;display:flex;align-items:center;gap:4px;font-size:11px;line-height:13.2px;color:var(--text-placeholder);margin-top:-2px;}
+  .read-row.on{color:var(--text-secondary);}
+
+  /* 申请卡 */
+  .apply-card{align-self:stretch;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:var(--md);display:flex;flex-direction:column;gap:var(--sm);}
+  .apply-head{display:flex;align-items:center;gap:var(--sm);}
+  .apply-title{font-size:14px;line-height:21px;font-weight:600;}
+  .apply-body{font-size:12px;line-height:18px;color:var(--text-secondary);}
+  .apply-actions{display:flex;gap:var(--sm);}
+  .btn{height:40px;border-radius:var(--r-full);display:grid;place-items:center;font-size:14px;font-weight:600;flex:1;}
+  .btn.primary{background:var(--primary);color:var(--surface);}
+  .btn.ghost{background:var(--surface);color:var(--text-primary);border:1px solid var(--border);}
+  .btn.disabled{background:var(--background);color:var(--text-placeholder);border:1px solid var(--border);}
+  .state-chip{font-size:10px;line-height:12px;font-weight:600;border-radius:var(--r-sm);padding:2px 6px;}
+  .state-chip.pending{color:var(--warning-text);background:#FEF3C7;}
+  .state-chip.done{color:var(--success-text);background:#DCFCE7;}
+  .state-chip.reject{color:var(--text-secondary);background:var(--background);}
+
+  /* 联系方式卡 */
+  .contact-card{align-self:stretch;background:var(--primary-light);border:1px solid var(--primary);border-radius:var(--r-lg);padding:var(--md);display:flex;flex-direction:column;gap:6px;}
+  .contact-card .cc-top{display:flex;align-items:center;gap:var(--sm);}
+  .contact-card .cc-title{font-size:12px;line-height:18px;font-weight:600;color:var(--primary-dark);}
+  .contact-card .cc-only{margin-left:auto;font-size:10px;line-height:12px;color:var(--primary-dark);opacity:.8;}
+  .contact-card .cc-num{font-size:20px;line-height:26px;font-weight:700;color:var(--primary-dark);letter-spacing:.5px;}
+  .contact-card .cc-actions{display:flex;gap:var(--sm);margin-top:2px;}
+  .cc-btn{height:36px;border-radius:var(--r-full);display:grid;place-items:center;font-size:13px;font-weight:600;flex:1;background:var(--surface);color:var(--primary-dark);border:1px solid var(--primary);}
+
+  /* 输入区 */
+  .composer{flex:none;border-top:1px solid var(--border);background:var(--surface);padding:var(--sm) var(--md);display:flex;align-items:center;gap:var(--sm);}
+  .composer .field{flex:1;height:36px;border-radius:var(--r-full);background:var(--background);border:1px solid var(--border);display:flex;align-items:center;padding:0 var(--md);font-size:14px;color:var(--text-placeholder);}
+  .send{width:32px;height:32px;border-radius:var(--r-full);background:var(--primary);display:grid;place-items:center;color:var(--surface);flex:none;}
+  .composer.locked .field{color:var(--text-placeholder);background:var(--background);}
+
+  /* ---------- 详情页底栏四态 ---------- */
+  .detail-page{flex:1;min-height:0;display:flex;flex-direction:column;background:var(--background);}
+  .detail-fill{flex:1;display:flex;flex-direction:column;gap:var(--md);padding:var(--lg);}
+  .skeleton{height:12px;border-radius:var(--r-sm);background:var(--border);}
+  .skeleton.l{width:70%;} .skeleton.m{width:88%;} .skeleton.s{width:46%;}
+  .price-tag{font-size:20px;line-height:26px;font-weight:700;color:var(--error-text);}
+  .detail-bar{flex:none;background:var(--surface);border-top:1px solid var(--border);padding:var(--md) var(--lg) var(--lg);display:flex;gap:var(--sm);}
+  .detail-bar .btn{height:48px;}
+  .detail-bar .btn.ghost{flex:0 0 128px;}
+  .detail-bar .btn.primary,.detail-bar .btn.disabled{flex:1;}
+
+  /* ---------- 设置 / 弹窗 / 横幅 / 菜单 ---------- */
+  .group-title{font-size:11px;line-height:13.2px;font-weight:600;color:var(--text-placeholder);padding:var(--md) var(--lg) var(--sm);}
+  .set-row{display:flex;align-items:center;gap:var(--md);min-height:56px;padding:0 var(--lg);background:var(--surface);position:relative;}
+  .set-row + .set-row::before{content:"";position:absolute;left:var(--lg);right:0;top:0;height:1px;background:var(--border);}
+  .set-row .k{font-size:14px;color:var(--text-primary);}
+  .set-row .k.sub{padding-left:var(--lg);color:var(--text-secondary);}
+  .set-row .v{margin-left:auto;font-size:14px;color:var(--text-secondary);}
+  .switch{width:44px;height:26px;border-radius:var(--r-full);background:var(--border);position:relative;flex:none;}
+  .switch::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:var(--r-full);background:var(--surface);box-shadow:0 1px 2px rgba(31,41,55,.2);}
+  .switch.on{background:var(--primary);}
+  .switch.on::after{left:21px;}
+
+  .dim{position:absolute;inset:0;background:rgba(31,41,55,.48);display:flex;align-items:flex-end;}
+  .sheet{width:100%;background:var(--surface);border-radius:var(--r-xl) var(--r-xl) 0 0;padding:var(--xl) var(--lg) var(--lg);display:flex;flex-direction:column;gap:var(--md);}
+  .sheet h4{font-size:18px;line-height:23.4px;font-weight:600;margin:0;}
+  .sheet p{font-size:14px;line-height:21px;color:var(--text-secondary);}
+  .sheet .btn{height:48px;}
+
+  .banner-off{display:flex;align-items:center;gap:var(--sm);padding:var(--sm) var(--lg);background:#FEF3C7;font-size:12px;line-height:18px;color:var(--warning-text);}
+  .banner-off .link{margin-left:auto;font-weight:600;text-decoration:underline;flex:none;}
+  .banner-err{display:flex;align-items:center;gap:var(--sm);padding:var(--sm) var(--lg);background:#FEE2E2;font-size:12px;line-height:18px;color:var(--error-text);}
+
+  .menu{position:absolute;right:var(--lg);top:96px;width:180px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);box-shadow:var(--shadow-menu);overflow:hidden;z-index:2;}
+  .menu div{padding:var(--md) var(--lg);font-size:14px;color:var(--text-primary);border-bottom:1px solid var(--border);}
+  .menu div:last-child{border-bottom:0;}
+  .menu div.danger{color:var(--error-text);}
+
+  /* ---------- 桌面启动器 ---------- */
+  .home{width:390px;height:560px;background:linear-gradient(160deg,#EEF3F4 0%,#F8FAFC 46%,#E9F2F3 100%);border:1px solid var(--border);border-radius:var(--r-xl);box-shadow:var(--shadow-phone);overflow:hidden;display:flex;flex-direction:column;}
+  .home .hstatus{height:24px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 var(--lg);font-size:11px;line-height:13.2px;font-weight:600;color:var(--text-primary);}
+  .home-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:22px 10px;padding:var(--xl) 18px 0;}
+  .app{display:flex;flex-direction:column;align-items:center;gap:6px;}
+  .app .icon{width:56px;height:56px;border-radius:14px;position:relative;flex:none;display:grid;place-items:center;background:var(--surface);border:1px solid var(--border);}
+  .app .icon.brand{background:var(--primary);border-color:var(--primary);}
+  .app .icon.plain{border:0;}
+  .app .nm{font-size:11px;line-height:13.2px;color:var(--text-primary);white-space:nowrap;}
+  .app-badge{position:absolute;top:-7px;right:-9px;min-width:20px;height:20px;padding:0 5px;border-radius:var(--r-full);background:var(--error);color:var(--surface);font-size:11px;line-height:20px;font-weight:600;text-align:center;border:2px solid #EEF3F4;box-sizing:content-box;}
+  .app-badge.dot{min-width:8px;width:8px;height:8px;padding:0;}
+  .home-dock{margin-top:auto;padding:var(--lg) 18px var(--xl);display:flex;gap:22px;justify-content:space-around;}
+  .home-note{font-size:10px;line-height:14px;color:var(--text-placeholder);text-align:center;padding-top:var(--sm);}
+
+  /* ---------- 设计说明 ---------- */
+  .notes{margin-top:var(--xxl);}
+  .notes .lead{font-size:14px;line-height:21px;color:var(--text-secondary);margin-bottom:var(--lg);max-width:96ch;}
+  .notes h3{font-size:16px;line-height:22.4px;font-weight:600;margin:var(--xl) 0 var(--md);display:flex;align-items:baseline;gap:var(--sm);}
+  .notes h3 .idx{font-size:11px;line-height:13.2px;font-weight:600;color:var(--surface);background:var(--primary);border-radius:var(--r-full);width:20px;height:20px;display:grid;place-items:center;flex:none;}
+  .notes h3 .cnt{font-size:11px;line-height:13.2px;font-weight:500;color:var(--text-secondary);}
+  table{width:100%;border-collapse:collapse;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);overflow:hidden;}
+  th{text-align:left;font-size:11px;line-height:13.2px;font-weight:600;color:var(--text-secondary);background:var(--background);padding:var(--sm) var(--md);border-bottom:1px solid var(--border);}
+  td{font-size:12px;line-height:18px;color:var(--text-primary);padding:var(--sm) var(--md);border-bottom:1px solid var(--border);vertical-align:top;}
+  tr:last-child td{border-bottom:0;}
+  td.k{font-weight:600;}
+  .tag{display:inline-block;font-size:10px;line-height:12px;font-weight:600;color:var(--primary-dark);background:var(--primary-light);border-radius:var(--r-sm);padding:2px 5px;white-space:nowrap;}
+  .tag.gray{color:var(--text-secondary);background:var(--background);border:1px solid var(--border);}
+  .tag.warn{color:var(--warning-text);background:#FEF3C7;}
+  .rules{margin-top:var(--md);padding:var(--md) var(--lg);background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--primary);border-radius:var(--r-md);}
+  .rules b{color:var(--primary-dark);}
+  .rules ul{margin:var(--xs) 0 0;padding-left:18px;}
+  .rules li{font-size:12px;line-height:19px;color:var(--text-secondary);}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="page-head">
+    <div class="banner" style="display:none"></div>
+    <div class="title-row">
+      <h1 class="t-h1">消息中心与站内会话</h1>
+      <span class="sub t-body">高保真设计稿 · 9 屏</span>
+    </div>
+    <p class="scope">对应需求文档 <b>docs/plans/2026-10-31-2048-feat-detail-chat-and-message-center-plan.md</b>。画框 390 × 844，单位逻辑像素；颜色 / 字号 / 间距 / 圆角全部取自 <b>lib/design_tokens.dart</b>，未新增任何 token 外的色值。</p>
+    <div class="swatches">
+      <span class="sw"><i style="background:var(--primary)"></i><span>primary</span></span>
+      <span class="sw"><i style="background:var(--primary-dark)"></i><span>primaryDark</span></span>
+      <span class="sw"><i style="background:var(--primary-light)"></i><span>primaryLight</span></span>
+      <span class="sw"><i style="background:var(--error)"></i><span>error（未读/角标）</span></span>
+      <span class="sw"><i style="background:var(--warning)"></i><span>warning（只读横幅）</span></span>
+      <span class="sw"><i style="background:var(--text-primary)"></i><span>textPrimary</span></span>
+      <span class="sw"><i style="background:var(--text-secondary)"></i><span>textSecondary</span></span>
+      <span class="sw"><i style="background:var(--border)"></i><span>border</span></span>
+      <span class="sw"><i style="background:var(--background)"></i><span>background</span></span>
+    </div>
+  </header>
+
+  <!-- ===================== 01 底部导航 ===================== -->
+  <section class="section">
+    <div class="section-head">
+      <h2>01 · 底部导航</h2>
+      <span class="desc">四项等分，「发布」在第 2 格；「消息」带数字角标</span>
+    </div>
+    <div class="frames">
+
+      <div class="frame-cell wide">
+        <div class="frame-head">
+          <span class="num">1</span>
+          <h3>四项导航 · 角标三态</h3>
+          <span class="hint">栏高 64 · 图标 24 · 发布 32</span>
+        </div>
+        <div style="display:flex;gap:var(--xl);flex-wrap:wrap;">
+
+          <div style="width:390px;">
+            <div style="border:1px solid var(--border);border-radius:var(--r-md);overflow:hidden;background:var(--surface);">
+              <div class="tabbar" style="border-top:0;">
+                <div class="tab"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 4 3.5 6.5v13L9 17l6 2.5 5.5-2.5v-13L15 6.5 9 4Z"/><path d="M9 4v13M15 6.5v13"/></svg><span class="lb">丫圈</span></div>
+                <div class="tab pub"><svg class="ic" viewBox="0 0 32 32"><circle cx="16" cy="16" r="15.5" fill="#0B7C8C"/><text x="16" y="17" text-anchor="middle" dominant-baseline="middle" font-size="13" font-weight="600" fill="#FFFFFF" font-family="-apple-system,PingFang SC,sans-serif">鸭</text></svg><span class="lb">发布</span></div>
+                <div class="tab on"><span class="num">12</span><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.3 9 9 0 0 1-3.6-.7L4 21l1.4-4.1A8 8 0 0 1 4 11.5 8.4 8.4 0 0 1 12.5 3 8.4 8.4 0 0 1 21 11.5Z"/></svg><span class="lb">消息</span></div>
+                <div class="tab"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20c.8-3.6 4-5.6 7.5-5.6s6.7 2 7.5 5.6"/></svg><span class="lb">我的</span></div>
+              </div>
+            </div>
+            <p class="frame-note"><b>有未读</b>：数字角标 16 高、圆角 full、底 error、字 surface 10/16；位置在图标右上，距图标左边缘 4。</p>
+          </div>
+
+          <div style="width:390px;">
+            <div style="border:1px solid var(--border);border-radius:var(--r-md);overflow:hidden;background:var(--surface);">
+              <div class="tabbar" style="border-top:0;">
+                <div class="tab"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 4 3.5 6.5v13L9 17l6 2.5 5.5-2.5v-13L15 6.5 9 4Z"/><path d="M9 4v13M15 6.5v13"/></svg><span class="lb">丫圈</span></div>
+                <div class="tab pub"><svg class="ic" viewBox="0 0 32 32"><circle cx="16" cy="16" r="15.5" fill="#0B7C8C"/><text x="16" y="17" text-anchor="middle" dominant-baseline="middle" font-size="13" font-weight="600" fill="#FFFFFF" font-family="-apple-system,PingFang SC,sans-serif">鸭</text></svg><span class="lb">发布</span></div>
+                <div class="tab on"><span class="num" style="padding:0 5px;">99+</span><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.3 9 9 0 0 1-3.6-.7L4 21l1.4-4.1A8 8 0 0 1 4 11.5 8.4 8.4 0 0 1 12.5 3 8.4 8.4 0 0 1 21 11.5Z"/></svg><span class="lb">消息</span></div>
+                <div class="tab"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20c.8-3.6 4-5.6 7.5-5.6s6.7 2 7.5 5.6"/></svg><span class="lb">我的</span></div>
+              </div>
+            </div>
+            <p class="frame-note"><b>上限</b>：超过 99 一律显示「99+」，宽度随文字增长，不换行、不缩字号。</p>
+          </div>
+
+          <div style="width:390px;">
+            <div style="border:1px solid var(--border);border-radius:var(--r-md);overflow:hidden;background:var(--surface);">
+              <div class="tabbar" style="border-top:0;">
+                <div class="tab"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 4 3.5 6.5v13L9 17l6 2.5 5.5-2.5v-13L15 6.5 9 4Z"/><path d="M9 4v13M15 6.5v13"/></svg><span class="lb">丫圈</span></div>
+                <div class="tab pub"><svg class="ic" viewBox="0 0 32 32"><circle cx="16" cy="16" r="15.5" fill="#0B7C8C"/><text x="16" y="17" text-anchor="middle" dominant-baseline="middle" font-size="13" font-weight="600" fill="#FFFFFF" font-family="-apple-system,PingFang SC,sans-serif">鸭</text></svg><span class="lb">发布</span></div>
+                <div class="tab"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.3 9 9 0 0 1-3.6-.7L4 21l1.4-4.1A8 8 0 0 1 4 11.5 8.4 8.4 0 0 1 12.5 3 8.4 8.4 0 0 1 21 11.5Z"/></svg><span class="lb">消息</span></div>
+                <div class="tab"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20c.8-3.6 4-5.6 7.5-5.6s6.7 2 7.5 5.6"/></svg><span class="lb">我的</span></div>
+              </div>
+            </div>
+            <p class="frame-note"><b>零未读</b>：不显示角标也不显示红点，Tab 只保留图标与文字，不做任何降级形态。</p>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 02 消息列表 ===================== -->
+  <section class="section">
+    <div class="section-head">
+      <h2>02 · 消息列表</h2>
+      <span class="desc">服务号永久置顶；会话行右侧是帖子缩略图，下架置灰；空态单独一屏</span>
+    </div>
+    <div class="frames">
+
+      <div class="frame-cell">
+        <div class="frame-head"><span class="num">2</span><h3>有会话 · 有未读</h3><span class="hint">列表</span></div>
+        <div class="phone">
+          <div class="statusbar"><span>9:41</span><span class="right"><span class="bar" style="height:6px"></span><span class="bar" style="height:9px"></span><span class="bar" style="height:12px"></span><span style="margin-left:4px">100%</span></span></div>
+          <div class="appbar"><div class="side"></div><div class="title">消息</div><div class="side right"></div></div>
+          <div class="screen-body">
+            <div class="scroll">
+              <div class="list">
+
+                <div class="row">
+                  <div class="avatar sys">鸭</div>
+                  <div class="row-main">
+                    <div class="row-top"><span class="row-name">服务号</span><span class="chip-top">置顶</span><span class="row-time">09:12</span></div>
+                    <div class="row-sub">你的「静安两居」被联系了 3 次</div>
+                  </div>
+                  <div class="dot-red"></div>
+                </div>
+
+                <div class="row">
+                  <div class="avatar">王</div>
+                  <div class="row-main">
+                    <div class="row-top"><span class="row-name">王师傅</span><span class="row-time">09:04</span></div>
+                    <div class="row-sub">可以的，我下午三点前都在</div>
+                  </div>
+                  <div class="thumb">房源<br>图</div>
+                </div>
+
+                <div class="row">
+                  <div class="avatar">李</div>
+                  <div class="row-main">
+                    <div class="row-top"><span class="row-name">李女士</span><span class="row-time">昨天</span></div>
+                    <div class="row-sub">[已同意查看联系方式]</div>
+                  </div>
+                  <div class="thumb">搬家<br>图</div>
+                </div>
+
+                <div class="row">
+                  <div class="avatar">陈</div>
+                  <div class="row-main">
+                    <div class="row-top"><span class="row-name">陈先生</span><span class="row-time">周二</span></div>
+                    <div class="row-sub">这个价格还能再谈吗</div>
+                  </div>
+                  <div class="thumb off">已<br>下架</div>
+                </div>
+
+                <div class="row">
+                  <div class="avatar">赵</div>
+                  <div class="row-main">
+                    <div class="row-top"><span class="row-name">赵同学</span><span class="row-time">10-24</span></div>
+                    <div class="row-sub">好的，那我就先不租了</div>
+                  </div>
+                  <div class="thumb">车位<br>图</div>
+                </div>
+
+              </div>
+            </div>
+            <div class="tabbar">
+              <div class="tab"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 4 3.5 6.5v13L9 17l6 2.5 5.5-2.5v-13L15 6.5 9 4Z"/><path d="M9 4v13M15 6.5v13"/></svg><span class="lb">丫圈</span></div>
+              <div class="tab pub"><svg class="ic" viewBox="0 0 32 32"><circle cx="16" cy="16" r="15.5" fill="#0B7C8C"/><text x="16" y="17" text-anchor="middle" dominant-baseline="middle" font-size="13" font-weight="600" fill="#FFFFFF" font-family="-apple-system,PingFang SC,sans-serif">鸭</text></svg><span class="lb">发布</span></div>
+              <div class="tab on"><span class="num">12</span><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.3 9 9 0 0 1-3.6-.7L4 21l1.4-4.1A8 8 0 0 1 4 11.5 8.4 8.4 0 0 1 12.5 3 8.4 8.4 0 0 1 21 11.5Z"/></svg><span class="lb">消息</span></div>
+              <div class="tab"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20c.8-3.6 4-5.6 7.5-5.6s6.7 2 7.5 5.6"/></svg><span class="lb">我的</span></div>
+            </div>
+          </div>
+        </div>
+        <p class="frame-note"><b>行高 72</b>：头像 44 + 主文两行 + 右侧 44 缩略图；未读只挂 8px 红点，不显示条数。服务号用「置顶」胶囊常驻首位，不可左滑删除。</p>
+      </div>
+
+      <div class="frame-cell">
+        <div class="frame-head"><span class="num">2b</span><h3>空态</h3><span class="hint">首次进入</span></div>
+        <div class="phone">
+          <div class="statusbar"><span>9:41</span><span class="right"><span class="bar" style="height:6px"></span><span class="bar" style="height:9px"></span><span class="bar" style="height:12px"></span><span style="margin-left:4px">100%</span></span></div>
+          <div class="appbar"><div class="side"></div><div class="title">消息</div><div class="side right"></div></div>
+          <div class="screen-body">
+            <div class="list" style="flex:none;">
+              <div class="row">
+                <div class="avatar sys">鸭</div>
+                <div class="row-main">
+                  <div class="row-top"><span class="row-name">服务号</span><span class="chip-top">置顶</span><span class="row-time">09:12</span></div>
+                  <div class="row-sub">你的「静安两居」被联系了 3 次</div>
+                </div>
+              </div>
+            </div>
+            <div class="empty">
+              <div class="circ">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.3 9 9 0 0 1-3.6-.7L4 21l1.4-4.1A8 8 0 0 1 4 11.5 8.4 8.4 0 0 1 12.5 3 8.4 8.4 0 0 1 21 11.5Z"/></svg>
+              </div>
+              <div class="t">还没有人找你聊</div>
+              <div class="d">在资源或需求详情页点「聊一聊」，就能直接和对方说话，不用先要电话。</div>
+            </div>
+            <div class="tabbar">
+              <div class="tab"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 4 3.5 6.5v13L9 17l6 2.5 5.5-2.5v-13L15 6.5 9 4Z"/><path d="M9 4v13M15 6.5v13"/></svg><span class="lb">丫圈</span></div>
+              <div class="tab pub"><svg class="ic" viewBox="0 0 32 32"><circle cx="16" cy="16" r="15.5" fill="#0B7C8C"/><text x="16" y="17" text-anchor="middle" dominant-baseline="middle" font-size="13" font-weight="600" fill="#FFFFFF" font-family="-apple-system,PingFang SC,sans-serif">鸭</text></svg><span class="lb">发布</span></div>
+              <div class="tab on"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.3 9 9 0 0 1-3.6-.7L4 21l1.4-4.1A8 8 0 0 1 4 11.5 8.4 8.4 0 0 1 12.5 3 8.4 8.4 0 0 1 21 11.5Z"/></svg><span class="lb">消息</span></div>
+              <div class="tab"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20c.8-3.6 4-5.6 7.5-5.6s6.7 2 7.5 5.6"/></svg><span class="lb">我的</span></div>
+            </div>
+          </div>
+        </div>
+        <p class="frame-note"><b>空态不含服务号</b>：服务号只要账户存在就常驻，所以「空」指的是没有真人会话，不是整页空白。</p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ===================== 03 会话详情（普通） ===================== -->
+  <section class="section">
+    <div class="section-head">
+      <h2>03 · 会话详情</h2>
+      <span class="desc">顶部带帖子上下文；已读只挂我发的最后一条</span>
+    </div>
+    <div class="frames">
+
+      <div class="frame-cell">
+        <div class="frame-head"><span class="num">3</span><h3>已读态</h3><span class="hint">对方看过了</span></div>
+        <div class="phone">
+          <div class="statusbar"><span>9:41</span><span class="right"><span class="bar" style="height:6px"></span><span class="bar" style="height:9px"></span><span class="bar" style="height:12px"></span><span style="margin-left:4px">100%</span></span></div>
+          <div class="appbar">
+            <div class="side"><span style="color:var(--primary);font-weight:500;">‹ 消息</span></div>
+            <div class="title">王师傅</div>
+            <div class="side right" style="color:var(--text-secondary);font-size:18px;">···</div>
+          </div>
+          <div class="screen-body">
+            <div class="thread">
+              <div class="ctx-card">
+                <div class="thumb">房源图</div>
+                <div class="ctx-main">
+                  <div class="ctx-title">静安 · 两居 · 精装朝南</div>
+                  <div class="ctx-price">4,800 元/月 · 距你 1.2km</div>
+                </div>
+                <span style="font-size:11px;color:var(--text-secondary);">›</span>
+              </div>
+              <div class="day-sep">今天</div>
+              <div class="bubble me">你好，这周五下午能看房吗？</div>
+              <div class="bubble them">可以，你几点方便？</div>
+              <div class="bubble me">三点左右到</div>
+              <div class="read-row on">已读</div>
+            </div>
+            <div class="composer">
+              <div class="field">说点什么…</div>
+              <div class="send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 12h14M13 6l6 6-6 6"/></svg></div>
+            </div>
+          </div>
+        </div>
+        <p class="frame-note"><b>已读判定</b>：对方已读水位覆盖到最后一条消息；只在我发的最后一条下方显示，不在每条消息后重复。</p>
+      </div>
+
+      <div class="frame-cell">
+        <div class="frame-head"><span class="num">3b</span><h3>未读态 + 发送失败</h3><span class="hint">异常</span></div>
+        <div class="phone">
+          <div class="statusbar"><span>9:41</span><span class="right"><span class="bar" style="height:6px"></span><span class="bar" style="height:9px"></span><span class="bar" style="height:12px"></span><span style="margin-left:4px">100%</span></span></div>
+          <div class="appbar">
+            <div class="side"><span style="color:var(--primary);font-weight:500;">‹ 消息</span></div>
+            <div class="title">王师傅</div>
+            <div class="side right" style="color:var(--text-secondary);font-size:18px;">···</div>
+          </div>
+          <div class="screen-body">
+            <div class="banner-err">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v6M12 16.6v.1"/></svg>
+              这条没发出去，点此重发
+            </div>
+            <div class="thread">
+              <div class="ctx-card">
+                <div class="thumb">房源图</div>
+                <div class="ctx-main">
+                  <div class="ctx-title">静安 · 两居 · 精装朝南</div>
+                  <div class="ctx-price">4,800 元/月 · 距你 1.2km</div>
+                </div>
+                <span style="font-size:11px;color:var(--text-secondary);">›</span>
+              </div>
+              <div class="day-sep">今天</div>
+              <div class="bubble me">你好，这周五下午能看房吗？</div>
+              <div class="bubble me" style="background:#9CA3AF;">三点左右到，方便的话回我一下</div>
+              <div class="read-row">未读</div>
+            </div>
+            <div class="composer">
+              <div class="field" style="color:var(--text-primary);">三点左右到，方便的话…</div>
+              <div class="send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 12h14M13 6l6 6-6 6"/></svg></div>
+            </div>
+          </div>
+        </div>
+        <p class="frame-note"><b>发送失败</b>：气泡降为 textPlaceholder 底，输入内容保留在输入框；重发沿用同一幂等键，不产生重复消息。</p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ===================== 04 申请卡与联系方式卡 ===================== -->
+  <section class="section">
+    <div class="section-head">
+      <h2>04 · 申请卡与联系方式卡</h2>
+      <span class="desc">发起人与发布者两种视角；被拒后 7 天倒计时</span>
+    </div>
+    <div class="frames">
+
+      <div class="frame-cell">
+        <div class="frame-head"><span class="num">4</span><h3>发布者视角 · 待处理</h3><span class="hint">可同意 / 拒绝</span></div>
+        <div class="phone">
+          <div class="statusbar"><span>9:41</span><span class="right"><span class="bar" style="height:6px"></span><span class="bar" style="height:9px"></span><span class="bar" style="height:12px"></span><span style="margin-left:4px">100%</span></span></div>
+          <div class="appbar">
+            <div class="side"><span style="color:var(--primary);font-weight:500;">‹ 消息</span></div>
+            <div class="title">小周</div>
+            <div class="side right" style="color:var(--text-secondary);font-size:18px;">···</div>
+          </div>
+          <div class="screen-body">
+            <div class="thread">
+              <div class="ctx-card">
+                <div class="thumb">房源图</div>
+                <div class="ctx-main">
+                  <div class="ctx-title">静安 · 两居 · 精装朝南</div>
+                  <div class="ctx-price">你发布的 · 在架</div>
+                </div>
+                <span style="font-size:11px;color:var(--text-secondary);">›</span>
+              </div>
+              <div class="day-sep">今天</div>
+
+              <div class="apply-card">
+                <div class="apply-head">
+                  <span class="apply-title">申请查看联系方式</span>
+                  <span class="state-chip pending" style="margin-left:auto;">待处理</span>
+                </div>
+                <div class="apply-body">小周：想先确认下能不能养猫，可以的话再看房。</div>
+                <div class="apply-actions">
+                  <div class="btn ghost">拒绝</div>
+                  <div class="btn primary">同意</div>
+                </div>
+              </div>
+
+              <div class="bubble them">我这边有一只猫，不知道房东介意吗</div>
+            </div>
+            <div class="composer">
+              <div class="field">说点什么…</div>
+              <div class="send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 12h14M13 6l6 6-6 6"/></svg></div>
+            </div>
+          </div>
+        </div>
+        <p class="frame-note"><b>申请卡</b>：结构化卡片，不是一句普通消息 —— 它有可点的主按钮。同一会话只出现一次；拒绝后卡片留在原位并转为「已拒绝」。</p>
+      </div>
+
+      <div class="frame-cell">
+        <div class="frame-head"><span class="num">4b</span><h3>发起人视角 · 已同意</h3><span class="hint">号码到手</span></div>
+        <div class="phone">
+          <div class="statusbar"><span>9:41</span><span class="right"><span class="bar" style="height:6px"></span><span class="bar" style="height:9px"></span><span class="bar" style="height:12px"></span><span style="margin-left:4px">100%</span></span></div>
+          <div class="appbar">
+            <div class="side"><span style="color:var(--primary);font-weight:500;">‹ 消息</span></div>
+            <div class="title">王师傅</div>
+            <div class="side right" style="color:var(--text-secondary);font-size:18px;">···</div>
+          </div>
+          <div class="screen-body">
+            <div class="thread">
+              <div class="ctx-card">
+                <div class="thumb">房源图</div>
+                <div class="ctx-main">
+                  <div class="ctx-title">静安 · 两居 · 精装朝南</div>
+                  <div class="ctx-price">4,800 元/月 · 距你 1.2km</div>
+                </div>
+                <span style="font-size:11px;color:var(--text-secondary);">›</span>
+              </div>
+              <div class="day-sep">今天</div>
+
+              <div class="apply-card">
+                <div class="apply-head">
+                  <span class="apply-title">申请查看联系方式</span>
+                  <span class="state-chip done" style="margin-left:auto;">已同意</span>
+                </div>
+                <div class="apply-body">对方已同意，联系方式在下方。</div>
+              </div>
+
+              <div class="contact-card">
+                <div class="cc-top">
+                  <span class="cc-title">联系方式</span>
+                  <span class="cc-only">仅你可见</span>
+                </div>
+                <div class="cc-num">138 0013 8888</div>
+                <div class="cc-actions">
+                  <div class="cc-btn">复制</div>
+                  <div class="cc-btn">拨打</div>
+                </div>
+              </div>
+
+              <div class="bubble me">收到了，我下午三点到</div>
+              <div class="read-row">未读</div>
+            </div>
+            <div class="composer">
+              <div class="field">说点什么…</div>
+              <div class="send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 12h14M13 6l6 6-6 6"/></svg></div>
+            </div>
+          </div>
+        </div>
+        <p class="frame-note"><b>联系方式卡</b>：primaryLight 底 + primary 描边，只有「仅你可见」这一种标注 —— 不做倒计时、不做二次确认。</p>
+      </div>
+
+      <div class="frame-cell">
+        <div class="frame-head"><span class="num">4c</span><h3>被拒 · 7 天倒计时</h3><span class="hint">冷却</span></div>
+        <div class="phone">
+          <div class="statusbar"><span>9:41</span><span class="right"><span class="bar" style="height:6px"></span><span class="bar" style="height:9px"></span><span class="bar" style="height:12px"></span><span style="margin-left:4px">100%</span></span></div>
+          <div class="appbar">
+            <div class="side"><span style="color:var(--primary);font-weight:500;">‹ 消息</span></div>
+            <div class="title">陈先生</div>
+            <div class="side right" style="color:var(--text-secondary);font-size:18px;">···</div>
+          </div>
+          <div class="screen-body">
+            <div class="thread">
+              <div class="ctx-card">
+                <div class="thumb off">已<br>下架</div>
+                <div class="ctx-main">
+                  <div class="ctx-title">临街商铺 · 40㎡</div>
+                  <div class="ctx-price">已下架 · 会话仍可继续</div>
+                </div>
+                <span style="font-size:11px;color:var(--text-secondary);">›</span>
+              </div>
+              <div class="day-sep">昨天</div>
+
+              <div class="apply-card">
+                <div class="apply-head">
+                  <span class="apply-title">申请查看联系方式</span>
+                  <span class="state-chip reject" style="margin-left:auto;">未同意</span>
+                </div>
+                <div class="apply-body">对方暂未同意。7 天后可以再次申请，期间仍可正常聊天。</div>
+                <div class="apply-actions">
+                  <div class="btn disabled">5 天后可再申请</div>
+                </div>
+              </div>
+
+              <div class="bubble me">那我先把预算和你说下，你看合不合适</div>
+              <div class="read-row on">已读</div>
+            </div>
+            <div class="composer">
+              <div class="field">说点什么…</div>
+              <div class="send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 12h14M13 6l6 6-6 6"/></svg></div>
+            </div>
+          </div>
+        </div>
+        <p class="frame-note"><b>拒绝不是死路</b>：倒计时条禁用但会话照常可聊；帖子下架时上下文卡置灰，不改变会话可用性。</p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ===================== 05 详情页联系按钮四态 ===================== -->
+  <section class="section">
+    <div class="section-head">
+      <h2>05 · 详情页底部按钮四态</h2>
+      <span class="desc">「聊一聊」恒在左侧；主按钮随是否需要申请、是否已同意变化</span>
+    </div>
+    <div class="frames">
+
+      <div class="frame-cell wide">
+        <div class="frame-head"><span class="num">5</span><h3>同一位置的四套文案</h3><span class="hint">底栏 · 48 高</span></div>
+        <div style="display:flex;gap:var(--lg);flex-wrap:wrap;">
+
+          <div style="width:390px;border:1px solid var(--border);border-radius:var(--r-md);overflow:hidden;background:var(--surface);">
+            <div class="detail-bar" style="border-top:0;">
+              <div class="btn ghost">聊一聊</div>
+              <div class="btn primary">联系 TA</div>
+            </div>
+            <div style="padding:var(--md) var(--lg) var(--lg);">
+              <p class="frame-note" style="margin:0;"><b>① 无需申请</b>：发布者未勾选申请。右侧主按钮沿用现有中转页链路，不变。</p>
+            </div>
+          </div>
+
+          <div style="width:390px;border:1px solid var(--border);border-radius:var(--r-md);overflow:hidden;background:var(--surface);">
+            <div class="detail-bar" style="border-top:0;">
+              <div class="btn ghost">聊一聊</div>
+              <div class="btn primary">申请查看联系方式</div>
+            </div>
+            <div style="padding:var(--md) var(--lg) var(--lg);">
+              <p class="frame-note" style="margin:0;"><b>② 需申请</b>：点击后开启（或复用）会话并发出申请卡，页面转为「待审批」。</p>
+            </div>
+          </div>
+
+          <div style="width:390px;border:1px solid var(--border);border-radius:var(--r-md);overflow:hidden;background:var(--surface);">
+            <div class="detail-bar" style="border-top:0;">
+              <div class="btn ghost">聊一聊</div>
+              <div class="btn disabled">已申请，等待对方确认</div>
+            </div>
+            <div style="padding:var(--md) var(--lg) var(--lg);">
+              <p class="frame-note" style="margin:0;"><b>③ 待审批</b>：主按钮禁用，不可重复发申请卡；「聊一聊」仍可用。</p>
+            </div>
+          </div>
+
+          <div style="width:390px;border:1px solid var(--border);border-radius:var(--r-md);overflow:hidden;background:var(--surface);">
+            <div class="detail-bar" style="border-top:0;">
+              <div class="btn ghost">聊一聊</div>
+              <div class="btn primary">查看完整号码</div>
+            </div>
+            <div style="padding:var(--md) var(--lg) var(--lg);">
+              <p class="frame-note" style="margin:0;"><b>④ 已同意</b>：直接解锁，不再走一次审批；中转页仍是号码的最后一道展示位。</p>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 06 设置页 ===================== -->
+  <section class="section">
+    <div class="section-head">
+      <h2>06 · 设置页</h2>
+      <span class="desc">原「消息通知」改名「接收通知」；新增一行独立的消息开关</span>
+    </div>
+    <div class="frames">
+
+      <div class="frame-cell">
+        <div class="frame-head"><span class="num">6</span><h3>通用分组</h3><span class="hint">两行开关</span></div>
+        <div class="phone">
+          <div class="statusbar"><span>9:41</span><span class="right"><span class="bar" style="height:6px"></span><span class="bar" style="height:9px"></span><span class="bar" style="height:12px"></span><span style="margin-left:4px">100%</span></span></div>
+          <div class="appbar"><div class="side"><span style="color:var(--primary);font-weight:500;">‹ 我的</span></div><div class="title">设置</div><div class="side right"></div></div>
+          <div class="screen-body">
+            <div class="scroll">
+              <div class="group-title">通用</div>
+              <div class="set-row">
+                <span class="k">接收通知</span>
+                <span class="v">已开启</span>
+                <span class="switch on" style="margin-left:var(--sm);"></span>
+              </div>
+              <div class="set-row">
+                <span class="k sub">消息通知</span>
+                <span class="v">已开启</span>
+                <span class="switch on" style="margin-left:var(--sm);"></span>
+              </div>
+              <div class="set-row">
+                <span class="k">默认范围</span>
+                <span class="v">5km</span>
+              </div>
+              <div class="set-row">
+                <span class="k">清除缓存</span>
+                <span class="v">12.4 MB</span>
+              </div>
+            </div>
+            <div class="tabbar">
+              <div class="tab"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 4 3.5 6.5v13L9 17l6 2.5 5.5-2.5v-13L15 6.5 9 4Z"/><path d="M9 4v13M15 6.5v13"/></svg><span class="lb">丫圈</span></div>
+              <div class="tab pub"><svg class="ic" viewBox="0 0 32 32"><circle cx="16" cy="16" r="15.5" fill="#0B7C8C"/><text x="16" y="17" text-anchor="middle" dominant-baseline="middle" font-size="13" font-weight="600" fill="#FFFFFF" font-family="-apple-system,PingFang SC,sans-serif">鸭</text></svg><span class="lb">发布</span></div>
+              <div class="tab"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.3 9 9 0 0 1-3.6-.7L4 21l1.4-4.1A8 8 0 0 1 4 11.5 8.4 8.4 0 0 1 12.5 3 8.4 8.4 0 0 1 21 11.5Z"/></svg><span class="lb">消息</span></div>
+              <div class="tab on"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20c.8-3.6 4-5.6 7.5-5.6s6.7 2 7.5 5.6"/></svg><span class="lb">我的</span></div>
+            </div>
+          </div>
+        </div>
+        <p class="frame-note"><b>层级</b>：「消息通知」缩进 16、文字用次要色，表示它是「接收通知」的子项。总开关关闭时子项整行置灰且不可点。</p>
+      </div>
+
+      <div class="frame-cell">
+        <div class="frame-head"><span class="num">6b</span><h3>总开关关闭</h3><span class="hint">联动</span></div>
+        <div class="phone">
+          <div class="statusbar"><span>9:41</span><span class="right"><span class="bar" style="height:6px"></span><span class="bar" style="height:9px"></span><span class="bar" style="height:12px"></span><span style="margin-left:4px">100%</span></span></div>
+          <div class="appbar"><div class="side"><span style="color:var(--primary);font-weight:500;">‹ 我的</span></div><div class="title">设置</div><div class="side right"></div></div>
+          <div class="screen-body">
+            <div class="scroll">
+              <div class="group-title">通用</div>
+              <div class="set-row">
+                <span class="k">接收通知</span>
+                <span class="v">已关闭</span>
+                <span class="switch" style="margin-left:var(--sm);"></span>
+              </div>
+              <div class="set-row" style="opacity:.45;">
+                <span class="k sub">消息通知</span>
+                <span class="v">已开启</span>
+                <span class="switch on" style="margin-left:var(--sm);"></span>
+              </div>
+              <div class="set-row">
+                <span class="k">默认范围</span>
+                <span class="v">5km</span>
+              </div>
+              <div class="set-row">
+                <span class="k">清除缓存</span>
+                <span class="v">12.4 MB</span>
+              </div>
+            </div>
+            <div class="tabbar">
+              <div class="tab"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 4 3.5 6.5v13L9 17l6 2.5 5.5-2.5v-13L15 6.5 9 4Z"/><path d="M9 4v13M15 6.5v13"/></svg><span class="lb">丫圈</span></div>
+              <div class="tab pub"><svg class="ic" viewBox="0 0 32 32"><circle cx="16" cy="16" r="15.5" fill="#0B7C8C"/><text x="16" y="17" text-anchor="middle" dominant-baseline="middle" font-size="13" font-weight="600" fill="#FFFFFF" font-family="-apple-system,PingFang SC,sans-serif">鸭</text></svg><span class="lb">发布</span></div>
+              <div class="tab"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.3 9 9 0 0 1-3.6-.7L4 21l1.4-4.1A8 8 0 0 1 4 11.5 8.4 8.4 0 0 1 12.5 3 8.4 8.4 0 0 1 21 11.5Z"/></svg><span class="lb">消息</span></div>
+              <div class="tab on"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20c.8-3.6 4-5.6 7.5-5.6s6.7 2 7.5 5.6"/></svg><span class="lb">我的</span></div>
+            </div>
+          </div>
+        </div>
+        <p class="frame-note"><b>不隐藏子项</b>：置灰而非隐藏，用户仍能看到自己上次的选择，重新打开总开关后立即恢复原值。</p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ===================== 07 通知权限 ===================== -->
+  <section class="section">
+    <div class="section-head">
+      <h2>07 · 通知权限</h2>
+      <span class="desc">首次进入消息 Tab 时自绘说明层，再调系统弹窗</span>
+    </div>
+    <div class="frames">
+
+      <div class="frame-cell">
+        <div class="frame-head"><span class="num">7</span><h3>授权说明层</h3><span class="hint">半屏</span></div>
+        <div class="phone">
+          <div class="statusbar"><span>9:41</span><span class="right"><span class="bar" style="height:6px"></span><span class="bar" style="height:9px"></span><span class="bar" style="height:12px"></span><span style="margin-left:4px">100%</span></span></div>
+          <div class="appbar"><div class="side"></div><div class="title">消息</div><div class="side right"></div></div>
+          <div class="screen-body" style="position:relative;">
+            <div class="list">
+              <div class="row">
+                <div class="avatar sys">鸭</div>
+                <div class="row-main">
+                  <div class="row-top"><span class="row-name">服务号</span><span class="chip-top">置顶</span><span class="row-time">09:12</span></div>
+                  <div class="row-sub">你的「静安两居」被联系了 3 次</div>
+                </div>
+              </div>
+              <div class="row">
+                <div class="avatar">王</div>
+                <div class="row-main">
+                  <div class="row-top"><span class="row-name">王师傅</span><span class="row-time">09:04</span></div>
+                  <div class="row-sub">可以的，我下午三点前都在</div>
+                </div>
+                <div class="thumb">房源<br>图</div>
+              </div>
+            </div>
+            <div class="dim">
+              <div class="sheet">
+                <h4>别错过有人找你</h4>
+                <p>开启通知后，对方回你消息时手机会收到提醒。只推消息与认证结果，不做营销推送。</p>
+                <div class="btn primary">去开启</div>
+                <div class="btn ghost">暂不开启</div>
+                <p style="font-size:11px;line-height:16px;color:var(--text-placeholder);text-align:center;">之后可在「我的 › 设置 › 消息通知」里改</p>
+              </div>
+            </div>
+          </div>
+          <div class="tabbar">
+            <div class="tab"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 4 3.5 6.5v13L9 17l6 2.5 5.5-2.5v-13L15 6.5 9 4Z"/><path d="M9 4v13M15 6.5v13"/></svg><span class="lb">丫圈</span></div>
+            <div class="tab pub"><svg class="ic" viewBox="0 0 32 32"><circle cx="16" cy="16" r="15.5" fill="#0B7C8C"/><text x="16" y="17" text-anchor="middle" dominant-baseline="middle" font-size="13" font-weight="600" fill="#FFFFFF" font-family="-apple-system,PingFang SC,sans-serif">鸭</text></svg><span class="lb">发布</span></div>
+            <div class="tab on"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.3 9 9 0 0 1-3.6-.7L4 21l1.4-4.1A8 8 0 0 1 4 11.5 8.4 8.4 0 0 1 12.5 3 8.4 8.4 0 0 1 21 11.5Z"/></svg><span class="lb">消息</span></div>
+            <div class="tab"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20c.8-3.6 4-5.6 7.5-5.6s6.7 2 7.5 5.6"/></svg><span class="lb">我的</span></div>
+          </div>
+        </div>
+        <p class="frame-note"><b>只问一次</b>：「暂不开启」也记为已问过；之后不再弹，只在列表顶部留一条可手动开启的细提示。</p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ===================== 08 只读态与举报 ===================== -->
+  <section class="section">
+    <div class="section-head">
+      <h2>08 · 只读态与举报入口</h2>
+      <span class="desc">全局关闭后不隐藏、只禁用；举报与误拦反馈都在会话「···」里</span>
+    </div>
+    <div class="frames">
+
+      <div class="frame-cell">
+        <div class="frame-head"><span class="num">8</span><h3>只读横幅</h3><span class="hint">全局开关关闭</span></div>
+        <div class="phone">
+          <div class="statusbar"><span>9:41</span><span class="right"><span class="bar" style="height:6px"></span><span class="bar" style="height:9px"></span><span class="bar" style="height:12px"></span><span style="margin-left:4px">100%</span></span></div>
+          <div class="appbar"><div class="side"><span style="color:var(--primary);font-weight:500;">‹ 消息</span></div><div class="title">王师傅</div><div class="side right" style="color:var(--text-secondary);font-size:18px;">···</div></div>
+          <div class="screen-body">
+            <div class="banner-off">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v6M12 16.6v.1"/></svg>
+              消息功能暂时关闭，历史记录仍可查看
+              <span class="link">了解详情</span>
+            </div>
+            <div class="thread">
+              <div class="ctx-card">
+                <div class="thumb">房源图</div>
+                <div class="ctx-main">
+                  <div class="ctx-title">静安 · 两居 · 精装朝南</div>
+                  <div class="ctx-price">4,800 元/月 · 距你 1.2km</div>
+                </div>
+              </div>
+              <div class="day-sep">昨天</div>
+              <div class="bubble me">你好，这周五下午能看房吗？</div>
+              <div class="bubble them">可以，你几点方便？</div>
+              <div class="read-row on">已读</div>
+            </div>
+            <div class="composer locked">
+              <div class="field">消息功能已关闭，暂时无法发送</div>
+              <div class="send" style="background:var(--border);"></div>
+            </div>
+          </div>
+          <div class="tabbar">
+            <div class="tab"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 4 3.5 6.5v13L9 17l6 2.5 5.5-2.5v-13L15 6.5 9 4Z"/><path d="M9 4v13M15 6.5v13"/></svg><span class="lb">丫圈</span></div>
+            <div class="tab pub"><svg class="ic" viewBox="0 0 32 32"><circle cx="16" cy="16" r="15.5" fill="#0B7C8C"/><text x="16" y="17" text-anchor="middle" dominant-baseline="middle" font-size="13" font-weight="600" fill="#FFFFFF" font-family="-apple-system,PingFang SC,sans-serif">鸭</text></svg><span class="lb">发布</span></div>
+            <div class="tab on"><span class="num">12</span><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.3 9 9 0 0 1-3.6-.7L4 21l1.4-4.1A8 8 0 0 1 4 11.5 8.4 8.4 0 0 1 12.5 3 8.4 8.4 0 0 1 21 11.5Z"/></svg><span class="lb">消息</span></div>
+            <div class="tab"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20c.8-3.6 4-5.6 7.5-5.6s6.7 2 7.5 5.6"/></svg><span class="lb">我的</span></div>
+          </div>
+        </div>
+        <p class="frame-note"><b>不隐藏会话</b>：只读态下会话仍出现在列表、仍可查看历史；禁止的是写入，不是查看。</p>
+      </div>
+
+      <div class="frame-cell">
+        <div class="frame-head"><span class="num">8b</span><h3>「···」菜单</h3><span class="hint">举报 / 反馈</span></div>
+        <div class="phone">
+          <div class="statusbar"><span>9:41</span><span class="right"><span class="bar" style="height:6px"></span><span class="bar" style="height:9px"></span><span class="bar" style="height:12px"></span><span style="margin-left:4px">100%</span></span></div>
+          <div class="appbar"><div class="side"><span style="color:var(--primary);font-weight:500;">‹ 消息</span></div><div class="title">王师傅</div><div class="side right" style="color:var(--primary);font-size:18px;font-weight:600;">···</div></div>
+          <div class="screen-body" style="position:relative;">
+            <div class="menu">
+              <div>举报对方</div>
+              <div>举报这条消息</div>
+              <div class="danger">误拦反馈</div>
+            </div>
+            <div class="thread">
+              <div class="ctx-card">
+                <div class="thumb">房源图</div>
+                <div class="ctx-main">
+                  <div class="ctx-title">静安 · 两居 · 精装朝南</div>
+                  <div class="ctx-price">4,800 元/月 · 距你 1.2km</div>
+                </div>
+              </div>
+              <div class="day-sep">今天</div>
+              <div class="bubble me">你好，这周五下午能看房吗？</div>
+              <div class="bubble them">可以，你几点方便？</div>
+              <div class="read-row on">已读</div>
+            </div>
+            <div class="composer">
+              <div class="field">说点什么…</div>
+              <div class="send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 12h14M13 6l6 6-6 6"/></svg></div>
+            </div>
+          </div>
+        </div>
+        <p class="frame-note"><b>误拦反馈</b>：只在最近一次发送被拒后出现；进入后自动带上被拒的那句原文，用户不必重述。</p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ===================== 09 桌面图标角标 ===================== -->
+  <section class="section">
+    <div class="section-head">
+      <h2>09 · 桌面图标角标</h2>
+      <span class="desc">仅 Android；数字与 Tab 同源，0 时清除，≥100 显示 99+</span>
+    </div>
+    <div class="frames">
+
+      <div class="frame-cell wide">
+        <div class="frame-head"><span class="num">9</span><h3>启动器上的三种形态</h3><span class="hint">角标 20 高 · 白描边 2</span></div>
+        <div style="display:flex;gap:var(--xl);flex-wrap:wrap;align-items:flex-start;">
+
+          <div style="width:390px;">
+            <div class="home">
+              <div class="hstatus"><span>20:24</span><span style="display:flex;align-items:center;gap:3px;"><span style="width:2px;height:6px;background:var(--text-primary);border-radius:1px;"></span><span style="width:2px;height:9px;background:var(--text-primary);border-radius:1px;"></span><span style="width:2px;height:12px;background:var(--text-primary);border-radius:1px;"></span><span style="margin-left:4px;">100%</span></span></div>
+              <div class="home-grid">
+                <div class="app">
+                  <div class="icon brand">
+                    <svg width="56" height="56" viewBox="0 0 56 56">
+                      <rect width="56" height="56" rx="14" fill="#0B7C8C"/>
+                      <ellipse cx="26" cy="35" rx="12" ry="10" fill="#FFFFFF"/>
+                      <circle cx="33" cy="22" r="8" fill="#FFFFFF"/>
+                      <path d="M40 21l6 2.6-6 2.6z" fill="#FFFFFF"/>
+                      <circle cx="35.5" cy="20" r="1.5" fill="#0B7C8C"/>
+                    </svg>
+                    <span class="app-badge">12</span>
+                  </div>
+                  <span class="nm">找丫找</span>
+                </div>
+                <div class="app"><div class="icon plain" style="background:#DFE7E9;"></div><span class="nm">设置</span></div>
+                <div class="app"><div class="icon plain" style="background:#E7EDEE;"></div><span class="nm">日历</span></div>
+                <div class="app"><div class="icon plain" style="background:#DCE6E8;"></div><span class="nm">相册</span></div>
+                <div class="app"><div class="icon plain" style="background:#E4EBEC;"></div><span class="nm">天气</span></div>
+                <div class="app"><div class="icon plain" style="background:#DFE7E9;"></div><span class="nm">地图</span></div>
+                <div class="app"><div class="icon plain" style="background:#E7EDEE;"></div><span class="nm">音乐</span></div>
+                <div class="app"><div class="icon plain" style="background:#DCE6E8;"></div><span class="nm">文件</span></div>
+              </div>
+              <div class="home-dock">
+                <div class="icon plain" style="width:52px;height:52px;border-radius:13px;background:#E7EDEE;"></div>
+                <div class="icon plain" style="width:52px;height:52px;border-radius:13px;background:#DFE7E9;"></div>
+                <div class="icon plain" style="width:52px;height:52px;border-radius:13px;background:#E4EBEC;"></div>
+                <div class="icon plain" style="width:52px;height:52px;border-radius:13px;background:#DCE6E8;"></div>
+              </div>
+              <div class="home-note">画框裁至首屏上半部 · 壁纸仅示意</div>
+            </div>
+            <p class="frame-note"><b>常态</b>：未读 12。数字与消息 Tab 上那个 12 是同一个值，不同时出现两个不同数字。</p>
+          </div>
+
+          <div style="width:390px;">
+            <div class="home">
+              <div class="hstatus"><span>20:24</span><span style="display:flex;align-items:center;gap:3px;"><span style="width:2px;height:6px;background:var(--text-primary);border-radius:1px;"></span><span style="width:2px;height:9px;background:var(--text-primary);border-radius:1px;"></span><span style="width:2px;height:12px;background:var(--text-primary);border-radius:1px;"></span><span style="margin-left:4px;">100%</span></span></div>
+              <div class="home-grid">
+                <div class="app">
+                  <div class="icon brand">
+                    <svg width="56" height="56" viewBox="0 0 56 56">
+                      <rect width="56" height="56" rx="14" fill="#0B7C8C"/>
+                      <ellipse cx="26" cy="35" rx="12" ry="10" fill="#FFFFFF"/>
+                      <circle cx="33" cy="22" r="8" fill="#FFFFFF"/>
+                      <path d="M40 21l6 2.6-6 2.6z" fill="#FFFFFF"/>
+                      <circle cx="35.5" cy="20" r="1.5" fill="#0B7C8C"/>
+                    </svg>
+                    <span class="app-badge" style="padding:0 6px;">99+</span>
+                  </div>
+                  <span class="nm">找丫找</span>
+                </div>
+                <div class="app"><div class="icon plain" style="background:#DFE7E9;"></div><span class="nm">设置</span></div>
+                <div class="app"><div class="icon plain" style="background:#E7EDEE;"></div><span class="nm">日历</span></div>
+                <div class="app"><div class="icon plain" style="background:#DCE6E8;"></div><span class="nm">相册</span></div>
+                <div class="app"><div class="icon plain" style="background:#E4EBEC;"></div><span class="nm">天气</span></div>
+                <div class="app"><div class="icon plain" style="background:#DFE7E9;"></div><span class="nm">地图</span></div>
+                <div class="app"><div class="icon plain" style="background:#E7EDEE;"></div><span class="nm">音乐</span></div>
+                <div class="app"><div class="icon plain" style="background:#DCE6E8;"></div><span class="nm">文件</span></div>
+              </div>
+              <div class="home-dock">
+                <div class="icon plain" style="width:52px;height:52px;border-radius:13px;background:#E7EDEE;"></div>
+                <div class="icon plain" style="width:52px;height:52px;border-radius:13px;background:#DFE7E9;"></div>
+                <div class="icon plain" style="width:52px;height:52px;border-radius:13px;background:#E4EBEC;"></div>
+                <div class="icon plain" style="width:52px;height:52px;border-radius:13px;background:#DCE6E8;"></div>
+              </div>
+              <div class="home-note">画框裁至首屏上半部 · 壁纸仅示意</div>
+            </div>
+            <p class="frame-note"><b>溢出</b>：≥100 一律「99+」，角标宽度随文字增长，只向右上方扩，不压图标内容。</p>
+          </div>
+
+          <div style="width:390px;">
+            <div class="home">
+              <div class="hstatus"><span>20:24</span><span style="display:flex;align-items:center;gap:3px;"><span style="width:2px;height:6px;background:var(--text-primary);border-radius:1px;"></span><span style="width:2px;height:9px;background:var(--text-primary);border-radius:1px;"></span><span style="width:2px;height:12px;background:var(--text-primary);border-radius:1px;"></span><span style="margin-left:4px;">100%</span></span></div>
+              <div class="home-grid">
+                <div class="app">
+                  <div class="icon brand">
+                    <svg width="56" height="56" viewBox="0 0 56 56">
+                      <rect width="56" height="56" rx="14" fill="#0B7C8C"/>
+                      <ellipse cx="26" cy="35" rx="12" ry="10" fill="#FFFFFF"/>
+                      <circle cx="33" cy="22" r="8" fill="#FFFFFF"/>
+                      <path d="M40 21l6 2.6-6 2.6z" fill="#FFFFFF"/>
+                      <circle cx="35.5" cy="20" r="1.5" fill="#0B7C8C"/>
+                    </svg>
+                    <span class="app-badge dot"></span>
+                  </div>
+                  <span class="nm">找丫找</span>
+                </div>
+                <div class="app"><div class="icon plain" style="background:#DFE7E9;"></div><span class="nm">设置</span></div>
+                <div class="app"><div class="icon plain" style="background:#E7EDEE;"></div><span class="nm">日历</span></div>
+                <div class="app"><div class="icon plain" style="background:#DCE6E8;"></div><span class="nm">相册</span></div>
+                <div class="app"><div class="icon plain" style="background:#E4EBEC;"></div><span class="nm">天气</span></div>
+                <div class="app"><div class="icon plain" style="background:#DFE7E9;"></div><span class="nm">地图</span></div>
+                <div class="app"><div class="icon plain" style="background:#E7EDEE;"></div><span class="nm">音乐</span></div>
+                <div class="app"><div class="icon plain" style="background:#DCE6E8;"></div><span class="nm">文件</span></div>
+              </div>
+              <div class="home-dock">
+                <div class="icon plain" style="width:52px;height:52px;border-radius:13px;background:#E7EDEE;"></div>
+                <div class="icon plain" style="width:52px;height:52px;border-radius:13px;background:#DFE7E9;"></div>
+                <div class="icon plain" style="width:52px;height:52px;border-radius:13px;background:#E4EBEC;"></div>
+                <div class="icon plain" style="width:52px;height:52px;border-radius:13px;background:#DCE6E8;"></div>
+              </div>
+              <div class="home-note">画框裁至首屏上半部 · 壁纸仅示意</div>
+            </div>
+            <p class="frame-note"><b>降级</b>：启动器不支持数字时显示 8px 圆点，不显示数字；两种形态都不出现负号、感叹号等其他标记。</p>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 设计说明 ===================== -->
+  <section class="notes">
+    <h2 class="t-h2">设计说明</h2>
+    <p class="lead">所有数值来自 lib/design_tokens.dart：字号 AppTypeScale、间距 AppSpacing、圆角 AppRadius、颜色 AppColors。单位均为逻辑像素，画框 390 × 844。状态与需求的对应关系见 docs/plans/2026-10-31-2048-feat-detail-chat-and-message-center-plan.md 的 R 编号。</p>
+
+    <h3><span class="idx">01</span>组件清单<span class="cnt">尺寸 / 间距 · 字号 · 颜色 token</span></h3>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:120px;">组件</th>
+          <th style="width:36%;">尺寸 / 间距 / 圆角</th>
+          <th style="width:24%;">字号（AppTypeScale）</th>
+          <th>颜色 token（AppColors）</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="k">底部导航</td>
+          <td>高 64；四格等分；图标 24、发布 32；图文间距 AppSpacing.xs(4)</td>
+          <td>标签 <span class="tag">caption 11</span>；选中 600</td>
+          <td>选中 primary；未选 textSecondary；顶描边 border；底 surface</td>
+        </tr>
+        <tr>
+          <td class="k">Tab 数字角标</td>
+          <td>高 16、最小宽 16、内边距 0 4；圆角 full；位置：图标右上、左偏移 4</td>
+          <td><span class="tag">10 / 16</span> 600</td>
+          <td>底 error；字 surface</td>
+        </tr>
+        <tr>
+          <td class="k">桌面角标</td>
+          <td>高 20、最小宽 20、内边距 0 5；圆角 full；白描边 2；贴图标右上、向右上外扩 9 / 7；不支持数字的启动器降级为 8px 圆点</td>
+          <td><span class="tag">11 / 20</span> 600</td>
+          <td>底 error；字 surface；描边取壁纸近似色</td>
+        </tr>
+        <tr>
+          <td class="k">App 图标（启动器）</td>
+          <td>56 × 56；圆角 14；角标只向外扩，不缩图标图形；未读数 0 时角标整块移除</td>
+          <td>—</td>
+          <td>底 primary；鸭头图形 surface</td>
+        </tr>
+        <tr>
+          <td class="k">会话行</td>
+          <td>最小高 72；内边距 12 / 16；头像 44；右侧缩略图 44、圆角 8；分隔线左缩进 72</td>
+          <td>昵称 <span class="tag">body 14</span> 500；摘要 <span class="tag">small 12</span>；时间 <span class="tag">caption 11</span></td>
+          <td>昵称 textPrimary；摘要 textSecondary；时间 textPlaceholder；分隔线 border</td>
+        </tr>
+        <tr>
+          <td class="k">未读红点</td>
+          <td>8 × 8；圆；右对齐于行尾；有缩略图时贴缩略图右上</td>
+          <td>—</td>
+          <td>error</td>
+        </tr>
+        <tr>
+          <td class="k">服务号行</td>
+          <td>同会话行；头像常驻 primary 实底；「置顶」胶囊 10/12、内边距 2 5、圆角 4</td>
+          <td>昵称 <span class="tag">body 14</span> 500</td>
+          <td>胶囊 primaryLight 底 + primaryDark 字；头像 primary 底 + surface 字</td>
+        </tr>
+        <tr>
+          <td class="k">帖子上下文卡</td>
+          <td>高 60；内边距 8；缩略图 36、圆角 4；整卡可点跳详情</td>
+          <td>标题 <span class="tag">small 12</span>；副文 <span class="tag">caption 11</span></td>
+          <td>底 surface；描边 border；标题 textPrimary；副文 textSecondary</td>
+        </tr>
+        <tr>
+          <td class="k">消息气泡</td>
+          <td>最大宽 264（约 70%）；内边距 8 / 12；圆角 12，尾角 4；气泡间距 8</td>
+          <td><span class="tag">body 14</span></td>
+          <td>我方 primary 底 + surface 字；对方 surface 底 + border 描边 + textPrimary 字；发送失败底 textPlaceholder</td>
+        </tr>
+        <tr>
+          <td class="k">已读状态</td>
+          <td>右对齐、紧贴气泡下方 2；无背景无描边</td>
+          <td><span class="tag">caption 11</span></td>
+          <td>未读 textPlaceholder；已读 textSecondary</td>
+        </tr>
+        <tr>
+          <td class="k">申请卡</td>
+          <td>通栏；内边距 12；圆角 12；描边 1；按钮高 40、圆角 full、间距 8</td>
+          <td>标题 <span class="tag">body 14</span> 600；正文 <span class="tag">small 12</span>；状态 <span class="tag">10/12</span> 600</td>
+          <td>同意 primary；拒绝 surface + border；待处理 warning 底字；已同意 success 底字；已拒绝 background 底字</td>
+        </tr>
+        <tr>
+          <td class="k">联系方式卡</td>
+          <td>通栏；内边距 12；圆角 12；号码 20/26 700；按钮高 36</td>
+          <td>标题 <span class="tag">small 12</span> 600；号码 <span class="tag">20/26</span> 700</td>
+          <td>底 primaryLight；描边 primary；标题与号码 primaryDark；「仅你可见」primaryDark 80%</td>
+        </tr>
+        <tr>
+          <td class="k">输入区</td>
+          <td>高 52 + 安全区；输入底 36、圆角 full；发送键 32 圆；左右内边距 12</td>
+          <td><span class="tag">body 14</span></td>
+          <td>输入底 background + border；占位 textPlaceholder；发送 primary</td>
+        </tr>
+        <tr>
+          <td class="k">只读横幅</td>
+          <td>高 ≥44；左右内边距 16；图标 14；右侧文字链</td>
+          <td><span class="tag">small 12</span>；链接 600</td>
+          <td>底 #FEF3C7 + warningText 字；图标 warning</td>
+        </tr>
+        <tr>
+          <td class="k">发送失败条</td>
+          <td>高 ≥44；同上；整条可点重发</td>
+          <td><span class="tag">small 12</span></td>
+          <td>底 #FEE2E2；字 errorText；图标 error</td>
+        </tr>
+        <tr>
+          <td class="k">设置行</td>
+          <td>高 56；内边距 0 / 16；子项额外左缩进 16；开关 44 × 26</td>
+          <td>键 <span class="tag">body 14</span>；值 <span class="tag">body 14</span> 400</td>
+          <td>键 textPrimary（子项 textSecondary）；值 textSecondary；开关 off = border、on = primary</td>
+        </tr>
+        <tr>
+          <td class="k">权限说明层</td>
+          <td>底部圆角 16；内边距 24 / 16 / 16；按钮高 48；遮罩 textPrimary 48%</td>
+          <td>标题 <span class="tag">h2 18</span>；正文 <span class="tag">body 14</span></td>
+          <td>面 surface；正文 textSecondary；主按钮 primary；次按钮 surface + border</td>
+        </tr>
+        <tr>
+          <td class="k">「···」菜单</td>
+          <td>宽 180；右 16、上 96；行高 44；圆角 8；阴影 textPrimary 12%</td>
+          <td><span class="tag">body 14</span></td>
+          <td>面 surface；描边 border；危险项 errorText</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3><span class="idx">02</span>状态表<span class="cnt">状态 → 条件 → 各区域表现</span></h3>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:132px;">状态</th>
+          <th style="width:26%;">触发条件</th>
+          <th>列表 / 会话</th>
+          <th>Tab 角标</th>
+          <th>桌面角标</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="k">有未读</td>
+          <td>收到对方消息且未打开会话（R8）</td>
+          <td>该行显示 8px 红点；摘要为最后一条</td>
+          <td>显示总数，>99 为「99+」</td>
+          <td>同值；仅 Android</td>
+        </tr>
+        <tr>
+          <td class="k">已读完</td>
+          <td>打开会话，水位推进（R10）</td>
+          <td>红点消失</td>
+          <td>数字减少；为 0 时整个角标消失</td>
+          <td>同值；为 0 时清除</td>
+        </tr>
+        <tr>
+          <td class="k">帖子已下架</td>
+          <td>自动归档或手动下架（R4）</td>
+          <td>缩略图变虚线灰底，标「已下架」；会话可继续</td>
+          <td>不变</td>
+          <td>不变</td>
+        </tr>
+        <tr>
+          <td class="k">90 天无往来</td>
+          <td>双方均无新消息（R5）</td>
+          <td>从列表隐藏；再次发消息即恢复</td>
+          <td>该会话未读计入清除</td>
+          <td>同值</td>
+        </tr>
+        <tr>
+          <td class="k">发送失败</td>
+          <td>网络异常或超时（R7）</td>
+          <td>气泡置灰 + 顶部失败条；输入内容保留</td>
+          <td>不变</td>
+          <td>不变</td>
+        </tr>
+        <tr>
+          <td class="k">待审批</td>
+          <td>已发申请卡，对方未处理（R20/R21）</td>
+          <td>申请卡「待处理」；详情页主按钮禁用</td>
+          <td>不变</td>
+          <td>不变</td>
+        </tr>
+        <tr>
+          <td class="k">已同意</td>
+          <td>对方点了同意（R22/R24）</td>
+          <td>插入联系方式卡，仅申请人可见；详情页解锁</td>
+          <td>不变</td>
+          <td>不变</td>
+        </tr>
+        <tr>
+          <td class="k">已拒绝</td>
+          <td>对方点了拒绝（R21）</td>
+          <td>申请卡转「未同意」+ 7 天倒计时；会话照常可聊</td>
+          <td>不变</td>
+          <td>不变</td>
+        </tr>
+        <tr>
+          <td class="k">全局关闭</td>
+          <td>运营关闭消息开关（R30）</td>
+          <td>顶部只读横幅；输入区禁用；历史可读</td>
+          <td>保留原值，只读</td>
+          <td>保留原值，只读</td>
+        </tr>
+        <tr>
+          <td class="k">未授通知权限</td>
+          <td>首次进入消息 Tab（R16）</td>
+          <td>弹出说明层；「暂不开启」后不再弹</td>
+          <td>正常显示</td>
+          <td>不显示（无推送则无法更新）</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3><span class="idx">03</span>本稿做的取舍<span class="cnt">需评审确认的三处</span></h3>
+    <div class="rules">
+      <ul>
+        <li><b>详情页底栏改成两键</b>：左侧 128 宽描边「聊一聊」，右侧占满主按钮。原因是「联系 TA」是既有主转化出口，不能降为次按钮；要求里也没有规定两者并排的样式。</li>
+        <li><b>已读只用文字</b>：不做「已读」双勾图标、不做时间戳。双勾在中文语境里歧义大（易被读成「已发送」），文字更直白。</li>
+        <li><b>申请卡的拒绝不留输入框</b>：拒绝即一次点击，不给理由输入。给理由会让发布者觉得在写驳回信，实际采纳率会掉；需要解释时他可以直接在会话里说一句。</li>
+      </ul>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>
