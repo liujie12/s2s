@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>地图聚合图标 · 设计方案</title>
+<style>
+  :root{
+    --work:#3B82F6; --work-d:#326FD1;
+    --house:#8B5CF6; --house-d:#8055E2;
+    --vehicle:#F97316; --vehicle-d:#B85510;
+    --life:#10B981; --life-d:#0B825A;
+    --service:#EC4899; --service-d:#C63C81;
+    --ink:#1F2430; --ink-2:#5A6373; --ink-3:#8A93A3;
+    --line:#E6E9EF; --paper:#FFFFFF; --bg:#F4F6F9;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;padding:40px 24px 72px;background:var(--bg);color:var(--ink);
+    font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  }
+  .wrap{max-width:1180px;margin:0 auto}
+  h1{font-size:26px;margin:0 0 6px;letter-spacing:-.3px}
+  .sub{color:var(--ink-2);margin:0 0 28px}
+  .diag{
+    background:#fff;border:1px solid var(--line);border-radius:14px;padding:20px 22px;margin-bottom:28px;
+  }
+  .diag h2{font-size:16px;margin:0 0 12px}
+  .diag ol{margin:0;padding-left:20px;color:var(--ink-2)}
+  .diag li{margin:6px 0}
+  .diag b{color:var(--ink)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:20px}
+  .card{background:var(--paper);border:1px solid var(--line);border-radius:16px;overflow:hidden;display:flex;flex-direction:column}
+  .card.pick{outline:2px solid #0F766E;outline-offset:2px}
+  .head{display:flex;align-items:center;gap:10px;padding:16px 18px 10px}
+  .tag{font-size:11px;font-weight:700;letter-spacing:.4px;padding:3px 8px;border-radius:999px;background:#EEF2F7;color:var(--ink-2)}
+  .tag.rec{background:#0F766E;color:#fff}
+  .head h3{font-size:16px;margin:0;font-weight:650}
+  .map{
+    position:relative;height:210px;margin:6px 18px 0;border-radius:12px;overflow:hidden;
+    background:
+      radial-gradient(circle at 18% 26%,#E7F3E2 0 26%,transparent 27%),
+      radial-gradient(circle at 82% 72%,#E3EEF7 0 20%,transparent 21%),
+      radial-gradient(circle at 55% 12%,#F0EFE6 0 18%,transparent 19%),
+      linear-gradient(158deg,#F8F5EC,#EFEAE0);
+    box-shadow:inset 0 0 0 1px #EAE4D8;
+  }
+  .rd{position:absolute;background:#fff;box-shadow:0 0 0 1px #EAE4D8;height:5px;border-radius:3px}
+  .rd.r1{left:-8%;right:-8%;top:44%;transform:rotate(-7deg)}
+  .rd.r2{left:-8%;right:-8%;top:70%;transform:rotate(4deg);height:4px}
+  .rd.r3{top:-10%;bottom:-10%;left:38%;width:5px;height:auto;transform:rotate(9deg)}
+  .rd.r4{top:-10%;bottom:-10%;left:74%;width:4px;height:auto;transform:rotate(-6deg)}
+  .blk{position:absolute;background:#E3EDD9;border-radius:4px;opacity:.9}
+
+  .pin{position:absolute;display:flex;align-items:center;justify-content:center;transform:translate(-50%,-50%)}
+
+  /* ===== 当前：白底 + 细描边 + 深色数字 ===== */
+  .cur{border-radius:50%;background:#fff;border:2px solid var(--house);color:var(--house-d);
+       font-weight:600;display:flex;align-items:center;justify-content:center}
+  .cur.s1{width:32px;height:32px;font-size:13px}
+  .cur.s2{width:40px;height:40px;font-size:13px}
+  .cur.s3{width:48px;height:48px;font-size:16px}
+
+  /* ===== A 实心圆 ===== */
+  .ia{border-radius:50%;color:#fff;font-weight:700;display:flex;align-items:center;justify-content:center;
+      border:2px solid #fff;box-shadow:0 2px 6px rgba(20,28,45,.28);letter-spacing:-.2px}
+  .ia.s1{width:32px;height:32px;font-size:13px;background:var(--house-d)}
+  .ia.s2{width:40px;height:40px;font-size:15px;background:var(--house-d)}
+  .ia.s3{width:48px;height:48px;font-size:16px;background:var(--house-d)}
+
+  /* ===== B 胶囊 ===== */
+  .ib{border-radius:999px;color:#fff;font-weight:700;display:flex;align-items:baseline;gap:2px;
+      justify-content:center;border:2px solid #fff;box-shadow:0 2px 6px rgba(20,28,45,.28);
+      background:var(--house-d);padding:0 10px;height:28px;font-size:13px}
+  .ib em{font-style:normal;font-size:10px;opacity:.85;font-weight:500;margin-left:1px}
+  .ib.s2{height:32px;font-size:14px;padding:0 12px}
+  .ib.s3{height:36px;font-size:15px;padding:0 14px}
+
+  /* ===== C 双环 ===== */
+  .ic{border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(139,92,246,.16);
+      border:2px solid var(--house);box-shadow:0 1px 4px rgba(20,28,45,.16)}
+  .ic i{display:flex;align-items:center;justify-content:center;width:64%;height:64%;border-radius:50%;
+        background:var(--house-d);color:#fff;font-weight:700;font-style:normal;font-size:11px}
+  .ic.s1{width:32px;height:32px}
+  .ic.s2{width:40px;height:40px}
+  .ic.s3{width:48px;height:48px}
+  .ic.s2 i{font-size:13px}
+  .ic.s3 i{font-size:14px}
+
+  /* ===== D 定位钉 ===== */
+  .id{position:relative;display:flex;align-items:center;justify-content:center}
+  .id i{position:absolute;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:var(--house-d);
+        border:2px solid #fff;box-shadow:0 3px 6px rgba(20,28,45,.3);display:block}
+  .id span{position:relative;color:#fff;font-weight:700;z-index:2}
+  .id.s1{width:32px;height:38px}
+  .id.s1 i{width:28px;height:28px;top:1px}
+  .id.s1 span{font-size:11px;transform:translateY(-3px)}
+  .id.s2{width:40px;height:46px}
+  .id.s2 i{width:34px;height:34px;top:1px}
+  .id.s2 span{font-size:13px;transform:translateY(-3px)}
+  .id.s3{width:48px;height:54px}
+  .id.s3 i{width:40px;height:40px;top:1px}
+  .id.s3 span{font-size:14px;transform:translateY(-3px)}
+
+  .legend{display:flex;gap:18px;padding:12px 18px 0;flex-wrap:wrap;color:var(--ink-3);font-size:12px}
+  .legend b{color:var(--ink-2);font-weight:600}
+
+  .scale{display:flex;align-items:flex-end;gap:26px;padding:14px 18px 4px;border-top:1px dashed var(--line);margin-top:14px}
+  .scale div{display:flex;flex-direction:column;align-items:center;gap:6px;color:var(--ink-3);font-size:11px}
+  .scale .box{height:56px;display:flex;align-items:center;justify-content:center}
+
+  .pros{margin:0;padding:12px 18px 18px;list-style:none;font-size:13px;color:var(--ink-2)}
+  .pros li{margin:4px 0;padding-left:16px;position:relative}
+  .pros li::before{content:"";position:absolute;left:0;top:8px;width:6px;height:6px;border-radius:50%;background:#C3CAD6}
+  .pros li.plus::before{background:#0F766E}
+  .pros li.minus::before{background:#D97706}
+  .foot{margin-top:28px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:20px 22px}
+  .foot h2{font-size:16px;margin:0 0 10px}
+  .foot p{margin:8px 0;color:var(--ink-2)}
+  .foot b{color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>地图聚合图标 · 设计方案</h1>
+  <p class="sub">对象：首页「丫圈」远景态聚合簇（当前为白底空心圆 + 居中数字）。尺寸对应现有三档 32 / 40 / 48。</p>
+
+  <div class="diag">
+    <h2>当前样式为什么"丑"</h2>
+    <ol>
+      <li><b>空心白圆在浅色地图上几乎消失</b>：白色填充与米色底图对比只有 1.1:1，只剩一圈 2px 细线，远景下像"没加载出来的占位"。</li>
+      <li><b>与单点 Marker 语言相反</b>：单点是实心彩底 + 白图标，聚合却是空心白底 + 深色数字，同一张图上两套图形语言。</li>
+      <li><b>数字悬空</b>：13px 数字放在 32px 空圆里四周留白过多，1 位数显得空洞，3 位数又挤。</li>
+      <li><b>重叠即脏</b>：两个簇靠近时两个白圆互相压边，形成截图里那种"双层灰圈"。</li>
+      <li><b>无层次</b>：没有投影/描边分离，簇和底图路网粘在一起。</li>
+    </ol>
+  </div>
+
+  <div class="grid">
+
+    <!-- 当前 -->
+    <div class="card">
+      <div class="head"><span class="tag">对照</span><h3>当前：白底空心圆</h3></div>
+      <div class="map">
+        <div class="rd r1"></div><div class="rd r2"></div><div class="rd r3"></div><div class="rd r4"></div>
+        <div class="blk" style="left:8%;top:56%;width:70px;height:44px"></div>
+        <div class="pin" style="left:50%;top:46%"><div class="cur s2">12</div></div>
+        <div class="pin" style="left:41%;top:57%"><div class="cur s1">3</div></div>
+        <div class="pin" style="left:46%;top:63%"><div class="cur s1">7</div></div>
+        <div class="pin" style="left:78%;top:34%"><div class="cur s3">999+</div></div>
+      </div>
+      <div class="scale">
+        <div><div class="box"><div class="cur s1">3</div></div>32</div>
+        <div><div class="box"><div class="cur s2">12</div></div>40</div>
+        <div><div class="box"><div class="cur s3">999+</div></div>48</div>
+      </div>
+      <ul class="pros">
+        <li class="minus">远景下存在感最弱，无法快速判断"这一片有多少条"</li>
+        <li class="minus">重叠时出现双层白圈，最影响观感</li>
+      </ul>
+    </div>
+
+    <!-- A -->
+    <div class="card pick">
+      <div class="head"><span class="tag rec">推荐</span><h3>A · 实心分类色圆</h3></div>
+      <div class="map">
+        <div class="rd r1"></div><div class="rd r2"></div><div class="rd r3"></div><div class="rd r4"></div>
+        <div class="blk" style="left:8%;top:56%;width:70px;height:44px"></div>
+        <div class="pin" style="left:50%;top:46%"><div class="ia s2">12</div></div>
+        <div class="pin" style="left:41%;top:57%"><div class="ia s1">3</div></div>
+        <div class="pin" style="left:46%;top:63%"><div class="ia s1">7</div></div>
+        <div class="pin" style="left:78%;top:34%"><div class="ia s3">999+</div></div>
+      </div>
+      <div class="scale">
+        <div><div class="box"><div class="ia s1">3</div></div>32</div>
+        <div><div class="box"><div class="ia s2">12</div></div>40</div>
+        <div><div class="box"><div class="ia s3">999+</div></div>48</div>
+      </div>
+      <ul class="pros">
+        <li class="plus">与单点 Marker 同一语言：彩底承载白字，一眼区分"点"和"片"</li>
+        <li class="plus">2px 白描边把重叠的簇自然分开，不再是灰圈压灰圈</li>
+        <li class="plus">改动最小：只换填充与描边，三档尺寸与命中区域不变</li>
+        <li class="minus">分类色底改用 deepColor，白字对比度可达 4.5:1</li>
+      </ul>
+    </div>
+
+    <!-- B -->
+    <div class="card">
+      <div class="head"><span class="tag">方案</span><h3>B · 数字胶囊</h3></div>
+      <div class="map">
+        <div class="rd r1"></div><div class="rd r2"></div><div class="rd r3"></div><div class="rd r4"></div>
+        <div class="blk" style="left:8%;top:56%;width:70px;height:44px"></div>
+        <div class="pin" style="left:50%;top:46%"><div class="ib s2">12<em>条</em></div></div>
+        <div class="pin" style="left:39%;top:57%"><div class="ib s1">3<em>条</em></div></div>
+        <div class="pin" style="left:47%;top:64%"><div class="ib s1">7<em>条</em></div></div>
+        <div class="pin" style="left:78%;top:34%"><div class="ib s3">999+<em>条</em></div></div>
+      </div>
+      <div class="scale">
+        <div><div class="box"><div class="ib s1">3<em>条</em></div></div>28h</div>
+        <div><div class="box"><div class="ib s2">12<em>条</em></div></div>32h</div>
+        <div><div class="box"><div class="ib s3">999+<em>条</em></div></div>36h</div>
+      </div>
+      <ul class="pros">
+        <li class="plus">语义最完整："12 条"直接读成数量，不用猜圆里是什么</li>
+        <li class="plus">横向排布，密集区域重叠面积小于圆</li>
+        <li class="minus">宽度随位数变化，三档尺寸体系要重写；命中区从圆改为矩形</li>
+        <li class="minus">"条"字在远景下会糊成一个点，需要按缩放隐藏</li>
+      </ul>
+    </div>
+
+    <!-- C -->
+    <div class="card">
+      <div class="head"><span class="tag">方案</span><h3>C · 双环刻度</h3></div>
+      <div class="map">
+        <div class="rd r1"></div><div class="rd r2"></div><div class="rd r3"></div><div class="rd r4"></div>
+        <div class="blk" style="left:8%;top:56%;width:70px;height:44px"></div>
+        <div class="pin" style="left:50%;top:46%"><div class="ic s2"><i>12</i></div></div>
+        <div class="pin" style="left:41%;top:57%"><div class="ic s1"><i>3</i></div></div>
+        <div class="pin" style="left:46%;top:63%"><div class="ic s1"><i>7</i></div></div>
+        <div class="pin" style="left:78%;top:34%"><div class="ic s3"><i>999+</i></div></div>
+      </div>
+      <div class="scale">
+        <div><div class="box"><div class="ic s1"><i>3</i></div></div>32</div>
+        <div><div class="box"><div class="ic s2"><i>12</i></div></div>40</div>
+        <div><div class="box"><div class="ic s3"><i>999+</i></div></div>48</div>
+      </div>
+      <ul class="pros">
+        <li class="plus">保留"轻量外环"观感，同时内圈给出实心焦点</li>
+        <li class="minus">32px 档内圈只剩约 20px，两位数会被压扁，远景可读性最差</li>
+        <li class="minus">两层边界在小尺寸下发虚，与"清晰"目标相反</li>
+      </ul>
+    </div>
+
+    <!-- D -->
+    <div class="card">
+      <div class="head"><span class="tag">方案</span><h3>D · 定位钉簇</h3></div>
+      <div class="map">
+        <div class="rd r1"></div><div class="rd r2"></div><div class="rd r3"></div><div class="rd r4"></div>
+        <div class="blk" style="left:8%;top:56%;width:70px;height:44px"></div>
+        <div class="pin" style="left:50%;top:46%"><div class="id s2"><i></i><span>12</span></div></div>
+        <div class="pin" style="left:41%;top:56%"><div class="id s1"><i></i><span>3</span></div></div>
+        <div class="pin" style="left:46%;top:63%"><div class="id s1"><i></i><span>7</span></div></div>
+        <div class="pin" style="left:78%;top:33%"><div class="id s3"><i></i><span>999+</span></div></div>
+      </div>
+      <div class="scale">
+        <div><div class="box"><div class="id s1"><i></i><span>3</span></div></div>32</div>
+        <div><div class="box"><div class="id s2"><i></i><span>12</span></div></div>40</div>
+        <div><div class="box"><div class="id s3"><i></i><span>999+</span></div></div>48</div>
+      </div>
+      <ul class="pros">
+        <li class="plus">品牌感最强，和"地点"直觉一致</li>
+        <li class="minus">和单点 Pin 撞形，"点"与"片"更难区分，违背 PRD §6.4.2 的区分意图</li>
+        <li class="minus">尖角让命中区与视觉中心错位，点击手感变差</li>
+      </ul>
+    </div>
+
+  </div>
+
+  <div class="foot">
+    <h2>建议</h2>
+    <p><b>采用 A（实心分类色圆 + 白描边 + 轻投影）</b>：只改填充/描边/阴影三处，尺寸体系、命中区域、点击逻辑全部不动；白描边顺带解决重叠时的"双层灰圈"，投影把簇从路网里拉出来。</p>
+    <p>若你更看重"一眼知道是几条"，选 B，但需要同时接受命中区从圆改矩形、三档尺寸重排、以及远景隐藏"条"字的额外规则。</p>
+    <p>C 与 D 不建议进入实现：C 在 32px 档可读性反而下降，D 与单点 Pin 争抢同一形状语义。</p>
+  </div>
+</div>
+</body>
+</html>

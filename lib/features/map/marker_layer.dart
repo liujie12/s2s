@@ -284,38 +284,44 @@ class _MarkerPainter extends CustomPainter {
     }
   }
 
-  /// 聚合 Marker：白底 + 分类色描边 + 居中数字。
+  /// 聚合 Marker：实心分类色圆 + 白色描边 + 轻投影（2026-11-01 定稿方案 A）。
+  ///
+  /// **为什么从「白底空心」改为「实心彩底」**：
+  /// - 白底圆在米色地图上对比只有约 1.1:1，远景下整簇像"没加载出来的占位"；
+  /// - 单点 Marker 是实心彩底 + 白图标，聚合若用空心白底就成了两套图形语言；
+  /// - 2px 白描边把相邻两个簇自然分开，解决重叠时"双层灰圈"互相压边的问题。
+  ///
+  /// **底色取 deepColor**：白字落在原色上只有 2.54–4.23:1（design_tokens.dart:74），
+  /// 换 deepColor 后五类均达到 4.5:1。投影只露出一道下缘，用来把簇从路网里抬起来。
   void _paintCluster(Canvas canvas, ClusterMarker marker) {
     // 大类可空（分类树版本落后于服务端数据时查不到，§16.4 属预期内状态），
     // 此时用中性配色而**不是丢弃这个聚合圈** —— 丢弃会让用户觉得东西不见了。
     final category = marker.topCategory;
-    final Color strokeColor = category?.color ?? neutralCategoryColor;
-    final Color textColor = category?.deepColor ?? neutralCategoryColor;
-    final center = Offset(marker.x, marker.y);
+    final Color fillColor = category?.deepColor ?? neutralCategoryColor;
+    final Offset center = Offset(marker.x, marker.y);
     final double radius = marker.diameter / 2;
 
-    canvas.drawCircle(
-      center,
-      radius,
-      Paint()..color = Color(AppColors.surface),
-    );
+    final Path shadowPath = Path()
+      ..addOval(Rect.fromCircle(center: center, radius: radius));
+    canvas.drawShadow(shadowPath, const Color(0x40000000), 3, false);
+
+    canvas.drawCircle(center, radius, Paint()..color = fillColor);
     canvas.drawCircle(
       center,
       radius - 1,
       Paint()
-        ..color = strokeColor
+        ..color = const Color(AppColors.surface)
         ..style = PaintingStyle.stroke
         ..strokeWidth = 2,
     );
 
-    // 数字用 deepColor 而非原色：原色在白底上对比度不足 4.5:1（design_tokens.dart:74）。
     _paintCenteredText(
       canvas,
       center,
       text: marker.count > 999 ? '999+' : '${marker.count}',
-      color: textColor,
+      color: const Color(AppColors.surface),
       fontSize: marker.diameter >= 48 ? 16 : 13,
-      fontWeight: FontWeight.w600,
+      fontWeight: FontWeight.w700,
     );
   }
 
