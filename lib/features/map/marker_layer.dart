@@ -294,10 +294,11 @@ class _MarkerPainter extends CustomPainter {
   /// **底色取 deepColor**：白字落在原色上只有 2.54–4.23:1（design_tokens.dart:74），
   /// 换 deepColor 后五类均达到 4.5:1。投影只露出一道下缘，用来把簇从路网里抬起来。
   void _paintCluster(Canvas canvas, ClusterMarker marker) {
-    // 大类可空（分类树版本落后于服务端数据时查不到，§16.4 属预期内状态），
-    // 此时用中性配色而**不是丢弃这个聚合圈** —— 丢弃会让用户觉得东西不见了。
+    // 大类可空：远景簇由服务端预聚合，`clusters[]` 不带类目（toCluster 恒回 null），
+    // 此时用**品牌主色**而不是中性灰 —— 灰色实心圆看起来像"坏掉的占位"，
+    // 而远景簇的语义本来就是「这一片有供需信息」，用主色表达这个语义最准确。
     final category = marker.topCategory;
-    final Color fillColor = category?.deepColor ?? neutralCategoryColor;
+    final Color fillColor = category?.deepColor ?? Color(AppColors.primary);
     final Offset center = Offset(marker.x, marker.y);
     final double radius = marker.diameter / 2;
 
