@@ -4,7 +4,7 @@
 /// publish_template_provider_test.dart，本文件不重复）：
 ///   - 模板加载中：骨架段 + 主按钮禁用 + 「模板加载中…」（异步闸门由页面
 ///     合成，不进 [PublishFormState.blocker] 同步链）；
-///   - 服务端模板到达：字段整体替换为服务端集合，必填校验按服务端口径；
+///   - 服务端模板到达：字段整体替换为服务端集合（字段为选填，不参与提交闸门）；
 ///   - 拉取失败：降级本地模板字段，页面照常可填。
 ///
 /// 用 [_FakeCategoryRepository] 走微任务（fake async 下 pumpAndSettle 可
@@ -53,11 +53,10 @@ void main() {
     addTearDown(tester.view.reset);
   }
 
-  /// 除模板必填项外全部填妥的表单（叶子 10101 全职招聘）。
+  /// 除分类专属字段外全部填妥的表单（叶子 10101 全职招聘）。
   ///
-  /// 模板字段留空：用例正是要观察「模板加载中 → 服务端必填未填」的
-  /// blocker 迁移。文本控制器从空串起步不影响本文件断言 —— blocker
-  /// 读状态不读控制器（initialForm 缝的已知边界）。
+  /// 模板字段留空：分类专属字段自 2026-11-01 起为选填，本用例验证
+  /// 「加载中禁提交 → 模板到达后字段整体替换且可提交」。
   PublishFormState filledExceptTemplate() {
     return const PublishFormState(
       leafCategoryId: 10101,
@@ -122,10 +121,12 @@ void main() {
     expect(find.text('招聘人数'), findsOneWidget);
     expect(find.text('食宿情况'), findsOneWidget);
     expect(find.text('工作时间'), findsNothing);
-    // 服务端 required 口径参与 blocker：headcount 未填 → 必填未齐
-    expect(find.text('模板必填项未填完'), findsOneWidget);
+    // 服务端 required 不再参与 blocker（2026-11-01）：分类专属字段改为选填，
+    // 因此模板到达后也不应出现「模板必填项未填完」
+    expect(find.text('模板必填项未填完'), findsNothing);
     expect(find.text('模板加载中…'), findsNothing);
-    expect(submitDisabled(tester), isTrue);
+    // 分类/位置/标题/协议都已满足 → 主按钮可点
+    expect(submitDisabled(tester), isFalse);
     expect(repo.templateFetchCount, 1);
   });
 

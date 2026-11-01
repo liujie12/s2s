@@ -46,12 +46,6 @@ enum PublishBlocker {
   /// 标题为空（§5.4.1 第 3 段）
   noTitle('请填写标题'),
 
-  /// 价格既没填数字也没选「面议」（§5.8「价格为空」）
-  noPrice('请填写价格，或选择「面议」'),
-
-  /// 描述为空（§5.4.1 第 5 段）
-  noDescription('请填写描述'),
-
   /// 模板字段加载中（[124] B3：`GET /templates/{leaf}` 未返回前禁提交，
   /// 防止用本地字段校验放行、提交时被服务端 precheck 打回）。
   ///
@@ -60,13 +54,7 @@ enum PublishBlocker {
   /// 时于 blocker 之前合成（见 `publish_screen.dart`）。
   templateLoading('模板加载中…'),
 
-  /// 模板必填项未齐（§5.4.3「附加字段」中标必填的）
-  templateFieldMissing('模板必填项未填完'),
-
-  /// 联系方式为空（§5.4.1 第 8 段）
-  noContact('请填写联系方式'),
-
-  /// 联系方式不是合法手机号（§5.4.1 第 8 段）
+  /// 联系方式不是合法手机号（联系方式为选填，仅填了才校验）
   invalidContact('请填写正确的 11 位手机号'),
 
   /// 协议未勾选（§5.8「协议未勾选 → 主按钮 Disabled」）
@@ -295,28 +283,13 @@ class PublishFormState {
     if (leafCategoryId == null) return PublishBlocker.noCategory;
     if (!hasLocation) return PublishBlocker.noLocation;
     if (title.trim().isEmpty) return PublishBlocker.noTitle;
-    if (!priceSettled) return PublishBlocker.noPrice;
-    if (description.trim().isEmpty) return PublishBlocker.noDescription;
-
-    // 模板必填项：未选分类时 template 是通用模板（无附加字段），故这一段
-    // 只在选了分类后才真正生效，不会与 noCategory 抢先。
-    for (final field in template.extraFields) {
-      if (!field.required) continue;
-      if (field.type == TemplateFieldType.routePair) {
-        // 结构化字段按「两端齐备」判（KTD4）；存量帖只有文本值时按已填
-        // 放行 —— 旧数据没有坐标，不能因此把重发堵死（KTD1 兼容分支）。
-        if (routePair?.isComplete == true) continue;
-        if ((templateValues[field.key] ?? '').trim().isNotEmpty) continue;
-        return PublishBlocker.templateFieldMissing;
-      }
-      if ((templateValues[field.key] ?? '').trim().isEmpty) {
-        return PublishBlocker.templateFieldMissing;
-      }
-    }
-
+    // 2026-11-01 口径：价格、描述、分类专属字段一律不再阻断发布
+    //（此前各自的 noPrice / noDescription / templateFieldMissing 已移除）。
     if (imageCount > kMaxImageCount) return PublishBlocker.tooManyMedia;
-    if (contact.trim().isEmpty) return PublishBlocker.noContact;
-    if (!contactValid) return PublishBlocker.invalidContact;
+    // 联系方式改为选填：空着可以发布，填了就必须是合法手机号
+    if (contact.trim().isNotEmpty && !contactValid) {
+      return PublishBlocker.invalidContact;
+    }
     if (!agreed) return PublishBlocker.agreementUnchecked;
     return null;
   }

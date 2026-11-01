@@ -163,18 +163,12 @@ void main() {
       expect(complete().copyWith(title: '   ').blocker, PublishBlocker.noTitle);
     });
 
-    test('描述为空 → noDescription', () {
-      expect(
-        complete().copyWith(description: '').blocker,
-        PublishBlocker.noDescription,
-      );
+    test('描述改为选填：空着不阻断发布（2026-11-01 口径）', () {
+      expect(complete().copyWith(description: '').blocker, isNull);
     });
 
-    test('联系方式为空 → noContact', () {
-      expect(
-        complete().copyWith(contact: '').blocker,
-        PublishBlocker.noContact,
-      );
+    test('联系方式选填：空着不阻断发布（2026-11-01 口径）', () {
+      expect(complete().copyWith(contact: '').blocker, isNull);
     });
 
     test('联系方式不是 11 位手机号 → invalidContact', () {
@@ -212,17 +206,10 @@ void main() {
       );
     });
 
-    test('模板必填项未填 → templateFieldMissing', () {
-      // 拼车模板有三项必填，最能暴露「只检查了第一项」这类漏检。
+    test('分类专属字段改为选填：全部留空也能发布（2026-11-01 口径）', () {
+      // 拼车模板的字段此前是必填，现在只作为信息补充，不参与提交闸门
       final form = complete(leafId: 30101).copyWith(templateValues: const {});
-      expect(form.blocker, PublishBlocker.templateFieldMissing);
-    });
-
-    test('模板必填项只填了一部分 → 仍报 templateFieldMissing', () {
-      final form = complete(
-        leafId: 30101,
-      ).copyWith(templateValues: const {'route': '回龙观 → 中关村'});
-      expect(form.blocker, PublishBlocker.templateFieldMissing);
+      expect(form.blocker, isNull);
     });
 
     test('模板非必填项留空不拦（§5.4.3 只有部分附加字段是必填）', () {
@@ -264,42 +251,36 @@ void main() {
     });
   });
 
-  group('§5.8 价格为空：「允许选面议不填数字；其他情况必须填数字」', () {
-    test('未填数字且单位不是面议 → noPrice', () {
-      expect(
-        complete().copyWith(priceText: '').blocker,
-        PublishBlocker.noPrice,
-      );
+  group('§5.8 价格改为选填（2026-11-01）：不再阻断发布', () {
+    test('未填数字且单位不是面议 → 仍可发布，priceSettled 为假', () {
+      final form = complete().copyWith(priceText: '');
+      expect(form.priceSettled, isFalse);
+      expect(form.blocker, isNull);
     });
 
-    test('选了面议且不填数字 → 放行', () {
+    test('选了面议且不填数字 → priceSettled 为真', () {
       final form = complete().copyWith(priceText: '', priceUnit: '面议');
       expect(form.priceSettled, isTrue);
       expect(form.blocker, isNull);
     });
 
     test('填 0 不算已交代价格 —— 0 元发布须走面议，否则语义不明', () {
-      expect(
-        complete().copyWith(priceText: '0').blocker,
-        PublishBlocker.noPrice,
-      );
+      expect(complete().copyWith(priceText: '0').priceSettled, isFalse);
     });
 
-    test('填非数字（如中间态「5.」以外的乱字符）→ noPrice', () {
-      expect(
-        complete().copyWith(priceText: '面谈').blocker,
-        PublishBlocker.noPrice,
-      );
+    test('填非数字（如中间态「5.」以外的乱字符）→ 不算已交代价格', () {
+      expect(complete().copyWith(priceText: '面谈').priceSettled, isFalse);
     });
 
     test('小数价格可用（如 12.5 元）', () {
       expect(complete().copyWith(priceText: '12.5').blocker, isNull);
     });
 
-    test('可议价与面议是两回事：勾了可议价但没填数字仍被拦', () {
+    test('可议价与面议是两回事：勾了可议价但没填数字仍不算交代', () {
       // negotiable = 有标价但可谈；面议 = 不标价。§5.8 只把面议当免填出口。
       final form = complete().copyWith(priceText: '', negotiable: true);
-      expect(form.blocker, PublishBlocker.noPrice);
+      expect(form.priceSettled, isFalse);
+      expect(form.blocker, isNull);
     });
   });
 
@@ -316,24 +297,11 @@ void main() {
       final withLocation = withCategory.copyWith(lng: 120.1551, lat: 30.2741);
       expect(withLocation.blocker, PublishBlocker.noTitle);
 
+      // 2026-11-01 起只剩四个闸门：分类 / 位置 / 标题 / 协议勾选
       final withTitle = withLocation.copyWith(title: '餐桌');
-      expect(withTitle.blocker, PublishBlocker.noPrice);
+      expect(withTitle.blocker, PublishBlocker.agreementUnchecked);
 
-      final withPrice = withTitle.copyWith(priceText: '350');
-      expect(withPrice.blocker, PublishBlocker.noDescription);
-
-      final withDesc = withPrice.copyWith(description: '九成新');
-      expect(withDesc.blocker, PublishBlocker.templateFieldMissing);
-
-      final withTemplate = withDesc.copyWith(
-        templateValues: const {'condition': '几乎全新'},
-      );
-      expect(withTemplate.blocker, PublishBlocker.noContact);
-
-      final withContact = withTemplate.copyWith(contact: '13800138000');
-      expect(withContact.blocker, PublishBlocker.agreementUnchecked);
-
-      expect(withContact.copyWith(agreed: true).blocker, isNull);
+      expect(withTitle.copyWith(agreed: true).blocker, isNull);
     });
 
     test('每个 blocker 都有非空文案 —— 灰按钮不说原因等于把规则藏起来', () {
@@ -349,8 +317,8 @@ void main() {
       expect(home.templateValues, isNotEmpty);
       final second = home.withCategory(40101); // 换到二手闲置
       expect(second.templateValues, isEmpty);
-      // 换完之后模板必填项自然未齐，应当被拦住而不是带着旧值放行
-      expect(second.blocker, PublishBlocker.templateFieldMissing);
+      // 换完之后模板必填项已取消，不能因为「新模板字段没填」而拦住发布
+      expect(second.blocker, isNull);
     });
 
     test('价格单位重置为新模板的第一个合法单位', () {
@@ -451,14 +419,10 @@ void main() {
       expect(form.template.priceUnits, templateForLeaf(40101).priceUnits);
     });
 
-    test('loadedTemplate 的必填字段参与 blocker：本地字段填齐不算数', () {
+    test('loadedTemplate 的字段不再参与 blocker（2026-11-01 口径）', () {
       final pending = complete().withTemplate(serverTemplateOf(40101));
-      // complete() 填的是本地字段（condition），服务端字段空着仍拦
-      expect(pending.blocker, PublishBlocker.templateFieldMissing);
-      final filled = pending.copyWith(
-        templateValues: const {'server_only': '填了'},
-      );
-      expect(filled.blocker, isNull);
+      // 服务端字段留空也不再阻塞：分类专属信息只是补充信息
+      expect(pending.blocker, isNull);
     });
 
     test('withCategory 清空 loadedTemplate：新分类必须重新拉取模板', () {
@@ -523,12 +487,14 @@ void main() {
       expect(carpool(pair: fullPair()).blocker, isNull);
     });
 
-    test('只有起点（终点无坐标）→ 仍报模板必填缺失（KTD4）', () {
+    test('只有起点（终点无坐标）→ 不再阻断发布，但位置不算精确（KTD4）', () {
       final pair = RoutePair(
         origin: fullPair().origin,
         destination: const RoutePlace(name: '中关村'),
       );
-      expect(carpool(pair: pair).blocker, PublishBlocker.templateFieldMissing);
+      final form = carpool(pair: pair);
+      expect(form.blocker, isNull);
+      expect(form.locationPrecise, isFalse);
     });
 
     test('载荷 attributes.route 是含两端坐标的对象（AE6）', () {

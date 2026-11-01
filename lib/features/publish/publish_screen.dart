@@ -321,12 +321,9 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
         ? PublishBlocker.templateLoading
         : _form.blocker;
     if (!_isEditing) return base;
-    // 编辑态跳过两条「发布仪式」闸门，否则编辑既有帖会被本地拦死在提交前：
-    // - noContact：明文不回显，编辑不改联系方式时输入框本应为空
-    //   （服务端按「空 = 保留原密文」处理，见文件头）；
-    // - agreementUnchecked：该帖当初已按协议发布，编辑不要求重勾。
-    if (base == PublishBlocker.noContact ||
-        base == PublishBlocker.agreementUnchecked) {
+    // 编辑态跳过「发布仪式」闸门：该帖当初已按协议发布，编辑不要求重勾。
+    // （联系方式已改为选填，不再需要针对 noContact 做豁免。）
+    if (base == PublishBlocker.agreementUnchecked) {
       return null;
     }
     return base;
@@ -802,7 +799,9 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
             _SectionCard(
               index: null,
               title: '分类专属信息',
-              done: blocker != PublishBlocker.templateFieldMissing,
+              // 分类专属字段改为选填（2026-11-01），不再参与提交闸门，
+              // 段标题的完成态也不再由「必填项是否齐」推导
+              done: true,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
