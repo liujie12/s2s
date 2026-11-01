@@ -77,7 +77,7 @@ void main() {
     repo = _FakeCategoryRepository();
   });
 
-  testWidgets('骨架 → 三列渲染：默认展开首个分支，高敏叶子带资质 chip',
+  testWidgets('骨架 → 三列渲染：默认展开首个分支，叶子不再带资质 chip',
       (tester) async {
     await tester.pumpWidget(
       _app(repo: repo, prefs: prefs, home: const CategorySelectorScreen()),
@@ -94,8 +94,8 @@ void main() {
     expect(find.text('全职招聘'), findsOneWidget);
     expect(find.text('餐饮服务'), findsOneWidget);
     expect(find.text('零售导购'), findsOneWidget);
-    // 10101/10102 均为 enterprise（内置常量树映射）：两个资质 chip。
-    expect(find.text('需企业认证'), findsNWidgets(2));
+    // 2026-11-01：认证要求取消，任何叶子都不再标注「需 X 认证」
+    expect(find.text('需企业认证'), findsNothing);
     // 未点选叶子：面包屑占位 + 确认按钮禁用。
     expect(find.text('未选择分类'), findsOneWidget);
     final confirm = tester.widget<ElevatedButton>(

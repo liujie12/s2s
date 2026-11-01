@@ -323,12 +323,15 @@ PublishTemplate templateForLeaf(int leafCategoryId) {
   return _templatesBySecondLevel[secondLevel] ?? genericTemplate;
 }
 
-/// 该叶子发布前是否需要资质认证（§5.8「强制认证拦截」的判定依据）。
+/// 该叶子发布前是否需要资质认证。
 ///
-/// 参数 [leafCategoryId] 叶子 ID。返回所需认证类型，无需认证返回
-/// [RequiredCert.none]。ID 非法时同样返回 `none` —— 判定「要不要拦」
-/// 时宁可放过一条脏 ID，也不要把它拦在一个用户无法通过的认证前面
-/// （那会变成死路：他没有这个类目，也就永远补不齐这项资质）。
+/// **2026-11-01 起恒返回 [RequiredCert.none]**：产品裁定取消全部认证要求，
+/// 发布链路不再因资质被拦截（PRD §5.8「强制认证拦截」本期不执行）。
+/// 签名与调用点保留，将来恢复只需改这一处；`category_tree.dart` 里的原始
+/// 映射不动，仍作为数据保留。
+///
+/// 参数 [leafCategoryId] 叶子 ID（本期不参与判定，保留以维持调用契约）。
+/// 返回：[RequiredCert] 恒为 `none`。
 RequiredCert requiredCertForLeaf(int leafCategoryId) {
-  return leafCategoryById(leafCategoryId)?.requiredCert ?? RequiredCert.none;
+  return RequiredCert.none;
 }

@@ -348,11 +348,8 @@ void main() {
       expect(const PublishFormState().requiredCert, RequiredCert.none);
     });
 
-    test('高敏分类的 requiredCert 透传（家政 → 个人资质）', () {
-      expect(
-        complete(leafId: 50101).requiredCert,
-        RequiredCert.personalQualification,
-      );
+    test('高敏分类的 requiredCert 同样为 none（2026-11-01 取消认证要求）', () {
+      expect(complete(leafId: 50101).requiredCert, RequiredCert.none);
     });
 
     test('描述字数提示按 trim 后长度算并带上建议区间', () {

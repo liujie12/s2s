@@ -518,11 +518,7 @@ class _LeafColumn extends StatelessWidget {
                       ),
                     ),
                   ),
-                  // 高敏类目在选择时就标出来，而不是等点了「发布」才弹拦截：
-                  // §5.8 的拦截发生在提交前，那时用户已经填完整张表单，
-                  // 此时才告知「你没这个资质」是把人一路带到墙上。
-                  if (node.requiredCert != RequiredCert.none)
-                    _CertChip(cert: node.requiredCert),
+                  // 2026-11-01：认证要求取消，选择页不再标注「需 X 认证」。
                   if (active) ...[
                     const SizedBox(width: 8),
                     Icon(Icons.check, size: 18, color: Color(AppColors.primary)),
@@ -532,33 +528,6 @@ class _LeafColumn extends StatelessWidget {
             ),
           );
         },
-      ),
-    );
-  }
-}
-
-/// 高敏类目的资质提示片。
-class _CertChip extends StatelessWidget {
-  const _CertChip({required this.cert});
-
-  final RequiredCert cert;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        // 与联系中转页温馨提示同一配方（contact_screen.dart:550）：
-        // warning 是图形色，承载文字须换 warningText，故底用 10% 淡化的 warning。
-        color: Color(AppColors.warning).withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(AppRadius.sm),
-      ),
-      child: Text(
-        '需${cert.label}',
-        style: TextStyle(
-          fontSize: AppTypeScale.caption.size,
-          color: Color(AppColors.warningText),
-        ),
       ),
     );
   }

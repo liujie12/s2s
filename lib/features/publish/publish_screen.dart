@@ -386,20 +386,8 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
       if (!mounted || ok != true) return;
     }
 
-    // §5.8「强制认证拦截」：高敏类目需资质。
-    // TODO(接后端 §12.4)：用户已持资质列表无本地来源，当前一律视为未持有，
-    // 故需资质的类目必然拦截。接口接通后此处应改为「已持有则放行」。
-    final cert = _form.requiredCert;
-    if (cert != RequiredCert.none) {
-      final goCertify = await router.push<bool>(
-        AppRoutes.certModal,
-        extra: cert,
-      );
-      if (!mounted) return;
-      if (goCertify == true) router.push(AppRoutes.trust);
-      // 无论用户选哪个都不放行 —— 拦截的意义就在于资质没到位不能发。
-      return;
-    }
+    // 2026-11-01：认证要求全部取消，发布前不再做资质拦截
+    //（原 §5.8「强制认证拦截」分支已移除）。
 
     // [124] B4：提交前 precheck。填完长表单才在 POST /posts 被打回是
     // 最挫败的路径；precheck 把服务端口径（敏感词/图片/禁发/资质/
