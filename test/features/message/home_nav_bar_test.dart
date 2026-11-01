@@ -1,7 +1,7 @@
 /// 底部四 Tab 导航栏测试（计划 U11）。
 ///
 /// [HomeNavBar] 是纯展示组件（未读总数由调用方传入），故不走网络装配：
-/// 断言四项等分、顺序（丫圈/消息/发布/我的）、角标三态与选中态配色。
+/// 断言四项等分、顺序（丫圈/发布/消息/我的）、角标三态与选中态配色。
 library;
 
 import 'package:flutter/material.dart';
@@ -36,7 +36,7 @@ void main() {
     );
   }
 
-  testWidgets('四项等分且顺序为 丫圈/消息/发布/我的', (tester) async {
+  testWidgets('四项等分且顺序为 丫圈/发布/消息/我的', (tester) async {
     await pumpBar(tester, unreadTotal: 0);
 
     final widths = [
@@ -44,9 +44,18 @@ void main() {
     ];
     expect(widths.toSet().length, 1, reason: '四个导航项必须等宽，实际：$widths');
 
-    final labels = ['丫圈', '消息', '发布', '我的'];
+    final labels = ['丫圈', '发布', '消息', '我的'];
     final xs = [for (final label in labels) tester.getCenter(find.text(label)).dx];
     expect(xs, orderedEquals([...xs]..sort()));
+  });
+
+  testWidgets('发布键与其它未选中键同尺寸同色（不放大、不单独着主色）', (tester) async {
+    await pumpBar(tester, selectedIndex: HomeBranch.discovery);
+
+    final publishLabel = tester.widget<Text>(find.text('发布'));
+    final myLabel = tester.widget<Text>(find.text('我的'));
+    expect(publishLabel.style?.color, const Color(AppColors.textSecondary));
+    expect(publishLabel.style?.color, myLabel.style?.color);
   });
 
   testWidgets('未读为 0 不渲染角标，12 显示 12，120 显示 99+', (tester) async {

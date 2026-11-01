@@ -18,6 +18,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/network/api_client.dart';
 import 'design_tokens.dart';
 import 'features/auth/auth_network_wiring.dart';
+import 'features/message/realtime_wiring.dart';
 import 'features/track/track_wiring.dart';
 import 'router/app_router.dart';
 
@@ -53,16 +54,21 @@ class _ZhaoYaZhaoAppState extends ConsumerState<ZhaoYaZhaoApp> {
   /// 埋点链生命周期观察者（进后台/联网恢复触发上报）。
   TrackLifecycleObserver? _trackObserver;
 
+  /// 实时消息通道装配（登录连接、后台断开、事件合并刷新）。
+  RealtimeWiring? _realtimeWiring;
+
   @override
   void initState() {
     super.initState();
     _trackObserver = TrackLifecycleObserver(
       readController: () => ref.read(trackControllerProvider),
     )..start();
+    _realtimeWiring = RealtimeWiring(ref: ref)..start();
   }
 
   @override
   void dispose() {
+    _realtimeWiring?.stop();
     _trackObserver?.stop();
     super.dispose();
   }

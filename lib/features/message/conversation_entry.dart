@@ -125,10 +125,11 @@ Future<void> enterConversation(
   }
 
   if (!context.mounted) return;
-  // 会话详情是「消息」分支的子路由：push 保留详情页在返回栈上，
-  // 与消息列表进入会话的跳转方式一致（U12）。
+  // 详情页 / 中转页都在顶层路由：会话详情走**顶层** `/chat/:id`（设计与「不带
+  // 底部导航」一致）。若直接 push 分支内的 `/messages/:id`，go_router 会再构造
+  // 一套 shell，真机表现为「有底栏、内容全白」—— 2026-11-01 真机走查缺陷。
   context.push(
-    '/messages/$conversationId',
+    '/chat/$conversationId',
     extra: existing,
   );
 }

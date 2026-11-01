@@ -114,13 +114,12 @@ class ApiException implements Exception {
   /// 服务端 `Retry-After` 整数秒，可空。
   final int? retryAfterSec;
 
-  /// 用户可读报错文案（详设 §11.4 UI 报错唯一格式，[124] B4 提取为
-  /// 唯一实现处——selector 与 precheck 两处消费）。
+  /// 用户可读报错文案（详设 §11.4 UI 报错唯一实现处，[124] B4 提取）。
   ///
-  /// 格式 `{message}（{request_id}）`；[requestId] 为 null 只显
-  /// [message]，**禁用 interaction_id 顶替**（详设 §11.4）。
-  String get uiMessage =>
-      requestId == null ? message : '$message（$requestId）';
+  /// **只回显 [message]**：2026-11-01 用户裁定「UUID 单号混在句子里不优雅」，
+  /// 界面不再展示 `request_id`；该字段仍保留在异常对象与日志中供排障，
+  /// **禁用 interaction_id 顶替**（详设 §11.4）。
+  String get uiMessage => message;
 
   /// `parseError` message 的定长上限（字符数）。
   ///

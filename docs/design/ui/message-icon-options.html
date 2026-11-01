@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>「消息」Tab 图标候选 · 评审用</title>
+<style>
+  /* 颜色全部取自 lib/design_tokens.dart，勿新增色值 */
+  :root{
+    --primary:#0B7C8C;
+    --primary-light:#E6F6F8;
+    --text-primary:#1F2937;
+    --text-secondary:#6B7280;
+    --border:#E5E7EB;
+    --background:#F8FAFC;
+    --surface:#FFFFFF;
+    --error:#EF4444;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;padding:40px 40px 80px;
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+    background:var(--background);color:var(--text-primary);
+  }
+  h1{font-size:24px;margin:0 0 8px;}
+  .lead{color:var(--text-secondary);font-size:14px;line-height:22px;max-width:820px;margin:0 0 28px;}
+  .lead code{background:var(--surface);padding:1px 5px;border-radius:4px;border:1px solid var(--border);}
+  .grid{display:flex;flex-wrap:wrap;gap:24px;}
+  .card{
+    width:390px;background:var(--surface);border:1px solid var(--border);
+    border-radius:16px;overflow:hidden;
+  }
+  .card-head{display:flex;align-items:baseline;gap:10px;padding:16px 18px 6px;}
+  .kbd{
+    width:24px;height:24px;border-radius:8px;background:var(--primary-light);color:var(--primary);
+    font-weight:700;font-size:13px;display:flex;align-items:center;justify-content:center;flex:none;
+  }
+  .card-head h3{font-size:15px;margin:0;font-weight:600;}
+  .card-note{padding:0 18px 14px;font-size:12.5px;line-height:20px;color:var(--text-secondary);}
+  .card-note b{color:var(--text-primary);font-weight:600;}
+
+  /* 底部导航（四项等分，栏高 64、图标 24、文案 11） */
+  .tabbar{height:64px;display:flex;background:var(--surface);border-top:1px solid var(--border);}
+  .tab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;position:relative;}
+  .tab .lb{font-size:11px;line-height:13px;color:var(--text-secondary);}
+  .tab.on .lb{color:var(--primary);font-weight:600;}
+  .tab svg{width:24px;height:24px;display:block;}
+  .tab.on svg{color:var(--primary);}
+  .tab svg{color:var(--text-secondary);}
+  .badge{
+    position:absolute;top:2px;left:calc(50% + 2px);min-width:16px;height:16px;padding:0 4px;
+    border-radius:999px;background:var(--error);color:#fff;font-size:10px;line-height:16px;
+    font-weight:600;text-align:center;
+  }
+  .zoom{padding:6px 18px 18px;display:flex;align-items:center;gap:16px;}
+  .zoom .big{color:var(--primary);}
+  .zoom .big svg{width:48px;height:48px;}
+  .zoom .cap{font-size:12px;color:var(--text-secondary);line-height:18px;}
+  .states{display:flex;gap:0;border-top:1px dashed var(--border);}
+  .states .half{flex:1;padding:10px 0 0;}
+  .states .half+.half{border-left:1px dashed var(--border);}
+  .states .cap{font-size:11px;color:var(--text-secondary);text-align:center;padding-bottom:2px;}
+  .foot{margin-top:36px;font-size:13px;color:var(--text-secondary);line-height:22px;max-width:900px;}
+  .foot b{color:var(--text-primary);}
+</style>
+</head>
+<body>
+
+<h1>「消息」Tab 图标候选（评审用）</h1>
+<p class="lead">
+  全部按 24×24 viewBox、线宽 1.8、圆头圆角绘制；选中态 <code>--primary #0B7C8C</code>，未选中态
+  <code>--text-secondary #6B7280</code>，与「丫圈 / 我的」的线性图标同一语法。每张卡下方是<b>实机尺寸（24px）</b>的
+  未选中 / 选中两态，上方是 48px 放大图，便于看细节。请按编号选定一个。
+</p>
+
+<div class="grid">
+
+  <!-- A -->
+  <div class="card">
+    <div class="card-head"><span class="kbd">A</span><h3>圆腹气泡 · 左下短尾（当前已实现）</h3></div>
+    <div class="card-note">设计稿 §01 的原始路径，圆形说话气泡 + 左下一个尖角。最「聊天」，也最幼态。</div>
+    <div class="zoom">
+      <div class="big"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.3 9 9 0 0 1-3.6-.7L4 21l1.4-4.1A8 8 0 0 1 4 11.5 8.4 8.4 0 0 1 12.5 3 8.4 8.4 0 0 1 21 11.5Z"/></svg></div>
+      <div class="cap">48px 放大<br>线宽视觉重量与 map / person 接近</div>
+    </div>
+    <div class="states">
+      <div class="half"><div class="tab" style="border-top:0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.3 9 9 0 0 1-3.6-.7L4 21l1.4-4.1A8 8 0 0 1 4 11.5 8.4 8.4 0 0 1 12.5 3 8.4 8.4 0 0 1 21 11.5Z"/></svg><span class="lb">消息</span></div><div class="cap">未选中</div></div>
+      <div class="half"><div class="tab on" style="border-top:0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.3 9 9 0 0 1-3.6-.7L4 21l1.4-4.1A8 8 0 0 1 4 11.5 8.4 8.4 0 0 1 12.5 3 8.4 8.4 0 0 1 21 11.5Z"/></svg><span class="lb">消息</span></div><div class="cap">选中</div></div>
+    </div>
+  </div>
+
+  <!-- B -->
+  <div class="card">
+    <div class="card-head"><span class="kbd">B</span><h3>圆角方气泡 · 单线尾</h3></div>
+    <div class="card-note">更像系统级 IM（微信 / iMessage 的克制版）。<b>识别度最高、最不容易被说「丑」</b>，但与「丫圈」的折线地图图标气质略远。</div>
+    <div class="zoom">
+      <div class="big"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M5 5.6h14a1.6 1.6 0 0 1 1.6 1.6v7.6a1.6 1.6 0 0 1-1.6 1.6H9.8L6 20.2v-3.8H5a1.6 1.6 0 0 1-1.6-1.6V7.2A1.6 1.6 0 0 1 5 5.6Z"/></svg></div>
+      <div class="cap">48px 放大<br>直角更收敛，圆角 1.6</div>
+    </div>
+    <div class="states">
+      <div class="half"><div class="tab" style="border-top:0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M5 5.6h14a1.6 1.6 0 0 1 1.6 1.6v7.6a1.6 1.6 0 0 1-1.6 1.6H9.8L6 20.2v-3.8H5a1.6 1.6 0 0 1-1.6-1.6V7.2A1.6 1.6 0 0 1 5 5.6Z"/></svg><span class="lb">消息</span></div><div class="cap">未选中</div></div>
+      <div class="half"><div class="tab on" style="border-top:0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M5 5.6h14a1.6 1.6 0 0 1 1.6 1.6v7.6a1.6 1.6 0 0 1-1.6 1.6H9.8L6 20.2v-3.8H5a1.6 1.6 0 0 1-1.6-1.6V7.2A1.6 1.6 0 0 1 5 5.6Z"/></svg><span class="lb">消息</span></div><div class="cap">选中</div></div>
+    </div>
+  </div>
+
+  <!-- C -->
+  <div class="card">
+    <div class="card-head"><span class="kbd">C</span><h3>双层气泡（会话叠会话）</h3></div>
+    <div class="card-note">语义更贴「消息中心 = 多个会话」，但 24px 下第二层容易糊成一团，缩到 20px 时基本不可读。</div>
+    <div class="zoom">
+      <div class="big"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M8.2 4.4h8.1a2.6 2.6 0 0 1 2.6 2.6v4.4"/><path d="M4.4 9.1h10.2a2.2 2.2 0 0 1 2.2 2.2v3.9a2.2 2.2 0 0 1-2.2 2.2H9.6L6.4 19.9v-2.5H4.4a2.2 2.2 0 0 1-2.2-2.2v-3.9a2.2 2.2 0 0 1 2.2-2.2Z"/></svg></div>
+      <div class="cap">48px 放大<br>后排线不闭合，避免糊团</div>
+    </div>
+    <div class="states">
+      <div class="half"><div class="tab" style="border-top:0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M8.2 4.4h8.1a2.6 2.6 0 0 1 2.6 2.6v4.4"/><path d="M4.4 9.1h10.2a2.2 2.2 0 0 1 2.2 2.2v3.9a2.2 2.2 0 0 1-2.2 2.2H9.6L6.4 19.9v-2.5H4.4a2.2 2.2 0 0 1-2.2-2.2v-3.9a2.2 2.2 0 0 1 2.2-2.2Z"/></svg><span class="lb">消息</span></div><div class="cap">未选中</div></div>
+      <div class="half"><div class="tab on" style="border-top:0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M8.2 4.4h8.1a2.6 2.6 0 0 1 2.6 2.6v4.4"/><path d="M4.4 9.1h10.2a2.2 2.2 0 0 1 2.2 2.2v3.9a2.2 2.2 0 0 1-2.2 2.2H9.6L6.4 19.9v-2.5H4.4a2.2 2.2 0 0 1-2.2-2.2v-3.9a2.2 2.2 0 0 1 2.2-2.2Z"/></svg><span class="lb">消息</span></div><div class="cap">选中</div></div>
+    </div>
+  </div>
+
+  <!-- D -->
+  <div class="card">
+    <div class="card-head"><span class="kbd">D</span><h3>圆腹气泡 · 内部三点</h3></div>
+    <div class="card-note">「有内容在等你」的暗示最强，但<b>与未读角标语义重复</b>（角标才是「有未读」的唯一信号），可能误导。</div>
+    <div class="zoom">
+      <div class="big"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.3 9 9 0 0 1-3.6-.7L4 21l1.4-4.1A8 8 0 0 1 4 11.5 8.4 8.4 0 0 1 12.5 3 8.4 8.4 0 0 1 21 11.5Z"/><path d="M8.4 11.5h.01M12.5 11.5h.01M16.6 11.5h.01" stroke-width="2.4"/></svg></div>
+      <div class="cap">48px 放大<br>三点用 2.4 线宽做出实心感</div>
+    </div>
+    <div class="states">
+      <div class="half"><div class="tab" style="border-top:0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.3 9 9 0 0 1-3.6-.7L4 21l1.4-4.1A8 8 0 0 1 4 11.5 8.4 8.4 0 0 1 12.5 3 8.4 8.4 0 0 1 21 11.5Z"/><path d="M8.4 11.5h.01M12.5 11.5h.01M16.6 11.5h.01" stroke-width="2.4"/></svg><span class="lb">消息</span></div><div class="cap">未选中</div></div>
+      <div class="half"><div class="tab on" style="border-top:0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.3 9 9 0 0 1-3.6-.7L4 21l1.4-4.1A8 8 0 0 1 4 11.5 8.4 8.4 0 0 1 12.5 3 8.4 8.4 0 0 1 21 11.5Z"/><path d="M8.4 11.5h.01M12.5 11.5h.01M16.6 11.5h.01" stroke-width="2.4"/></svg><span class="lb">消息</span></div><div class="cap">选中</div></div>
+    </div>
+  </div>
+
+  <!-- E -->
+  <div class="card">
+    <div class="card-head"><span class="kbd">E</span><h3>圆腹气泡 · 右下尾（镜像）</h3></div>
+    <div class="card-note">与 A 同形，尾巴朝右下。观感更「向外发出」，但<b>与微信等常见 IM 方向相反</b>，老用户会觉得别扭。</div>
+    <div class="zoom">
+      <div class="big"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M3 11.5a8.4 8.4 0 0 0 8.5 8.3 9 9 0 0 0 3.6-.7L20 21l-1.4-4.1A8 8 0 0 0 20 11.5 8.4 8.4 0 0 0 11.5 3 8.4 8.4 0 0 0 3 11.5Z"/></svg></div>
+      <div class="cap">48px 放大<br>与 A 互为镜像</div>
+    </div>
+    <div class="states">
+      <div class="half"><div class="tab" style="border-top:0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M3 11.5a8.4 8.4 0 0 0 8.5 8.3 9 9 0 0 0 3.6-.7L20 21l-1.4-4.1A8 8 0 0 0 20 11.5 8.4 8.4 0 0 0 11.5 3 8.4 8.4 0 0 0 3 11.5Z"/></svg><span class="lb">消息</span></div><div class="cap">未选中</div></div>
+      <div class="half"><div class="tab on" style="border-top:0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M3 11.5a8.4 8.4 0 0 0 8.5 8.3 9 9 0 0 0 3.6-.7L20 21l-1.4-4.1A8 8 0 0 0 20 11.5 8.4 8.4 0 0 0 11.5 3 8.4 8.4 0 0 0 3 11.5Z"/></svg><span class="lb">消息</span></div><div class="cap">选中</div></div>
+    </div>
+  </div>
+
+  <!-- F -->
+  <div class="card">
+    <div class="card-head"><span class="kbd">F</span><h3>纯圆 + 单横线（极简无尾）</h3></div>
+    <div class="card-note">去掉尾巴，最干净、最耐看，与「鸭圈」的几何感最统一；代价是<b>需要靠「消息」二字兜住语义</b>，单独看图不易辨认。</div>
+    <div class="zoom">
+      <div class="big"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M20.6 12a8.6 8.6 0 1 1-17.2 0 8.6 8.6 0 0 1 17.2 0Z"/><path d="M8.4 12h7.2"/></svg></div>
+      <div class="cap">48px 放大<br>圆 8.6 + 横线居中</div>
+    </div>
+    <div class="states">
+      <div class="half"><div class="tab" style="border-top:0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M20.6 12a8.6 8.6 0 1 1-17.2 0 8.6 8.6 0 0 1 17.2 0Z"/><path d="M8.4 12h7.2"/></svg><span class="lb">消息</span></div><div class="cap">未选中</div></div>
+      <div class="half"><div class="tab on" style="border-top:0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M20.6 12a8.6 8.6 0 1 1-17.2 0 8.6 8.6 0 0 1 17.2 0Z"/><path d="M8.4 12h7.2"/></svg><span class="lb">消息</span></div><div class="cap">选中</div></div>
+    </div>
+  </div>
+
+  <!-- G -->
+  <div class="card">
+    <div class="card-head"><span class="kbd">G</span><h3>实心圆腹 + 白色三点（唯一实心方案）</h3></div>
+    <div class="card-note">选中态最跳，适合「消息」作为高频入口；但它是四个键里唯二的实心图形（另一个是发布鸭子盘），<b>会抢视觉重心</b>，且未选中态偏重。</div>
+    <div class="zoom">
+      <div class="big"><svg viewBox="0 0 24 24" fill="none"><path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.3 9 9 0 0 1-3.6-.7L4 21l1.4-4.1A8 8 0 0 1 4 11.5 8.4 8.4 0 0 1 12.5 3 8.4 8.4 0 0 1 21 11.5Z" fill="currentColor"/><path d="M8.4 11.5h.01M12.5 11.5h.01M16.6 11.5h.01" stroke="#FFFFFF" stroke-width="2.6" stroke-linecap="round"/></svg></div>
+      <div class="cap">48px 放大<br>气泡填充当前色，三点挖白</div>
+    </div>
+    <div class="states">
+      <div class="half"><div class="tab" style="border-top:0"><svg viewBox="0 0 24 24" fill="none"><path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.3 9 9 0 0 1-3.6-.7L4 21l1.4-4.1A8 8 0 0 1 4 11.5 8.4 8.4 0 0 1 12.5 3 8.4 8.4 0 0 1 21 11.5Z" fill="currentColor"/><path d="M8.4 11.5h.01M12.5 11.5h.01M16.6 11.5h.01" stroke="#FFFFFF" stroke-width="2.6" stroke-linecap="round"/></svg><span class="lb">消息</span></div><div class="cap">未选中</div></div>
+      <div class="half"><div class="tab on" style="border-top:0"><svg viewBox="0 0 24 24" fill="none"><path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.3 9 9 0 0 1-3.6-.7L4 21l1.4-4.1A8 8 0 0 1 4 11.5 8.4 8.4 0 0 1 12.5 3 8.4 8.4 0 0 1 21 11.5Z" fill="currentColor"/><path d="M8.4 11.5h.01M12.5 11.5h.01M16.6 11.5h.01" stroke="#FFFFFF" stroke-width="2.6" stroke-linecap="round"/></svg><span class="lb">消息</span></div><div class="cap">选中</div></div>
+    </div>
+  </div>
+
+</div>
+
+<p class="foot">
+  <b>我的建议</b>：B（圆角方气泡）识别度最高、最稳；若想与「丫圈」的几何感更统一，选 F；A 已实现但偏幼态。落地时只改
+  <code>lib/router/home_shell.dart</code> 里的 <code>_BubblePainter</code> 一条 path，并同步
+  <code>docs/design/ui/message-center.html</code> 的 §01 图示，无其它改动。<br>
+  <b>顺带说明</b>：真机上「消息」页报「响应信封缺少 int 型 code 字段」，是因为 prod 后端仍是旧镜像（<code>/conversations</code> 命中 Spring 默认 404），等后端发版后即可恢复，与图标无关。
+</p>
+
+</body>
+</html>

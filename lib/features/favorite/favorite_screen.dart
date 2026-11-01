@@ -5,7 +5,7 @@
 ///
 /// 卡片副标题 = 类目面包屑（契约 `category_path`）· 价格文案；设计稿原含「距离」，
 /// 但收藏列表无定位中心、契约亦无该字段，故**不显示距离**（口径见 DEC-31 记录）。
-/// 取消收藏按 PRD §8.3.2 提供「点星标」入口。
+/// 取消收藏按 PRD §8.3.2 提供「点星标」入口，点击后先弹二次确认再提交。
 library;
 
 import 'package:flutter/material.dart';
@@ -36,6 +36,16 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
   void initState() {
     super.initState();
     _controller.addListener(_onScroll);
+    // 收藏可能在其他页面（详情页）新增：复用已加载快照时标脏，
+    // 由 provider 重建走 build() 重拉，保证列表与「我的」页收藏总数一致。
+    // 必须放到首帧之后：initState 里改 provider 会触发
+    // 「markNeedsBuild() called during build」红屏。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (ref.read(favoritesProvider).hasValue) {
+        ref.invalidate(favoritesProvider);
+      }
+    });
   }
 
   @override
@@ -72,13 +82,34 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
     }
   }
 
-  /// 取消收藏（点星标）并提示失败。
+  /// 点星标取消收藏：先二次确认，确认后才提交并提示失败。
   ///
-  /// 参数：[postId] 帖子 ID。
+  /// 参数：[item] 待取消的收藏项（标题用于确认文案）。
   /// 返回：[Future<void>]。
-  Future<void> _remove(int postId) async {
+  Future<void> _remove(FavoriteItemDto item) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('取消收藏'),
+        content: Text('确定要取消收藏「${item.title}」吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(
+              '取消收藏',
+              style: TextStyle(color: Color(AppColors.errorText)),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
     try {
-      await ref.read(favoritesProvider.notifier).remove(postId);
+      await ref.read(favoritesProvider.notifier).remove(item.postId);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -154,7 +185,7 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
             return const ListEndRow();
           }
           final item = data.items[index];
-          return _FavoriteCard(item: item, onRemove: () => _remove(item.postId));
+          return _FavoriteCard(item: item, onRemove: () => _remove(item));
         },
       ),
     );

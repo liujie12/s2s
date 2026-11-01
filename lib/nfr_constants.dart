@@ -696,3 +696,45 @@ class NfrAi {
   /// 高敏类目在基础配额上的加量（次/日）。PRD §5.8「高敏类目额外 +10 次」。
   static const int quotaSensitiveBonus = 10;
 }
+
+/// 实时消息通道阈值（WebSocket + Redis 总线，2026-11-01）。
+///
+/// 双端口径：后端镜像为 `common/constants/RealtimeLimits.java`（Java 侧为主源），
+/// 连接上限、发送保护由后端执行；前端只镜像自己会判断的几项（端点、心跳、退避、
+/// 合并刷新窗口）。业务代码一律引用常量名，禁写死数字。
+///
+/// **改动纪律**：任一值变更须同步 `RealtimeLimits.java` 与部署手册实时通道章节。
+class NfrRealtime {
+  const NfrRealtime._();
+
+  /// 实时通道端点（相对 baseUrl；生产 baseUrl 不带 `/api/v1`，与既有接口一致）。
+  static const String endpointPath = '/ws';
+
+  /// 心跳发送间隔：须小于中间层（Caddy / 运营商 NAT）的空闲断连阈值。
+  static const Duration heartbeatInterval = Duration(seconds: 25);
+
+  /// 心跳判定超时：超过该时长未收到任何帧即视为假连接，主动重连。
+  static const Duration heartbeatTimeout = Duration(seconds: 60);
+
+  /// 重连退避基数（第 1 次重连等待）。
+  static const Duration reconnectBaseDelay = Duration(seconds: 1);
+
+  /// 重连退避上限（指数退避封顶）。
+  static const Duration reconnectMaxDelay = Duration(seconds: 30);
+
+  /// 重连抖动比例：在退避值上叠加 ±20%，避免服务端重启后所有客户端同时重连。
+  static const double reconnectJitterRatio = 0.2;
+
+  /// 事件合并刷新窗口：同一窗口内的多条事件只触发一次列表/未读刷新。
+  static const Duration refreshDebounce = Duration(milliseconds: 150);
+
+  /// 客户端单帧最大字符数（与后端一致）：心跳帧之外的超长帧不允许发出。
+  static const int maxClientFrameChars = 64;
+
+  /// 服务端关闭码：本端被同账号其它端的连接替换（不应自动重连，否则两端互踢）。
+  static const int closeSessionReplaced = 4002;
+
+  /// 服务端关闭码：实例连接数已满（退避后重连，可能落到其它实例）。
+  static const int closeInstanceFull = 4001;
+}
+

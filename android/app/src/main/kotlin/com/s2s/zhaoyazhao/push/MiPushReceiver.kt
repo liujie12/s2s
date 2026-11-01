@@ -1,6 +1,7 @@
 package com.s2s.zhaoyazhao.push
 
 import android.content.Context
+import com.s2s.zhaoyazhao.badge.BadgeMethodHandler
 import com.xiaomi.mipush.sdk.ErrorCode
 import com.xiaomi.mipush.sdk.MiPushClient
 import com.xiaomi.mipush.sdk.MiPushCommandMessage
@@ -28,6 +29,20 @@ class MiPushReceiver : PushMessageReceiver() {
         val regId = message.commandArguments?.firstOrNull() ?: return
         if (regId.isBlank()) return
         PushMethodHandler.saveToken(context, regId)
+    }
+
+    /**
+     * 通知栏消息到达回调：把桌面角标点亮为「有未读」。
+     *
+     * App 不在前台时 Dart 层不运行、拿不到精确未读数，这里只置红点（值 1）；
+     * 用户回到前台后由 Dart 侧按 `unread-summary` 的精确值覆盖或清零。
+     * 角标失败不影响通知本身（厂商接口在个别 ROM 上会抛异常，内部已降级）。
+     *
+     * @param context 应用上下文。
+     * @param message 到达的通知消息（本回调不使用其内容）。
+     */
+    override fun onNotificationMessageArrived(context: Context, message: MiPushMessage) {
+        runCatching { BadgeMethodHandler.applyUnreadDot(context) }
     }
 
     /**

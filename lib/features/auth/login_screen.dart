@@ -242,6 +242,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     ref.read(authSessionProvider.notifier).signIn(session);
     // 登录成功后补报一次推送 token（详设 §10.2.2）；未配置厂商凭据时静默跳过。
     unawaited(ref.read(pushServiceProvider).registerIfAvailable());
+    // 通知权限前移到登录成功（2026-11-01 裁定）：原时机「发布成功后」意味着
+    // 从未发过帖的用户永远不会被询问，后台提醒对他们是静默失效的。
+    unawaited(ref.read(pushServiceProvider).requestPermission());
     // 用 pop 而非 go(home)：登录多半是从收藏/联系按钮弹上来的，
     // 跳首页会让用户丢失原本正在看的那条信息，还得自己找回去。
     final router = GoRouter.of(context);

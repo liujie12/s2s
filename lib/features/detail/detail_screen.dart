@@ -42,6 +42,7 @@ import '../favorite/favorite_state.dart';
 import '../message/conversation_entry.dart';
 import '../message/message_dto.dart';
 import '../message/message_list_provider.dart';
+import '../message/widgets/message_icon.dart';
 import '../post/post_repository.dart';
 import 'media_carousel.dart';
 import 'post_detail_provider.dart';
@@ -898,54 +899,69 @@ class _ContactBar extends StatelessWidget {
           // 用 Consumer 取 ref 供两个入口的点击回调使用：本组件本身是无状态的
           // 展示件，会话态由详情页首帧后订阅并传入（避免 build 期读 Provider）。
           child: Consumer(
-            builder: (context, ref, _) => Row(
-            children: [
-              Expanded(
-                child: _ChatEntryButton(
-                  unread: conversation?.unread ?? false,
-                  label: conversation == null ? '发消息' : '进入会话',
-                  onPressed: enabled && current != null
-                      ? () => enterConversation(
-                            context,
-                            ref,
-                            postId: current.listing.id,
-                          )
-                      : null,
-                ),
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              Expanded(
-                child: FilledButton.icon(
-                  onPressed: enabled && current != null
-                      ? () => applyRequired
-                          ? enterConversation(
-                              context,
-                              ref,
-                              postId: current.listing.id,
-                              apply: true,
-                            )
-                          : context.push('/contact/${current.listing.id}')
-                      : null,
-                  icon: Icon(icon, size: 18),
-                  label: Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: AppTypeScale.small.size,
-                      fontWeight: FontWeight.w600,
+            builder: (context, ref, _) {
+              // 自己的帖子不渲染两个入口：服务端对「与自己开会话」只回
+              // 40001「参数缺失或非法」，对「申请自己的联系方式」同样无意义。
+              // 与其把一条技术错误弹给用户，不如在入口处直接换成静态提示。
+              final String? userId =
+                  ref.watch(authSessionProvider.select((s) => s?.userId));
+              final bool isOwner =
+                  userId != null && current?.publisher.id == userId;
+              if (isOwner) {
+                return const OutlinedButton(
+                  onPressed: null,
+                  child: Text('这是你的发布'),
+                );
+              }
+              return Row(
+                children: [
+                  Expanded(
+                    child: _ChatEntryButton(
+                      unread: conversation?.unread ?? false,
+                      label: conversation == null ? '发消息' : '进入会话',
+                      onPressed: enabled && current != null
+                          ? () => enterConversation(
+                                context,
+                                ref,
+                                postId: current.listing.id,
+                              )
+                          : null,
                     ),
                   ),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: Color(AppColors.primary),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(AppRadius.full),
+                  const SizedBox(width: AppSpacing.sm),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: enabled && current != null
+                          ? () => applyRequired
+                              ? enterConversation(
+                                  context,
+                                  ref,
+                                  postId: current.listing.id,
+                                  apply: true,
+                                )
+                              : context.push('/contact/${current.listing.id}')
+                          : null,
+                      icon: Icon(icon, size: 18),
+                      label: Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: AppTypeScale.small.size,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: Color(AppColors.primary),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(AppRadius.full),
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              ),
-            ],
-            ),
+                ],
+              );
+            },
           ),
         ),
       ),
@@ -980,7 +996,7 @@ class _ChatEntryButton extends StatelessWidget {
       icon: Stack(
         clipBehavior: Clip.none,
         children: [
-          const Icon(Icons.chat_bubble_outline, size: 18),
+          MessageBubbleIcon(size: 18, color: Color(AppColors.primary)),
           if (unread)
             Positioned(
               top: -2,

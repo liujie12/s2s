@@ -1,15 +1,19 @@
 /// 底部四 Tab 导航壳（PRD §10.2）。
 ///
-/// 结构依据 PRD §10.2（2026-10-31 由三 Tab 改为四 Tab）：
-/// `[丫圈] [消息] [发布] [我的]`，四项等分；
+/// 结构依据设计稿 `docs/design/ui/message-center.html` §01（2026-11-01 按真机
+/// 走查裁定回国稿顺序）：
+/// `[丫圈] [发布] [消息] [我的]`，四项等分，「发布」固定在第 2 格；
 /// - 持久分支三个：丫圈（地图/列表）、消息（会话列表/会话详情）、我的（profile）；
 /// - 「发布」仍是**点击后 push 全屏发布页**的键，不占分支（点完回到原 Tab，
 ///   R12 / R34）。历史上 code.js 全文件没有 `bottomTab('发布')`，本次沿用
-///   「复用同一排 44px 命中区、onTap 走 push」的既有做法。
+///   「复用同一排 44px 命中区、onTap 走 push」的既有做法；
+/// - 四个键的图标同尺寸（24dp）、未选中同色（`textSecondary`）：发布键不再
+///   放大或单独着主色，否则在四项等分的排布下会被读成「常驻选中」。
 ///
-/// 三键图标一律矢量（PRD §10.2「不得用 emoji」）：`map` / 对话气泡 /
-/// 鸭子微缩 / `person`。鸭子几何真源是
-/// prototype-figma/assets/duck-symbol-mini.svg，见 [_DuckMiniPainter] 文件头说明。
+/// 四键图标一律矢量（PRD §10.2「不得用 emoji」）：`map` / 鸭子微缩 /
+/// 线性对话气泡 / `person`。鸭子几何真源是
+/// prototype-figma/assets/duck-symbol-mini.svg，见 [_DuckMiniPainter] 文件头说明；
+/// 气泡几何取自设计稿 §01 的原始 path，见 [_BubblePainter]。
 ///
 /// **未读唯一来源**（KTD14）：Tab 数字角标读 [unreadSummaryProvider]，不在本壳
 /// 或任何页面做二次求和；0 时不渲染角标，超过 [NfrChat.unreadBadgeMax] 显示
@@ -26,6 +30,7 @@ import '../core/badge/app_badge.dart';
 import '../design_tokens.dart';
 import '../features/message/conversation_entry.dart';
 import '../features/message/message_list_provider.dart';
+import '../features/message/widgets/message_icon.dart';
 import '../features/notify/push_service.dart';
 import '../nfr_constants.dart';
 import 'app_router.dart';
@@ -205,14 +210,14 @@ class HomeNavBar extends StatelessWidget {
                 selected: selectedIndex == HomeBranch.discovery,
                 onTap: () => onSelectBranch(HomeBranch.discovery),
               ),
+              _PublishTab(onTap: onPublish),
               _TabItem(
-                icon: Icons.chat_bubble,
                 label: '消息',
+                iconBuilder: (color) => MessageBubbleIcon(color: color),
                 selected: selectedIndex == HomeBranch.messages,
                 badgeLabel: unreadBadgeLabel(unreadTotal),
                 onTap: () => onSelectBranch(HomeBranch.messages),
               ),
-              _PublishTab(onTap: onPublish),
               _TabItem(
                 icon: Icons.person,
                 label: '我的',
@@ -234,14 +239,20 @@ class HomeNavBar extends StatelessWidget {
 /// [badgeLabel] 非空时在图标右上角渲染数字角标（R9）。
 class _TabItem extends StatelessWidget {
   const _TabItem({
-    required this.icon,
     required this.label,
     required this.selected,
     required this.onTap,
+    this.icon,
+    this.iconBuilder,
     this.badgeLabel,
-  });
+  }) : assert(icon != null || iconBuilder != null, '图标二选一：icon 或 iconBuilder');
 
-  final IconData icon;
+  /// Material 矢量图标（丫圈 / 我的）。
+  final IconData? icon;
+
+  /// 自绘图标构造器（消息气泡）：入参为当前态颜色（选中主色 / 未选中次要文字色）。
+  final Widget Function(Color color)? iconBuilder;
+
   final String label;
   final bool selected;
   final VoidCallback onTap;
@@ -255,6 +266,8 @@ class _TabItem extends StatelessWidget {
         ? const Color(AppColors.primary)
         : const Color(AppColors.textSecondary);
     final String? badge = badgeLabel;
+    final Widget glyph =
+        iconBuilder?.call(color) ?? Icon(icon, size: 24, color: color);
     return Expanded(
       child: InkWell(
         onTap: onTap,
@@ -266,7 +279,7 @@ class _TabItem extends StatelessWidget {
               child: Stack(
                 clipBehavior: Clip.none,
                 children: [
-                  Icon(icon, size: 24, color: color),
+                  glyph,
                   if (badge != null && badge.isNotEmpty)
                     Positioned(top: -6, left: 14, child: _TabBadge(label: badge)),
                 ],
@@ -320,39 +333,37 @@ class _TabBadge extends StatelessWidget {
   }
 }
 
+
 /// 「发布」中键。
 ///
-/// 鸭子微缩图标 + 文字（PRD §10.2「胶囊大按钮 + 鸭子微缩图标」）。
-/// **图标放大到 32dp（Tab 图标为 24dp），配色回品牌主色**（2026-10-27 用户
-/// 裁定）：发布要醒目，但曾因与选中 Tab 同色同尺寸被误读为「选中」；改过
-/// 次要色又不够醒目。最终靠**尺寸差**（32 vs 24）区分「操作入口」与
-/// 「选中 Tab」，颜色仍守品牌主色。PRD §10.2 口径据此修订。
+/// 鸭子微缩图标 + 文字（PRD §10.2）。**尺寸与配色与其它 Tab 完全一致**
+/// （2026-11-01 真机走查裁定）：四项等分后排布更紧，32dp 主色鸭子盘会被读成
+/// 「常驻选中」，与「发布不是分支、点完即离开」的语义冲突。故回归 24dp +
+/// 未选中色 `textSecondary`，靠位置（第 2 格）与文案承担识别，不再靠放大。
 class _PublishTab extends StatelessWidget {
   const _PublishTab({required this.onTap});
 
-  /// 鸭子盘尺寸：比 Tab 图标大一档，作为「操作入口」的视觉信号。
-  static const double _duckSize = 32;
+  /// 鸭子盘尺寸：与其它 Tab 图标同一档，不再放大。
+  static const double _duckSize = 24;
 
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
+    const Color color = Color(AppColors.textSecondary);
     return Expanded(
       child: InkWell(
         onTap: onTap,
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const _DuckMiniIcon(
-              size: _duckSize,
-              block: Color(AppColors.primary),
-            ),
+            const _DuckMiniIcon(size: _duckSize, block: color),
             const SizedBox(height: AppSpacing.xs),
             Text(
               '发布',
               style: TextStyle(
                 fontSize: AppTypeScale.caption.size,
-                color: const Color(AppColors.primary),
+                color: color,
               ),
             ),
           ],

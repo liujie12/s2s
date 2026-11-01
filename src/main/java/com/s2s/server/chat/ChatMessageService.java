@@ -12,6 +12,7 @@ import com.s2s.server.common.constants.ChatLimits;
 import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
 import com.s2s.server.common.moderation.SensitiveWordChecker;
+import com.s2s.server.realtime.RealtimePublisher;
 import java.time.ZoneOffset;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,6 +41,7 @@ public class ChatMessageService {
     private final SensitiveWordChecker sensitiveWordChecker;
     private final ChatMessageWriter messageWriter;
     private final ChatPushService chatPushService;
+    private final RealtimePublisher realtimePublisher;
 
     /**
      * 构造消息发送服务。
@@ -51,6 +53,7 @@ public class ChatMessageService {
      * @param sensitiveWordChecker 敏感词检测抽象（命中抛 {@code 40901}）
      * @param messageWriter        消息写入唯一落点（取号、摘要、首条联系事件）
      * @param chatPushService      新消息推送（未读期间只推首条，只推不落通知）
+     * @param realtimePublisher    实时通道事件（事务提交后写 Redis 总线）
      */
     public ChatMessageService(ChatService chatService,
             ConversationMapper conversationMapper,
@@ -58,7 +61,8 @@ public class ChatMessageService {
             MessageMapper messageMapper,
             SensitiveWordChecker sensitiveWordChecker,
             ChatMessageWriter messageWriter,
-            ChatPushService chatPushService) {
+            ChatPushService chatPushService,
+            RealtimePublisher realtimePublisher) {
         this.chatService = chatService;
         this.conversationMapper = conversationMapper;
         this.memberMapper = memberMapper;
@@ -66,6 +70,7 @@ public class ChatMessageService {
         this.sensitiveWordChecker = sensitiveWordChecker;
         this.messageWriter = messageWriter;
         this.chatPushService = chatPushService;
+        this.realtimePublisher = realtimePublisher;
     }
 
     /**
@@ -105,6 +110,10 @@ public class ChatMessageService {
                 ? conversation.getOwnerId()
                 : conversation.getInitiatorId();
         chatPushService.notifyNewMessage(receiverId, conversationId);
+
+        // 实时通道：事务内只登记事件，提交后才写 Redis 总线（回滚不会误推）。
+        // 载荷只含会话 ID 与序号，正文由客户端按 seq 增量拉取。
+        realtimePublisher.publishMessageNew(receiverId, conversationId, message.getSeq(), userId);
 
         return new MessageSendResponse(message.getId(), conversationId, message.getSeq(),
                 message.getCreatedAt().toInstant(ZoneOffset.UTC));

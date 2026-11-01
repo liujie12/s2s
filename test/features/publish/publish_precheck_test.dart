@@ -6,7 +6,7 @@
 ///     （`POST /posts` 为 B5，当前占位跳转是既定行为）；
 ///   - 阻断：底部弹层一次性列全 blocks（message 逐字取服务端值），
 ///     40302/40304 带动作入口；
-///   - 链路失败：SnackBar 按 §11.4 唯一格式，不跳完成页。
+///   - 链路失败：SnackBar 按 §11.4 只回显 message（不含 request_id），不跳完成页。
 ///
 /// 走真 GoRouter（成功跳转是被测行为，MaterialApp 不带路由无法断言）；
 /// category/post 两仓库均用共享 fake（support/fake_repositories.dart，
@@ -169,7 +169,7 @@ void main() {
     await tapSubmit(tester);
 
     expect(
-      find.text('网络连接失败，请检查网络后重试（req_abc123）'),
+      find.text('网络连接失败，请检查网络后重试'),
       findsOneWidget,
     );
     expect(find.text('成功页占位'), findsNothing);
@@ -208,7 +208,7 @@ void main() {
     await tapSubmit(tester);
 
     expect(
-      find.text('网络连接失败，请检查网络后重试（req_abc123）'),
+      find.text('网络连接失败，请检查网络后重试'),
       findsOneWidget,
     );
 
@@ -273,7 +273,7 @@ void main() {
       await pumpReady(tester, submittable());
       await tapSubmit(tester);
 
-      expect(find.text('参数缺失或类型不符（req_post_1）'), findsOneWidget);
+      expect(find.text('参数缺失或类型不符'), findsOneWidget);
       expect(find.text('发布前需处理以下问题'), findsNothing);
       expect(find.text('成功页占位'), findsNothing);
     });

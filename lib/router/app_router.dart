@@ -71,6 +71,13 @@ class AppRoutes {
   /// 会话详情（挂在「消息」分支下，切 Tab 不丢会话栈）。
   static const String messageDetail = '/messages/:id';
 
+  /// 会话详情（从详情页 / 中转页进入的**顶层**全屏页，不带底部导航）。
+  ///
+  /// 与 [messageDetail] 是同一个页面的两条路由：设计稿 §03 的会话详情没有底部
+  /// 导航；且从顶层路由（详情页）push 一条 shell 分支路径会构造出第二套 shell，
+  /// 真机表现为「有底栏、内容全白」。故入口侧走顶层路由，Tab 侧仍留在分支内。
+  static const String chatDetail = '/chat/:id';
+
   // ── 首页内视图（不占底部 Tab，与地图共享筛选态，见 PRD §10.1）──
   static const String list = '/list';
 
@@ -272,6 +279,17 @@ final List<RouteBase> _routes = [
     // 解析口径同 detail 路由（详细设计 §10.4.3）。
     builder: (context, state) => ContactScreen(
       listingId: int.tryParse(state.pathParameters['id'] ?? '') ?? -1,
+    ),
+  ),
+  GoRoute(
+    path: AppRoutes.chatDetail,
+    // 从详情页 / 中转页进入会话（R2 / R34）：顶层全屏，设计与「不带底部导航」
+    // 对齐；extra 口径与 [AppRoutes.messageDetail] 相同（可空，只缺标题上下文）。
+    builder: (context, state) => ConversationScreen(
+      conversationId: int.tryParse(state.pathParameters['id'] ?? '') ?? -1,
+      peer: state.extra is ConversationDto
+          ? state.extra! as ConversationDto
+          : null,
     ),
   ),
   GoRoute(

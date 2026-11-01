@@ -107,6 +107,22 @@ class ConversationsNotifier extends Notifier<AsyncValue<ConversationsData>> {
     await _loadFirstPage();
   }
 
+  /// 静默重拉第一页：实时事件触发的后台刷新。
+  ///
+  /// 与 [refresh] 的区别是**不进入 loading 态**——实时消息到达时列表若闪一次骨架屏，
+  /// 比晚 100ms 更新更伤体验。失败保留旧值（实时是增益信息，不把列表拖成错误态）。
+  ///
+  /// 参数：无。
+  /// 返回：[Future<void>]。
+  Future<void> refreshSilently() async {
+    if (!ref.read(isLoggedInProvider)) return;
+    try {
+      await _fetch(page: 1);
+    } catch (_) {
+      // 保留上一屏数据，等待下一次事件或用户手动刷新
+    }
+  }
+
   /// 触底加载下一页。
   ///
   /// 参数：无。

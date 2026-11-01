@@ -24,6 +24,7 @@ import com.s2s.server.common.moderation.SensitiveWordChecker;
 import com.s2s.server.contact.ContactChannel;
 import com.s2s.server.contact.entity.ContactEventEntity;
 import com.s2s.server.contact.mapper.ContactEventMapper;
+import com.s2s.server.realtime.RealtimePublisher;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -64,6 +65,7 @@ class ChatMessageServiceTest {
     private final ChatMessageWriter messageWriter =
             new ChatMessageWriter(conversationMapper, messageMapper, contactEventMapper);
     private final ChatPushService chatPushService = mock(ChatPushService.class);
+    private final RealtimePublisher realtimePublisher = mock(RealtimePublisher.class);
 
     private ChatMessageService messageService;
 
@@ -73,7 +75,8 @@ class ChatMessageServiceTest {
     @BeforeEach
     void setUp() {
         messageService = new ChatMessageService(chatService, conversationMapper, memberMapper,
-                messageMapper, sensitiveWordChecker, messageWriter, chatPushService);
+                messageMapper, sensitiveWordChecker, messageWriter, chatPushService,
+                realtimePublisher);
         when(memberMapper.selectMember(CONVERSATION_ID, USER_ID))
                 .thenReturn(new ConversationMemberEntity());
         when(messageMapper.countUnrepliedText(CONVERSATION_ID, USER_ID)).thenReturn(0);
@@ -113,6 +116,8 @@ class ChatMessageServiceTest {
         verify(contactEventMapper, never()).insert(any(ContactEventEntity.class));
         // 推送只发给对方，且不在此处落站内通知（KTD6）
         verify(chatPushService).notifyNewMessage(OTHER_ID, CONVERSATION_ID);
+        // 实时事件同样只指向对方，游标为本次落库的 seq
+        verify(realtimePublisher).publishMessageNew(OTHER_ID, CONVERSATION_ID, 6, USER_ID);
     }
 
     /**

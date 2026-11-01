@@ -50,7 +50,7 @@ class BadgeMethodHandler(private val context: Context) : MethodChannel.MethodCal
      * @param count 未读总数（0＝清除；上限由 Dart 侧折算）。
      * @return 回执映射：`applied` 是否生效，`degraded` 降级原因（null＝数字角标）。
      */
-    private fun apply(count: Int): Map<String, Any?> {
+    internal fun apply(count: Int): Map<String, Any?> {
         if (count <= 0) {
             broadcastBadge(0)
             return mapOf(KEY_APPLIED to true, KEY_DEGRADED to null)
@@ -195,6 +195,19 @@ class BadgeMethodHandler(private val context: Context) : MethodChannel.MethodCal
 
         /** 降级红点的值（只表示「有未读」，不带条数）。 */
         private const val DOT_VALUE = 1
+
+        /**
+         * 后台收到通知时设置「有未读」角标（红点语义，值 1）。
+         *
+         * 调用方是小米推送的 `onNotificationMessageArrived`：此时 Dart 侧不在运行，
+         * 拿不到精确未读数，只点亮红点；用户回到前台后由 Dart 侧用
+         * `unread-summary` 的精确值覆盖（或清零）。
+         *
+         * @param context 任意上下文（推送回调给的是应用级 Context）。
+         */
+        fun applyUnreadDot(context: Context) {
+            BadgeMethodHandler(context).apply(DOT_VALUE)
+        }
 
         /** 小米启动器包名。 */
         private const val PKG_XIAOMI = "com.miui.home"

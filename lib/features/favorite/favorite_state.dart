@@ -9,6 +9,7 @@ library;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../auth/auth_repository.dart';
+import '../profile/profile_provider.dart';
 import 'favorite_repository.dart';
 
 /// 收藏态键：当前会话 + 帖子 ID（KTD2）。
@@ -84,6 +85,8 @@ class FavoriteStateNotifier extends Notifier<Map<FavoriteKey, bool>> {
     final key = _keyFor(postId);
     if (key == null) return;
     state = {...state, key: favorited};
+    // 收藏总数变了：「我的」页角标重拉，避免与收藏页列表数量不一致。
+    ref.invalidate(myPageBadgesProvider);
   }
 
   /// 乐观写入并提交服务端，失败回滚并把异常抛给页面（R4）。
@@ -108,6 +111,8 @@ class FavoriteStateNotifier extends Notifier<Map<FavoriteKey, bool>> {
       if (_keyFor(postId) == key) {
         state = {...state, key: result.favorited};
       }
+      // 收藏/取消成功：「我的」页角标重拉，避免与收藏页列表数量不一致。
+      ref.invalidate(myPageBadgesProvider);
       return result.favorited;
     } catch (_) {
       if (_keyFor(postId) == key) {

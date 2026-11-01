@@ -46,7 +46,9 @@ extension FavoriteTabApi on FavoriteTab {
 /// 当前收藏页签状态。
 class FavoriteTabNotifier extends Notifier<FavoriteTab> {
   @override
-  FavoriteTab build() => FavoriteTab.resource;
+  // 默认「全部」：与「我的」页角标口径（`GET /favorites` 的 all 总数）一致，
+  // 避免两页收藏数量对不上（默认落在「资源」会少算「需求」类收藏）。
+  FavoriteTab build() => FavoriteTab.all;
 
   /// 切换页签（相同不写状态）。
   ///

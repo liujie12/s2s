@@ -21,6 +21,7 @@ import '../notify/push_service.dart';
 import 'message_dto.dart';
 import 'message_list_provider.dart';
 import 'message_permission.dart';
+import 'widgets/message_icon.dart';
 
 /// 消息 Tab 首页。
 class MessageListScreen extends ConsumerStatefulWidget {
@@ -680,8 +681,7 @@ class _EmptyView extends StatelessWidget {
                   width: 1.5,
                 ),
               ),
-              child: Icon(
-                Icons.chat_bubble_outline,
+              child: MessageBubbleIcon(
                 size: 24,
                 color: Color(AppColors.primary),
               ),

@@ -8,17 +8,21 @@
 ///   - 举报入口只针对会话对方，帖子取会话锚点（R29）。
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/network/api_error_code.dart';
 import '../../core/network/api_exception.dart';
+import '../../core/realtime/realtime_client.dart';
 import '../../core/ui/list_states.dart';
 import '../../design_tokens.dart';
 import '../contact/report_reason.dart';
 import 'conversation_provider.dart';
 import 'message_dto.dart';
+import 'realtime_wiring.dart';
 import 'widgets/apply_card.dart';
 import 'widgets/composer.dart';
 import 'widgets/contact_card.dart';
@@ -82,6 +86,20 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // 实时事件：只有本会话的新消息才触发增量拉取（不整页重载）。
+    // 列表与未读的合并刷新由 realtime_wiring 统一负责，页面不重复拉。
+    ref.listen<AsyncValue<RealtimeMessageEvent>>(realtimeEventsProvider,
+        (previous, next) {
+      final event = next.asData?.value;
+      if (event == null || event.conversationId != widget.conversationId) {
+        return;
+      }
+      unawaited(
+        ref
+            .read(conversationProvider(widget.conversationId).notifier)
+            .refreshIncremental(),
+      );
+    });
     final peer = widget.peer;
     final conversations = ref.watch(
       conversationProvider(widget.conversationId),

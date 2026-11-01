@@ -59,6 +59,13 @@
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
+        <!-- WebSocket：会话消息实时通道（/ws）。原生 handler，不引 STOMP；
+             跨实例投递走 Redis Pub/Sub，连接层随之无状态、可水平扩容。 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-websocket</artifactId>
+        </dependency>
+
         <!-- Bean Validation：详设 §5.3/§5.4 输入校验（契约字段约束的唯一执行层） -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
