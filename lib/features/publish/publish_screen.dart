@@ -82,6 +82,9 @@ import 'publish_template_provider.dart';
 /// 会让验收误以为地名解析已接通。
 const String _currentLocationLabel = '已使用当前位置';
 
+/// 草稿恢复提示的停留时长（2026-11-01 用户反馈：默认 4s 太长，盖住首屏字段）。
+const Duration _kDraftRestoredSnackDuration = Duration(milliseconds: 1500);
+
 /// 发布页。
 class PublishScreen extends ConsumerStatefulWidget {
   /// 构造发布页。
@@ -224,7 +227,10 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
       _contactCtrl.text = snapshot.form.contact;
     });
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('已恢复上次未发布的草稿')),
+      const SnackBar(
+        content: Text('已恢复上次未发布的草稿'),
+        duration: _kDraftRestoredSnackDuration,
+      ),
     );
   }
 
