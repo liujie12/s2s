@@ -295,6 +295,18 @@ class ConversationNotifier extends AsyncNotifier<ConversationData> {
     }
   }
 
+  /// 应用对方已读水位（实时事件触发）。
+  ///
+  /// 只增不减：事件乱序或重复到达时，旧水位不会把「已读」退回「未读」。
+  ///
+  /// 参数：[seq] 对方已读到的消息序号。
+  /// 返回：void；无数据或水位未推进时为空操作。
+  void applyPeerReadSeq(int seq) {
+    final current = state.asData?.value;
+    if (current == null || seq <= current.peerLastReadSeq) return;
+    _update((data) => data.copyWith(peerLastReadSeq: seq));
+  }
+
   /// 向更早翻一页历史。
   ///
   /// 参数：无。

@@ -50,7 +50,10 @@ public class RealtimeWebSocketHandler extends TextWebSocketHandler {
             closeQuietly(session, RealtimeLimits.CLOSE_PROTOCOL_ERROR);
             return;
         }
-        registry.register(userId, session);
+        if (registry.register(userId, session)) {
+            // 每次建连留一条 INFO：排查「客户端是否真的连上」时，这是最直接的证据
+            log.info("实时连接建立 user={} 本机连接数={}", userId, registry.connectionCount());
+        }
     }
 
     /**

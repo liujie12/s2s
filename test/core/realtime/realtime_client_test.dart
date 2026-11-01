@@ -40,6 +40,20 @@ void main() {
       expect(event, isNotNull);
       expect(event!.conversationId, 9);
       expect(event.seq, 12);
+      expect(event.isMessageNew, isTrue);
+    });
+
+    test('已读事件解析出会话与水位', () {
+      final event = realtimeMessageEventOf(<String, Object?>{
+        'type': 'conversation.read',
+        'conversationId': 9,
+        'readSeq': 12,
+      });
+
+      expect(event, isNotNull);
+      expect(event!.conversationId, 9);
+      expect(event.readSeq, 12);
+      expect(event.isConversationRead, isTrue);
     });
 
     test('未知类型或字段缺失返回 null', () {

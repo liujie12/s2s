@@ -26,6 +26,9 @@ import '../../nfr_constants.dart';
 /// 新消息事件类型（与后端 `RealtimeLimits.EVENT_MESSAGE_NEW` 同值）。
 const String realtimeEventMessageNew = 'message.new';
 
+/// 对方已读事件类型（与后端 `RealtimeLimits.EVENT_CONVERSATION_READ` 同值）。
+const String realtimeEventConversationRead = 'conversation.read';
+
 /// 建立 WebSocket 的连接器（测试可注入假实现）。
 typedef RealtimeConnector = Future<WebSocket> Function(
   Uri uri,
@@ -38,21 +41,32 @@ typedef RealtimeConnector = Future<WebSocket> Function(
 class RealtimeMessageEvent {
   /// 构造事件。
   ///
-  /// 参数：[type] 事件类型；[conversationId] 会话 ID；[seq] 新消息序号。
+  /// 参数：[type] 事件类型；[conversationId] 会话 ID；[seq] 新消息序号；
+  ///   [readSeq] 对方已读水位。
   const RealtimeMessageEvent({
     required this.type,
     required this.conversationId,
-    required this.seq,
+    this.seq,
+    this.readSeq,
   });
 
-  /// 事件类型（当前只有 [realtimeEventMessageNew]）。
+  /// 事件类型（[realtimeEventMessageNew] / [realtimeEventConversationRead]）。
   final String type;
 
   /// 会话 ID。
   final int conversationId;
 
-  /// 新消息序号（增量拉取游标）。
-  final int seq;
+  /// 新消息序号（仅新消息事件有值）。
+  final int? seq;
+
+  /// 对方已读水位（仅已读事件有值）。
+  final int? readSeq;
+
+  /// 是否新消息事件。
+  bool get isMessageNew => type == realtimeEventMessageNew;
+
+  /// 是否已读事件。
+  bool get isConversationRead => type == realtimeEventConversationRead;
 }
 
 /// 把 baseUrl 推导成实时通道地址。
@@ -83,15 +97,28 @@ Uri realtimeUriFor(String baseUrl) {
 /// 返回：[RealtimeMessageEvent?]。
 RealtimeMessageEvent? realtimeMessageEventOf(Object? decoded) {
   if (decoded is! Map) return null;
-  if (decoded['type']?.toString() != realtimeEventMessageNew) return null;
+  final type = decoded['type']?.toString();
   final conversationId = _asIntValue(decoded['conversationId']);
-  final seq = _asIntValue(decoded['seq']);
-  if (conversationId == null || seq == null) return null;
-  return RealtimeMessageEvent(
-    type: realtimeEventMessageNew,
-    conversationId: conversationId,
-    seq: seq,
-  );
+  if (type == null || conversationId == null) return null;
+  if (type == realtimeEventMessageNew) {
+    final seq = _asIntValue(decoded['seq']);
+    if (seq == null) return null;
+    return RealtimeMessageEvent(
+      type: type,
+      conversationId: conversationId,
+      seq: seq,
+    );
+  }
+  if (type == realtimeEventConversationRead) {
+    final readSeq = _asIntValue(decoded['readSeq']);
+    if (readSeq == null) return null;
+    return RealtimeMessageEvent(
+      type: type,
+      conversationId: conversationId,
+      readSeq: readSeq,
+    );
+  }
+  return null;
 }
 
 /// 计算第 [attempt] 次重连的等待时长（指数退避 + 抖动，封顶

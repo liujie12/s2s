@@ -31,6 +31,9 @@ public final class RealtimeLimits {
     /** 事件类型：新消息（客户端据此增量拉取，不直接携带正文）。 */
     public static final String EVENT_MESSAGE_NEW = "message.new";
 
+    /** 事件类型：对方已读水位推进（发送方据此把气泡从「未读」改为「已读」）。 */
+    public static final String EVENT_CONVERSATION_READ = "conversation.read";
+
     // --- 连接上限 -----------------------------------------------------------------
 
     /** 单用户最大同时连接数（多端）：超出时踢掉最早建立的连接，不拒绝新端。 */

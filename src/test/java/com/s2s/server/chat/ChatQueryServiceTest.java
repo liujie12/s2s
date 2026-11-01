@@ -24,6 +24,7 @@ import com.s2s.server.common.constants.ChatLimits;
 import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
 import com.s2s.server.post.MediaService;
+import com.s2s.server.realtime.RealtimePublisher;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -56,6 +57,7 @@ class ChatQueryServiceTest {
     private final ConversationMemberMapper memberMapper = mock(ConversationMemberMapper.class);
     private final MessageMapper messageMapper = mock(MessageMapper.class);
     private final MediaService mediaService = mock(MediaService.class);
+    private final RealtimePublisher realtimePublisher = mock(RealtimePublisher.class);
 
     private ChatQueryService queryService;
 
@@ -65,7 +67,8 @@ class ChatQueryServiceTest {
     @BeforeEach
     void setUp() {
         queryService = new ChatQueryService(
-                conversationMapper, memberMapper, messageMapper, mediaService);
+                conversationMapper, memberMapper, messageMapper, mediaService,
+                realtimePublisher);
         when(memberMapper.selectMember(CONVERSATION_ID, USER_ID))
                 .thenReturn(new ConversationMemberEntity());
     }

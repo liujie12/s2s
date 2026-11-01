@@ -51,12 +51,15 @@ public class RealtimeSubscriber implements MessageListener {
     public void onMessage(Message message, byte[] pattern) {
         try {
             RealtimeEvent event = objectMapper.readValue(message.getBody(), RealtimeEvent.class);
+            if (event.userId() == null) {
+                return;
+            }
             if (!RealtimeLimits.EVENT_MESSAGE_NEW.equals(event.type())
-                    || event.userId() == null) {
+                    && !RealtimeLimits.EVENT_CONVERSATION_READ.equals(event.type())) {
                 return;
             }
             RealtimeClientPayload payload = new RealtimeClientPayload(event.type(),
-                    event.conversationId(), event.seq());
+                    event.conversationId(), event.seq(), event.readSeq());
             registry.sendToUser(event.userId(), objectMapper.writeValueAsString(payload));
         } catch (Exception e) {
             // 单条脏数据不能打断订阅：记 WARN 后继续消费下一条

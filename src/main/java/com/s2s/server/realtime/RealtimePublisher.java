@@ -63,7 +63,21 @@ public class RealtimePublisher {
      */
     public void publishMessageNew(Long receiverId, Long conversationId, int seq, Long senderId) {
         eventPublisher.publishEvent(new RealtimeEvent(RealtimeLimits.EVENT_MESSAGE_NEW,
-                receiverId, conversationId, seq, senderId));
+                receiverId, conversationId, seq, senderId, null));
+    }
+
+    /**
+     * 声明「对方已把会话读到某个水位」，实际写总线在事务提交后。
+     *
+     * <p>用于把发送方气泡上的「未读」实时改为「已读」。水位只增不减，客户端也会去重。</p>
+     *
+     * @param receiverId     接收方 user_id（会话消息的发送方）
+     * @param conversationId 会话 ID
+     * @param readSeq        已读水位
+     */
+    public void publishConversationRead(Long receiverId, Long conversationId, int readSeq) {
+        eventPublisher.publishEvent(new RealtimeEvent(RealtimeLimits.EVENT_CONVERSATION_READ,
+                receiverId, conversationId, null, null, readSeq));
     }
 
     /**

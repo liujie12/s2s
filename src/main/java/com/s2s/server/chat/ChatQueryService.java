@@ -16,6 +16,7 @@ import com.s2s.server.chat.mapper.ConversationMapper;
 import com.s2s.server.chat.mapper.ConversationMemberMapper;
 import com.s2s.server.chat.mapper.MessageMapper;
 import com.s2s.server.common.constants.ChatLimits;
+import com.s2s.server.realtime.RealtimePublisher;
 import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
 import com.s2s.server.post.MediaService;
@@ -47,6 +48,7 @@ public class ChatQueryService {
     private final ConversationMemberMapper memberMapper;
     private final MessageMapper messageMapper;
     private final MediaService mediaService;
+    private final RealtimePublisher realtimePublisher;
 
     /**
      * 构造会话读取服务。
@@ -55,15 +57,18 @@ public class ChatQueryService {
      * @param memberMapper       会话成员持久层（成员校验与已读水位）
      * @param messageMapper      消息持久层（分页与增量）
      * @param mediaService       媒体服务（列表行帖子首图签名 URL，R3）
+     * @param realtimePublisher  实时通道事件（已读水位推进通知对方）
      */
     public ChatQueryService(ConversationMapper conversationMapper,
             ConversationMemberMapper memberMapper,
             MessageMapper messageMapper,
-            MediaService mediaService) {
+            MediaService mediaService,
+            RealtimePublisher realtimePublisher) {
         this.conversationMapper = conversationMapper;
         this.memberMapper = memberMapper;
         this.messageMapper = messageMapper;
         this.mediaService = mediaService;
+        this.realtimePublisher = realtimePublisher;
     }
 
     /**
@@ -188,6 +193,12 @@ public class ChatQueryService {
             // 成员校验刚通过却更新不到行：成员行被并发删除（账号注销链路），按不可访问处理
             throw notFound();
         }
+        // 已读水位推进后通知对方：发送方气泡据此从「未读」实时变为「已读」。
+        // 在事务内只登记事件，提交后才广播（回滚不误推）。
+        Long peerId = userId.equals(conversation.getInitiatorId())
+                ? conversation.getOwnerId()
+                : conversation.getInitiatorId();
+        realtimePublisher.publishConversationRead(peerId, conversationId, lastSeq);
         return new ReadResult(lastSeq);
     }
 

@@ -94,11 +94,14 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
       if (event == null || event.conversationId != widget.conversationId) {
         return;
       }
-      unawaited(
-        ref
-            .read(conversationProvider(widget.conversationId).notifier)
-            .refreshIncremental(),
-      );
+      final notifier =
+          ref.read(conversationProvider(widget.conversationId).notifier);
+      if (event.isConversationRead) {
+        final readSeq = event.readSeq;
+        if (readSeq != null) notifier.applyPeerReadSeq(readSeq);
+        return;
+      }
+      unawaited(notifier.refreshIncremental());
     });
     final peer = widget.peer;
     final conversations = ref.watch(

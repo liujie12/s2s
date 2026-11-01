@@ -112,6 +112,8 @@ class RealtimeWiring with WidgetsBindingObserver {
   ///
   /// 参数：[event] 新消息事件。
   void _onEvent(RealtimeMessageEvent event) {
+    // 已读事件只影响会话页的气泡标记，不触发列表/未读重拉
+    if (!event.isMessageNew) return;
     _refreshTimer?.cancel();
     _refreshTimer = Timer(NfrRealtime.refreshDebounce, () {
       if (_ref.read(authSessionProvider) == null) return;

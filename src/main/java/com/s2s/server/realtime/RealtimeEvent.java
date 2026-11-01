@@ -10,12 +10,13 @@ package com.s2s.server.realtime;
  * <p>载荷纪律（与推送一致，R14）：只带会话 ID 与序号，<b>不含消息正文、联系方式
  * 与对方昵称</b>。客户端收到后按 {@code seq} 增量拉取，正文只走 HTTP。</p>
  *
- * @param type           事件类型（当前只有 {@code message.new}）
+ * @param type           事件类型（{@code message.new} / {@code conversation.read}）
  * @param userId         接收方 user_id（路由键，不出网关）
  * @param conversationId 会话 ID
- * @param seq            新消息序号（客户端增量拉取的游标下界）
- * @param senderId       发送方 user_id（供客户端判断是否为自己其它端发出）
+ * @param seq            新消息序号（{@code message.new} 时有效，其余为 null）
+ * @param senderId       发送方 user_id（{@code message.new} 时有效，其余为 null）
+ * @param readSeq        已读水位（{@code conversation.read} 时有效，其余为 null）
  */
 public record RealtimeEvent(String type, Long userId, Long conversationId, Integer seq,
-        Long senderId) {
+        Long senderId, Integer readSeq) {
 }
