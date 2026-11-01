@@ -177,6 +177,18 @@ void main() {
       );
     });
 
+    test('联系方式不是 11 位手机号 → invalidContact', () {
+      expect(
+        complete().copyWith(contact: '12345').blocker,
+        PublishBlocker.invalidContact,
+      );
+      // 位数够但号段不可能（1 后面不是 3–9）同样拦下
+      expect(
+        complete().copyWith(contact: '12345678901').blocker,
+        PublishBlocker.invalidContact,
+      );
+    });
+
     test('协议未勾 → agreementUnchecked（§5.8「协议未勾选 → 主按钮 Disabled」）', () {
       expect(
         complete().copyWith(agreed: false).blocker,

@@ -66,6 +66,9 @@ enum PublishBlocker {
   /// 联系方式为空（§5.4.1 第 8 段）
   noContact('请填写联系方式'),
 
+  /// 联系方式不是合法手机号（§5.4.1 第 8 段）
+  invalidContact('请填写正确的 11 位手机号'),
+
   /// 协议未勾选（§5.8「协议未勾选 → 主按钮 Disabled」）
   agreementUnchecked('请勾选并同意发布协议'),
 
@@ -93,6 +96,12 @@ const int kDescriptionSuggestMax = 200;
 
 /// 默认有效期天数（§5.11「默认 7 天，不提供其他可选值」）。
 const int kDefaultValidDays = 7;
+
+/// 手机号格式（§5.4.1 第 8 段）：11 位、1 开头、第二位 3–9。
+///
+/// **为什么不用「长度 11 且全数字」**：那会放过 `12345678901` 这类根本拨不通的
+/// 号段，用户发布时看不出问题，等对方取号才发现是假号 —— 校验点必须前移到发布。
+final RegExp _contactPhonePattern = RegExp(r'^1[3-9]\d{9}$');
 
 /// 发布表单的一份完整快照。
 ///
@@ -229,6 +238,9 @@ class PublishFormState {
   /// 联系方式（§5.4.1 第 8 段）。
   final String contact;
 
+  /// 联系方式是否为合法手机号（空值不算合法，空由 [noContact] 单独报）。
+  bool get contactValid => _contactPhonePattern.hasMatch(contact.trim());
+
   /// 查看联系方式是否需申请（R19 / R20）。
   ///
   /// 默认 `false`：维持既有「一键取号」效率（K7）。为 `true` 时详情页主按钮
@@ -304,6 +316,7 @@ class PublishFormState {
 
     if (imageCount > kMaxImageCount) return PublishBlocker.tooManyMedia;
     if (contact.trim().isEmpty) return PublishBlocker.noContact;
+    if (!contactValid) return PublishBlocker.invalidContact;
     if (!agreed) return PublishBlocker.agreementUnchecked;
     return null;
   }

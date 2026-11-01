@@ -116,6 +116,12 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
   /// 本次提交是否已成功（成功后不再触发退出保存询问、不再自动保存）。
   bool _submitted = false;
 
+  /// 用户是否亲手拨过「查看联系方式需申请」开关。
+  ///
+  /// 拨过之后就不再按「联系方式非空」自动改值 —— 否则用户刚关掉、下一个字符
+  /// 又被自动打开，开关会和用户拧着来。
+  bool _applySwitchTouched = false;
+
   /// 编辑目标帖子 ID；null 表示新建/重发态。
   int? get _editPostId => widget.args.editPostId;
 
@@ -131,7 +137,12 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
     _syncControllersFromForm();
     // 新建/重发态尝试恢复本地草稿（编辑态不恢复，见文件头）。
     if (!_isEditing) {
-      unawaited(_restoreDraftIfAny());
+      unawaited(_restoreDraftThenLocate());
+    } else {
+      // 编辑态：历史帖一般已有坐标；缺失时补一次当前位置，避免位置段空着
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(_autoLocateIfMissing());
+      });
     }
   }
 
@@ -167,6 +178,26 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
     _scheduleAutosave();
   }
 
+  /// 联系方式输入的处理：号码非空时把「查看联系方式需申请」默认打开。
+  ///
+  /// 2026-11-01 口径变更（原为默认关闭、维持一键取号）：号码一旦填上就默认可
+  /// 申请，保护用户隐私。两条不自动改值的例外：
+  /// - 用户亲手拨过开关（[ _applySwitchTouched ]）——不跟用户拧着来；
+  /// - 编辑态——服务端回填的策略优先，改一个字不该翻掉原帖策略。
+  ///
+  /// 参数：[value] 输入框当前值。
+  /// 返回：void。
+  void _onContactChanged(String value) {
+    final autoApply = !_applySwitchTouched && !_isEditing;
+    _updateForm(
+      _form.copyWith(
+        contact: value,
+        contactApplyRequired:
+            autoApply ? value.trim().isNotEmpty : _form.contactApplyRequired,
+      ),
+    );
+  }
+
   /// 登记一次草稿自动保存（3 秒防抖；编辑态不存草稿）。
   ///
   /// 返回：void。
@@ -194,6 +225,36 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('已恢复上次未发布的草稿')),
     );
+  }
+
+  /// 新建/重发态：先恢复草稿，再按需补默认位置。
+  ///
+  /// 顺序不能反 —— 先定位再恢复草稿的话，草稿里已选好的坐标会被刚采集的点覆盖。
+  ///
+  /// 返回：[Future<void>]，两步都完成后结束。
+  Future<void> _restoreDraftThenLocate() async {
+    await _restoreDraftIfAny();
+    if (!mounted) return;
+    await _autoLocateIfMissing();
+  }
+
+  /// 位置段的默认值：表单还没有坐标时静默采集一次当前位置。
+  ///
+  /// 静默（不弹「正在获取定位」）是因为这是进入页面的自动补全，不是用户动作；
+  /// 失败也不打扰，用户随时可以点「使用当前位置」手动触发。
+  ///
+  /// **不引入延时**：定位权限在 App 启动流程里就已判定，进入发布页时状态是
+  /// 确定的；加一个 timer 既等不到新状态，还会在 widget 测试里留下 pending
+  /// timer（`A Timer is still pending`）。
+  ///
+  /// 返回：[Future<void>]；已选位置或未授权时直接返回。
+  Future<void> _autoLocateIfMissing() async {
+    if (!mounted || _form.hasLocation || _locating) return;
+    if (ref.read(locationPermissionProvider) !=
+        LocationPermissionPhase.granted) {
+      return;
+    }
+    await _useCurrentLocation(quiet: true);
   }
 
   /// 表单是否含有值得保存的内容（决定退出时是否弹「是否保存」）。
@@ -483,18 +544,24 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
   ///
   /// **为什么先判权限**：未授权时不会有任何有效定位点，不能塞假点把
   /// [PublishBlocker.noLocation] 蒙过去；已授权但尚未取到点则提示稍候。
-  Future<void> _useCurrentLocation() async {
+  /// @param quiet 自动补全场景传 true：不弹「正在定位 / 定位失败」提示，
+  ///        失败即静默放弃，由用户手动点按钮重试
+  Future<void> _useCurrentLocation({bool quiet = false}) async {
     if (ref.read(locationPermissionProvider) != LocationPermissionPhase.granted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请先开启定位权限，再使用当前位置')),
-      );
+      if (!quiet) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('请先开启定位权限，再使用当前位置')),
+        );
+      }
       return;
     }
     if (_locating) return;
     _locating = true;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('正在获取高精度定位…')),
-    );
+    if (!quiet) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('正在获取高精度定位…')),
+      );
+    }
     try {
       final high = await locateForPublish(ref);
       if (!mounted) return;
@@ -502,13 +569,15 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
           ? (lat: high.lat, lng: high.lng)
           : readPublishCoordinate(ref);
       if (coordinate == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('定位失败，请到开阔处重试')),
-        );
+        if (!quiet) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('定位失败，请到开阔处重试')),
+          );
+        }
         return;
       }
       _updateForm(_form.copyWith(lng: coordinate.lng, lat: coordinate.lat));
-      if (high == null) {
+      if (high == null && !quiet) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('高精度定位未成功，已使用最近定位点')),
         );
@@ -787,11 +856,20 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
                   maxLength: 11,
                   decoration: _fieldDecoration(
                     hint: '请输入可联系到你的手机号',
-                  ).copyWith(counterText: ''),
-                  onChanged: (v) => _updateForm(_form.copyWith(contact: v)),
+                  ).copyWith(
+                    counterText: '',
+                    // 只在「已输入内容但不合法」时标红：空值不红，
+                    // 否则一进页面整段就是红的
+                    errorText:
+                        _form.contact.trim().isNotEmpty && !_form.contactValid
+                            ? PublishBlocker.invalidContact.message
+                            : null,
+                  ),
+                  onChanged: _onContactChanged,
                 ),
                 const SizedBox(height: AppSpacing.sm),
-                // R19：默认不勾选，维持一键取号；开启后对方需先申请、你同意后才看得到号码。
+                // R19（2026-11-01 口径变更）：填了手机号即默认打开，
+                // 对方需先申请、你同意后才看得到号码；用户仍可手动关闭。
                 Row(
                   children: [
                     Expanded(
@@ -818,9 +896,13 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
                     ),
                     Switch.adaptive(
                       value: _form.contactApplyRequired,
-                      onChanged: (v) => _updateForm(
-                        _form.copyWith(contactApplyRequired: v),
-                      ),
+                      onChanged: (v) {
+                        // 记下「用户亲手拨过」：此后不再按号码是否非空自动改值
+                        _applySwitchTouched = true;
+                        _updateForm(
+                          _form.copyWith(contactApplyRequired: v),
+                        );
+                      },
                     ),
                   ],
                 ),
