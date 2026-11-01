@@ -23,6 +23,7 @@ import com.s2s.server.contact.entity.ContactEventEntity;
 import com.s2s.server.contact.mapper.ContactEventMapper;
 import com.s2s.server.post.PostService;
 import com.s2s.server.post.dto.PostChatAnchor;
+import com.s2s.server.realtime.RealtimePublisher;
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -55,6 +56,7 @@ class ContactApplyServiceTest {
     private final ContactEventMapper contactEventMapper = mock(ContactEventMapper.class);
     private final PostService postService = mock(PostService.class);
     private final ChatPushService chatPushService = mock(ChatPushService.class);
+    private final RealtimePublisher realtimePublisher = mock(RealtimePublisher.class);
 
     private ContactApplyService service;
 
@@ -64,15 +66,17 @@ class ContactApplyServiceTest {
     @BeforeEach
     void setUp() {
         service = new ContactApplyService(chatService, conversationMapper, memberMapper,
-                messageWriter, contactEventMapper, postService, chatPushService);
+                messageWriter, contactEventMapper, postService, chatPushService, realtimePublisher);
         when(memberMapper.selectMember(CONVERSATION_ID, INITIATOR_ID))
                 .thenReturn(new ConversationMemberEntity());
         when(memberMapper.selectMember(CONVERSATION_ID, OWNER_ID))
                 .thenReturn(new ConversationMemberEntity());
         when(postService.chatAnchor(POST_ID))
                 .thenReturn(new PostChatAnchor(POST_ID, OWNER_ID, "active", true));
+        MessageEntity card = new MessageEntity();
+        card.setSeq(1);
         when(messageWriter.appendLocked(any(), any(), any(), any(), any()))
-                .thenReturn(new MessageEntity());
+                .thenReturn(card);
     }
 
     /**
@@ -90,6 +94,8 @@ class ContactApplyServiceTest {
         verify(messageWriter).appendLocked(conversation, INITIATOR_ID, MessageType.APPLY, null, null);
         // 申请卡推给发布者（未读期间只推首条由 ChatPushService 判定）
         verify(chatPushService).notifyNewMessage(OWNER_ID, CONVERSATION_ID);
+        // 同时必须走实时通道：只发厂商推送的话，对方停在会话里要等轮询才看得到卡片
+        verify(realtimePublisher).publishMessageNew(OWNER_ID, CONVERSATION_ID, 1, INITIATOR_ID);
         assertThat(response.applyStatus()).isEqualTo(ApplyStatus.PENDING.dbValue());
         assertThat(response.applyRequired()).isTrue();
         assertThat(response.canApply()).isFalse();

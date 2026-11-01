@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.s2s.server.chat.dto.ApplyDecisionRequest;
 import com.s2s.server.chat.dto.ApplyStateResponse;
 import com.s2s.server.chat.entity.ConversationEntity;
+import com.s2s.server.chat.entity.MessageEntity;
 import com.s2s.server.chat.mapper.ConversationMapper;
 import com.s2s.server.chat.mapper.ConversationMemberMapper;
 import com.s2s.server.common.constants.ChatLimits;
@@ -17,6 +18,7 @@ import com.s2s.server.contact.entity.ContactEventEntity;
 import com.s2s.server.contact.mapper.ContactEventMapper;
 import com.s2s.server.post.PostService;
 import com.s2s.server.post.dto.PostChatAnchor;
+import com.s2s.server.realtime.RealtimePublisher;
 import java.time.LocalDateTime;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -44,6 +46,7 @@ public class ContactApplyService {
     private final ContactEventMapper contactEventMapper;
     private final PostService postService;
     private final ChatPushService chatPushService;
+    private final RealtimePublisher realtimePublisher;
 
     /**
      * 构造申请链路服务。
@@ -55,6 +58,7 @@ public class ContactApplyService {
      * @param contactEventMapper 联系事件持久层（同意时升级渠道）
      * @param postService        帖子域服务（取「需申请」开关，跨域只调 service）
      * @param chatPushService    新消息推送（申请卡与联系方式卡，未读期间只推首条）
+     * @param realtimePublisher  实时通道事件（卡片同样是消息，须与文本消息一样秒级到端）
      */
     public ContactApplyService(ChatService chatService,
             ConversationMapper conversationMapper,
@@ -62,7 +66,8 @@ public class ContactApplyService {
             ChatMessageWriter messageWriter,
             ContactEventMapper contactEventMapper,
             PostService postService,
-            ChatPushService chatPushService) {
+            ChatPushService chatPushService,
+            RealtimePublisher realtimePublisher) {
         this.chatService = chatService;
         this.conversationMapper = conversationMapper;
         this.memberMapper = memberMapper;
@@ -70,6 +75,7 @@ public class ContactApplyService {
         this.contactEventMapper = contactEventMapper;
         this.postService = postService;
         this.chatPushService = chatPushService;
+        this.realtimePublisher = realtimePublisher;
     }
 
     /**
@@ -122,9 +128,13 @@ public class ContactApplyService {
                 updateApplyState(conversationId, ApplyStatus.PENDING, now);
                 conversation.setApplyStatus(ApplyStatus.PENDING.dbValue());
                 conversation.setApplyAt(now);
-                messageWriter.appendLocked(conversation, userId, MessageType.APPLY, null, null);
-                // 申请卡也是一条消息：推给接收方（未读期间只推首条，KTD7）
+                MessageEntity card = messageWriter.appendLocked(
+                        conversation, userId, MessageType.APPLY, null, null);
+                // 申请卡也是一条消息：推给接收方（未读期间只推首条，KTD7），
+                // 并发布实时事件——否则对方停在会话里也要等下一次轮询才看得到卡片
                 chatPushService.notifyNewMessage(conversation.getOwnerId(), conversationId);
+                realtimePublisher.publishMessageNew(
+                        conversation.getOwnerId(), conversationId, card.getSeq(), userId);
             }
             default -> throw new IllegalStateException("未覆盖的申请状态: " + status);
         }
@@ -163,11 +173,13 @@ public class ContactApplyService {
         updateApplyState(conversationId, target, now);
 
         if (target == ApplyStatus.APPROVED) {
-            messageWriter.appendLocked(conversation, userId, MessageType.CONTACT, null,
+            MessageEntity card = messageWriter.appendLocked(conversation, userId, MessageType.CONTACT, null,
                     conversation.getInitiatorId());
             upgradeContactEventChannel(conversationId);
-            // 联系方式卡仅申请人可见，推送也只发给申请人
+            // 联系方式卡仅申请人可见，推送与实时事件也只发给申请人
             chatPushService.notifyNewMessage(conversation.getInitiatorId(), conversationId);
+            realtimePublisher.publishMessageNew(
+                    conversation.getInitiatorId(), conversationId, card.getSeq(), userId);
         }
         conversation.setApplyStatus(target.dbValue());
         conversation.setApplyDecidedAt(now);
