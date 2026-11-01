@@ -290,6 +290,9 @@ class ConversationNotifier extends AsyncNotifier<ConversationData> {
           apply: apply,
         ),
       );
+      // 用户就停在该会话页：新消息已展示，必须同步推进已读水位，否则底部 Tab /
+      // 桌面角标会在「正在看这条消息」时仍然 +1（2026-11-01 真机反馈）。
+      unawaited(_markReadAndRefresh());
     } catch (_) {
       // 增量是增益动作：失败保留现有消息，不把页面打成错误态
     }
