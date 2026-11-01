@@ -90,6 +90,15 @@ void main() {
       expect(submitEnabled(tester), isFalse);
       expect(find.text('请先选择分类'), findsOneWidget);
     });
+
+    testWidgets('可查看发布协议全文', (tester) async {
+      await pumpPublish(tester);
+      await tester.tap(find.text('查看《发布协议》全文'));
+      await tester.pumpAndSettle();
+      // 弹层标题 + 正文首条（信息真实性）都要在
+      expect(find.text('发布协议'), findsOneWidget);
+      expect(find.textContaining('信息真实性'), findsWidgets);
+    });
   });
 
   group('§5.4.1 各段呈现', () {

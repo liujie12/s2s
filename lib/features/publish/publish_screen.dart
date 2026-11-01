@@ -70,6 +70,7 @@ import 'media_section.dart';
 import 'option_field.dart';
 import 'plate_field.dart';
 import 'precheck_sheet.dart';
+import 'publish_agreement.dart';
 import 'publish_form_state.dart';
 import 'publish_screen_args.dart';
 import 'publish_template_provider.dart';
@@ -930,6 +931,7 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
         agreed: _form.agreed,
         blocker: blocker,
         onAgreedChanged: (v) => _updateForm(_form.copyWith(agreed: v)),
+        onShowAgreement: () => unawaited(showPublishAgreement(context)),
         // null 表示提交链路进行中（precheck 网络往返），与 blocker 禁用
         // 同效但不出禁用文案 —— 期间文案继续显示「差什么」没有意义。
         onSubmit: _precheckInFlight ? null : _submit,
@@ -1370,17 +1372,6 @@ class _TemplateField extends StatelessWidget {
                   color: const Color(AppColors.textSecondary),
                 ),
               ),
-              if (spec.required) ...[
-                const SizedBox(width: AppSpacing.xs),
-                // 必填标记用文字「必填」而非星号：星号需要图例才知道含义
-                Text(
-                  '必填',
-                  style: TextStyle(
-                    fontSize: AppTypeScale.caption.size,
-                    color: const Color(AppColors.errorText),
-                  ),
-                ),
-              ],
             ],
           ),
           const SizedBox(height: AppSpacing.sm),
@@ -1554,6 +1545,7 @@ class _SubmitBar extends StatelessWidget {
     required this.agreed,
     required this.blocker,
     required this.onAgreedChanged,
+    required this.onShowAgreement,
     required this.onSubmit,
   });
 
@@ -1562,6 +1554,9 @@ class _SubmitBar extends StatelessWidget {
   /// 当前阻塞原因，null 表示可提交。
   final PublishBlocker? blocker;
   final ValueChanged<bool> onAgreedChanged;
+
+  /// 打开发布协议全文（勾选前用户须能先看到自己同意了什么）。
+  final VoidCallback onShowAgreement;
 
   /// 提交回调；null 表示提交链路进行中（precheck 防重入），按钮禁用。
   final VoidCallback? onSubmit;
@@ -1606,6 +1601,25 @@ class _SubmitBar extends StatelessWidget {
                 ),
               ),
             ],
+          ),
+          // 协议全文入口：文案本身是「同意」，不给可查看入口等于让用户盲签
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              onPressed: onShowAgreement,
+              style: TextButton.styleFrom(
+                padding: EdgeInsets.zero,
+                minimumSize: const Size(0, 44),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: Text(
+                '查看《发布协议》全文',
+                style: TextStyle(
+                  fontSize: AppTypeScale.small.size,
+                  color: const Color(AppColors.primary),
+                ),
+              ),
+            ),
           ),
           // 禁用原因写在按钮上方而不是点了才提示：灰按钮点不动，
           // 「点了才说」这条路径在禁用态根本走不到。
