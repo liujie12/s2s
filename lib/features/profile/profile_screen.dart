@@ -30,6 +30,7 @@ class ProfileScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final loggedIn = ref.watch(isLoggedInProvider);
     final profileAsync = ref.watch(myProfileProvider);
     final badges = ref.watch(myPageBadgesProvider).asData?.value;
 
@@ -63,33 +64,44 @@ class ProfileScreen extends ConsumerWidget {
           ),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: () async {
-          await Future.wait<void>([
-            ref.read(myProfileProvider.notifier).refresh(),
-            ref.read(myPageBadgesProvider.notifier).refresh(),
-          ]);
-        },
-        child: ListView(
-          padding: EdgeInsets.zero,
-          children: [
-            _HeaderCard(profileAsync: profileAsync),
-            _EntryGroup(
-              badges: badges,
-              realnamePassed: profileAsync.asData?.value.isRealnamePassed ?? false,
-              onTapMyPublish: () => context.push(AppRoutes.myPublish),
-              onTapFavorites: () => context.push(AppRoutes.favorites),
-              onTapNotifications: () => context.push(AppRoutes.notifications),
-              onTapTrust: () => context.push(AppRoutes.trust),
-              onTapSettings: () => context.push(AppRoutes.settings),
+      // 登录态决定整页形态：未登录只给「未登录 + 登录入口」，不渲染任何
+      // 账号数据与条目，避免退出后仍显示上一个账号的缓存。
+      body: loggedIn
+          ? RefreshIndicator(
+              onRefresh: () async {
+                await Future.wait<void>([
+                  ref.read(myProfileProvider.notifier).refresh(),
+                  ref.read(myPageBadgesProvider.notifier).refresh(),
+                ]);
+              },
+              child: ListView(
+                padding: EdgeInsets.zero,
+                children: [
+                  _HeaderCard(profileAsync: profileAsync),
+                  _EntryGroup(
+                    badges: badges,
+                    realnamePassed:
+                        profileAsync.asData?.value.isRealnamePassed ?? false,
+                    onTapMyPublish: () => context.push(AppRoutes.myPublish),
+                    onTapFavorites: () => context.push(AppRoutes.favorites),
+                    onTapNotifications: () =>
+                        context.push(AppRoutes.notifications),
+                    onTapTrust: () => context.push(AppRoutes.trust),
+                    onTapSettings: () => context.push(AppRoutes.settings),
+                  ),
+                  const SizedBox(height: AppSpacing.xl),
+                  _SignOutButton(
+                    onPressed: () => _confirmSignOut(context, ref),
+                  ),
+                ],
+              ),
+            )
+          : ListView(
+              padding: EdgeInsets.zero,
+              children: [
+                _SignedOutHeader(onLogin: () => context.push(AppRoutes.login)),
+              ],
             ),
-            const SizedBox(height: AppSpacing.xl),
-            _SignOutButton(
-              onPressed: () => _confirmSignOut(context, ref),
-            ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -197,6 +209,78 @@ class _HeaderCard extends StatelessWidget {
     final mask = profile.phoneMask;
     if (mask == null || mask.isEmpty) return profile.nickname;
     return '${profile.nickname} $mask';
+  }
+}
+
+/// 未登录头部（退出登录后的默认形态）。
+///
+/// 只呈现「未登录」与一个登录入口，不渲染任何账号数据；登录成功后本页随
+/// `isLoggedInProvider` 重建为已登录形态。
+class _SignedOutHeader extends StatelessWidget {
+  /// 构造未登录头部。
+  ///
+  /// 参数：[onLogin] 点击「登录 / 注册」的回调。
+  const _SignedOutHeader({required this.onLogin});
+
+  /// 登录入口回调。
+  final VoidCallback onLogin;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Color(AppColors.surface),
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      child: Row(
+        children: [
+          const _Avatar(url: null),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '未登录',
+                  style: TextStyle(
+                    fontSize: AppTypeScale.h3.size,
+                    fontWeight: FontWeight.w600,
+                    color: Color(AppColors.textPrimary),
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.xs),
+                Text(
+                  '登录后可发布、收藏与联系',
+                  style: TextStyle(
+                    fontSize: AppTypeScale.small.size,
+                    color: Color(AppColors.textSecondary),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: AppSpacing.md),
+          ElevatedButton(
+            onPressed: onLogin,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Color(AppColors.primary),
+              foregroundColor: Colors.white,
+              elevation: 0,
+              minimumSize: const Size(0, 44),
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppRadius.md),
+              ),
+            ),
+            child: Text(
+              '登录 / 注册',
+              style: TextStyle(
+                fontSize: AppTypeScale.body.size,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

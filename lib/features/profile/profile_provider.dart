@@ -15,6 +15,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_exception.dart';
+import '../auth/auth_repository.dart';
 import '../favorite/favorite_repository.dart';
 import '../notify/notification_repository.dart';
 import '../post/post_repository.dart';
@@ -25,6 +26,11 @@ import 'profile_repository.dart';
 class MyProfileNotifier extends Notifier<AsyncValue<MyProfileDto>> {
   @override
   AsyncValue<MyProfileDto> build() {
+    // 会话变化（登录/登出/换号）会重建本 Provider：登出即丢弃上一个账号的
+    // 资料缓存，登录即重新拉取，避免「退出后仍显示已登录」与串号。
+    if (!ref.watch(isLoggedInProvider)) {
+      return const AsyncValue.loading();
+    }
     unawaited(_load());
     return const AsyncValue.loading();
   }
@@ -36,8 +42,11 @@ class MyProfileNotifier extends Notifier<AsyncValue<MyProfileDto>> {
   Future<void> _load() async {
     try {
       final profile = await ref.read(profileRepositoryProvider).fetchMyProfile();
+      // 在途期间已登出：丢弃结果，避免把旧会话资料写回新状态。
+      if (!ref.read(isLoggedInProvider)) return;
       state = AsyncValue.data(profile);
     } catch (e) {
+      if (!ref.read(isLoggedInProvider)) return;
       state = AsyncValue.error(asApiException(e), StackTrace.current);
     }
   }
@@ -47,6 +56,7 @@ class MyProfileNotifier extends Notifier<AsyncValue<MyProfileDto>> {
   /// 参数：无。
   /// 返回：[Future<void>]。
   Future<void> refresh() async {
+    if (!ref.read(isLoggedInProvider)) return;
     state = const AsyncValue.loading();
     await _load();
   }
@@ -83,6 +93,12 @@ class MyPageBadges {
 class MyPageBadgesNotifier extends Notifier<AsyncValue<MyPageBadges>> {
   @override
   AsyncValue<MyPageBadges> build() {
+    // 同 [MyProfileNotifier]：随会话重建，登出即清空角标，登录即重新聚合。
+    if (!ref.watch(isLoggedInProvider)) {
+      return const AsyncValue.data(
+        MyPageBadges(activePosts: 0, favorites: 0, unread: 0),
+      );
+    }
     unawaited(_load());
     return const AsyncValue.loading();
   }
@@ -108,10 +124,13 @@ class MyPageBadgesNotifier extends Notifier<AsyncValue<MyPageBadges>> {
             .fetchNotifications(pageSize: 1)
             .then((page) => page.unreadCount),
       ]);
+      // 在途期间已登出：丢弃结果，避免旧会话角标写回。
+      if (!ref.read(isLoggedInProvider)) return;
       state = AsyncValue.data(
         MyPageBadges(activePosts: results[0], favorites: results[1], unread: results[2]),
       );
     } catch (e) {
+      if (!ref.read(isLoggedInProvider)) return;
       state = AsyncValue.error(asApiException(e), StackTrace.current);
     }
   }
@@ -121,6 +140,7 @@ class MyPageBadgesNotifier extends Notifier<AsyncValue<MyPageBadges>> {
   /// 参数：无。
   /// 返回：[Future<void>]。
   Future<void> refresh() async {
+    if (!ref.read(isLoggedInProvider)) return;
     state = const AsyncValue.loading();
     await _load();
   }
