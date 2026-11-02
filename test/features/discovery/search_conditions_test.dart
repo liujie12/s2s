@@ -258,4 +258,46 @@ void main() {
       expect(container.read(searchIntentProvider).intent?.radius, '1');
     });
   });
+
+  group('重新定位重置圆心', () {
+    test('清掉显式锚点后生效圆心回落「我的位置」，其余条件保留', () {
+      final container = containerWith(
+        intent: SearchIntent(
+          queryText: '合租',
+          radius: '5',
+          radiusMeters: 5000,
+          anchorLat: 31.8,
+          anchorLng: 117.2,
+          anchorName: '望江路商圈',
+          anchorSource: 'manual',
+        ),
+      );
+      expect(container.read(effectiveFilterProvider).anchorLat, 31.8);
+
+      container.read(searchConditionsProvider.notifier).clearAnchor();
+
+      final EffectiveFilter after = container.read(effectiveFilterProvider);
+      expect(after.anchorLat, isNull);
+      expect(after.anchorLng, isNull);
+      expect(after.anchorName, isNull);
+      expect(container.read(searchIntentProvider).intent?.anchorSource, isNull);
+      // 与本次定位无关的条件保持不动。
+      expect(container.read(searchIntentProvider).intent?.queryText, '合租');
+      expect(container.read(searchIntentProvider).intent?.radius, '5');
+    });
+
+    test('无搜索态或本就无锚点时是空操作，不产生撤销快照', () {
+      final container = containerWith();
+      container.read(searchConditionsProvider.notifier).clearAnchor();
+      expect(container.read(searchIntentProvider).intent, isNull);
+      expect(container.read(searchConditionsProvider).canUndo, isFalse);
+
+      final withNoAnchor = containerWith(
+        intent: SearchIntent(queryText: '合租', radius: '5'),
+      );
+      withNoAnchor.read(searchConditionsProvider.notifier).clearAnchor();
+      expect(withNoAnchor.read(searchConditionsProvider).canUndo, isFalse);
+      expect(withNoAnchor.read(searchIntentProvider).intent?.radius, '5');
+    });
+  });
 }

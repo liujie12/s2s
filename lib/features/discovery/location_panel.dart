@@ -294,10 +294,11 @@ class _LocationPanelState extends ConsumerState<LocationPanel> {
     );
   }
 
-  /// 重新定位：只刷新「当前定位」行。
+  /// 重新定位：刷新「当前定位」行，并把搜索圆心一起重置回当前位置。
   ///
-  /// 圆心仅在来源仍是「我的位置」（无显式锚点或来源为 current）时跟随；
-  /// 已经地图选点/搜索过的圆心不动，避免把用户刚选的点悄悄改掉。
+  /// 圆心**不再**区分来源：无论此前是搜索选点、地图选点还是旧定位，点它都
+  /// 视为「我要以现在的位置重新搜」—— 清掉显式锚点（§2026-11-02 用户裁定，
+  /// 推翻原「不打断已选圆心」口径），并把地图中心移到新定位。
   ///
   /// 参数：无；返回：Future，定位结束（失败只写行下提示）。
   Future<void> _relocate() async {
@@ -318,12 +319,8 @@ class _LocationPanelState extends ConsumerState<LocationPanel> {
     ref
         .read(locationFixProvider.notifier)
         .update(lat: fix.lat, lng: fix.lng, accuracy: fix.accuracy);
-    final EffectiveFilter effective = ref.read(effectiveFilterProvider);
-    final bool followsMyLocation =
-        effective.anchorLat == null || effective.anchorSource == 'current';
-    if (followsMyLocation) {
-      ref.read(locationCenterProvider.notifier).moveTo(fix.lat, fix.lng);
-    }
+    ref.read(searchConditionsProvider.notifier).clearAnchor();
+    ref.read(locationCenterProvider.notifier).moveTo(fix.lat, fix.lng);
     if (!mounted) return;
     setState(() => _relocating = false);
   }

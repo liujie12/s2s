@@ -260,6 +260,23 @@ class SearchConditionsNotifier extends Notifier<SearchConditionsState> {
     );
   }
 
+  /// 清掉显式地点锚点，让圆心回到「我的位置」（面板「重新定位」用）。
+  ///
+  /// 用户明确要求：点「重新定位」时圆心一起重置回当前位置，无论此前是搜索
+  /// 选点还是地图选点（2026-11-02 裁定）。锚点只存在于搜索槽位，故无搜索态
+  /// 时无需写入；只有确实存在锚点时才压快照，使这次重置可被「撤销」回退。
+  ///
+  /// 参数：无。
+  /// 返回：无。
+  void clearAnchor() {
+    final SearchIntent? intent = _intent;
+    if (intent == null || (intent.anchorLat == null && intent.anchorLng == null)) {
+      return;
+    }
+    _recordSnapshot();
+    _writeIntent(intent.withoutAnchor());
+  }
+
   /// 设置价格区间；任一侧传 null 即取消该侧（R23）。
   ///
   /// 价格无论有无搜索态都写持久筛选 —— 它是持久条件，不随一次搜索结束而消失。
