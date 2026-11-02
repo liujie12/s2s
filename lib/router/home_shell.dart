@@ -30,6 +30,7 @@ import 'package:go_router/go_router.dart';
 import '../core/badge/app_badge.dart';
 import '../core/ui/footprint_geometry.dart';
 import '../design_tokens.dart';
+import '../features/auth/auth_repository.dart';
 import '../features/message/conversation_entry.dart';
 import '../features/message/message_list_provider.dart';
 import '../features/message/widgets/message_icon.dart';
@@ -135,6 +136,23 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     );
   }
 
+  /// 切换底部分支；「我的」要求登录，未登录时先打开登录页，登录成功后再落到「我的」。
+  ///
+  /// 为什么在壳层拦截而不是在个人中心页自查：分支页在有状态壳里常驻，
+  /// 取消登录后再次点「我的」不会重建页面，页内钩子只可能触发一次。
+  ///
+  /// 参数：[index] 目标分支下标（见 [HomeBranch]）。
+  /// 返回：[Future<void>]；用户取消登录时不切分支，留在当前 Tab。
+  Future<void> _selectBranch(int index) async {
+    if (index != HomeBranch.profile || ref.read(isLoggedInProvider)) {
+      widget.navigationShell.goBranch(index);
+      return;
+    }
+    final loggedIn = await context.push<bool>(AppRoutes.login);
+    if (!mounted || loggedIn != true) return;
+    widget.navigationShell.goBranch(index);
+  }
+
   @override
   Widget build(BuildContext context) {
     final unread = ref.watch(
@@ -151,7 +169,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
       bottomNavigationBar: HomeNavBar(
         selectedIndex: widget.navigationShell.currentIndex,
         unreadTotal: unread,
-        onSelectBranch: widget.navigationShell.goBranch,
+        onSelectBranch: _selectBranch,
         onPublish: () => context.push(AppRoutes.publish),
       ),
     );
