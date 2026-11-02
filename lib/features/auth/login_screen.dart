@@ -19,6 +19,7 @@
 library;
 
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -26,6 +27,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/ui/footprint_geometry.dart';
 import '../../design_tokens.dart';
 import '../../router/app_router.dart';
 import '../notify/push_service.dart';
@@ -435,11 +437,10 @@ class _BindHeader extends StatelessWidget {
 
 /// 品牌区：Logo + 品牌名 + slogan（§3.4.1 顶部）。
 ///
-/// **Logo 为几何占位而非 SVG**：鸭子 IP 的 12 个 SVG 落在
-/// `prototype-figma/assets/`（§1.7），但工程尚未配置 `flutter/assets`，
-/// 也未引入 `flutter_svg`。为了一个装饰位引入渲染依赖属超出本轮范围；
-/// 占位保留了尺寸与位置，接入资产时只换这一个组件。
-/// TODO(M4-4)：配置 assets 并替换为 `duck-logo.svg`。
+/// Logo 采用 A3 方案（2026-11-02 用户选定）：72dp 浅青圆底 + 主色实心脚印。
+/// CustomPaint 自绘，不引入 flutter_svg；几何复用 [FootprintGeometry]
+/// （fp0 真源），与桌面图标、发布键同一份坐标。原 travel_explore 几何占位
+/// 与 TODO(M4-4) 就此关闭。
 class _BrandHeader extends StatelessWidget {
   const _BrandHeader();
 
@@ -455,12 +456,9 @@ class _BrandHeader extends StatelessWidget {
             shape: BoxShape.circle,
           ),
           alignment: Alignment.center,
-          child: const Icon(
-            // 用「就近搜寻」语义的图标而非鸭子表情符：§1 要求 emoji 一律
-            // 换矢量或纯文字，emoji 在不同系统上字形与基线都不一致。
-            Icons.travel_explore,
-            size: 36,
-            color: Color(AppColors.primary),
+          child: const CustomPaint(
+            size: Size.square(72),
+            painter: _BrandFootprintPainter(),
           ),
         ),
         const SizedBox(height: AppSpacing.md),
@@ -486,6 +484,36 @@ class _BrandHeader extends StatelessWidget {
       ],
     );
   }
+}
+
+/// 登录页品牌脚印绘制器（A3：浅青圆底上的主色实心脚印）。
+///
+/// 变换与候选预览页 logoA3 同源：translate(36, 33.5) rotate(14°)
+/// scale(0.52) translate(-54, -45)，脚印在 72dp 圆内居中、重心略偏上，
+/// 与桌面图标 / 发布键 inverse 变体同一手感。
+class _BrandFootprintPainter extends CustomPainter {
+  const _BrandFootprintPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.save();
+    canvas.scale(size.width / 72);
+    canvas
+      ..translate(36, 33.5)
+      ..rotate(14 * math.pi / 180)
+      ..scale(0.52)
+      ..translate(-54, -45);
+    FootprintGeometry.paint(
+      canvas,
+      Paint()
+        ..color = const Color(AppColors.primary)
+        ..style = PaintingStyle.fill,
+    );
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _BrandFootprintPainter oldDelegate) => false;
 }
 
 /// 手机号输入框（§3.4.1「手机号（唯一主标识）」）。

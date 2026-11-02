@@ -7,12 +7,12 @@
 /// - 「发布」仍是**点击后 push 全屏发布页**的键，不占分支（点完回到原 Tab，
 ///   R12 / R34）。历史上 code.js 全文件没有 `bottomTab('发布')`，本次沿用
 ///   「复用同一排 44px 命中区、onTap 走 push」的既有做法；
-/// - 四个键的图标同尺寸（24dp）、未选中同色（`textSecondary`）：发布键不再
-///   放大或单独着主色，否则在四项等分的排布下会被读成「常驻选中」。
+/// - 四键未选中同色（`textSecondary`），不着主色避免被读成「常驻选中」；
+///   发布键 32dp、其余 24dp（2026-11-02 用户裁定，详见 [_PublishTab]）。
 ///
-/// 四键图标一律矢量（PRD §10.2「不得用 emoji」）：`map` / 鸭子微缩 /
-/// 线性对话气泡 / `person`。鸭子几何真源是
-/// prototype-figma/assets/duck-symbol-mini.svg，见 [_DuckMiniPainter] 文件头说明；
+/// 四键图标一律矢量（PRD §10.2「不得用 emoji」）：`map` / 脚印 inverse /
+/// 线性对话气泡 / `person`。脚印几何真源是
+/// prototype-figma/assets/duck-symbol-inverse.svg，见 [_FootprintPainter] 文件头说明；
 /// 气泡几何取自设计稿 §01 的原始 path，见 [_BubblePainter]。
 ///
 /// **未读唯一来源**（KTD14）：Tab 数字角标读 [unreadSummaryProvider]，不在本壳
@@ -21,12 +21,14 @@
 library;
 
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../core/badge/app_badge.dart';
+import '../core/ui/footprint_geometry.dart';
 import '../design_tokens.dart';
 import '../features/message/conversation_entry.dart';
 import '../features/message/message_list_provider.dart';
@@ -336,15 +338,16 @@ class _TabBadge extends StatelessWidget {
 
 /// 「发布」中键。
 ///
-/// 鸭子微缩图标 + 文字（PRD §10.2）。**尺寸与配色与其它 Tab 完全一致**
-/// （2026-11-01 真机走查裁定）：四项等分后排布更紧，32dp 主色鸭子盘会被读成
-/// 「常驻选中」，与「发布不是分支、点完即离开」的语义冲突。故回归 24dp +
-/// 未选中色 `textSecondary`，靠位置（第 2 格）与文案承担识别，不再靠放大。
+/// 脚印 inverse 图标 + 文字（PRD §10.2）。尺寸 32dp（2026-11-02 用户裁定，
+/// 推翻 11-01「四键同 24dp」结论）：inverse 结构在 24dp 下波纹圈线宽仅约
+/// 0.8dp 近乎消失，视觉重心只剩中央约 10.6dp 圆盘，比三个 Material 图标明显
+/// 小一圈；放大到 32dp 补回视觉重心。配色仍为未选中色 `textSecondary` 不着
+/// 主色 —— 放大补的是「显小」，不是要做成「常驻选中」。
 class _PublishTab extends StatelessWidget {
   const _PublishTab({required this.onTap});
 
-  /// 鸭子盘尺寸：与其它 Tab 图标同一档，不再放大。
-  static const double _duckSize = 24;
+  /// 脚印盘尺寸：32dp（其余三键 24dp；放大原因见类注释）。
+  static const double _duckSize = 32;
 
   final VoidCallback onTap;
 
@@ -357,7 +360,7 @@ class _PublishTab extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const _DuckMiniIcon(size: _duckSize, block: color),
+            const _FootprintIcon(size: _duckSize, fill: color),
             const SizedBox(height: AppSpacing.xs),
             Text(
               '发布',
@@ -373,108 +376,95 @@ class _PublishTab extends StatelessWidget {
   }
 }
 
-/// 鸭子微缩图标（PRD §1.4.1.2 mini 档，矢量）。
+/// 脚印发布图标（inverse 变体结构：外围双波纹圈 + 中央圆盘 + 白色脚印）。
 ///
-/// 渲染成「色块圆盘铺满画板 + 白色实体鸭头 + 色块眼点」的反相结构 ——
-/// 24px 下白盘直径仅约 10px，镂空鸭头会先丢喙尖，故 mini 档把鸭头反相为
-/// 白色实体（prototype-figma/code.js `DUCK_HEAD_MINI` 上方的说明）。
-/// 圆盘/眼点颜色由 [block] 传入，尺寸由 [size] 决定（发布入口用 32dp）。
-class _DuckMiniIcon extends StatelessWidget {
-  const _DuckMiniIcon({required this.size, required this.block});
+/// 几何真源 duck-symbol-inverse.svg viewBox `0 0 1024 1024`：
+/// - 波纹圈 1：外 r=395.84 / 内 r=361.87（环带）
+/// - 波纹圈 2：外 r=305.84 / 内 r=273.54（环带）
+/// - 中央圆盘：r=227.08 实心
+/// - 脚印 fp0（三趾 ellipse + 掌形贝塞尔）白色反相，
+///   translate(506.1, 458.5) rotate(14°) scale(4.20) translate(-54,-45)
+///
+/// 未选中态全部用 [fill]（textSecondary），脚印用白色反相，与原鸭头
+/// 「圆盘+反相」结构一致。当前唯一使用处是发布键 32dp（[_PublishTab]）。
+class _FootprintIcon extends StatelessWidget {
+  const _FootprintIcon({required this.size, required this.fill});
 
   final double size;
-  final Color block;
+  final Color fill;
 
   @override
   Widget build(BuildContext context) {
     return CustomPaint(
       size: Size.square(size),
-      painter: _DuckMiniPainter(
-        block: block,
-        negative: const Color(AppColors.surface),
-      ),
+      painter: _FootprintPainter(fill: fill),
     );
   }
 }
 
-/// 鸭子微缩档绘制器。
+/// 脚印绘制器（inverse 变体：双波纹圈 + 中央圆盘 + 白色脚印）。
 ///
-/// 几何逐字取自 prototype-figma/assets/duck-symbol-mini.svg（viewBox
-/// `0 0 1024 1024`）：圆盘半径 504.01、鸭头 path `DUCK_HEAD_MINI`、眼点
-/// (501.03, 341.89, r=45.37)。绘制前把画布缩放到 `size/1024`，坐标直接
-/// 沿用 SVG 原文，避免逐坐标缩放引入笔误。
-///
-/// 本类与 assets/duck-symbol-mini.svg 构成双份副本：改动 SVG 时须同步此处
-/// （与 code.js 内联同一份几何同性质的活文件）。
-class _DuckMiniPainter extends CustomPainter {
-  const _DuckMiniPainter({required this.block, required this.negative});
+/// 坐标系：画布缩放到 `size / 1024`，坐标直接沿用 duck-symbol-inverse.svg
+/// 原文；脚印部分复用共享真源 [FootprintGeometry]（与 SVG / Android
+/// build_android_foonote.py 同一份 fp0 坐标）。
+class _FootprintPainter extends CustomPainter {
+  const _FootprintPainter({required this.fill});
 
-  /// 色块色（圆盘 + 眼点），由 [_DuckMiniIcon.block] 传入。
-  final Color block;
+  final Color fill;
 
-  /// 负形色（鸭头本体），恒 surface（白）。
-  final Color negative;
+  /// 波纹圈 / 圆盘公共圆心（inverse SVG：cx=511.3, cy=506）。
+  static const Offset _center = Offset(511.3, 506);
 
   @override
   void paint(Canvas canvas, Size size) {
     canvas.save();
     canvas.scale(size.width / 1024);
 
-    final Paint blockPaint = Paint()..color = block;
-    final Paint negativePaint = Paint()..color = negative;
+    final Paint bandPaint = Paint()
+      ..color = fill
+      ..style = PaintingStyle.stroke;
 
-    // 主色圆盘铺满画板（留 0.78% 余量，见 SVG 半径 504.01 的注释）。
-    canvas.drawCircle(const Offset(512, 512), 504.01, blockPaint);
-    // 白色实体鸭头。
-    canvas.drawPath(_duckHeadPath(), negativePaint);
-    // 主色眼点（反相后眼点改主色，白色眼点会与鸭头融为一体）。
-    canvas.drawCircle(const Offset(501.03, 341.89), 45.37, blockPaint);
+    // 波纹圈 1：外 395.84 / 内 361.87 → 环带半径取中、描边取差
+    canvas.drawCircle(
+      _center,
+      (395.84 + 361.87) / 2,
+      bandPaint..strokeWidth = 395.84 - 361.87,
+    );
+    // 波纹圈 2：外 305.84 / 内 273.54
+    canvas.drawCircle(
+      _center,
+      (305.84 + 273.54) / 2,
+      bandPaint..strokeWidth = 305.84 - 273.54,
+    );
 
+    // 中央实心圆盘 r=227.08
+    canvas.drawCircle(
+      _center,
+      227.08,
+      Paint()
+        ..color = fill
+        ..style = PaintingStyle.fill,
+    );
+
+    // 白色脚印：translate(506.1,458.5) rotate(14°) scale(4.20) translate(-54,-45)
+    final Paint fpPaint = Paint()
+      ..color = const Color(0xFFFFFFFF)
+      ..style = PaintingStyle.fill;
+    canvas.save();
+    canvas
+      ..translate(506.1, 458.5)
+      ..rotate(14 * math.pi / 180)
+      ..scale(4.20)
+      ..translate(-54, -45);
+
+    // 三趾 + 掌形：几何复用共享真源，禁在此复制坐标字面量（规范 §1.1）。
+    FootprintGeometry.paint(canvas, fpPaint);
+    canvas.restore();
     canvas.restore();
   }
 
-  /// 白色实体鸭头路径，坐标逐字对应 `DUCK_HEAD_MINI`。
-  Path _duckHeadPath() {
-    return Path()
-      ..moveTo(303.84, 184.1)
-      ..cubicTo(276.6, 194.17, 257.96, 206.86, 238.93, 219.91)
-      ..cubicTo(219.91, 232.96, 204.98, 246.03, 189.69, 262.43)
-      ..cubicTo(174.4, 278.84, 158.74, 299.75, 147.17, 318.39)
-      ..cubicTo(135.59, 337.04, 127.76, 344.51, 120.31, 374.35)
-      ..cubicTo(112.85, 404.18, 100.54, 456.42, 102.4, 497.45)
-      ..cubicTo(104.26, 538.48, 115.09, 582.12, 131.5, 620.56)
-      ..cubicTo(147.9, 658.99, 172.52, 696.66, 200.88, 727.99)
-      ..cubicTo(229.24, 759.33, 262.82, 786.92, 301.6, 808.57)
-      ..cubicTo(340.39, 830.21, 392.25, 848.48, 433.66, 857.81)
-      ..cubicTo(475.07, 867.14, 522.45, 864.91, 550.05, 864.52)
-      ..cubicTo(577.65, 864.14, 588.48, 859.67, 599.29, 855.57)
-      ..cubicTo(610.1, 851.48, 609.74, 845.12, 614.96, 839.9)
-      ..cubicTo(614.22, 834.69, 622.41, 841.02, 612.72, 824.24)
-      ..cubicTo(603.03, 807.45, 568.69, 761.18, 556.77, 739.18)
-      ..cubicTo(544.84, 717.18, 543.34, 706.73, 541.1, 692.18)
-      ..cubicTo(538.86, 677.63, 539.6, 665.7, 543.34, 651.89)
-      ..cubicTo(547.07, 638.08, 551.55, 622.79, 563.48, 609.36)
-      ..cubicTo(575.41, 595.93, 584, 581.77, 614.96, 571.31)
-      ..cubicTo(645.91, 560.86, 712.32, 556.77, 749.25, 546.69)
-      ..cubicTo(786.19, 536.62, 812.66, 524.69, 836.55, 510.88)
-      ..cubicTo(860.43, 497.07, 879.45, 477.31, 892.5, 463.88)
-      ..cubicTo(905.55, 450.45, 910.41, 440.38, 914.89, 430.3)
-      ..cubicTo(919.36, 420.23, 917.86, 412.4, 919.36, 403.44)
-      ..cubicTo(911.91, 398.23, 916, 390.4, 896.98, 387.78)
-      ..cubicTo(877.95, 385.16, 833.19, 391.51, 805.21, 387.78)
-      ..cubicTo(777.23, 384.04, 748.52, 374.73, 729.11, 365.39)
-      ..cubicTo(709.7, 356.06, 701.51, 348.61, 688.82, 331.82)
-      ..cubicTo(676.13, 315.03, 664.94, 282.96, 653.01, 264.67)
-      ..cubicTo(641.08, 246.39, 636.6, 237.08, 617.2, 222.15)
-      ..cubicTo(597.79, 207.22, 561.62, 185.6, 536.62, 175.14)
-      ..cubicTo(511.62, 164.69, 489.62, 162.09, 467.23, 159.48)
-      ..cubicTo(444.85, 156.86, 429.57, 155.38, 402.33, 159.48)
-      ..cubicTo(375.09, 163.57, 331.08, 174.02, 303.84, 184.1)
-      ..close();
-  }
-
   @override
-  bool shouldRepaint(covariant _DuckMiniPainter oldDelegate) {
-    return oldDelegate.block != block || oldDelegate.negative != negative;
+  bool shouldRepaint(covariant _FootprintPainter oldDelegate) {
+    return oldDelegate.fill != fill;
   }
 }

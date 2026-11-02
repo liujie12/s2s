@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>F-01 纯脚印 · 应用效果示意图</title>
+<style>
+/* ============================================================
+   F-01 纯脚印 · 应用效果示意图（仅评审用，未改动任何工程文件）
+   主色 #0B7C8C / 白；符号：fp0 三趾脚印
+   ============================================================ */
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --primary:#0B7C8C;--primary-dark:#075E6B;--primary-light:#E6F6F8;--deep:#062E33;
+  --ink:#16232E;--text:#1F2937;--text-2:#6B7280;--text-3:#9CA3AF;--line:#E2E5DE;
+  --mono:"JetBrains Mono","SFMono-Regular",Consolas,monospace;
+}
+html{-webkit-font-smoothing:antialiased}
+body{
+  font-family:"HarmonyOS Sans SC","PingFang SC","Noto Sans SC","Microsoft YaHei",sans-serif;
+  color:var(--text);padding:44px 32px 80px;
+  background:
+    radial-gradient(1100px 620px at 8% -8%, #E2EEE7 0%, rgba(226,238,231,0) 62%),
+    radial-gradient(900px 520px at 98% 2%, #F2E7DA 0%, rgba(242,231,218,0) 58%),
+    #F4F5F1;
+}
+.wrap{max-width:1180px;margin:0 auto}
+.kicker{font-family:var(--mono);font-size:11px;letter-spacing:.18em;color:var(--primary);margin-bottom:12px}
+h1{font-size:32px;letter-spacing:-.02em;font-weight:700;color:var(--ink)}
+.lede{margin-top:12px;max-width:840px;font-size:14px;line-height:1.85;color:#4B5563}
+.lede b{color:var(--text)}
+.meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+.tag{font-size:11px;line-height:1;padding:7px 11px;border-radius:999px;background:#fff;border:1px solid var(--line);color:#4B5563}
+.tag.primary{background:var(--primary);border-color:var(--primary);color:#fff}
+.tag.warn{background:#FDF3E7;border-color:#F0D9BF;color:#8A4A17}
+
+section{margin-top:48px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-no{font-family:var(--mono);font-size:11px;color:var(--primary);letter-spacing:.1em}
+h2{font-size:20px;font-weight:700;color:var(--ink)}
+.sec-sub{margin-top:8px;font-size:13px;line-height:1.8;color:var(--text-2);max-width:880px}
+
+.row{display:flex;gap:22px;flex-wrap:wrap;margin-top:20px;align-items:flex-start}
+.card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:18px}
+.card .lb{font-family:var(--mono);font-size:10px;letter-spacing:.1em;color:var(--text-3);margin-top:12px;text-align:center}
+.card .ttl{font-size:12.5px;font-weight:700;color:var(--ink);margin-bottom:4px}
+.card .dsc{font-size:11.5px;line-height:1.7;color:var(--text-2);margin-bottom:12px}
+
+/* 图标底座 */
+.tile{--tile-bg:#0B7C8C;--ink:#FFFFFF;display:grid;place-items:center;background:var(--tile-bg);color:var(--ink);border-radius:24%;overflow:hidden}
+.mk{width:100%;height:100%;display:block}
+
+/* 手机框 */
+.phone{width:252px;border-radius:38px;border:9px solid #1B2A33;background:#000;overflow:hidden;box-shadow:0 18px 40px rgba(22,35,46,.18)}
+.phone .scr{width:100%;height:480px;position:relative}
+
+/* 主屏 */
+.scr-home{background:
+  radial-gradient(420px 300px at 20% 0%, #CFE8E4 0%, rgba(207,232,228,0) 70%),
+  radial-gradient(380px 320px at 90% 90%, #BFD9E8 0%, rgba(191,217,232,0) 70%),
+  linear-gradient(160deg,#EAF3EF 0%,#DCE9E6 55%,#D3E2EA 100%)}
+.statusbar{display:flex;justify-content:space-between;padding:10px 16px 0;font-size:10px;color:#3A4A42;font-weight:600}
+.home-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px 8px;padding:18px 14px}
+.app{display:flex;flex-direction:column;align-items:center;gap:5px}
+.app .ph{width:44px;height:44px;border-radius:24%;background:rgba(255,255,255,.65)}
+.app .nm{font-size:8.5px;color:#33433C}
+.app .ic{width:44px;height:44px}
+.app .nm.dark{color:var(--ink);font-weight:700}
+.dock{position:absolute;left:10px;right:10px;bottom:12px;background:rgba(255,255,255,.55);border-radius:22px;padding:10px 12px;display:grid;grid-template-columns:repeat(4,1fr);gap:8px;backdrop-filter:blur(4px)}
+.dock .ph{width:44px;height:44px;border-radius:24%;background:rgba(255,255,255,.7);justify-self:center}
+
+/* 遮罩 */
+.masks{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-end}
+.mask-item{display:flex;flex-direction:column;align-items:center;gap:7px}
+.mask-item .tile{width:72px;height:72px}
+.mask-item .lb{font-family:var(--mono);font-size:9.5px;color:var(--text-3)}
+.m-squircle{border-radius:38%}.m-circle{border-radius:50%}.m-rounded{border-radius:24%}
+.m-square{border-radius:8%}.m-teardrop{border-radius:50% 50% 50% 6%}
+
+/* 尺寸阶梯 */
+.ladder{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-end}
+.ladder .sz{display:flex;flex-direction:column;align-items:center;gap:7px}
+.ladder .lb{font-family:var(--mono);font-size:9.5px;color:var(--text-3)}
+
+/* 单色 themed icon */
+.themed{display:flex;gap:18px;align-items:flex-end;flex-wrap:wrap}
+.th{width:76px;height:76px;border-radius:50%;display:grid;place-items:center}
+.th svg{width:40px;height:40px}
+.th .lb{font-family:var(--mono);font-size:9.5px;color:var(--text-3)}
+
+/* Splash */
+.scr-splash{background:var(--primary);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px}
+.scr-splash .g{width:88px;height:88px;color:#fff}
+.scr-splash .n{color:#fff;font-size:22px;font-weight:700;letter-spacing:.06em}
+.scr-splash .s{color:rgba(255,255,255,.75);font-size:10.5px;letter-spacing:.12em}
+
+/* 登录页 */
+.scr-login{background:#fff;padding:14px}
+.brand-orb{width:64px;height:64px;border-radius:50%;background:var(--primary-light);display:grid;place-items:center;margin:34px auto 10px}
+.brand-orb svg{width:40px;height:40px;color:var(--primary)}
+.login-name{text-align:center;font-size:19px;font-weight:700;color:var(--ink)}
+.login-slogan{text-align:center;font-size:9.5px;color:var(--text-3);margin-top:5px}
+.login-box{margin:26px 14px 0}
+.login-inp{height:36px;border:1px solid var(--line);border-radius:10px;display:flex;align-items:center;padding:0 12px;font-size:10px;color:var(--text-3);margin-bottom:10px}
+.login-btn{height:36px;border-radius:10px;background:var(--primary);color:#fff;font-size:11px;display:grid;place-items:center;font-weight:700}
+.login-tip{text-align:center;font-size:8.5px;color:var(--text-3);margin-top:12px}
+
+/* 首页 */
+.scr-homeapp{background:#F6F7F4}
+.appbar{background:var(--primary);display:flex;align-items:center;gap:8px;padding:9px 12px}
+.appbar .g{width:20px;height:20px;color:#fff}
+.appbar .t{color:#fff;font-size:13px;font-weight:700}
+.appbar .sp{flex:1}
+.appbar .ic2{width:15px;height:15px;border-radius:50%;background:rgba(255,255,255,.35)}
+.home-search{margin:10px 12px;height:30px;border-radius:999px;background:#fff;border:1px solid var(--line);display:flex;align-items:center;padding:0 12px;font-size:9.5px;color:var(--text-3)}
+.home-card{margin:8px 12px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px;display:flex;gap:9px}
+.home-card .av{width:34px;height:34px;border-radius:10px;background:var(--primary-light);flex:none}
+.home-card .l1{height:8px;border-radius:4px;background:#E5E9E4;width:70%}
+.home-card .l2{height:7px;border-radius:4px;background:#EEF1EC;width:50%;margin-top:6px}
+
+/* 地图页 */
+.scr-map{background:#EEF2EF;display:flex;flex-direction:column}
+.map-canvas{flex:1;background:
+  repeating-linear-gradient(45deg,rgba(11,124,140,.06) 0 1px,transparent 1px 20px),
+  repeating-linear-gradient(-45deg,rgba(11,124,140,.05) 0 1px,transparent 1px 18px),
+  #F2F5F2;padding:10px}
+.map-bubble{background:#fff;border:1px solid #D8E3DE;border-radius:12px;padding:6px 8px;font-size:7px;color:#4B5563;box-shadow:0 2px 6px rgba(22,35,46,.06);display:inline-block;margin-bottom:6px}
+.map-ic{width:8px;height:8px;background:var(--primary);border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px var(--primary)}
+.map-ic2{width:8px;height:8px;background:#E8A33D;border-radius:50%;border:2px solid #fff}
+.map-ic3{width:8px;height:8px;background:#5A6EA8;border-radius:50%;border:2px solid #fff}
+.map-sheet{background:#fff;border-top-left-radius:16px;border-top-right-radius:16px;padding:8px 12px 12px;box-shadow:0 -4px 12px rgba(22,35,46,.06)}
+.map-sheet .tt{font-size:11px;font-weight:700;color:var(--ink);margin-bottom:4px}
+.map-sheet .bd{font-size:9px;color:var(--text-2);line-height:1.5}
+
+/* 底部导航栏（严格按 home_shell.dart 四等分：[丫圈][发布][消息][我的]）
+   四项平排等分，发布键图标跟其他 Tab 同尺寸同色，靠位置+文案识别 */
+.tabbar{background:#fff;border-top:1px solid var(--line);display:flex;align-items:center;padding:6px 4px 10px}
+.tabbar .tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:7px;color:var(--text-3)}
+.tabbar .tab svg{width:18px;height:18px;color:var(--text-3)}
+.tabbar .tab.active{color:var(--primary)}
+.tabbar .tab.active svg{color:var(--primary)}
+
+/* 关于页 */
+.about-list{background:#fff;border-radius:14px;border:1px solid var(--line);overflow:hidden}
+.about-row{display:flex;align-items:center;gap:12px;padding:13px 15px}
+.about-row .tile{width:42px;height:42px}
+.about-row .n{font-size:13.5px;font-weight:700;color:var(--ink)}
+.about-row .v{font-size:10.5px;color:var(--text-3);margin-top:2px}
+.about-line{border-top:1px solid #F0F2EE;margin:0 15px}
+.about-it{display:flex;justify-content:space-between;padding:11px 15px;font-size:11px;color:var(--text-2)}
+
+/* 通知 */
+.notif-bar{background:#12181C;border-radius:14px;padding:10px 14px;display:flex;align-items:center;gap:9px}
+.notif-bar .g{width:15px;height:15px;color:#fff;flex:none}
+.notif-bar .t{color:#E8ECEC;font-size:10.5px;font-weight:600}
+.notif-bar .sp{flex:1}
+.notif-bar .tm{color:#8A949A;font-size:9px}
+.notif-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:flex;gap:11px;align-items:flex-start}
+.notif-card .tile{width:34px;height:34px;border-radius:22%;flex:none}
+.notif-card .tt{font-size:11.5px;font-weight:700;color:var(--ink)}
+.notif-card .bd{font-size:10.5px;color:var(--text-2);margin-top:3px;line-height:1.6}
+.notif-card .tm{margin-left:auto;font-size:9px;color:var(--text-3);flex:none}
+
+/* 商店卡 */
+.store-card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:16px;display:flex;gap:14px;align-items:center}
+.store-card .tile{width:58px;height:58px;flex:none}
+.store-card .n{font-size:14.5px;font-weight:700;color:var(--ink)}
+.store-card .d{font-size:10px;color:var(--text-3);margin-top:3px}
+.store-card .r{display:flex;align-items:center;gap:5px;margin-top:5px;font-size:10px;color:var(--text-2)}
+.store-card .stars{color:#E8A33D;letter-spacing:1px;font-size:10px}
+.store-btn{margin-left:auto;flex:none;font-size:11.5px;font-weight:700;color:var(--primary);border:1.5px solid var(--primary);border-radius:999px;padding:7px 18px}
+
+/* 分享头像 */
+.share-card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:16px;display:flex;gap:14px;align-items:center}
+.share-card .avatar{width:46px;height:46px;border-radius:50%;flex:none}
+.share-card .n{font-size:13px;font-weight:700;color:var(--ink)}
+.share-card .d{font-size:10.5px;color:var(--text-2);margin-top:3px}
+
+.foot-note{margin-top:46px;font-family:var(--mono);font-size:10.5px;color:var(--text-3);letter-spacing:.04em}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="kicker">BRAND / APP ICON MOCKUP · 2026-11-02</div>
+  <h1>F-01 纯脚印 · 应用效果示意图</h1>
+  <p class="lede">
+    以 <b>F-01 纯脚印（右斜 +14°）</b>为品牌符号：<b>桌面图标保留原「找」字矢量，仅把右上角鸭头原位换成同 bbox 脚印</b>；底部导航栏沿用
+    <b>home_shell.dart 四等分结构</b>「丫圈 / 发布 / 消息 / 我的」，发布键鸭头→脚印；应用内各页面（启动页、登录页品牌位、AppBar）用纯斜脚印。
+    <b>全部是示意图，没有改动任何工程文件</b>——Android mipmap、Dart 源码等保持原样，拍板后才出正式资产替换。
+  </p>
+  <div class="meta">
+    <span class="tag primary">F-01 斜脚印 · 右斜 14°</span>
+    <span class="tag">桌面保留「找」字</span>
+    <span class="tag">主色 #0B7C8C</span>
+    <span class="tag">仅示意 · 未替换</span>
+    <span class="tag warn">评审用</span>
+  </div>
+
+  <!-- 符号定义 -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="fp0" viewBox="0 0 108 108">
+      <ellipse cx="40" cy="35" rx="7.2" ry="9.8" transform="rotate(-15 40 35)"/>
+      <ellipse cx="54" cy="30.5" rx="7.6" ry="10.6"/>
+      <ellipse cx="68" cy="35" rx="7.2" ry="9.8" transform="rotate(15 68 35)"/>
+      <path d="M37 57C37 50.5 44.5 48.5 54 48.5S71 50.5 71 57c0 5.5-3.5 9.5-7 15-3.5 6-4.5 12-10 12s-6.5-6-10-12c-3.5-5.5-7-9.5-7-15Z"/>
+    </symbol>
+    <!-- 应用内完整脚印（右斜 14° + 声纹圆圈装饰）。桌面图标不用这个，保持干净 -->
+    <symbol id="fp" viewBox="0 0 108 108">
+      <g transform="rotate(14 54 54)" fill="currentColor">
+        <!-- 声纹圆圈：3 条同心圆弧外扩扩散感，opacity 兼顾小尺寸可读性 -->
+        <circle cx="54" cy="50" r="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-opacity=".5"/>
+        <circle cx="54" cy="50" r="30" fill="none" stroke="currentColor" stroke-width="1.2" stroke-opacity=".32"/>
+        <circle cx="54" cy="50" r="38" fill="none" stroke="currentColor" stroke-width=".9" stroke-opacity=".18"/>
+        <!-- 脚印本体 -->
+        <use href="#fp0"/>
+      </g>
+    </symbol>
+    <!-- 桌面图标合成：找字环（白）+ 右斜 14° 脚印（主色实心）。
+         几何 1:1 取自 prototype-figma/assets/app-icon-android-foreground.svg（内层 viewport 675.84
+         × 0.1598 = 108 viewport），零毛刺；脚印与鸭头同 bbox 中心 -->
+    <symbol id="fpl" viewBox="0 0 108 108">
+      <g fill="currentColor">
+        <!-- 找字环 path 1（evenodd 外环+中环） -->
+        <path d="M12.18 53.37 A41.75 41.75 0.00 0.16 0.00 95.67 53.37 A41.75 41.75 0.00 0.16 0.00 12.18 53.37 M15.76 53.37 A38.17 38.17 0.00 0.16 0.00 92.09 53.37 A38.17 38.17 0.00 0.16 0.00 15.76 53.37" fill-rule="evenodd"/>
+        <!-- 找字环 path 2（evenodd 中环+内环） -->
+        <path d="M21.67 53.37 A32.26 32.26 0.00 0.16 0.00 86.18 53.37 A32.26 32.26 0.00 0.16 0.00 21.67 53.37 M25.08 53.37 A28.85 28.85 0.00 0.16 0.00 82.78 53.37 A28.85 28.85 0.00 0.16 0.00 25.08 53.37" fill-rule="evenodd"/>
+        <!-- 找字环 path 3（实心内圈） -->
+        <path d="M29.98 53.37 A23.95 23.95 0.00 0.16 0.00 77.88 53.37 A23.95 23.95 0.00 0.16 0.00 29.98 53.37"/>
+        <!-- 脚印：中心 (53.8,56.4) 对齐原鸭头 bbox (241.5×209.9)，右斜 14°，scale 0.671 = 4.2 × 0.1598 -->
+        <use href="#fp0" width="108" height="108" transform="translate(53.8 56.4) rotate(14) scale(.671) translate(-54 -45)"/>
+      </g>
+    </symbol>
+  </svg>
+
+  <!-- 1. 桌面与启动器 -->
+  <section>
+    <div class="sec-head"><span class="sec-no">01</span><h2>桌面与启动器</h2></div>
+    <p class="sec-sub">桌面图标沿用旧资产构图：<b>找字矢量直接来自旧 ic_launcher.png trace（已剔除鸭头），右上角鸭头原位换成右斜 14° 脚印</b>——字重、圆头、装饰细节与旧资产完全一致。应用内各页面继续用纯斜脚印。</p>
+    <div class="row">
+
+      <div class="card">
+        <div class="ttl">Android 主屏</div>
+        <div class="dsc">第三屏常用位 + Dock 邻居，混排效果</div>
+        <div class="phone"><div class="scr scr-home">
+          <div class="statusbar"><span>9:41</span><span>5G ▮▮▮</span></div>
+          <div class="home-grid">
+            <div class="app"><div class="ph"></div><div class="nm">微信</div></div>
+            <div class="app"><div class="ph"></div><div class="nm">相册</div></div>
+            <div class="app"><div class="ph"></div><div class="nm">地图</div></div>
+            <div class="app"><div class="ph"></div><div class="nm">音乐</div></div>
+            <div class="app"><div class="ph"></div><div class="nm">日历</div></div>
+            <div class="app">
+              <div class="tile ic"><svg class="mk" viewBox="0 0 108 108"><use href="#fpl"/></svg></div>
+              <div class="nm dark">找丫找</div>
+            </div>
+            <div class="app"><div class="ph"></div><div class="nm">邮箱</div></div>
+            <div class="app"><div class="ph"></div><div class="nm">设置</div></div>
+          </div>
+          <div class="dock">
+            <div class="ph"></div><div class="ph"></div>
+            <div class="tile ic"><svg class="mk" viewBox="0 0 108 108"><use href="#fpl"/></svg></div>
+            <div class="ph"></div>
+          </div>
+        </div></div>
+        <div class="lb">HOME SCREEN / DOCK</div>
+      </div>
+
+      <div class="card">
+        <div class="ttl">系统遮罩自适应</div>
+        <div class="dsc">同一前景，各 ROM 裁切形状下都要成立</div>
+        <div class="masks">
+          <div class="mask-item"><div class="tile m-squircle"><svg class="mk" viewBox="0 0 108 108"><use href="#fpl"/></svg></div><div class="lb">Squircle</div></div>
+          <div class="mask-item"><div class="tile m-circle"><svg class="mk" viewBox="0 0 108 108"><use href="#fpl"/></svg></div><div class="lb">Circle</div></div>
+          <div class="mask-item"><div class="tile m-rounded"><svg class="mk" viewBox="0 0 108 108"><use href="#fpl"/></svg></div><div class="lb">Rounded</div></div>
+          <div class="mask-item"><div class="tile m-square"><svg class="mk" viewBox="0 0 108 108"><use href="#fpl"/></svg></div><div class="lb">Square</div></div>
+          <div class="mask-item"><div class="tile m-teardrop"><svg class="mk" viewBox="0 0 108 108"><use href="#fpl"/></svg></div><div class="lb">Teardrop</div></div>
+        </div>
+        <div class="lb">ADAPTIVE MASKS · 72dp</div>
+      </div>
+
+      <div class="card">
+        <div class="ttl">尺寸阶梯</div>
+        <div class="dsc">192 → 24px 实缩，桌面最终尺寸在 48–72</div>
+        <div class="ladder">
+          <div class="sz"><div class="tile" style="width:108px;height:108px"><svg class="mk" viewBox="0 0 108 108"><use href="#fpl"/></svg></div><div class="lb">108</div></div>
+          <div class="sz"><div class="tile" style="width:72px;height:72px"><svg class="mk" viewBox="0 0 108 108"><use href="#fpl"/></svg></div><div class="lb">72</div></div>
+          <div class="sz"><div class="tile" style="width:48px;height:48px"><svg class="mk" viewBox="0 0 108 108"><use href="#fpl"/></svg></div><div class="lb">48</div></div>
+          <div class="sz"><div class="tile" style="width:32px;height:32px"><svg class="mk" viewBox="0 0 108 108"><use href="#fpl"/></svg></div><div class="lb">32</div></div>
+          <div class="sz"><div class="tile" style="width:24px;height:24px"><svg class="mk" viewBox="0 0 108 108"><use href="#fpl"/></svg></div><div class="lb">24</div></div>
+        </div>
+        <div class="lb">SIZE LADDER</div>
+      </div>
+
+      <div class="card">
+        <div class="ttl">Android 13 单色层</div>
+        <div class="dsc">Themed Icons：系统取壁纸色，只保留 alpha 轮廓</div>
+        <div class="themed">
+          <div><div class="th" style="background:#DCE8E2"><svg viewBox="0 0 108 108" style="color:#3E5A50"><use href="#fpl"/></svg></div><div class="lb" style="text-align:center">绿系壁纸</div></div>
+          <div><div class="th" style="background:#E8E2D8"><svg viewBox="0 0 108 108" style="color:#5A4E3E"><use href="#fpl"/></svg></div><div class="lb" style="text-align:center">棕系壁纸</div></div>
+          <div><div class="th" style="background:#2A3438"><svg viewBox="0 0 108 108" style="color:#C9D6D2"><use href="#fpl"/></svg></div><div class="lb" style="text-align:center">深色模式</div></div>
+        </div>
+        <div class="lb">MONOCHROME LAYER</div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- 2. 应用内页面 -->
+  <section>
+    <div class="sec-head"><span class="sec-no">02</span><h2>应用内页面</h2></div>
+    <p class="sec-sub">三处真实页面位置：启动页、登录页品牌位（替换现在的 Icons.travel_explore 占位）、首页顶栏。</p>
+    <div class="row">
+
+      <div class="card">
+        <div class="ttl">启动页 Splash</div>
+        <div class="dsc">白描脚印直接压在主色上，无底座</div>
+        <div class="phone"><div class="scr scr-splash">
+          <div class="g"><svg class="mk" viewBox="0 0 108 108"><use href="#fp"/></svg></div>
+          <div class="n">找丫找</div>
+          <div class="s">用就近的资源解决本地的需求</div>
+        </div></div>
+        <div class="lb">SPLASH</div>
+      </div>
+
+      <div class="card">
+        <div class="ttl">登录页品牌位</div>
+        <div class="dsc">浅青圆底 + 主色脚印，替换当前占位图标</div>
+        <div class="phone"><div class="scr scr-login">
+          <div class="brand-orb"><svg viewBox="0 0 108 108"><use href="#fp"/></svg></div>
+          <div class="login-name">找丫找</div>
+          <div class="login-slogan">用就近的资源解决本地的需求</div>
+          <div class="login-box">
+            <div class="login-inp">请输入手机号</div>
+            <div class="login-inp">请输入验证码</div>
+            <div class="login-btn">登录 / 注册</div>
+          </div>
+          <div class="login-tip">登录即代表同意《用户协议》与《隐私政策》</div>
+        </div></div>
+        <div class="lb">LOGIN · _BrandHeader</div>
+      </div>
+
+      <div class="card">
+        <div class="ttl">首页顶栏</div>
+        <div class="dsc">20px 白描脚印 + 标题，主色 AppBar</div>
+        <div class="phone"><div class="scr scr-homeapp">
+          <div class="appbar">
+            <div class="g"><svg class="mk" viewBox="0 0 108 108"><use href="#fp"/></svg></div>
+            <div class="t">找丫找</div>
+            <div class="sp"></div>
+            <div class="ic2"></div><div class="ic2"></div>
+          </div>
+          <div class="home-search">搜索附近的资源或需求</div>
+          <div class="home-card"><div class="av"></div><div style="flex:1"><div class="l1"></div><div class="l2"></div></div></div>
+          <div class="home-card"><div class="av"></div><div style="flex:1"><div class="l1"></div><div class="l2"></div></div></div>
+          <div class="home-card"><div class="av"></div><div style="flex:1"><div class="l1"></div><div class="l2"></div></div></div>
+        </div></div>
+        <div class="lb">HOME APPBAR</div>
+      </div>
+
+      <div class="card">
+        <div class="ttl">地图页 · 底部导航栏</div>
+        <div class="dsc">四等分平排（丫圈 / 发布 / 消息 / 我的），发布键图标从鸭头换成纯脚印，与其他 Tab 同尺寸同色</div>
+        <div class="phone"><div class="scr scr-map" style="height:480px">
+          <div class="statusbar"><span>9:41</span><span>5G ▮▮▮</span></div>
+          <div style="padding:6px 8px">
+            <div class="home-search" style="margin:0">搜索附近的资源或需求</div>
+          </div>
+          <div class="map-canvas">
+            <div class="map-bubble">找丫找驿站 · 120m</div>
+            <div style="display:flex;gap:20px;align-items:center;margin:14px 0 20px">
+              <svg class="map-ic" style="width:10px;height:10px;background:#0B7C8C;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #0B7C8C" viewBox="0 0 10 10"><circle cx="5" cy="5" r="3" fill="currentColor"/></svg>
+              <svg class="map-ic2" style="width:9px;height:9px;background:#E8A33D;border-radius:50%;border:2px solid #fff" viewBox="0 0 10 10"><circle cx="5" cy="5" r="3" fill="currentColor"/></svg>
+              <svg class="map-ic3" style="width:9px;height:9px;background:#5A6EA8;border-radius:50%;border:2px solid #fff" viewBox="0 0 10 10"><circle cx="5" cy="5" r="3" fill="currentColor"/></svg>
+              <svg class="map-ic" style="width:10px;height:10px;background:#0B7C8C;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #0B7C8C" viewBox="0 0 10 10"><circle cx="5" cy="5" r="3" fill="currentColor"/></svg>
+            </div>
+          </div>
+          <div class="map-sheet">
+            <div class="tt">驿站·邻里市集</div>
+            <div class="bd">茶鸡蛋 3 元、绿豆汤 5 元、手工钥匙扣 8 元 起</div>
+          </div>
+          <div class="tabbar">
+            <div class="tab active">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2C8 2 5 5 5 9c0 4.5 7 13 7 13s7-8.5 7-13c0-4-3-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
+              <span>丫圈</span>
+            </div>
+            <div class="tab">
+              <svg class="mk" viewBox="0 0 108 108"><use href="#fp"/></svg>
+              <span>发布</span>
+            </div>
+            <div class="tab">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+              <span>消息</span>
+            </div>
+            <div class="tab">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1"/></svg>
+              <span>我的</span>
+            </div>
+          </div>
+        </div></div>
+        <div class="lb">BOTTOM NAV · MAP</div>
+      </div>
+
+      <div class="card" style="flex:1;min-width:300px">
+        <div class="ttl">我的 · 关于</div>
+        <div class="dsc">设置页「关于」行的标准陈列</div>
+        <div class="about-list">
+          <div class="about-row">
+            <div class="tile"><svg class="mk" viewBox="0 0 108 108"><use href="#fpl"/></svg></div>
+            <div><div class="n">找丫找</div><div class="v">版本 0.1.0 (1)</div></div>
+          </div>
+          <div class="about-line"></div>
+          <div class="about-it"><span>检查更新</span><span>›</span></div>
+          <div class="about-line"></div>
+          <div class="about-it"><span>用户协议</span><span>›</span></div>
+          <div class="about-line"></div>
+          <div class="about-it"><span>隐私政策</span><span>›</span></div>
+        </div>
+        <div class="lb">SETTINGS / ABOUT</div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- 3. 通知与商店 -->
+  <section id="sec-notify">
+    <div class="sec-head"><span class="sec-no">03</span><h2>通知与商店</h2></div>
+    <p class="sec-sub">通知栏是白描剪影的考场：24dp、纯白、无灰阶，脚印的剪影必须脱底可辨。</p>
+    <div class="row">
+
+      <div class="card" style="flex:1;min-width:320px">
+        <div class="ttl">状态栏 + 通知</div>
+        <div class="dsc">上方为状态栏小图标（纯白剪影），下方为展开通知</div>
+        <div class="notif-bar">
+          <div class="g"><svg class="mk" viewBox="0 0 108 108"><use href="#fp"/></svg></div>
+          <div class="t">找丫找</div>
+          <div class="sp"></div>
+          <div class="tm">9:41</div>
+        </div>
+        <div style="height:10px"></div>
+        <div class="notif-card">
+          <div class="tile"><svg class="mk" viewBox="0 0 108 108"><use href="#fp"/></svg></div>
+          <div>
+            <div class="tt">你发布的需求有新应答</div>
+            <div class="bd">「求租：周末货车一辆」有 3 位附近的提供者响应，去看看</div>
+          </div>
+          <div class="tm">现在</div>
+        </div>
+        <div class="lb">STATUS BAR / NOTIFICATION</div>
+      </div>
+
+      <div class="card" style="flex:1;min-width:320px">
+        <div class="ttl">应用商店卡片</div>
+        <div class="dsc">商店列表里的点击入口，58px 圆角矩形</div>
+        <div class="store-card">
+          <div class="tile"><svg class="mk" viewBox="0 0 108 108"><use href="#fpl"/></svg></div>
+          <div>
+            <div class="n">找丫找</div>
+            <div class="d">找丫找科技 · 12.8 MB</div>
+            <div class="r"><span class="stars">★★★★★</span><span>4.9 · 1.2 万条评价</span></div>
+          </div>
+          <div class="store-btn">安装</div>
+        </div>
+        <div class="lb">STORE LISTING</div>
+      </div>
+
+      <div class="card" style="flex:1;min-width:320px">
+        <div class="ttl">分享 / 公众号头像</div>
+        <div class="dsc">圆形裁切下的社交场景陈列</div>
+        <div class="share-card">
+          <div class="tile avatar"><svg class="mk" viewBox="0 0 108 108"><use href="#fpl"/></svg></div>
+          <div>
+            <div class="n">找丫找</div>
+            <div class="d">用就近的资源解决本地的需求</div>
+          </div>
+        </div>
+        <div class="lb">SOCIAL AVATAR</div>
+      </div>
+
+    </div>
+  </section>
+
+  <p class="foot-note">MOCKUP ONLY · 未改动 android/ 与 lib/ 下任何文件 · F-01 拍板后按《候选筛选表》§04 的八处清单统一替换</p>
+
+</div>
+</body>
+</html>

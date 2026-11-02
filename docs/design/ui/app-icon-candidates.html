@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>找丫找 · 主题图标候选筛选表</title>
+<style>
+/* ============================================================
+   找丫找 · 应用图标候选筛选表
+   约束：一个图标只用一个符号（脚印与眼睛不同图出现）
+   主色：#0B7C8C（AppColors.primary）+ 白
+   仅评审用，不含工程改动
+   ============================================================ */
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --primary:#0B7C8C;
+  --primary-dark:#075E6B;
+  --primary-light:#E6F6F8;
+  --deep:#062E33;
+  --ink:#16232E;
+  --text:#1F2937;
+  --text-2:#6B7280;
+  --text-3:#9CA3AF;
+  --line:#E2E5DE;
+  --mono:"JetBrains Mono","SFMono-Regular",Consolas,monospace;
+}
+html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+body{
+  font-family:"HarmonyOS Sans SC","PingFang SC","Noto Sans SC","Microsoft YaHei",sans-serif;
+  color:var(--text);
+  padding:44px 32px 80px;
+  background:
+    radial-gradient(1100px 620px at 8% -8%, #E2EEE7 0%, rgba(226,238,231,0) 62%),
+    radial-gradient(900px 520px at 98% 2%, #F2E7DA 0%, rgba(242,231,218,0) 58%),
+    #F4F5F1;
+}
+body::before{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+  background-image:
+    linear-gradient(rgba(31,41,55,.04) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(31,41,55,.04) 1px,transparent 1px);
+  background-size:34px 34px;
+  -webkit-mask-image:radial-gradient(circle at 50% 16%,#000 18%,transparent 78%);
+  mask-image:radial-gradient(circle at 50% 16%,#000 18%,transparent 78%);
+}
+.wrap{position:relative;z-index:1;max-width:1180px;margin:0 auto}
+
+.kicker{font-family:var(--mono);font-size:11px;letter-spacing:.18em;color:var(--primary);margin-bottom:12px}
+h1{font-size:34px;line-height:1.22;letter-spacing:-.02em;font-weight:700;color:var(--ink);max-width:920px}
+.lede{margin-top:14px;max-width:860px;font-size:14px;line-height:1.85;color:#4B5563}
+.lede b{color:var(--text)}
+.meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+.tag{font-size:11px;line-height:1;padding:7px 11px;border-radius:999px;background:#fff;border:1px solid var(--line);color:#4B5563}
+.tag.primary{background:var(--primary);border-color:var(--primary);color:#fff}
+.tag.warn{background:#FDF3E7;border-color:#F0D9BF;color:#8A4A17}
+
+section{margin-top:50px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-no{font-family:var(--mono);font-size:11px;color:var(--primary);letter-spacing:.1em}
+h2{font-size:21px;font-weight:700;color:var(--ink);letter-spacing:-.01em}
+.sec-sub{margin-top:8px;font-size:13px;line-height:1.8;color:var(--text-2);max-width:900px}
+
+/* 规则条 */
+.rules{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:20px}
+.rule{background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px}
+.rule .k{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;color:var(--primary);margin-bottom:8px}
+.rule h4{font-size:13.5px;font-weight:700;color:var(--ink);margin-bottom:6px}
+.rule p{font-size:12.5px;line-height:1.8;color:var(--text-2)}
+.rule code{font-family:var(--mono);font-size:11px;color:var(--primary-dark);background:var(--primary-light);padding:1px 5px;border-radius:5px}
+
+/* 图标底座 */
+.tile{
+  --tile-bg:#0B7C8C;
+  --ink:#FFFFFF;
+  display:grid;place-items:center;
+  background:var(--tile-bg);color:var(--ink);
+  border-radius:24%;
+  overflow:hidden;
+}
+.mk{width:100%;height:100%;display:block}
+
+/* 候选网格 */
+.fam{margin-top:30px}
+.fam-head{display:flex;align-items:baseline;gap:10px;padding-bottom:10px;border-bottom:1px dashed var(--line)}
+.fam-head h3{font-size:14.5px;font-weight:700;color:var(--ink)}
+.fam-head span{font-size:11.5px;color:var(--text-3)}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:16px}
+.cand{background:#fff;border:1px solid var(--line);border-radius:18px;padding:16px;display:flex;flex-direction:column;gap:14px}
+.cand.pick{border-color:#9FD3D9;box-shadow:0 0 0 3px rgba(11,124,140,.07)}
+.cand-top{display:flex;gap:14px;align-items:flex-start}
+.cand .tile{width:84px;height:84px;flex:none}
+.cand .mini{width:24px;height:24px;border-radius:24%}
+.cand-meta{min-width:0}
+.cand .no{font-family:var(--mono);font-size:10px;color:var(--primary);letter-spacing:.12em;margin-bottom:5px}
+.cand h4{font-size:15px;font-weight:700;color:var(--ink);line-height:1.3}
+.cand p{margin-top:5px;font-size:11.5px;line-height:1.7;color:var(--text-2)}
+.cand-foot{display:flex;align-items:center;gap:8px;padding-top:10px;border-top:1px dashed var(--line);margin-top:auto}
+.mini{width:24px;height:24px;border-radius:24%;flex:none}
+.fit{font-size:10.5px;line-height:1;padding:5px 8px;border-radius:999px;background:#EEF2EE;color:#52605A;white-space:nowrap}
+.fit.good{background:var(--primary-light);color:var(--primary-dark)}
+.fit.warn{background:#FDF3E7;color:#8A4A17}
+.fit + .fit{margin-left:0}
+
+/* 短名单 */
+.short{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:20px}
+.short-card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:18px;display:flex;flex-direction:column;gap:12px}
+.short-card.top{border-color:#9FD3D9}
+.short-card .tile{width:76px;height:76px}
+.short-card h4{font-size:14px;font-weight:700;color:var(--ink)}
+.short-card p{font-size:11.5px;line-height:1.75;color:var(--text-2)}
+.short-card .why{font-size:11.5px;line-height:1.7;color:var(--primary-dark)}
+.short-card .risk{font-size:11.5px;line-height:1.7;color:#8A4A17}
+
+/* 尺寸与遮罩 */
+.ladder{display:flex;align-items:flex-end;gap:20px;flex-wrap:wrap;margin-top:18px;padding:22px;background:#fff;border:1px solid var(--line);border-radius:18px}
+.sz{display:flex;flex-direction:column;align-items:center;gap:7px}
+.sz .tile{border-radius:24%}
+.sz .lb{font-family:var(--mono);font-size:9.5px;color:var(--text-3)}
+.masks{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-end;margin-top:16px;padding:22px;background:#fff;border:1px solid var(--line);border-radius:18px}
+
+/* 清单 */
+.check{display:grid;grid-template-columns:repeat(2,1fr);gap:10px 24px;margin-top:18px;padding:20px 22px;background:#fff;border:1px solid var(--line);border-radius:18px}
+.check div{font-size:12.5px;line-height:1.8;color:#4B5563;display:flex;gap:9px}
+.check b{color:var(--primary);font-family:var(--mono);font-size:11px;padding-top:2px}
+.check code{font-family:var(--mono);font-size:11px;color:var(--primary-dark);background:var(--primary-light);padding:1px 5px;border-radius:5px}
+
+/* 决策 */
+.decisions{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-top:18px}
+.dec{background:#fff;border:1px solid var(--line);border-left:3px solid var(--primary);border-radius:12px;padding:16px 18px}
+.dec h5{font-size:12.5px;font-weight:700;color:var(--ink);margin-bottom:6px}
+.dec p{font-size:12px;line-height:1.8;color:var(--text-2)}
+.dec p b{color:var(--primary-dark)}
+
+.foot-note{margin-top:46px;font-family:var(--mono);font-size:10.5px;color:var(--text-3);letter-spacing:.04em}
+
+@media (max-width:1040px){
+  .grid{grid-template-columns:repeat(2,1fr)}
+  .short{grid-template-columns:repeat(2,1fr)}
+  .rules{grid-template-columns:1fr}
+  .check{grid-template-columns:1fr}
+  .decisions{grid-template-columns:1fr}
+}
+@media (max-width:660px){
+  .grid{grid-template-columns:1fr}
+  .short{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="kicker">BRAND / APP ICON · 2026-11-02</div>
+  <h1>找丫找 · 主题图标候选筛选表</h1>
+  <p class="lede">
+    应用改名后，「找鸭找」的鸭子字标失效，图标需要重建。这份表一次给出 <b>18 个单一符号方案</b>供筛选——
+    <b>一个图标只用一个符号，脚印和眼睛不会同时出现在同一张图里</b>。脚丫与眼睛是两项必选项，其余方向（地图、供需、字标）也一起列出，方便横向比较。
+  </p>
+  <div class="meta">
+    <span class="tag primary">主色 #0B7C8C</span>
+    <span class="tag">18 个候选 · 5 个方向族</span>
+    <span class="tag">单符号 / 24px 优先</span>
+    <span class="tag warn">待拍板 4 项</span>
+  </div>
+
+  <!-- 0. 筛选规则 -->
+  <section>
+    <div class="sec-head"><span class="sec-no">00</span><h2>先定筛选规则</h2></div>
+    <div class="rules">
+      <div class="rule">
+        <div class="k">RULE 01</div>
+        <h4>一图一符号</h4>
+        <p>脚印与眼睛各自独立成图，不叠加、不嵌合。好处是每个符号都能单独缩到 24px，也便于按场景换用。</p>
+      </div>
+      <div class="rule">
+        <div class="k">RULE 02</div>
+        <h4>24px 先过关</h4>
+        <p>每张卡片都附 24px 实缩。大图好看但小图糊掉的方案直接淘汰——桌面图标最终以这个尺寸存在。</p>
+      </div>
+      <div class="rule">
+        <div class="k">RULE 03</div>
+        <h4>两色、圆头、无渐变</h4>
+        <p>只用 <code>#0B7C8C</code> 与白，沿用官网 IP 的「负形留白」；不写中文、不加阴影、不做细线。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 符号定义 -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="fp0" viewBox="0 0 108 108">
+      <ellipse cx="40" cy="35" rx="7.2" ry="9.8" transform="rotate(-15 40 35)"/>
+      <ellipse cx="54" cy="30.5" rx="7.6" ry="10.6"/>
+      <ellipse cx="68" cy="35" rx="7.2" ry="9.8" transform="rotate(15 68 35)"/>
+      <path d="M37 57C37 50.5 44.5 48.5 54 48.5S71 50.5 71 57c0 5.5-3.5 9.5-7 15-3.5 6-4.5 12-10 12s-6.5-6-10-12c-3.5-5.5-7-9.5-7-15Z"/>
+    </symbol>
+    <symbol id="i1" viewBox="0 0 108 108"><use href="#fp0" fill="currentColor"/></symbol>
+    <symbol id="i2" viewBox="0 0 108 108">
+      <g stroke="currentColor" stroke-width="5" fill="none" stroke-linecap="round" opacity=".28">
+        <path d="M23 82c-7-13-7-30 0-43"/>
+        <path d="M85 82c7-13 7-30 0-43"/>
+      </g>
+      <use href="#fp0" transform="translate(54 54) scale(.84) translate(-54 -53.5)" fill="currentColor"/>
+    </symbol>
+    <symbol id="i3" viewBox="0 0 108 108">
+      <use href="#fp0" x="4" y="8" width="50" height="50" fill="none" stroke="currentColor" stroke-width="5.5" opacity=".8"/>
+      <use href="#fp0" x="47" y="43" width="57" height="57" fill="currentColor"/>
+    </symbol>
+    <symbol id="i4" viewBox="0 0 108 108">
+      <g fill="currentColor">
+        <path d="M30 54c0-6.5 10.5-10 24-10s24 3.5 24 10c0 10-10.5 15.5-16.5 21.5-2.6 2.6-4.7 4.5-7.5 4.5s-4.9-1.9-7.5-4.5C40.5 69.5 30 64 30 54Z"/>
+        <ellipse cx="34" cy="42" rx="7.5" ry="12" transform="rotate(-36 34 42)"/>
+        <ellipse cx="54" cy="35" rx="8" ry="13"/>
+        <ellipse cx="74" cy="42" rx="7.5" ry="12" transform="rotate(36 74 42)"/>
+      </g>
+    </symbol>
+    <symbol id="i5" viewBox="0 0 108 108">
+      <path d="M26 54C34 36 74 36 82 54 74 72 34 72 26 54Z" fill="currentColor"/>
+      <circle cx="54" cy="54" r="10" fill="var(--tile-bg)"/>
+      <circle cx="58" cy="50" r="3" fill="currentColor"/>
+    </symbol>
+    <symbol id="i6" viewBox="0 0 108 108">
+      <path d="M54 22c-12 0-21.5 9.4-21.5 21C32.5 59 54 86 54 86s21.5-27 21.5-43C75.5 31.4 66 22 54 22Z" fill="currentColor"/>
+      <path d="M43 44c3.8-6.6 18.2-6.6 22 0-3.8 6.6-18.2 6.6-22 0Z" fill="var(--tile-bg)"/>
+      <circle cx="54" cy="44" r="4.6" fill="currentColor"/>
+    </symbol>
+    <symbol id="i7" viewBox="0 0 108 108">
+      <path d="M18 54C24 43 44 43 50 54 44 65 24 65 18 54Z" fill="currentColor"/>
+      <path d="M58 54C64 43 84 43 90 54 84 65 64 65 58 54Z" fill="currentColor"/>
+      <circle cx="34" cy="54" r="5.2" fill="var(--tile-bg)"/>
+      <circle cx="74" cy="54" r="5.2" fill="var(--tile-bg)"/>
+    </symbol>
+    <symbol id="i8" viewBox="0 0 108 108">
+      <path d="M26 54C32 42 64 42 70 54 64 66 32 66 26 54Z" fill="currentColor"/>
+      <circle cx="48" cy="54" r="6" fill="var(--tile-bg)"/>
+      <circle cx="76" cy="50" r="4" fill="currentColor"/>
+      <circle cx="82" cy="57" r="3" fill="currentColor"/>
+      <circle cx="87" cy="64" r="2" fill="currentColor"/>
+    </symbol>
+    <symbol id="i9" viewBox="0 0 108 108">
+      <path d="M54 22c-12 0-21.5 9.4-21.5 21C32.5 59 54 86 54 86s21.5-27 21.5-43C75.5 31.4 66 22 54 22Z" fill="currentColor"/>
+      <circle cx="54" cy="44" r="8.5" fill="var(--tile-bg)"/>
+    </symbol>
+    <symbol id="i10" viewBox="0 0 108 108">
+      <g fill="none" stroke="currentColor" stroke-width="5">
+        <circle cx="54" cy="54" r="14" opacity=".9"/>
+        <circle cx="54" cy="54" r="24" opacity=".55"/>
+        <circle cx="54" cy="54" r="34" opacity=".28"/>
+      </g>
+      <circle cx="54" cy="54" r="6" fill="currentColor"/>
+    </symbol>
+    <symbol id="i11" viewBox="0 0 108 108">
+      <path d="M54 26 84 43 54 60 24 43Z" fill="currentColor"/>
+      <path d="M24 53 54 70 84 53" fill="none" stroke="currentColor" stroke-width="6.5" stroke-linejoin="round"/>
+      <path d="M24 63 54 80 84 63" fill="none" stroke="currentColor" stroke-width="6.5" stroke-linejoin="round" opacity=".5"/>
+    </symbol>
+    <symbol id="i12" viewBox="0 0 108 108">
+      <path d="M54 24 80 39.5 80 68.5 54 84 28 68.5 28 39.5Z" fill="none" stroke="currentColor" stroke-width="8" stroke-linejoin="round"/>
+      <circle cx="54" cy="54" r="7" fill="currentColor"/>
+    </symbol>
+    <symbol id="i13" viewBox="0 0 108 108">
+      <rect x="16" y="28" width="42" height="30" rx="12" fill="currentColor"/>
+      <rect x="50" y="50" width="42" height="30" rx="12" fill="none" stroke="currentColor" stroke-width="6"/>
+    </symbol>
+    <symbol id="i14" viewBox="0 0 108 108">
+      <circle cx="44" cy="54" r="17" fill="currentColor"/>
+      <circle cx="64" cy="54" r="17" fill="none" stroke="currentColor" stroke-width="7"/>
+    </symbol>
+    <symbol id="i15" viewBox="0 0 108 108">
+      <g stroke="currentColor" stroke-width="11" stroke-linecap="round" fill="none">
+        <path d="M38 30 54 54"/><path d="M70 30 54 54"/><path d="M54 54v28"/>
+      </g>
+    </symbol>
+    <symbol id="i16" viewBox="0 0 108 108">
+      <g fill="currentColor" opacity=".48">
+        <circle cx="32" cy="32" r="4"/><circle cx="54" cy="32" r="4"/><circle cx="76" cy="32" r="4"/>
+        <circle cx="32" cy="54" r="4"/><circle cx="76" cy="54" r="4"/>
+        <circle cx="32" cy="76" r="4"/><circle cx="54" cy="76" r="4"/><circle cx="76" cy="76" r="4"/>
+      </g>
+      <circle cx="54" cy="54" r="11" fill="currentColor"/>
+    </symbol>
+    <symbol id="i17" viewBox="0 0 108 108">
+      <rect x="22" y="22" width="64" height="64" rx="18" fill="currentColor"/>
+      <g stroke="var(--tile-bg)" stroke-width="11" stroke-linecap="round" fill="none">
+        <path d="M38 36 54 56"/><path d="M70 36 54 56"/><path d="M54 56v20"/>
+      </g>
+    </symbol>
+    <symbol id="i18" viewBox="0 0 108 108">
+      <g stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" fill="none">
+        <path d="M24 42h50"/><path d="M64 34l10 8-10 8"/>
+        <path d="M84 66H34"/><path d="M44 58l-10 8 10 8"/>
+      </g>
+    </symbol>
+    <!-- 脚印形态库（画法候选，选定后替换 F-01 造型） -->
+    <symbol id="fm2" viewBox="0 0 108 108">
+      <g fill="currentColor">
+        <circle cx="54" cy="63" r="14"/>
+        <circle cx="39" cy="37" r="6.8"/>
+        <circle cx="54" cy="32" r="7.4"/>
+        <circle cx="69" cy="37" r="6.8"/>
+      </g>
+    </symbol>
+    <symbol id="fm3" viewBox="0 0 108 108">
+      <g fill="currentColor">
+        <path d="M38 58c0-9 7-13 16-13s16 4 16 13c0 8-4 12-7 18-2.6 5.4-4 10-9 10s-6.4-4.6-9-10c-3-6-7-10-7-18Z"/>
+        <circle cx="36" cy="40" r="5.6"/>
+        <circle cx="46" cy="34" r="5"/>
+        <circle cx="56" cy="32.5" r="4.5"/>
+        <circle cx="65.5" cy="34.5" r="4"/>
+        <circle cx="73.5" cy="39.5" r="3.5"/>
+      </g>
+    </symbol>
+    <symbol id="fm4" viewBox="0 0 108 108">
+      <use href="#fp0" fill="none" stroke="currentColor" stroke-width="5.5" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="fm5" viewBox="0 0 108 108">
+      <g fill="currentColor">
+        <rect x="45" y="52" width="18" height="32" rx="9"/>
+        <rect x="33" y="27" width="12" height="17" rx="6" transform="rotate(-15 39 35.5)"/>
+        <rect x="48" y="23" width="12" height="19" rx="6"/>
+        <rect x="63" y="27" width="12" height="17" rx="6" transform="rotate(15 69 35.5)"/>
+      </g>
+    </symbol>
+    <symbol id="fm6" viewBox="0 0 108 108">
+      <use href="#fp0" transform="translate(54 54) rotate(-16) scale(.9) translate(-54 -54)" fill="currentColor"/>
+      <circle cx="75" cy="79" r="3.2" fill="currentColor" opacity=".55"/>
+      <circle cx="67" cy="86.5" r="2.2" fill="currentColor" opacity=".55"/>
+    </symbol>
+    <symbol id="fm7" viewBox="0 0 108 108">
+      <rect x="20" y="20" width="68" height="68" rx="20" fill="currentColor"/>
+      <use href="#fp0" transform="translate(54 55) scale(.8) translate(-54 -54)" fill="var(--tile-bg)"/>
+    </symbol>
+    <symbol id="fm8" viewBox="0 0 108 108">
+      <g stroke="currentColor" stroke-width="9" stroke-linecap="round" fill="none">
+        <path d="M38 27 51 45"/><path d="M70 27 57 45"/>
+      </g>
+      <path d="M38 62c0-7.5 7-10.5 16-10.5s16 3 16 10.5c0 6-3.5 9.5-6 14.5-2.5 5.2-4 9.5-10 9.5s-7.5-4.3-10-9.5C41.5 71.5 38 68 38 62Z" fill="currentColor"/>
+    </symbol>
+    <!-- 脚印形态库 · 第二批（风格化） -->
+    <symbol id="fm9" viewBox="0 0 108 108">
+      <path d="M50 86C44 84 41 76 41 68c0-7 3-11 5-15-4-2-7-6-7-10 0-4 3-7 6-6 2 .6 3 2.5 3 5 0-4 2-8 6-8s6 4 6 8c0-2.5 1-4.4 3-5 3-1 6 2 6 6 0 4-3 8-7 10 2 4 5 8 5 15 0 8-3 16-9 18" fill="none" stroke="currentColor" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="fm10" viewBox="0 0 108 108">
+      <use href="#fp0" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-dasharray="9 7"/>
+    </symbol>
+    <symbol id="fm11" viewBox="0 0 108 108">
+      <g fill="currentColor">
+        <circle cx="40" cy="33" r="4.5"/><circle cx="54" cy="29" r="5"/><circle cx="68" cy="33" r="4.5"/>
+        <circle cx="43" cy="45" r="5.5"/><circle cx="54" cy="43.5" r="6"/><circle cx="65" cy="45" r="5.5"/>
+        <circle cx="45" cy="57" r="6.5"/><circle cx="54" cy="57" r="7"/><circle cx="63" cy="57" r="6.5"/>
+        <circle cx="46.5" cy="69" r="5.5"/><circle cx="54" cy="70.5" r="6"/><circle cx="61.5" cy="69" r="5.5"/>
+        <circle cx="50" cy="81" r="4"/><circle cx="58" cy="81" r="4"/>
+      </g>
+    </symbol>
+    <symbol id="fm12" viewBox="0 0 108 108">
+      <g fill="currentColor">
+        <rect x="35" y="27" width="9" height="9" rx="1.5"/><rect x="49.5" y="24" width="9" height="9" rx="1.5"/><rect x="64" y="27" width="9" height="9" rx="1.5"/>
+        <rect x="38" y="40" width="9" height="9" rx="1.5"/><rect x="49.5" y="40" width="9" height="9" rx="1.5"/><rect x="61" y="40" width="9" height="9" rx="1.5"/>
+        <rect x="42" y="53" width="9" height="9" rx="1.5"/><rect x="53" y="53" width="9" height="9" rx="1.5"/>
+        <rect x="42" y="64" width="9" height="9" rx="1.5"/><rect x="53" y="64" width="9" height="9" rx="1.5"/>
+        <rect x="47.5" y="75" width="9" height="9" rx="1.5"/>
+      </g>
+    </symbol>
+    <symbol id="fm13" viewBox="0 0 108 108">
+      <g fill="currentColor">
+        <path d="M54 50c-8.5 0-14 5.5-14 13 0 9.5 6.5 21 14 21s14-11.5 14-21c0-7.5-5.5-13-14-13Z"/>
+        <path d="M41 25c4.5 4.5 6.5 8.5 6.5 11.5 0 3.2-2.3 5.5-5.5 5.5s-5.5-2.3-5.5-5.5c0-3 1.5-7 4.5-11.5Z"/>
+        <path d="M54 20c4 5 5.5 9 5.5 12.5 0 3.2-2.3 5.5-5.5 5.5s-5.5-2.3-5.5-5.5c0-3.5 1.5-7.5 5.5-12.5Z"/>
+        <path d="M67 25c3 4.5 4.5 8.5 4.5 11.5 0 3.2-2.3 5.5-5.5 5.5s-5.5-2.3-5.5-5.5c0-3 2-7 6.5-11.5Z"/>
+      </g>
+    </symbol>
+    <symbol id="fm14" viewBox="0 0 108 108">
+      <use href="#fp0" fill="none" stroke="currentColor" stroke-width="4"/>
+      <use href="#fp0" transform="translate(54 54) scale(.78) translate(-54 -54)" fill="none" stroke="currentColor" stroke-width="4" opacity=".55"/>
+      <use href="#fp0" transform="translate(54 54) scale(.56) translate(-54 -54)" fill="none" stroke="currentColor" stroke-width="4" opacity=".3"/>
+    </symbol>
+    <symbol id="fm15" viewBox="0 0 108 108">
+      <g fill="currentColor">
+        <path d="M54 18 67 40H41Z" stroke="currentColor" stroke-width="7" stroke-linejoin="round"/>
+        <ellipse cx="36" cy="41" rx="6.5" ry="9" transform="rotate(-18 36 41)"/>
+        <ellipse cx="72" cy="41" rx="6.5" ry="9" transform="rotate(18 72 41)"/>
+        <path d="M37 57C37 50.5 44.5 48.5 54 48.5S71 50.5 71 57c0 5.5-3.5 9.5-7 15-3.5 6-4.5 12-10 12s-6.5-6-10-12c-3.5-5.5-7-9.5-7-15Z"/>
+      </g>
+    </symbol>
+    <symbol id="fm16" viewBox="0 0 108 108">
+      <g fill="currentColor" transform="translate(-5 0)">
+        <ellipse cx="40" cy="35" rx="7.2" ry="9.8" transform="rotate(-15 40 35)"/>
+        <ellipse cx="54" cy="30.5" rx="7.6" ry="10.6"/>
+        <ellipse cx="68" cy="35" rx="7.2" ry="9.8" transform="rotate(15 68 35)"/>
+      </g>
+      <path d="M37 57C37 50.5 44.5 48.5 54 48.5S71 50.5 71 57c0 5.5-3.5 9.5-7 15-3.5 6-4.5 12-10 12s-6.5-6-10-12c-3.5-5.5-7-9.5-7-15Z" fill="currentColor" transform="translate(5 0)"/>
+    </symbol>
+  </svg>
+
+  <!-- 1. 候选总表 -->
+  <section>
+    <div class="sec-head"><span class="sec-no">01</span><h2>18 个候选（按方向族分组）</h2></div>
+    <p class="sec-sub">每个卡片右侧标注 24px 表现与适用位置。可以先按族圈方向，再在族内挑具体造型——族与族之间不叠加使用。</p>
+
+    <!-- 脚印系 -->
+    <div class="fam">
+      <div class="fam-head"><h3>脚印系</h3><span>丫 = 脚印，最贴名字；不含眼睛 · F-01 的更多画法见下方「脚印形态库」</span></div>
+      <div class="grid">
+        <article class="cand pick">
+          <div class="cand-top">
+            <div class="tile"><svg class="mk" viewBox="0 0 108 108" aria-label="纯脚印"><use href="#i1"/></svg></div>
+            <div class="cand-meta"><div class="no">F-01</div><h4>纯脚印</h4><p>三趾加脚跟，「丫」直接落在脚下。</p></div>
+          </div>
+          <div class="cand-foot"><span class="tile mini"><svg class="mk" viewBox="0 0 108 108"><use href="#i1"/></svg></span><span class="fit good">24px 强</span><span class="fit">可做主图</span></div>
+        </article>
+        <article class="cand">
+          <div class="cand-top">
+            <div class="tile"><svg class="mk" viewBox="0 0 108 108" aria-label="脚印加波纹"><use href="#i2"/></svg></div>
+            <div class="cand-meta"><div class="no">F-02</div><h4>脚印 + 波纹</h4><p>脚印踩在同心波纹上，补一层「附近」。</p></div>
+          </div>
+          <div class="cand-foot"><span class="tile mini"><svg class="mk" viewBox="0 0 108 108"><use href="#i2"/></svg></span><span class="fit">24px 中</span><span class="fit warn">细线会糊</span></div>
+        </article>
+        <article class="cand">
+          <div class="cand-top">
+            <div class="tile"><svg class="mk" viewBox="0 0 108 108" aria-label="两枚脚印"><use href="#i3"/></svg></div>
+            <div class="cand-meta"><div class="no">F-03</div><h4>双印成路</h4><p>一虚一实两枚脚印，对应起点与终点。</p></div>
+          </div>
+          <div class="cand-foot"><span class="tile mini"><svg class="mk" viewBox="0 0 108 108"><use href="#i3"/></svg></span><span class="fit warn">24px 弱</span><span class="fit">需简化版</span></div>
+        </article>
+        <article class="cand">
+          <div class="cand-top">
+            <div class="tile"><svg class="mk" viewBox="0 0 108 108" aria-label="鸭蹼印"><use href="#i4"/></svg></div>
+            <div class="cand-meta"><div class="no">F-04</div><h4>蹼印</h4><p>三趾带蹼，唯一保留旧鸭子意象的脚印。</p></div>
+          </div>
+          <div class="cand-foot"><span class="tile mini"><svg class="mk" viewBox="0 0 108 108"><use href="#i4"/></svg></span><span class="fit">24px 中</span><span class="fit">承接旧 IP</span></div>
+        </article>
+      </div>
+    </div>
+
+    <!-- 脚印形态库 -->
+    <div class="fam">
+      <div class="fam-head"><h3>脚印形态库</h3><span>16 种画法候选：A–H 基础几何 · I–P 风格化；先挑形态再回替换型，均不含眼睛</span></div>
+      <div class="grid">
+        <article class="cand pick">
+          <div class="cand-top">
+            <div class="tile"><svg class="mk" viewBox="0 0 108 108" aria-label="几何三趾"><use href="#i1"/></svg></div>
+            <div class="cand-meta"><div class="no">形态 A · 现行</div><h4>几何三趾</h4><p>当前 F-01 基准形，三叉趾本身就是「丫」。</p></div>
+          </div>
+          <div class="cand-foot"><span class="tile mini"><svg class="mk" viewBox="0 0 108 108"><use href="#i1"/></svg></span><span class="fit good">24px 强</span><span class="fit">基准形</span></div>
+        </article>
+        <article class="cand">
+          <div class="cand-top">
+            <div class="tile"><svg class="mk" viewBox="0 0 108 108" aria-label="点阵脚印"><use href="#fm2"/></svg></div>
+            <div class="cand-meta"><div class="no">形态 B</div><h4>点阵脚印</h4><p>一个大圆加三个小圆，纯圆点构成，最圆润最好缩。</p></div>
+          </div>
+          <div class="cand-foot"><span class="tile mini"><svg class="mk" viewBox="0 0 108 108"><use href="#fm2"/></svg></span><span class="fit good">24px 强</span><span class="fit">最简洁</span></div>
+        </article>
+        <article class="cand">
+          <div class="cand-top">
+            <div class="tile"><svg class="mk" viewBox="0 0 108 108" aria-label="人脚五趾"><use href="#fm3"/></svg></div>
+            <div class="cand-meta"><div class="no">形态 C</div><h4>人脚五趾</h4><p>写实人脚轮廓，最贴「脚丫」口语；趾头多，小尺寸偏挤。</p></div>
+          </div>
+          <div class="cand-foot"><span class="tile mini"><svg class="mk" viewBox="0 0 108 108"><use href="#fm3"/></svg></span><span class="fit">24px 中</span><span class="fit warn">趾多显挤</span></div>
+        </article>
+        <article class="cand">
+          <div class="cand-top">
+            <div class="tile"><svg class="mk" viewBox="0 0 108 108" aria-label="线框脚印"><use href="#fm4"/></svg></div>
+            <div class="cand-meta"><div class="no">形态 D</div><h4>线框脚印</h4><p>基准形的描边版，负形感最强、最透气，但描边在小尺寸偏细。</p></div>
+          </div>
+          <div class="cand-foot"><span class="tile mini"><svg class="mk" viewBox="0 0 108 108"><use href="#fm4"/></svg></span><span class="fit">24px 中</span><span class="fit warn">描边偏细</span></div>
+        </article>
+        <article class="cand">
+          <div class="cand-top">
+            <div class="tile"><svg class="mk" viewBox="0 0 108 108" aria-label="胶囊几何"><use href="#fm5"/></svg></div>
+            <div class="cand-meta"><div class="no">形态 E</div><h4>胶囊几何</h4><p>全部由圆角胶囊拼装，最规则，工程感与秩序感最强。</p></div>
+          </div>
+          <div class="cand-foot"><span class="tile mini"><svg class="mk" viewBox="0 0 108 108"><use href="#fm5"/></svg></span><span class="fit good">24px 强</span><span class="fit">最规则</span></div>
+        </article>
+        <article class="cand">
+          <div class="cand-top">
+            <div class="tile"><svg class="mk" viewBox="0 0 108 108" aria-label="行走动势"><use href="#fm6"/></svg></div>
+            <div class="cand-meta"><div class="no">形态 F</div><h4>行走动势</h4><p>脚印倾斜加尾随墨点，有「正在去找」的方向感。</p></div>
+          </div>
+          <div class="cand-foot"><span class="tile mini"><svg class="mk" viewBox="0 0 108 108"><use href="#fm6"/></svg></span><span class="fit">24px 中</span><span class="fit">有动势</span></div>
+        </article>
+        <article class="cand">
+          <div class="cand-top">
+            <div class="tile"><svg class="mk" viewBox="0 0 108 108" aria-label="负形脚印"><use href="#fm7"/></svg></div>
+            <div class="cand-meta"><div class="no">形态 G</div><h4>负形脚印</h4><p>实心圆角块上挖出脚印，对比最强、远距离最好认。</p></div>
+          </div>
+          <div class="cand-foot"><span class="tile mini"><svg class="mk" viewBox="0 0 108 108"><use href="#fm7"/></svg></span><span class="fit good">24px 强</span><span class="fit">识别最强</span></div>
+        </article>
+        <article class="cand">
+          <div class="cand-top">
+            <div class="tile"><svg class="mk" viewBox="0 0 108 108" aria-label="丫掌一体"><use href="#fm8"/></svg></div>
+            <div class="cand-meta"><div class="no">形态 H</div><h4>丫掌一体</h4><p>「丫」字两笔直接长成脚掌，名与图的关联最直接。</p></div>
+          </div>
+          <div class="cand-foot"><span class="tile mini"><svg class="mk" viewBox="0 0 108 108"><use href="#fm8"/></svg></span><span class="fit">24px 中</span><span class="fit">名图合一</span></div>
+        </article>
+        <article class="cand">
+          <div class="cand-top">
+            <div class="tile"><svg class="mk" viewBox="0 0 108 108" aria-label="一笔画"><use href="#fm9"/></svg></div>
+            <div class="cand-meta"><div class="no">形态 I · 风格化</div><h4>一笔画</h4><p>一条线从头画到尾，不抬笔；手写感与匠心感最强。</p></div>
+          </div>
+          <div class="cand-foot"><span class="tile mini"><svg class="mk" viewBox="0 0 108 108"><use href="#fm9"/></svg></span><span class="fit">24px 中</span><span class="fit warn">线偏细</span></div>
+        </article>
+        <article class="cand">
+          <div class="cand-top">
+            <div class="tile"><svg class="mk" viewBox="0 0 108 108" aria-label="断线寻迹"><use href="#fm10"/></svg></div>
+            <div class="cand-meta"><div class="no">形态 J · 风格化</div><h4>断线寻迹</h4><p>虚线脚印轮廓，像侦探沿着线索走，「找」的动作感最强。</p></div>
+          </div>
+          <div class="cand-foot"><span class="tile mini"><svg class="mk" viewBox="0 0 108 108"><use href="#fm10"/></svg></span><span class="fit">24px 中</span><span class="fit">故事感强</span></div>
+        </article>
+        <article class="cand">
+          <div class="cand-top">
+            <div class="tile"><svg class="mk" viewBox="0 0 108 108" aria-label="半调点阵"><use href="#fm11"/></svg></div>
+            <div class="cand-meta"><div class="no">形态 K · 风格化</div><h4>半调点阵</h4><p>印刷半调风格，圆点由大到小排出脚形，设计感与复古感并存。</p></div>
+          </div>
+          <div class="cand-foot"><span class="tile mini"><svg class="mk" viewBox="0 0 108 108"><use href="#fm11"/></svg></span><span class="fit good">24px 强</span><span class="fit">最风格化</span></div>
+        </article>
+        <article class="cand">
+          <div class="cand-top">
+            <div class="tile"><svg class="mk" viewBox="0 0 108 108" aria-label="像素风"><use href="#fm12"/></svg></div>
+            <div class="cand-meta"><div class="no">形态 L · 风格化</div><h4>像素风</h4><p>8-bit 像素脚印，年轻、玩味，小尺寸天然耐缩。</p></div>
+          </div>
+          <div class="cand-foot"><span class="tile mini"><svg class="mk" viewBox="0 0 108 108"><use href="#fm12"/></svg></span><span class="fit good">24px 强</span><span class="fit">玩味</span></div>
+        </article>
+        <article class="cand">
+          <div class="cand-top">
+            <div class="tile"><svg class="mk" viewBox="0 0 108 108" aria-label="书法笔触"><use href="#fm13"/></svg></div>
+            <div class="cand-meta"><div class="no">形态 M · 风格化</div><h4>书法笔触</h4><p>一滴墨成掌、三滴墨成趾，东方笔墨的浓淡感。</p></div>
+          </div>
+          <div class="cand-foot"><span class="tile mini"><svg class="mk" viewBox="0 0 108 108"><use href="#fm13"/></svg></span><span class="fit">24px 中</span><span class="fit">东方感</span></div>
+        </article>
+        <article class="cand">
+          <div class="cand-top">
+            <div class="tile"><svg class="mk" viewBox="0 0 108 108" aria-label="等高线"><use href="#fm14"/></svg></div>
+            <div class="cand-meta"><div class="no">形态 N · 风格化</div><h4>等高线</h4><p>三层脚形等高线，像地图上的地形，暗合「就近」的地理语义。</p></div>
+          </div>
+          <div class="cand-foot"><span class="tile mini"><svg class="mk" viewBox="0 0 108 108"><use href="#fm14"/></svg></span><span class="fit warn">24px 弱</span><span class="fit warn">细线会糊</span></div>
+        </article>
+        <article class="cand">
+          <div class="cand-top">
+            <div class="tile"><svg class="mk" viewBox="0 0 108 108" aria-label="箭形脚印"><use href="#fm15"/></svg></div>
+            <div class="cand-meta"><div class="no">形态 O · 风格化</div><h4>箭形脚印</h4><p>中趾拉长成箭头，脚印同时读出「向前走」的方向感。</p></div>
+          </div>
+          <div class="cand-foot"><span class="tile mini"><svg class="mk" viewBox="0 0 108 108"><use href="#fm15"/></svg></span><span class="fit good">24px 强</span><span class="fit">双关</span></div>
+        </article>
+        <article class="cand">
+          <div class="cand-top">
+            <div class="tile"><svg class="mk" viewBox="0 0 108 108" aria-label="错位双切"><use href="#fm16"/></svg></div>
+            <div class="cand-meta"><div class="no">形态 P · 风格化</div><h4>错位双切</h4><p>脚印横向切成上下两半并错位，解构感、海报感最强。</p></div>
+          </div>
+          <div class="cand-foot"><span class="tile mini"><svg class="mk" viewBox="0 0 108 108"><use href="#fm16"/></svg></span><span class="fit">24px 中</span><span class="fit">海报感</span></div>
+        </article>
+      </div>
+    </div>
+
+    <!-- 眼睛系 -->
+    <div class="fam">
+      <div class="fam-head"><h3>眼睛系</h3><span>承接官网「一眼看清」；不含脚印</span></div>
+      <div class="grid">
+        <article class="cand">
+          <div class="cand-top">
+            <div class="tile"><svg class="mk" viewBox="0 0 108 108" aria-label="单眼"><use href="#i5"/></svg></div>
+            <div class="cand-meta"><div class="no">E-01</div><h4>单眼</h4><p>一只眼加一个瞳孔，最直接的「看」。</p></div>
+          </div>
+          <div class="cand-foot"><span class="tile mini"><svg class="mk" viewBox="0 0 108 108"><use href="#i5"/></svg></span><span class="fit good">24px 强</span><span class="fit">可做主图</span></div>
+        </article>
+        <article class="cand">
+          <div class="cand-top">
+            <div class="tile"><svg class="mk" viewBox="0 0 108 108" aria-label="定位针里的眼睛"><use href="#i6"/></svg></div>
+            <div class="cand-meta"><div class="no">E-02</div><h4>眼中定位</h4><p>定位针的针孔换成眼睛，看得见才算附近。</p></div>
+          </div>
+          <div class="cand-foot"><span class="tile mini"><svg class="mk" viewBox="0 0 108 108"><use href="#i6"/></svg></span><span class="fit good">24px 强</span><span class="fit warn">品类撞脸</span></div>
+        </article>
+        <article class="cand">
+          <div class="cand-top">
+            <div class="tile"><svg class="mk" viewBox="0 0 108 108" aria-label="双眼"><use href="#i7"/></svg></div>
+            <div class="cand-meta"><div class="no">E-03</div><h4>双眼</h4><p>一双眼睛，比单眼更有表情，也更像吉祥物。</p></div>
+          </div>
+          <div class="cand-foot"><span class="tile mini"><svg class="mk" viewBox="0 0 108 108"><use href="#i7"/></svg></span><span class="fit">24px 中</span><span class="fit warn">气质偏软</span></div>
+        </article>
+        <article class="cand">
+          <div class="cand-top">
+            <div class="tile"><svg class="mk" viewBox="0 0 108 108" aria-label="眼睛加视线"><use href="#i8"/></svg></div>
+            <div class="cand-meta"><div class="no">E-04</div><h4>眼 + 视线</h4><p>眼睛朝右看，三个渐小的点表示视线在扫。</p></div>
+          </div>
+          <div class="cand-foot"><span class="tile mini"><svg class="mk" viewBox="0 0 108 108"><use href="#i8"/></svg></span><span class="fit">24px 中</span><span class="fit">有动势</span></div>
+        </article>
+      </div>
+    </div>
+
+    <!-- 地图系 -->
+    <div class="fam">
+      <div class="fam-head"><h3>地图系</h3><span>讲「附近 / 图层 / 范围」，不依赖名字</span></div>
+      <div class="grid">
+        <article class="cand">
+          <div class="cand-top">
+            <div class="tile"><svg class="mk" viewBox="0 0 108 108" aria-label="定位针"><use href="#i9"/></svg></div>
+            <div class="cand-meta"><div class="no">M-01</div><h4>定位针</h4><p>最通用的地图符号，一眼知道是「附近的东西」。</p></div>
+          </div>
+          <div class="cand-foot"><span class="tile mini"><svg class="mk" viewBox="0 0 108 108"><use href="#i9"/></svg></span><span class="fit good">24px 强</span><span class="fit warn">过于通用</span></div>
+        </article>
+        <article class="cand">
+          <div class="cand-top">
+            <div class="tile"><svg class="mk" viewBox="0 0 108 108" aria-label="同心雷达"><use href="#i10"/></svg></div>
+            <div class="cand-meta"><div class="no">M-02</div><h4>同心雷达</h4><p>三层圈加中心点，直接对应 5 公里生活圈。</p></div>
+          </div>
+          <div class="cand-foot"><span class="tile mini"><svg class="mk" viewBox="0 0 108 108"><use href="#i10"/></svg></span><span class="fit">24px 中</span><span class="fit warn">圈易糊</span></div>
+        </article>
+        <article class="cand">
+          <div class="cand-top">
+            <div class="tile"><svg class="mk" viewBox="0 0 108 108" aria-label="图层叠片"><use href="#i11"/></svg></div>
+            <div class="cand-meta"><div class="no">M-03</div><h4>图层叠片</h4><p>三层叠片，对应产品的图层切换。</p></div>
+          </div>
+          <div class="cand-foot"><span class="tile mini"><svg class="mk" viewBox="0 0 108 108"><use href="#i11"/></svg></span><span class="fit">24px 中</span><span class="fit">语义偏工具</span></div>
+        </article>
+        <article class="cand">
+          <div class="cand-top">
+            <div class="tile"><svg class="mk" viewBox="0 0 108 108" aria-label="六边形"><use href="#i12"/></svg></div>
+            <div class="cand-meta"><div class="no">M-04</div><h4>六边形</h4><p>六边形加中心点，指后期动态半径的范围。</p></div>
+          </div>
+          <div class="cand-foot"><span class="tile mini"><svg class="mk" viewBox="0 0 108 108"><use href="#i12"/></svg></span><span class="fit good">24px 强</span><span class="fit">偏技术感</span></div>
+        </article>
+      </div>
+    </div>
+
+    <!-- 供需系 -->
+    <div class="fam">
+      <div class="fam-head"><h3>供需系</h3><span>讲「双向 / 匹配」，产品语义最重</span></div>
+      <div class="grid">
+        <article class="cand">
+          <div class="cand-top">
+            <div class="tile"><svg class="mk" viewBox="0 0 108 108" aria-label="双气泡"><use href="#i13"/></svg></div>
+            <div class="cand-meta"><div class="no">S-01</div><h4>双气泡</h4><p>一实一空两个气泡：一边有，一边要。</p></div>
+          </div>
+          <div class="cand-foot"><span class="tile mini"><svg class="mk" viewBox="0 0 108 108"><use href="#i13"/></svg></span><span class="fit">24px 中</span><span class="fit">供需直白</span></div>
+        </article>
+        <article class="cand">
+          <div class="cand-top">
+            <div class="tile"><svg class="mk" viewBox="0 0 108 108" aria-label="相交圆"><use href="#i14"/></svg></div>
+            <div class="cand-meta"><div class="no">S-02</div><h4>相交圆</h4><p>两个圆相交，交集就是「匹配上了」。</p></div>
+          </div>
+          <div class="cand-foot"><span class="tile mini"><svg class="mk" viewBox="0 0 108 108"><use href="#i14"/></svg></span><span class="fit">24px 中</span><span class="fit">抽象</span></div>
+        </article>
+        <article class="cand">
+          <div class="cand-top">
+            <div class="tile"><svg class="mk" viewBox="0 0 108 108" aria-label="格中一点"><use href="#i16"/></svg></div>
+            <div class="cand-meta"><div class="no">S-03</div><h4>格中一点</h4><p>九宫格里点亮一格：一大片里就这一个。</p></div>
+          </div>
+          <div class="cand-foot"><span class="tile mini"><svg class="mk" viewBox="0 0 108 108"><use href="#i16"/></svg></span><span class="fit good">24px 强</span><span class="fit">「找到」感</span></div>
+        </article>
+        <article class="cand">
+          <div class="cand-top">
+            <div class="tile"><svg class="mk" viewBox="0 0 108 108" aria-label="双向箭头"><use href="#i18"/></svg></div>
+            <div class="cand-meta"><div class="no">S-04</div><h4>双向对流</h4><p>两股相反方向的箭头，对应双向供需。</p></div>
+          </div>
+          <div class="cand-foot"><span class="tile mini"><svg class="mk" viewBox="0 0 108 108"><use href="#i18"/></svg></span><span class="fit good">24px 强</span><span class="fit warn">太通用</span></div>
+        </article>
+      </div>
+    </div>
+
+    <!-- 字标系 -->
+    <div class="fam">
+      <div class="fam-head"><h3>字标系</h3><span>直接把「丫」做进图形</span></div>
+      <div class="grid">
+        <article class="cand">
+          <div class="cand-top">
+            <div class="tile"><svg class="mk" viewBox="0 0 108 108" aria-label="丫字标"><use href="#i15"/></svg></div>
+            <div class="cand-meta"><div class="no">T-01</div><h4>丫字标</h4><p>三笔圆头写成「丫」，姓名信息最完整。</p></div>
+          </div>
+          <div class="cand-foot"><span class="tile mini"><svg class="mk" viewBox="0 0 108 108"><use href="#i15"/></svg></span><span class="fit good">24px 强</span><span class="fit">姓名直给</span></div>
+        </article>
+        <article class="cand">
+          <div class="cand-top">
+            <div class="tile"><svg class="mk" viewBox="0 0 108 108" aria-label="丫字负形"><use href="#i17"/></svg></div>
+            <div class="cand-meta"><div class="no">T-02</div><h4>丫字负形</h4><p>白色圆角块里挖出一个「丫」，留白手法。</p></div>
+          </div>
+          <div class="cand-foot"><span class="tile mini"><svg class="mk" viewBox="0 0 108 108"><use href="#i17"/></svg></span><span class="fit">24px 中</span><span class="fit warn">嵌套感</span></div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2. 短名单 -->
+  <section>
+    <div class="sec-head"><span class="sec-no">02</span><h2>如果要缩到四个</h2></div>
+    <p class="sec-sub">18 个里建议先留这四张进二筛：两只是「主图候选」，两只是「语义补充」。它们两两之间不会重复讲同一个点。</p>
+    <div class="short">
+      <div class="short-card top">
+        <div class="tile"><svg class="mk" viewBox="0 0 108 108"><use href="#i1"/></svg></div>
+        <h4>F-01 纯脚印</h4>
+        <p class="why">名字直给、24px 最稳，桌面主图首选。</p>
+        <p class="risk">风险：「找」只能靠名字，图形不讲动词。</p>
+      </div>
+      <div class="short-card top">
+        <div class="tile"><svg class="mk" viewBox="0 0 108 108"><use href="#i5"/></svg></div>
+        <h4>E-01 单眼</h4>
+        <p class="why">承接「一眼看清」，符号最简，缩到 24px 仍是一只眼。</p>
+        <p class="risk">风险：眼形在工具类 App 里并不稀缺，需靠瞳色区分。</p>
+      </div>
+      <div class="short-card">
+        <div class="tile"><svg class="mk" viewBox="0 0 108 108"><use href="#i13"/></svg></div>
+        <h4>S-01 双气泡</h4>
+        <p class="why">唯一把「有/要」双向关系画出来的方向。</p>
+        <p class="risk">风险：两个形状在 24px 会粘在一起，要压扁或拉大间距。</p>
+      </div>
+      <div class="short-card">
+        <div class="tile"><svg class="mk" viewBox="0 0 108 108"><use href="#i15"/></svg></div>
+        <h4>T-01 丫字标</h4>
+        <p class="why">名字辨识度最高，适合做商店详情页与官网的主字标。</p>
+        <p class="risk">风险：单独一个「丫」字，产品语义为零。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3. 尺寸与遮罩 -->
+  <section>
+    <div class="sec-head"><span class="sec-no">03</span><h2>主图候选的尺寸实测</h2></div>
+    <p class="sec-sub">以 F-01 纯脚印为例：自适应图标画布 108dp、安全区直径 72dp。若最终选眼睛系，把下方符号替换即可，尺寸规则不变。</p>
+    <div class="ladder">
+      <div class="sz"><div class="tile" style="width:180px;height:180px"><svg class="mk" viewBox="0 0 108 108"><use href="#i1"/></svg></div><span class="lb">180 · 商店</span></div>
+      <div class="sz"><div class="tile" style="width:120px;height:120px"><svg class="mk" viewBox="0 0 108 108"><use href="#i1"/></svg></div><span class="lb">120 · 介绍页</span></div>
+      <div class="sz"><div class="tile" style="width:87px;height:87px"><svg class="mk" viewBox="0 0 108 108"><use href="#i1"/></svg></div><span class="lb">87 · 设置页</span></div>
+      <div class="sz"><div class="tile" style="width:60px;height:60px"><svg class="mk" viewBox="0 0 108 108"><use href="#i1"/></svg></div><span class="lb">60 · 桌面</span></div>
+      <div class="sz"><div class="tile" style="width:48px;height:48px"><svg class="mk" viewBox="0 0 108 108"><use href="#i1"/></svg></div><span class="lb">48 · 列表</span></div>
+      <div class="sz"><div class="tile" style="width:32px;height:32px"><svg class="mk" viewBox="0 0 108 108"><use href="#i1"/></svg></div><span class="lb">32 · 通知</span></div>
+      <div class="sz"><div class="tile" style="width:24px;height:24px"><svg class="mk" viewBox="0 0 108 108"><use href="#i1"/></svg></div><span class="lb">24 · 最小</span></div>
+    </div>
+    <div class="masks">
+      <div class="sz"><div class="tile" style="width:96px;height:96px;border-radius:50%"><svg class="mk" viewBox="0 0 108 108"><use href="#i1"/></svg></div><span class="lb">圆形遮罩</span></div>
+      <div class="sz"><div class="tile" style="width:96px;height:96px;border-radius:30%"><svg class="mk" viewBox="0 0 108 108"><use href="#i1"/></svg></div><span class="lb">方正遮罩</span></div>
+      <div class="sz"><div class="tile" style="width:96px;height:96px;border-radius:14%"><svg class="mk" viewBox="0 0 108 108"><use href="#i1"/></svg></div><span class="lb">圆角方遮罩</span></div>
+      <div class="sz"><div class="tile" style="width:96px;height:96px;border-radius:24%;--tile-bg:#062E33"><svg class="mk" viewBox="0 0 108 108"><use href="#i1"/></svg></div><span class="lb">深底版</span></div>
+      <div class="sz"><div class="tile" style="width:96px;height:96px;--tile-bg:#E6F6F8;--ink:#0B7C8C"><svg class="mk" viewBox="0 0 108 108"><use href="#i1"/></svg></div><span class="lb">亮底版</span></div>
+    </div>
+  </section>
+
+  <!-- 4. 落地 -->
+  <section>
+    <div class="sec-head"><span class="sec-no">04</span><h2>选定后要同步换掉的八处</h2></div>
+    <p class="sec-sub">图标不是一张图，是一套资产。一次换完，避免桌面上新旧两个标并存。</p>
+    <div class="check">
+      <div><b>01</b><span>Android 自适应图标前景层（432×432，图形收在 72/108 安全区内）+ 背景色 #0B7C8C</span></div>
+      <div><b>02</b><span>单色层 <code>monochrome</code>：Android 13 主题图标只认这一层，必须单独出</span></div>
+      <div><b>03</b><span>通知栏 small icon：24dp 纯白透明，不能带底色</span></div>
+      <div><b>04</b><span>启动页 / 闪屏：深底 #062E33 + 白标，避免冷启动白屏闪一下</span></div>
+      <div><b>05</b><span>登录页品牌位：现为 <code>Icons.travel_explore</code> 占位（72px 圆底），换成本标去底版</span></div>
+      <div><b>06</b><span>应用商店素材：512×512 商店图标 + 各尺寸截图角标</span></div>
+      <div><b>07</b><span>官网 favicon / OG 分享图：与 App 主标同形，不要另画一版</span></div>
+      <div><b>08</b><span>文档与法务页内的旧名「找鸭找」需一并替换（PRD、官网、协议文本）</span></div>
+    </div>
+  </section>
+
+  <!-- 5. 决策 -->
+  <section>
+    <div class="sec-head"><span class="sec-no">05</span><h2>需要你拍板的四件事</h2></div>
+    <div class="decisions">
+      <div class="dec">
+        <h5>D1 · 主图选哪个族</h5>
+        <p>脚印系（F-01）、眼睛系（E-01）还是供需系（S-01）？也可以先各留一个，再看商店五图里的表现。</p>
+      </div>
+      <div class="dec">
+        <h5>D2 · 鸭子意象是否保留</h5>
+        <p>保留 = 走 F-04 蹼印，老用户不迷路；不保留 = 走 F-01 或 E-01，语义更贴新名，但需要一次认知教育。</p>
+      </div>
+      <div class="dec">
+        <h5>D3 · 要不要组合标</h5>
+        <p>若允许「桌面一个符号、登录页另一个符号」，可以把 F-01 放桌面、E-01 放品牌位；否则只能选一个符号贯穿全场景。</p>
+      </div>
+      <div class="dec">
+        <h5>D4 · 是否同批替换应用内品牌位</h5>
+        <p>建议同批。登录页现在是占位图标，趁改名一次换掉，成本最低。</p>
+      </div>
+    </div>
+  </section>
+
+  <div class="foot-note">找丫找 · 主题图标候选筛选表 / 2026-11-02 / 仅评审稿，未改动工程资产</div>
+</div>
+</body>
+</html>

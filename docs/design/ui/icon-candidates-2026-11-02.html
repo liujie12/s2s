@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>图标三问 · 候选效果图（2026-11-02）</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #f4f5f7;
+    color: #1a1a1a;
+    padding: 40px 24px 80px;
+    line-height: 1.55;
+  }
+  .page-header {
+    max-width: 1180px;
+    margin: 0 auto 36px;
+    padding-bottom: 20px;
+    border-bottom: 2px solid #0B7C8C;
+  }
+  .page-header h1 { font-size: 28px; color: #0B7C8C; font-weight: 700; }
+  .page-header .subtitle { font-size: 14px; color: #666; margin-top: 6px; }
+  .page-header code { background: #eef0f3; padding: 1px 6px; border-radius: 3px; font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 12px; }
+
+  section { max-width: 1180px; margin: 0 auto 40px; }
+  .sec-title { font-size: 19px; font-weight: 700; color: #0B7C8C; margin-bottom: 4px; }
+  .sec-desc { font-size: 13px; color: #666; margin-bottom: 16px; }
+
+  /* 诊断表 */
+  .diag {
+    background: #fff; border-radius: 12px; padding: 20px 24px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06); font-size: 13.5px;
+  }
+  .diag table { width: 100%; border-collapse: collapse; }
+  .diag th, .diag td { text-align: left; padding: 9px 10px; border-bottom: 1px solid #eee; vertical-align: top; }
+  .diag th { color: #0B7C8C; font-size: 13px; white-space: nowrap; }
+  .diag tr:last-child td { border-bottom: none; }
+  .diag code { background: #eef0f3; padding: 1px 5px; border-radius: 3px; font-family: monospace; font-size: 12px; }
+  .verdict-no { color: #c0392b; font-weight: 600; }
+  .verdict-yes { color: #27ae60; font-weight: 600; }
+
+  .grid { display: grid; gap: 20px; }
+  .grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
+  .grid.cols-4 { grid-template-columns: repeat(4, 1fr); }
+  @media (max-width: 960px) { .grid.cols-3, .grid.cols-4 { grid-template-columns: repeat(2, 1fr); } }
+
+  .card {
+    background: #fff; border-radius: 12px; padding: 18px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    display: flex; flex-direction: column; align-items: center;
+  }
+  .card .tag {
+    font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 10px;
+    background: #e0f4f6; color: #0B7C8C; margin-bottom: 4px; letter-spacing: 0.5px;
+  }
+  .card .tag.current { background: #fde8e8; color: #c0392b; }
+  .card .tag.picked { background: #e3f5e8; color: #1e8e3e; }
+  .card .name { font-size: 14px; font-weight: 600; margin-bottom: 2px; }
+  .card .note { font-size: 12px; color: #777; text-align: center; margin-bottom: 14px; min-height: 2.6em; }
+  .card .foot { font-size: 11.5px; color: #999; margin-top: 12px; text-align: center; }
+  .card .foot code { background: #eef0f3; padding: 0 4px; border-radius: 3px; font-size: 11px; }
+
+  /* 登录页手机框 */
+  .phone {
+    width: 220px; border: 1px solid #e3e5e8; border-radius: 24px; background: #fff;
+    padding: 34px 18px 26px; display: flex; flex-direction: column; align-items: center;
+    box-shadow: inset 0 0 0 4px #fafbfc;
+  }
+  .phone .brand-name { font-size: 19px; font-weight: 700; color: #1a1a1a; margin-top: 12px; }
+  .phone .slogan { font-size: 10.5px; color: #6B7280; margin-top: 4px; }
+  .phone .fake-field {
+    margin-top: 22px; width: 100%; height: 34px; border: 1px solid #dfe3e6;
+    border-radius: 8px; display: flex; align-items: center; padding: 0 10px;
+    color: #b5bcc4; font-size: 11px; background: #fbfcfd;
+  }
+  .phone .fake-btn {
+    margin-top: 12px; width: 100%; height: 34px; border-radius: 8px; background: #0B7C8C;
+    color: #fff; font-size: 11.5px; display: flex; align-items: center; justify-content: center;
+  }
+
+  /* 导航栏模拟 */
+  .navbar {
+    width: 100%; max-width: 380px; background: #fff; border: 1px solid #e8eaec;
+    border-radius: 10px; display: flex; padding: 8px 0 7px;
+  }
+  .nav-item { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+  .nav-item .lbl { font-size: 10.5px; }
+  .nav-zoom { display: flex; gap: 18px; margin-top: 16px; flex-wrap: wrap; justify-content: center; }
+  .zoom-cell { display: flex; flex-direction: column; align-items: center; gap: 6px;
+    background: #fafbfc; border: 1px solid #eceef0; border-radius: 10px; padding: 12px 14px; }
+  .zoom-cell .zl { font-size: 11px; color: #888; }
+
+  /* 桌面图标候选 */
+  .desk-tile {
+    width: 100%; border-radius: 14px; padding: 22px 0 16px;
+    display: flex; flex-direction: column; align-items: center; gap: 9px;
+    background: linear-gradient(160deg, #e9edf3 0%, #d7dde8 100%);
+  }
+  .desk-tile.dark { background: linear-gradient(160deg, #3a4150 0%, #232833 100%); }
+  .desk-tile .app-name { font-size: 12px; color: #333; text-shadow: 0 1px 0 rgba(255,255,255,0.5); }
+  .desk-tile.dark .app-name { color: #f0f0f0; text-shadow: 0 1px 2px rgba(0,0,0,0.6); }
+  .desk-icon { width: 108px; height: 108px; filter: drop-shadow(0 3px 6px rgba(0,0,0,0.18)); }
+  .desk-icon svg { width: 100%; height: 100%; display: block; }
+
+  .series-h { font-size: 14px; font-weight: 700; color: #444; margin: 22px 0 12px; }
+  .series-h span { font-weight: 400; color: #888; font-size: 12.5px; }
+
+  .pick-guide {
+    max-width: 1180px; margin: 8px auto 0; background: #fff; border-radius: 12px;
+    padding: 18px 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    font-size: 13.5px; color: #444;
+  }
+  .pick-guide b { color: #0B7C8C; }
+</style>
+</head>
+<body>
+
+<div class="page-header">
+  <h1>图标三问 · 候选效果图</h1>
+  <div class="subtitle">2026-11-02 · 登录页 Logo / 底部导航「发布」键 / 桌面图标脚印换色 · 登录页与发布键用代码同源 SVG 渲染；桌面图标用正式出包 PIL 脚本同源渲染，所见即所得</div>
+</div>
+
+<!-- ================= 诊断结论 ================= -->
+<section>
+  <div class="sec-title">一、代码侧诊断结论（先答三个问题）</div>
+  <div class="sec-desc">以下结论均已对照当前代码核实，非凭截图猜测。</div>
+  <div class="diag">
+    <table>
+      <tr>
+        <th style="width:150px;">问题</th>
+        <th style="width:110px;">结论</th>
+        <th>依据</th>
+      </tr>
+      <tr>
+        <td>① 登录页图标换了吗</td>
+        <td class="verdict-no">没换</td>
+        <td>登录页 Logo 至今是<strong>几何占位</strong>：<code>login_screen.dart</code> 的 _BrandHeader 用 <code>Icons.travel_explore</code>（放大镜地球）顶在 72dp 浅青圆里，代码里挂着 TODO(M4-4) 等待接入正式资产。上一轮脚印替换只覆盖 SVG 资产与底部导航，没动登录页。</td>
+      </tr>
+      <tr>
+        <td>② 发布键尺寸不一致？</td>
+        <td class="verdict-yes">名义一致，视觉偏小</td>
+        <td>四个键<strong>名义尺寸都是 24dp</strong>（<code>home_shell.dart</code> 发布键 <code>_duckSize = 24</code>，其余 Icon size: 24）。但丫圈/消息/我的三个 Material 图标字形几乎撑满 24dp；发布键是「双波纹圈 + 中央圆盘」的 inverse 结构，波纹圈线宽在 24dp 下仅约 0.8dp 几乎看不见，视觉重心只剩中央约 10.6dp 的小圆盘 —— 所以看起来明显小一圈。另外 2026-11-01 真机走查曾裁定「发布键不放大、与其他键同档」，是否推翻该裁定由你定。</td>
+      </tr>
+      <tr>
+        <td>③ 桌面图标换非白色</td>
+        <td class="verdict-yes">已定方向</td>
+        <td>真实桌面图标（<code>build_android_foonote.py</code> 生成 mipmap）= teal 底（<code>#0B7C8C</code>）+ 白色黄油体「找」字 + <b>右上角脚印</b>（现状脚印也是白色，靠 20px 隔离带与找字区分）。已裁定：<b>找字白色不变、整体结构不动，只换右上角脚印的填充色</b>。候选色在下方第四节（正式出包脚本同源渲染）。</td>
+      </tr>
+    </table>
+  </div>
+</section>
+
+<!-- ================= 登录页候选 ================= -->
+<section>
+  <div class="sec-title">二、登录页 Logo 候选（问题 ①）</div>
+  <div class="sec-desc">A1 是现状占位。A2/A3 用 F-01 脚印几何直出，不引入 flutter_svg 依赖（CustomPaint 自绘，与发布键同一路技术）。<b>已选定 A3</b>（2026-11-02）。</div>
+  <div class="grid cols-3" id="loginGrid"></div>
+</section>
+
+<!-- ================= 发布键候选 ================= -->
+<section>
+  <div class="sec-title">三、底部导航「发布」键候选（问题 ②）</div>
+  <div class="sec-desc">每个候选都放进完整导航栏对比（丫圈为选中态示意）。下方另有 4 倍放大细节。<b>已选定 B4</b>（32dp，推翻 11-01 不放大裁定）。</div>
+  <div class="grid cols-4" id="navGrid"></div>
+  <div class="nav-zoom" id="navZoom"></div>
+</section>
+
+<!-- ================= 桌面图标配色候选 ================= -->
+<section>
+  <div class="sec-title">四、桌面图标脚印换色候选（问题 ③ · 已裁定只换脚印色）</div>
+  <div class="sec-desc">真实设计 = teal 底 + 白色黄油体「找」字 + 右上角脚印；<b>找字白色、几何、构图全部不变，仅脚印填充色变化</b>。以下全部用正式出包脚本（build_android_foonote.py）同源 PIL 渲染，非示意图。D1 为现状对照。</div>
+
+  <div class="series-h">总览 <span>8 候选横排：上行圆角方块观感（多数 ROM）/ 下行圆形裁切观感（部分 ROM）</span></div>
+  <div class="card" style="padding:14px;">
+    <img src="../../../prototype-figma/assets/icon-preview/candidates-foonote-color/overview-legacy.png" style="width:100%;display:block;border-radius:8px;" alt="圆角观感总览">
+    <div style="height:10px;"></div>
+    <img src="../../../prototype-figma/assets/icon-preview/candidates-foonote-color/overview-adaptive.png" style="width:100%;display:block;border-radius:8px;" alt="圆形观感总览">
+  </div>
+
+  <div class="series-h">单候选细览 <span>每张卡：上 = 浅色壁纸、下 = 深色壁纸（圆角方块观感）</span></div>
+  <div class="grid cols-4" id="deskGrid"></div>
+</section>
+
+<div class="pick-guide">
+  <b>进度：</b>三问全部已定 —— 登录页 <b>A3</b>、发布键 <b>B4</b>、桌面图标 <b>D5 橙红 #FF6B35</b>（2026-11-02）。<code>build_android_foonote.py</code> 已拆「找字白层 + 脚印色层」并加 <code>FP_COLOR</code> 常量，全密度 mipmap 已重生成；release 出包后真机复验三处。本页存档备查。
+</div>
+
+<script>
+/* ---------- 脚印 F-01 几何真源（与 duck-symbol-inverse.svg / home_shell.dart 同坐标） ---------- */
+const FP = `
+  <ellipse cx="40" cy="35" rx="7.2" ry="9.8" transform="rotate(-15 40 35)"/>
+  <ellipse cx="54" cy="30.5" rx="7.6" ry="10.6"/>
+  <ellipse cx="68" cy="35" rx="7.2" ry="9.8" transform="rotate(15 68 35)"/>
+  <path d="M37 57C37 50.5 44.5 48.5 54 48.5S71 50.5 71 57c0 5.5-3.5 9.5-7 15-3.5 6-4.5 12-10 12s-6.5-6-10-12c-3.5-5.5-7-9.5-7-15Z"/>`;
+const fpG = (tx, ty, s, color, r = 14) =>
+  `<g transform="translate(${tx} ${ty}) rotate(${r}) scale(${s}) translate(-54 -45)" fill="${color}">${FP}</g>`;
+
+const TEAL = '#0B7C8C', TEAL_LIGHT = '#E6F6F8', GRAY = '#6B7280';
+
+/* ---------- 发布键 inverse（footprint-standalone.svg / _FootprintPainter 同源） ---------- */
+function inverseIcon(color) {
+  return `<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+    <path d="M115.46 506 A395.84 395.84 0 1 0 907.14 506 A395.84 395.84 0 1 0 115.46 506 Z M149.43 506 A361.87 361.87 0 1 0 873.17 506 A361.87 361.87 0 1 0 149.43 506 Z" fill="${color}" fill-rule="evenodd"/>
+    <path d="M205.46 506 A305.84 305.84 0 1 0 817.14 506 A305.84 305.84 0 1 0 205.46 506 Z M237.76 506 A273.54 273.54 0 1 0 784.84 506 A273.54 273.54 0 1 0 237.76 506 Z" fill="${color}" fill-rule="evenodd"/>
+    <path d="M284.22 506 A227.08 227.08 0 1 0 738.38 506 A227.08 227.08 0 1 0 284.22 506 Z" fill="${color}"/>
+    ${fpG(506.1, 458.5, 4.20, '#FFFFFF')}
+  </svg>`;
+}
+
+/* ---------- 发布键 standalone（单只实心脚印，撑满图标盒） ---------- */
+function standaloneIcon(color) {
+  return `<svg viewBox="0 0 108 108" xmlns="http://www.w3.org/2000/svg">${fpG(54, 52, 1.18, color)}</svg>`;
+}
+
+/* ---------- 其余三个 Tab 的 Material 图标 ---------- */
+const MI = {
+  map:    '<path d="M20.5 3l-.16.03L15 5.1 9 3 3.36 4.9c-.21.07-.36.25-.36.48V20.5c0 .28.22.5.5.5l.16-.03L9 18.9l6 2.1 5.64-1.9c.21-.07.36-.25.36-.48V3.5c0-.28-.22-.5-.5-.5zM15 19l-6-2.11V5l6 2.11V19z" fill="C"/>',
+  chat:   '<path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z" fill="C"/>',
+  person: '<path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" fill="C"/>',
+};
+const mi = (name, color, size = 24) =>
+  `<svg width="${size}" height="${size}" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">${MI[name].replaceAll('fill="C"', `fill="${color}"`)}</svg>`;
+
+/* ================= 登录页候选 ================= */
+function phoneMock(innerLogo) {
+  return `<div class="phone">
+    ${innerLogo}
+    <div class="brand-name">找丫找</div>
+    <div class="slogan">用就近的资源解决本地的需求</div>
+    <div class="fake-field">请输入手机号</div>
+    <div class="fake-btn">获取验证码</div>
+  </div>`;
+}
+const logoA1 = `<div style="width:72px;height:72px;border-radius:50%;background:${TEAL_LIGHT};display:flex;align-items:center;justify-content:center;">
+  <svg width="36" height="36" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.2" fill="none" stroke="${TEAL}" stroke-width="1.7"/><path d="M10.5 4.3c-2 1.7-2 10.7 0 12.4M10.5 4.3c2 1.7 2 10.7 0 12.4M4.6 8.6h11.8M4.6 12.4h11.8" fill="none" stroke="${TEAL}" stroke-width="1.1"/><circle cx="17.4" cy="17.4" r="3.1" fill="#fff" stroke="${TEAL}" stroke-width="1.6"/><path d="M19.7 19.7 22 22" stroke="${TEAL}" stroke-width="1.8" stroke-linecap="round"/></svg>
+</div>`;
+const logoA2 = `<div style="width:72px;height:72px;border-radius:50%;background:${TEAL};display:flex;align-items:center;justify-content:center;">
+  <svg width="72" height="72" viewBox="0 0 72 72">${fpG(36, 33.5, 0.46, '#FFFFFF')}</svg>
+</div>`;
+const logoA3 = `<div style="width:72px;height:72px;border-radius:50%;background:${TEAL_LIGHT};display:flex;align-items:center;justify-content:center;">
+  <svg width="72" height="72" viewBox="0 0 72 72">${fpG(36, 33.5, 0.52, TEAL)}</svg>
+</div>`;
+
+const loginCards = [
+  { tag: 'A1 · 现状', cls: 'current', name: '占位图标（未换）', note: 'travel_explore 放大镜地球，与鸭子 IP / 脚印体系无关，TODO(M4-4) 挂账中', logo: logoA1 },
+  { tag: 'A2 · 候选', cls: '', name: 'teal 圆底 + 白脚印', note: '与桌面图标同族的反相结构，品牌感最强；登录后即与桌面图标形成呼应', logo: logoA2 },
+  { tag: 'A3 · 已选定', cls: 'picked', name: '浅青圆底 + teal 脚印', note: '保持现状「浅底圆」轮廓不动，只把占位图标换成主色脚印，改动视觉最小', logo: logoA3 },
+];
+document.getElementById('loginGrid').innerHTML = loginCards.map(c => `
+  <div class="card">
+    <span class="tag ${c.cls}">${c.tag}</span>
+    <div class="name">${c.name}</div>
+    <div class="note">${c.note}</div>
+    ${phoneMock(c.logo)}
+  </div>`).join('');
+
+/* ================= 发布键候选 ================= */
+function navbar(publishSvg, pubSize) {
+  const item = (iconHtml, label, color) =>
+    `<div class="nav-item">${iconHtml}<span class="lbl" style="color:${color};">${label}</span></div>`;
+  return `<div class="navbar">
+    ${item(mi('map', TEAL), '丫圈', TEAL)}
+    ${item(`<div style="width:${pubSize}px;height:${pubSize}px;">${publishSvg}</div>`, '发布', GRAY)}
+    ${item(mi('chat', GRAY), '消息', GRAY)}
+    ${item(mi('person', GRAY), '我的', GRAY)}
+  </div>`;
+}
+const sized = (svg, px) => {
+  const sizeAttr = `width="${px}" height="${px}"`;
+  return svg.replace('<svg ', `<svg ${sizeAttr} style="width:100%;height:100%;display:block;" `);
+};
+const navCards = [
+  { tag: 'B1 · 现状', cls: 'current', name: '24dp inverse 波纹圈', note: '名义 24dp 与其他键一致，但波纹圈细线 24dp 下近乎消失，视觉重心仅中央小圆盘', svg: inverseIcon(GRAY), size: 24 },
+  { tag: 'B2 · 候选', cls: '', name: '24dp 实心脚印', note: '单只脚印撑满图标盒，视觉重量与三个 Material 图标对齐，尺寸数值不动', svg: standaloneIcon(GRAY), size: 24 },
+  { tag: 'B3 · 候选', cls: '', name: '28dp inverse 微放大', note: '保留波纹圈结构、放大到 28dp 补视觉重心；需推翻 11-01「不放大」裁定', svg: inverseIcon(GRAY), size: 28 },
+  { tag: 'B4 · 已选定', cls: 'picked', name: '32dp inverse 放大', note: '32dp 补回视觉重心；配色仍 textSecondary 不着主色，避免被读成「常驻选中」', svg: inverseIcon(GRAY), size: 32 },
+];
+document.getElementById('navGrid').innerHTML = navCards.map((c, i) => `
+  <div class="card">
+    <span class="tag ${c.cls}">${c.tag}</span>
+    <div class="name">${c.name}</div>
+    <div class="note">${c.note}</div>
+    ${navbar(sized(c.svg, c.size), c.size)}
+  </div>`).join('');
+document.getElementById('navZoom').innerHTML = navCards.map(c => `
+  <div class="zoom-cell">
+    <div style="width:96px;height:96px;">${sized(c.svg, 96)}</div>
+    <span class="zl">${c.tag}（4× 放大）</span>
+  </div>`).join('');
+
+/* ================= 桌面图标配色候选（PIL 真实渲染，找字白色不变） ================= */
+const DESK_DIR = '../../../prototype-figma/assets/icon-preview/candidates-foonote-color';
+const deskCards = [
+  { tag: 'D1 · 现状', cls: 'current', name: '现状白脚印（对照）', file: 'fp-d1-legacy.png', hex: '#FFFFFF', note: '现状对照组；脚印靠 20px 隔离带与找字区分，小尺寸下存在感最弱' },
+  { tag: 'D2 · 候选', cls: '', name: '深青脚印', file: 'fp-d2-legacy.png', hex: '#095E6B', note: '同色系加深一档，最稳重；与 teal 底反差小，远看变化含蓄' },
+  { tag: 'D3 · 候选', cls: '', name: '鸭黄脚印', file: 'fp-d3-legacy.png', hex: '#E8A800', note: '呼应鸭 IP 的暖黄；teal 底上撞色最醒目，小尺寸可读性好' },
+  { tag: 'D4 · 候选', cls: '', name: '暖橙脚印', file: 'fp-d4-legacy.png', hex: '#F76707', note: '比鸭黄更饱和，橙青撞色但不过火' },
+  { tag: 'D5 · 已选定', cls: 'picked', name: '橙红脚印', file: 'fp-d5-legacy.png', hex: '#FF6B35', note: '最跳的一档，远看像一枚小印章（2026-11-02 用户裁定）' },
+  { tag: 'D6 · 候选', cls: '', name: '深炭脚印', file: 'fp-d6-legacy.png', hex: '#2F4858', note: '最沉稳商务感；但小尺寸下与 teal 底反差弱，脚印易显糊' },
+  { tag: 'D7 · 候选', cls: '', name: '藏青脚印', file: 'fp-d7-legacy.png', hex: '#1C4E80', note: '冷色系深蓝，比深炭多一分蓝调；同样偏暗' },
+  { tag: 'D8 · 候选', cls: '', name: '墨绿脚印', file: 'fp-d8-legacy.png', hex: '#2F6B4F', note: '自然系墨绿，与 teal 邻近但更暖一分；变化含蓄' },
+];
+const renderDesk = c => `
+  <div class="card">
+    <span class="tag ${c.cls}">${c.tag}</span>
+    <div class="name">${c.name}</div>
+    <div class="note">${c.note} · 脚印 <code>${c.hex}</code>（找字固定白色）</div>
+    <div class="desk-tile"><div class="desk-icon"><img src="${DESK_DIR}/${c.file}" style="width:100%;height:100%;display:block;border-radius:24px;" alt="${c.name}"></div><span class="app-name">找丫找</span></div>
+    <div style="height:10px;"></div>
+    <div class="desk-tile dark"><div class="desk-icon"><img src="${DESK_DIR}/${c.file}" style="width:100%;height:100%;display:block;border-radius:24px;" alt="${c.name}"></div><span class="app-name">找丫找</span></div>
+  </div>`;
+document.getElementById('deskGrid').innerHTML = deskCards.map(renderDesk).join('');
+</script>
+
+</body>
+</html>

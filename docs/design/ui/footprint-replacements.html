@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>鸭头→脚印 · 全套图标替换评审</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #f4f5f7;
+    color: #1a1a1a;
+    padding: 48px 24px 80px;
+    line-height: 1.5;
+  }
+  .page-header {
+    max-width: 1200px;
+    margin: 0 auto 48px;
+    padding-bottom: 24px;
+    border-bottom: 2px solid #0B7C8C;
+  }
+  .page-header h1 {
+    font-size: 32px;
+    color: #0B7C8C;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+  }
+  .page-header .subtitle {
+    font-size: 15px;
+    color: #666;
+    margin-top: 8px;
+  }
+  .page-header .meta {
+    margin-top: 16px;
+    font-size: 13px;
+    color: #888;
+  }
+  .page-header .meta code {
+    background: #eef0f3;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    color: #333;
+  }
+  .grid {
+    max-width: 1200px;
+    margin: 0 auto;
+    display: grid;
+    gap: 32px;
+  }
+  .pair-card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+  .pair-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #0B7C8C;
+    margin-bottom: 4px;
+  }
+  .pair-filename {
+    font-size: 12px;
+    color: #999;
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    margin-bottom: 4px;
+  }
+  .pair-desc {
+    font-size: 13px;
+    color: #555;
+    margin-bottom: 16px;
+  }
+  .pair-visual {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  .visual-slot {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+  .slot-label {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 10px;
+    letter-spacing: 0.5px;
+  }
+  .slot-label.before {
+    background: #fde8e8;
+    color: #c0392b;
+  }
+  .slot-label.after {
+    background: #e0f4f6;
+    color: #0B7C8C;
+  }
+  .svg-frame {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    overflow: hidden;
+    position: relative;
+  }
+  .svg-frame.light-bg { background: #ffffff; border: 1px solid #e8e8e8; }
+  .svg-frame.dark-bg { background: #0B7C8C; }
+  .svg-frame svg {
+    max-width: 100%;
+    height: auto;
+    display: block;
+  }
+
+  /* Individual icon size treatments based on original viewBox */
+  .icon-app-icon-ios svg, .icon-app-icon-fg svg, .icon-duck-full svg,
+  .icon-duck-compact svg, .icon-duck-inverse svg, .icon-duck-mono svg,
+  .icon-duck-mini svg {
+    width: 220px; height: 220px;
+  }
+  .icon-logo-h svg { width: 300px; height: auto; }
+  .icon-logo-v svg { width: 180px; height: auto; }
+  .icon-splash svg { width: 140px; height: auto; }
+  .icon-empty svg { width: 180px; height: 180px; }
+
+  /* Footer collection */
+  .collection {
+    max-width: 1200px;
+    margin: 48px auto 0;
+    background: #fff;
+    border-radius: 12px;
+    padding: 32px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+  .collection h2 {
+    font-size: 18px;
+    color: #0B7C8C;
+    margin-bottom: 20px;
+    font-weight: 700;
+  }
+  .collection-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 24px;
+    justify-content: flex-start;
+  }
+  .collection-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    flex: 0 0 auto;
+  }
+  .collection-item svg {
+    display: block;
+  }
+  .coll-app-icon-fg svg { width: 80px; height: 80px; }
+  .coll-app-icon-ios svg { width: 80px; height: 80px; }
+  .coll-duck-full svg, .coll-duck-compact svg, .coll-duck-inverse svg,
+  .coll-duck-mono svg, .coll-duck-mini svg { width: 80px; height: 80px; }
+  .coll-logo-h svg { width: 160px; height: auto; }
+  .coll-logo-v svg { width: 100px; height: auto; }
+  .coll-splash svg { width: 70px; height: auto; }
+  .coll-empty svg { width: 80px; height: 80px; }
+  .coll-label {
+    font-size: 11px;
+    color: #666;
+    text-align: center;
+    max-width: 100px;
+  }
+  .coll-frame-dark { background: #0B7C8C; padding: 6px; border-radius: 8px; }
+  .coll-frame-light { background: #fff; padding: 6px; border-radius: 8px; border: 1px solid #e8e8e8; }
+
+  /* Technique notes */
+  .notes {
+    max-width: 1200px;
+    margin: 32px auto 0;
+    background: #fff;
+    border-radius: 12px;
+    padding: 24px 28px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    font-size: 13px;
+    color: #444;
+  }
+  .notes h3 { color: #0B7C8C; font-size: 14px; margin-bottom: 12px; }
+  .notes ul { padding-left: 20px; }
+  .notes li { margin-bottom: 4px; }
+  .notes code { background: #eef0f3; padding: 1px 5px; border-radius: 3px; font-family: monospace; font-size: 12px; }
+  .good { color: #27ae60; font-weight: 600; }
+  .warning { color: #e67e22; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<div class="page-header">
+  <h1>🦆→👣 鸭头 → 脚印 · 全套图标替换评审</h1>
+  <div class="subtitle">项目符号矩阵 · 11 个 SVG 全量替换 · 原位替换、不增不减</div>
+  <div class="meta">
+    脚印规格：<code>F-01 三趾脚印 · right-slant +14° · fp0 viewBox 0 0 108 108</code>
+    · 主色 <code>#0B7C8C</code>
+    · 生成时间 <code id="gentime"></code>
+  </div>
+</div>
+
+<div class="grid" id="pairGrid"></div>
+
+<div class="collection">
+  <h2>📦 新版全套合辑（脚印版）</h2>
+  <div class="collection-row" id="collectionRow"></div>
+</div>
+
+<!-- 底部导航栏 · 发布键替换（Dart 代码：home_shell.dart _DuckMiniPainter → _FootprintPainter） -->
+<div class="pair-card">
+  <div class="pair-title">🧭 底部导航栏 · 发布键（Flutter Dart Code）</div>
+  <div class="pair-filename">lib/router/home_shell.dart · _PublishTab · _DuckMiniPainter → _FootprintPainter</div>
+  <div class="pair-desc">Dart CustomPainter 自绘图标 · inverse 变体结构 · 双波纹圈 + 中央圆盘 + 白色脚印反相 · 24dp</div>
+
+  <!-- 放大预览卡：5 张真实 SVG 并排（矢量无损，浏览器放大也不糊） -->
+  <div class="svg-frame light-bg" style="width:100%; padding:24px 20px;">
+    <!-- 四个 Tab 放大预览（每个图标尺寸 120×120，label 在下） -->
+    <div style="display:flex; gap:0; justify-content:center; align-items:flex-end;">
+
+      <!-- 丫圈（Material map icon，未选中 gray） -->
+      <div style="display:flex; flex-direction:column; align-items:center; flex:0 0 auto; padding:0 16px;">
+        <svg width="120" height="120" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M20.5 3l-.16.03L15 5.1 9 3 3.36 4.9c-.21.07-.36.25-.36.48V20.5c0 .28.22.5.5.5l.16-.03L9 18.9l6 2.1 5.64-1.9c.21-.07.36-.25.36-.48V3.5c0-.28-.22-.5-.5-.5zM15 19l-6-2.11V5l6 2.11V19z" fill="#888888"/>
+        </svg>
+        <span style="font-size:13px; color:#888; margin-top:4px;">丫圈</span>
+      </div>
+
+      <!-- 发布（原版·鸭头：duck-symbol-mini git HEAD） -->
+      <div style="display:flex; flex-direction:column; align-items:center; flex:0 0 auto; padding:0 16px;">
+        <span style="font-size:11px; color:#c0392b; font-weight:600; margin-bottom:2px;">🦆 原版</span>
+        <img src="/docs/design/ui/originals/duck-symbol-mini.svg" style="width:120px; height:120px; display:block;">
+        <span style="font-size:13px; color:#888; margin-top:4px;">发布</span>
+      </div>
+
+      <!-- 分隔竖线 -->
+      <div style="width:2px; height:100px; background:#e8e8e8; margin:0 8px;"></div>
+
+      <!-- 发布（新版·脚印：footprint-standalone） -->
+      <div style="display:flex; flex-direction:column; align-items:center; flex:0 0 auto; padding:0 16px;">
+        <span style="font-size:11px; color:#0B7C8C; font-weight:600; margin-bottom:2px;">👣 新版</span>
+        <img src="/prototype-figma/assets/footprint-standalone.svg" style="width:120px; height:120px; display:block;">
+        <span style="font-size:13px; color:#888; margin-top:4px;">发布</span>
+      </div>
+
+      <!-- 消息（Material chat bubble，未选中 gray） -->
+      <div style="display:flex; flex-direction:column; align-items:center; flex:0 0 auto; padding:0 16px;">
+        <svg width="120" height="120" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z" fill="#888888"/>
+        </svg>
+        <span style="font-size:13px; color:#888; margin-top:4px;">消息</span>
+      </div>
+
+      <!-- 我的（Material person，未选中 gray） -->
+      <div style="display:flex; flex-direction:column; align-items:center; flex:0 0 auto; padding:0 16px;">
+        <svg width="120" height="120" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" fill="#888888"/>
+        </svg>
+        <span style="font-size:13px; color:#888; margin-top:4px;">我的</span>
+      </div>
+
+    </div>
+
+    <!-- 说明行 -->
+    <div style="margin-top:20px; padding-top:14px; border-top:1px solid #e8e8e8; font-size:12.5px; color:#555; line-height:1.7;">
+      <div><strong style="color:#c0392b;">鸭头原版问题：</strong>24dp mini 档用「主色圆盘 + 白色鸭头 + 主色眼点」反相结构，鸭头本体缩到约 8px，喙尖先丢 → 导航栏里看不见鸭头形态。</div>
+      <div style="margin-top:4px;"><strong style="color:#0B7C8C;">脚印新版方案：</strong>inverse 变体结构——双波纹圈 + 中央圆盘 + 白色脚印反相（fp0 三趾 ellipse + 六段贝塞尔掌形，14° 右斜），波纹圈/圆盘用 <code>#888888</code>（导航栏未选中色），24dp 下波纹圈仍清晰可读。</div>
+    </div>
+  </div>
+
+  <div style="margin-top:16px; padding:14px 16px; background:#f7fafb; border-radius:8px; font-size:12.5px; color:#555; line-height:1.7;">
+    <strong style="color:#0B7C8C;">📐 Dart 版 FootprintPainter 参数（inverse 变体，与 duck-symbol-inverse.svg 逐坐标同源）</strong><br>
+    · viewBox <code>0 0 1024 1024</code>（缩放因子 <code>size / 1024</code>）<br>
+    · 波纹圈 1：环带 r=378.86、strokeWidth=33.97；波纹圈 2：环带 r=289.69、strokeWidth=32.3；中央圆盘 r=227.08 实心，圆心 (511.3, 506)<br>
+    · 白色脚印：translate(506.1,458.5) → rotate(14°) → scale(4.20) → translate(-54,-45)，三趾 <code>drawOval</code> 各带自转 + 掌形六段贝塞尔 <code>cubicTo</code>
+  </div>
+</div>
+
+<div class="notes">
+  <h3>🔧 替换技术说明</h3>
+  <ul>
+    <li><span class="good">✅ 最小改动原则</span>：只删鸭头 path 和 circle 眼点，原 evenodd 环形/path1-2 一字不动</li>
+    <li><span class="good">✅ 1:1 几何对齐</span>：每个脚印的 scale = min(鸭头bbox宽/44, 鸭头bbox高/50)，精确覆盖原鸭头占位</li>
+    <li><span class="good">✅ transform 链顺序</span>：<code>translate(目标center) → rotate(14) → scale(s) → translate(-54 -45)</code>，先定位后旋转再缩放</li>
+    <li><span class="good">✅ 颜色自适应</span>：白底版本（full/compact/ios/foreground/splash/logo）用主色 #0B7C8C；主色底版本（inverse/mono/mini）用白色 #FFFFFF</li>
+    <li><span class="warning">⚠️ empty-state 特殊</span>：内部实心鸭头 + 父级 opacity=0.28，脚印 fill=#0B7C8C 继承透明度</li>
+    <li>脚印固定几何：三趾 <code>ellipse</code>（40,35 / 54,30.5 / 68,35）+ 掌形 <code>path</code>，无任何装饰声纹</li>
+    <li><span class="good">✅ Android 桌面图标（Python 合成）</span>：FP_SCALE=<code>1.70</code> · FP_ROTATE_DEG=<code>20°</code> · X+12px · Y-18px（上移），详见 <code>build_android_foonote.py</code></li>
+    <li><span class="good">✅ Flutter 底部导航栏（Dart CustomPainter）</span>：inverse 变体结构——双波纹圈 + 中央圆盘 + 白色脚印反相，逐坐标复刻 duck-symbol-inverse.svg，未选中态灰色 <code>textSecondary</code>，详见 <code>_FootprintPainter</code></li>
+    <li><span class="good">✅ 波纹圈保留</span>：用户评审裁定导航栏发布键保留 inverse 档的外围双波纹圈（声纹），只做「鸭头→脚印」原位替换，环带参数与 SVG 完全一致</li>
+  </ul>
+</div>
+
+<!-- Android 桌面图标原版 vs 新版 -->
+<div class="pair-card">
+  <div class="pair-title">🤖 Android 桌面图标 · Legacy (API 25-)</div>
+  <div class="pair-filename">ic_launcher.png (xxxhdpi)</div>
+  <div class="pair-desc">主色背景 + 前景层合成方形（Android 7.x 及以下用）</div>
+  <div class="pair-visual icon-app-icon-fg">
+    <div class="visual-slot">
+      <span class="slot-label before">原版 · 🦆 鸭头</span>
+      <div class="svg-frame dark-bg" style="width:220px;height:220px;">
+        <img src="/docs/design/ui/originals/android-ic-launcher-old.png" style="width:220px;height:220px;">
+      </div>
+    </div>
+    <div class="visual-slot">
+      <span class="slot-label after">新版 · 👣 脚印</span>
+      <div class="svg-frame dark-bg" style="width:220px;height:220px;">
+        <img src="/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png" style="width:220px;height:220px;">
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="pair-card">
+  <div class="pair-title">🤖 Android 桌面图标 · Adaptive 前景层 (API 26+)</div>
+  <div class="pair-filename">ic_launcher_foreground.png (xxxhdpi)</div>
+  <div class="pair-desc">透明底前景层，系统自动裁剪为圆形/圆角/方形，背景色 colors.xml #0B7C8C</div>
+  <div class="pair-visual icon-app-icon-fg">
+    <div class="visual-slot">
+      <span class="slot-label before">原版 · 🦆 鸭头</span>
+      <div class="svg-frame light-bg" style="width:220px;height:220px;">
+        <img src="/docs/design/ui/originals/android-ic-foreground-old.png" style="width:220px;height:220px;">
+      </div>
+    </div>
+    <div class="visual-slot">
+      <span class="slot-label after">新版 · 👣 脚印</span>
+      <div class="svg-frame light-bg" style="width:220px;height:220px;">
+        <img src="/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_foreground.png" style="width:220px;height:220px;">
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  document.getElementById('gentime').textContent = new Date().toLocaleString('zh-CN');
+
+  const pairs = [
+    {
+      key: 'app-icon-ios',
+      title: 'App Icon · iOS',
+      filename: 'app-icon-ios.svg',
+      desc: '主色圆角方块 + evenodd 找字环 + 脚印（替代原鸭头）',
+      light: true,
+      dark: false
+    },
+    {
+      key: 'app-icon-fg',
+      title: 'App Icon · Android 前景层',
+      filename: 'app-icon-android-foreground.svg',
+      desc: '自适应图标前景层，evenodd 三环 + 脚印',
+      light: false,
+      dark: true
+    },
+    {
+      key: 'duck-full',
+      title: '符号 · Full（主色方块）',
+      filename: 'duck-symbol-full.svg',
+      desc: '主色 #0B7C8C 圆角方块 + 白色 evenodd 环 + 主色脚印',
+      light: true,
+      dark: false
+    },
+    {
+      key: 'duck-compact',
+      title: '符号 · Compact（中环白）',
+      filename: 'duck-symbol-compact.svg',
+      desc: '白底 + 主色 evenodd 环 + 主色脚印',
+      light: true,
+      dark: false
+    },
+    {
+      key: 'duck-inverse',
+      title: '符号 · Inverse（反相）',
+      filename: 'duck-symbol-inverse.svg',
+      desc: '主色底 + 白色 evenodd 环 + 白色脚印（反相）',
+      light: false,
+      dark: true
+    },
+    {
+      key: 'duck-mono',
+      title: '符号 · Mono（透明底）',
+      filename: 'duck-symbol-mono.svg',
+      desc: '透明底 + 主色 evenodd 环 + 白色脚印（单色模式）',
+      light: true,
+      dark: false
+    },
+    {
+      key: 'duck-mini',
+      title: '符号 · Mini（整只鸭/实心）',
+      filename: 'duck-symbol-mini.svg',
+      desc: '主色圆盘 + 白色脚印（替代原白色实心鸭 + 主色眼点）',
+      light: false,
+      dark: true
+    },
+    {
+      key: 'logo-h',
+      title: 'Logo · 水平组合',
+      filename: 'logo-horizontal.svg',
+      desc: '240×240 主色圆角方块内嵌 evenodd 环 + 白色脚印',
+      light: true,
+      dark: false
+    },
+    {
+      key: 'logo-v',
+      title: 'Logo · 垂直组合',
+      filename: 'logo-vertical.svg',
+      desc: '同上，垂直排版（符号在上文字在下）',
+      light: true,
+      dark: false
+    },
+    {
+      key: 'splash',
+      title: '启动页 · Splash Icon',
+      filename: 'splash.svg',
+      desc: '390×844 青底 + 缩小 evenodd 环 + 白色脚印',
+      light: false,
+      dark: true
+    },
+    {
+      key: 'empty',
+      title: '空状态 · Empty State',
+      filename: 'empty-state.svg',
+      desc: 'g opacity=0.28 半透明 + 主色 evenodd 环 + 主色脚印',
+      light: true,
+      dark: false
+    }
+  ];
+
+  const ASSETS = '/prototype-figma/assets/';
+  const ORIG = '/docs/design/ui/originals/';
+
+  const grid = document.getElementById('pairGrid');
+  pairs.forEach(p => {
+    const bgClass = p.dark ? 'dark-bg' : 'light-bg';
+    const html = `
+      <div class="pair-card">
+        <div class="pair-title">${p.title}</div>
+        <div class="pair-filename">${p.filename}</div>
+        <div class="pair-desc">${p.desc}</div>
+        <div class="pair-visual icon-${p.key}">
+          <div class="visual-slot">
+            <span class="slot-label before">原版 · 🦆 鸭头</span>
+            <div class="svg-frame ${bgClass}">
+              <img src="${ORIG}${p.filename}" alt="original">
+            </div>
+          </div>
+          <div class="visual-slot">
+            <span class="slot-label after">新版 · 👣 脚印</span>
+            <div class="svg-frame ${bgClass}">
+              <img src="${ASSETS}${p.filename}" alt="new">
+            </div>
+          </div>
+        </div>
+      </div>`;
+    grid.innerHTML += html;
+  });
+
+  // Collection row — all new versions together
+  const coll = document.getElementById('collectionRow');
+  const collItems = [
+    { key: 'coll-app-icon-fg', file: 'app-icon-android-foreground.svg', label: 'Android 前景', dark: true },
+    { key: 'coll-app-icon-ios', file: 'app-icon-ios.svg', label: 'iOS App Icon', dark: false },
+    { key: 'coll-duck-full', file: 'duck-symbol-full.svg', label: 'Full', dark: false },
+    { key: 'coll-duck-compact', file: 'duck-symbol-compact.svg', label: 'Compact', dark: false },
+    { key: 'coll-duck-inverse', file: 'duck-symbol-inverse.svg', label: 'Inverse', dark: true },
+    { key: 'coll-duck-mono', file: 'duck-symbol-mono.svg', label: 'Mono', dark: false },
+    { key: 'coll-duck-mini', file: 'duck-symbol-mini.svg', label: 'Mini', dark: true },
+    { key: 'coll-logo-h', file: 'logo-horizontal.svg', label: 'Logo 水平', dark: false },
+    { key: 'coll-logo-v', file: 'logo-vertical.svg', label: 'Logo 垂直', dark: false },
+    { key: 'coll-splash', file: 'splash.svg', label: 'Splash', dark: true },
+    { key: 'coll-empty', file: 'empty-state.svg', label: 'Empty', dark: false }
+  ];
+  collItems.forEach(c => {
+    const frame = c.dark ? 'coll-frame-dark' : 'coll-frame-light';
+    coll.innerHTML += `
+      <div class="collection-item">
+        <div class="${frame} ${c.key}">
+          <img src="${ASSETS}${c.file}" alt="${c.label}" style="display:block;">
+        </div>
+        <div class="coll-label">${c.label}</div>
+      </div>`;
+  });
+</script>
+
+</body>
+</html>
