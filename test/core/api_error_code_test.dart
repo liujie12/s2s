@@ -2,8 +2,8 @@
 ///
 /// 这些断言防的是「码表漂移」：
 ///
-/// 1. `ApiErrorCode` 是客户端唯一的错误码实现处（编码规范 §1.2），服务端 24 码
-///    + `ok` + 2 个本地负数码共 27 值。若与 `TestFixtures.allBusinessCodes`
+/// 1. `ApiErrorCode` 是客户端唯一的错误码实现处（编码规范 §1.2），服务端 25 码
+///    + `ok` + 2 个本地负数码共 28 值（2026-11-02 新增 41002）。若与 `TestFixtures.allBusinessCodes`
 ///    （契约 openapi.yaml 错误码表的硬编码镜像）不一致，说明契约与客户端
 ///    枚举有一侧改了而另一侧没跟上 —— 必须双向相等，只测子集会放过
 ///    「客户端多造一个码」这类私自占号（编码规范 §0.2 不新增错误码）。
@@ -44,8 +44,9 @@ void main() {
       );
     });
 
-    test('枚举总数 27 = 24 服务端码 + ok + 2 本地负数码，且无重复码', () {
-      expect(ApiErrorCode.values.length, 27);
+    test('枚举总数 28 = 25 服务端码 + ok + 2 本地负数码，且无重复码', () {
+      // 2026-11-02：新增 41002（该信息未留联系方式），服务端码 24 → 25。
+      expect(ApiErrorCode.values.length, 28);
       final allCodes = ApiErrorCode.values.map((c) => c.code).toList();
       // 长度比较能抓住「同一个码抄两遍」——Set 去重后数量必然缩水。
       expect(allCodes.toSet().length, allCodes.length);
@@ -174,7 +175,7 @@ void main() {
           40001, 40002,
           40301, 40302, 40303, 40304, 40305,
           40901, 40902,
-          41001,
+          41001, 41002,
           -2,
         ]),
       );

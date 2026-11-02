@@ -320,6 +320,20 @@ void main() {
       }
     });
 
+    test('41002 映射到 noContact（2026-11-02 起可达，与 41001 分开）', () {
+      // 与 41001 分开的理由：帖子还在、只是没留号码，用户该做的是举报让其补充，
+      // 不是离开页面 —— 混成一个码会把这两条引导压成一条。
+      expect(
+        contactFailureOf(
+          const ApiException(
+            code: ApiErrorCode.contactAbsent,
+            message: '该信息未留联系方式',
+          ),
+        ),
+        ContactFailure.noContact,
+      );
+    });
+
     test('限频与熔断文案不同 —— 混用会让被冻结的用户误以为等到明天就好', () {
       expect(
         ContactFailure.rateLimited.message,

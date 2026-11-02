@@ -103,6 +103,12 @@ enum ApiErrorCode {
   /// 帖子已下架或删除。
   postGone(41001, ErrBehavior.deterministicFail),
 
+  /// 帖子未留联系方式（2026-11-02 新增；发布侧联系方式改为选填后可达）。
+  ///
+  /// 与 [postGone] 严格区分：帖子还在、只是对方没留号码 —— 页面应引导举报
+  /// 让对方补充（§7.8），而不是让用户离开。仅 `GET /posts/{id}/contact` 会回。
+  contactAbsent(41002, ErrBehavior.deterministicFail),
+
   // --- 429 限流类：不可自动重试，展示剩余秒数 ---
 
   /// AI 配额超限。

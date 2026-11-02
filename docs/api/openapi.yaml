@@ -68,6 +68,7 @@ info:
     | 40902 | 409 | 图片未通过审核 | 是 | - |
     | 40903 | 409 | 数据已被其他操作修改（乐观锁冲突） | 是 | - |
     | 41001 | 410 | 帖子已下架或已过期 | 是 | - |
+    | 41002 | 410 | 该信息未留联系方式（发布时联系方式为选填） | 是 | - |
     | 42901 | 429 | AI 生成配额已用尽 | 是 | 是 |
     | 42902 | 429 | 联系次数超出每日限额（看号三维限频 / 每日新会话数） | 是 | 是 |
     | 42903 | 429 | 异常操作已触发熔断，当日冻结 | 是 | 是 |
@@ -90,7 +91,7 @@ info:
     | 不可自动重试（须提示） | `42901`–`42905`、`42907` | 按 `Retry-After` 提示，不自动发起；`42907` 的提示须附登录入口 |
     | 静默退回队列 | `42906` | 埋点事件按 `Retry-After` 退回队列头部，不提示用户 |
     | 强制重取 | `40903` | 不自动重试，但必须强制重新拉取最新数据后由用户重试 |
-    | 确定性失败 | `40001` `40002` `40105` `40301`–`40305` `40901` `40902` `41001` | 直接呈现 `message`，不重试 |
+    | 确定性失败 | `40001` `40002` `40105` `40301`–`40305` `40901` `40902` `41001` `41002` | 直接呈现 `message`，不重试 |
 
     ## 5. `40101` 单飞续期时序（客户端强约束）
 
@@ -970,6 +971,11 @@ paths:
         `contact_value_enc`（AES-GCM-256 + 随机 IV，`VARBINARY`，AAD 绑定 `post_id`）。
         **本接口响应中不回显 `contact_value`**；完整联系方式只由
         `GET /posts/{id}/contact` 返回。
+
+        **联系方式选填（2026-11-02）**：`contact_value` 留空/缺省即该帖不展示联系方式，
+        服务端不加密、`contact_channel`/`contact_value_enc`/`key_version` 落 `NULL`，
+        详情 `contact_mask` 为 `null`；此时 `GET /posts/{id}/contact` 回 `41002`
+        （区别于 `41001` 的「已下架」）。
 
         成功后异步产出埋点事件 `post_published`。
 
@@ -4392,11 +4398,19 @@ components:
               value: { code: 40903, message: 数据已更新，请刷新后重试, data: null, request_id: req_7f3a9b }
 
     Gone:
-      description: '`41001` 帖子已下架或已过期'
+      description: |
+        `41001` 帖子已下架或已过期 /
+        `41002` 该信息未留联系方式（发布侧联系方式为选填，帖子仍在但对方没留号码）
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ApiError' }
-          example: { code: 41001, message: 该信息已下架或已过期, data: null, request_id: req_7f3a9c }
+          examples:
+            postGone:
+              summary: 已下架或已过期（41001）
+              value: { code: 41001, message: 该信息已下架或已过期, data: null, request_id: req_7f3a9c }
+            contactAbsent:
+              summary: 未留联系方式（41002）
+              value: { code: 41002, message: 该信息未留联系方式, data: null, request_id: req_7f3a9d }
 
     TooManyRequests:
       description: |
@@ -5667,7 +5681,9 @@ components:
       allOf:
         - $ref: '#/components/schemas/PostDraft'
         - type: object
-          required: [type, leaf_category_id, title, lng, lat, contact_type, contact_value]
+          # 2026-11-02：contact_type / contact_value 移出 required（发布侧联系方式改选填，
+          # 与前端 2026-11-01 口径对齐）。未填时三列落 NULL，/contact 回 41002。
+          required: [type, leaf_category_id, title, lng, lat]
           description: |
             正式发布载荷。派生字段
             （`l2_category_id` / `completeness_level` / `grid_id` / `expire_at` / `version`）

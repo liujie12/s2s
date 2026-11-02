@@ -869,9 +869,14 @@ class _ContactBar extends StatelessWidget {
     // 语义是反的 —— 点击者是来提供资源的，不是来求助的。
     final isDemand = current?.listing.supplyDemand == SupplyDemand.demand;
     final applyRequired = current?.contactApplyRequired ?? false;
-    final label = applyRequired
-        ? '申请查看联系方式'
-        : (isDemand ? '响应需求' : '联系 TA');
+    // §7.8 边界（2026-11-02 起可达）：发布侧联系方式改选填后，帖子可能确实没有号码。
+    // 禁用而不是点了才报错 —— 后者会让用户以为是自己网络问题。
+    final noContact = current != null && !current.hasContact;
+    final label = noContact
+        ? '对方未留联系方式'
+        : applyRequired
+            ? '申请查看联系方式'
+            : (isDemand ? '响应需求' : '联系 TA');
     final icon = applyRequired
         ? Icons.forum_outlined
         : current?.contactChannel == ContactChannel.wechat
@@ -931,7 +936,7 @@ class _ContactBar extends StatelessWidget {
                   const SizedBox(width: AppSpacing.sm),
                   Expanded(
                     child: FilledButton.icon(
-                      onPressed: enabled && current != null
+                      onPressed: enabled && current != null && !noContact
                           ? () => applyRequired
                               ? enterConversation(
                                   context,

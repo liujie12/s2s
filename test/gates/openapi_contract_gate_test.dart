@@ -107,8 +107,8 @@ void main() {
     });
   });
 
-  group('错误码表：25 个业务码（成功 1 + 错误 24）', () {
-    test('复用响应示例承载的业务码 = 24 个错误码减去后台专用 40305', () {
+  group('错误码表：26 个业务码（成功 1 + 错误 25）', () {
+    test('复用响应示例承载的业务码 = 25 个错误码减去后台专用 40305', () {
       final found = <int>{};
       collectCodes(spec.responses, found);
       expect(found.contains(0), isFalse,

@@ -187,11 +187,17 @@ public class ContactService {
         String channel = (String) row.get("contact_channel");
         byte[] ciphertext = (byte[]) row.get("contact_value_enc");
         Integer keyVersion = toInteger(row.get("key_version"));
-        if (ownerId == null || ciphertext == null || keyVersion == null) {
-            // 三列均为 NOT NULL（DDL V1:154/168/189），取到 null 说明数据被绕过应用层写入。
+        if (channel == null && ciphertext == null && keyVersion == null) {
+            // 2026-11-02：发布时联系方式改为选填（V31 起三列可空），三列全空即
+            // 「该帖未留联系方式」的合法形态——回 41002 引导对方补充（§7.8），
+            // 不是数据异常，更不该落 50001。
+            throw BizException.of(ErrorCode.CONTACT_ABSENT);
+        }
+        if (ownerId == null || channel == null || ciphertext == null || keyVersion == null) {
+            // 三列只缺一部分说明数据被绕过应用层写入（全空已在上方按合法形态拦下）。
             // 不猜、不兜底：缺任何一列都无法安全地继续（尤其 keyVersion，猜错会解出乱码）。
             throw new IllegalStateException("post " + postId + " 联系方式三列不完整，"
-                    + "无法解密（contact_channel/contact_value_enc/key_version 应均非空）");
+                    + "无法解密（contact_channel/contact_value_enc/key_version 应均非空或均空）");
         }
 
         // [6] 唯一解密点：AAD = post_id（与 [125] 加密侧 String.valueOf(post.getId()) 逐字一致）

@@ -27,8 +27,9 @@ import java.util.Map;
  * @param address        门牌号地址
  * @param addressPrecise 地址是否精确到门牌
  * @param mediaIds       媒体 ID 列表（maxItems 9）
- * @param contactType    联系方式渠道（必填，phone/wechat）
- * @param contactValue   联系方式值（必填，maxLength 64）
+ * @param contactType    联系方式渠道（选填，phone/wechat；与 contactValue 同填同空）
+ * @param contactValue   联系方式值（选填，maxLength 64；空 = 该帖不展示联系方式，
+ *                       {@code /contact} 回 41002）
  * @param aiAssisted     本条是否由 T2 AI 智能发布辅助生成（B2-4，PRD §5.9）；为 true 时
  *                       发布成功后扣 1 次 AI 配额，并落 {@code post.ai_assisted}
  * @param certIds        可选挂载的资质档案 ID 列表（一帖多证；缺省/空 = 本次不展示，
@@ -49,8 +50,8 @@ public record PostCreateRequest(
         @Size(max = 120) String address,
         Boolean addressPrecise,
         @Size(max = 9) List<String> mediaIds,
-        @NotBlank String contactType,
-        @NotBlank @Size(max = 64) String contactValue,
+        String contactType,
+        @Size(max = 64) String contactValue,
         Boolean aiAssisted,
         List<Long> certIds,
         Boolean contactApplyRequired) {

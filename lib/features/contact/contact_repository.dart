@@ -48,11 +48,10 @@ enum ContactFailure {
 
   /// 对方未留联系方式（§7.8 边界）。
   ///
-  /// **Batch1 无产生路径**（登记见说明文档 §2.9 DEC-14）：发布时
-  /// `contact_type` / `contact_value` 必填、`post` 三个联系方式列 NOT NULL，
-  /// 不存在没留联系方式的帖子，故 [contactFailureOf] 不会产出本项。
-  /// 保留该值是为了让 §7.8 的口径在代码侧仍有落点；服务端若新增对应错误码，
-  /// 在 [contactFailureOf] 里接上即可（页面侧文案位已就绪）。
+  /// **2026-11-02 起可达**（DEC-14 预留的触发条件 ② 生效）：发布时联系方式
+  /// 改为选填，服务端 `/contact` 对三列全空的帖子回 `41002`，由
+  /// [contactFailureOf] 映射到本项。详情侧已知 `contact_mask` 为空时也直接
+  /// 本地短路，不发这次注定失败的请求。
   noContact('对方未留联系方式，尝试举报让其补充'),
 
   /// 未绑定手机号（B2-6a；服务端 40302，需先完成绑定）。
@@ -266,6 +265,8 @@ ContactFailure contactFailureOf(ApiException exception) {
     ApiErrorCode.contactLimit => ContactFailure.rateLimited,
     ApiErrorCode.circuitBroken => ContactFailure.circuitBroken,
     ApiErrorCode.postGone => ContactFailure.postGone,
+    // 2026-11-02：发布侧联系方式改选填后，41002 成为真实可达分支
+    ApiErrorCode.contactAbsent => ContactFailure.noContact,
     // B2-6a：40302 在联系接口的唯一含义是「未绑定手机号」（资质门禁不作用于本接口）
     ApiErrorCode.qualificationNeeded => ContactFailure.phoneBindingRequired,
     // V30：需申请帖未获同意时的取号闸门（40305 在本接口的唯一含义）

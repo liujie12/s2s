@@ -444,15 +444,19 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
           }
           await ref.read(postRepositoryProvider).createPost(payload);
         }
-      } on ApiException catch (error) {
+      } catch (error) {
+        // 必须用 asApiException 归一：拦截器以 `DioException(error: ApiException)`
+        // 抛出业务错误（envelope_interceptor 的 reject 语义），裸 `on ApiException`
+        // 永远匹配不上 —— 真机表现就是「点发布按钮闪一下、什么都没发生」。
         if (!mounted) return;
-        if (_isPublishBlockCode(error.code.code)) {
+        final api = asApiException(error);
+        if (_isPublishBlockCode(api.code.code)) {
           await _showPrecheckBlocks([
-            PrecheckBlockDto(code: error.code.code, message: error.message),
+            PrecheckBlockDto(code: api.code.code, message: api.message),
           ]);
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(error.uiMessage)),
+            SnackBar(content: Text(api.uiMessage)),
           );
         }
         return;
@@ -484,13 +488,13 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
           extra: _form,
         );
       }
-    } on ApiException catch (error) {
+    } catch (error) {
       // precheck 链路失败（传输/信封错误）与「校验不通过」是两种语义：
       // 后者在 blocks 里（上方弹层），前者按 §11.4 唯一格式提示，
-      // 不静默进完成页。
+      // 不静默进完成页。归一同样走 asApiException（见内层 catch 注释）。
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(error.uiMessage)),
+          SnackBar(content: Text(asApiException(error).uiMessage)),
         );
       }
     } finally {

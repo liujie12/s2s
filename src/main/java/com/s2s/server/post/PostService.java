@@ -200,12 +200,16 @@ public class PostService {
         post.setLat(BigDecimal.valueOf(req.lat()));
         post.setAddress(req.address());
         resolveCommunity(post, req);
-        post.setContactChannel(req.contactType());
-        post.setContactValueEnc(new byte[0]);
-        // [147] DEC-13：发布时由明文派生脱敏掩码落库（详情/联系中转页未拉取态展示用，
-        // 不触调解密——明文即用户本次提交值，非密文回解）。
-        post.setContactMask(maskContact(req.contactValue()));
-        post.setKeyVersion(0);
+        // 2026-11-02：联系方式改为选填（前端 11-01 口径的前后端对齐，V31 放开三列 NOT NULL）。
+        // 未填时三列保持 null —— 详情侧据此禁用「查看联系方式」，/contact 回 41002。
+        // 空串与 null 同义：避免出现「有渠道、无号码」的半截态。
+        boolean hasContact = req.contactValue() != null && !req.contactValue().isBlank();
+        if (hasContact) {
+            post.setContactChannel(req.contactType());
+            // [147] DEC-13：发布时由明文派生脱敏掩码落库（详情/联系中转页未拉取态展示用，
+            // 不触调解密——明文即用户本次提交值，非密文回解）。
+            post.setContactMask(maskContact(req.contactValue()));
+        }
         post.setCompletenessConditions(conditionsJson(derived));
         post.setStatus(STATUS_ACTIVE);
         post.setRestricted(0);
@@ -218,11 +222,14 @@ public class PostService {
         postMapper.insert(post);
 
         // [7] contact 双列加密：AAD = post_id，INSERT 后 UPDATE 密文
-        CryptoFacade.EncryptResult enc =
-                cryptoFacade.encrypt(req.contactValue(), String.valueOf(post.getId()));
-        post.setContactValueEnc(enc.ciphertext());
-        post.setKeyVersion(enc.keyVersion());
-        postMapper.updateById(post);
+        // 未填联系方式时整段跳过：三列留 null（V31 起允许），不加密空串。
+        if (hasContact) {
+            CryptoFacade.EncryptResult enc =
+                    cryptoFacade.encrypt(req.contactValue(), String.valueOf(post.getId()));
+            post.setContactValueEnc(enc.ciphertext());
+            post.setKeyVersion(enc.keyVersion());
+            postMapper.updateById(post);
+        }
 
         // 关联媒体（post_media.post_id 落位）
         linkMedia(userId, post.getId(), req.mediaIds());
