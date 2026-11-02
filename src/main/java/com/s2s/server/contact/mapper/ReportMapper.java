@@ -1,6 +1,7 @@
 package com.s2s.server.contact.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.s2s.server.contact.dto.ReportDetailRow;
 import com.s2s.server.contact.dto.ReportTicketRow;
 import com.s2s.server.contact.entity.ReportEntity;
 import java.util.List;
@@ -40,4 +41,16 @@ public interface ReportMapper extends BaseMapper<ReportEntity> {
     List<ReportTicketRow> selectPageByStatus(@Param("status") String status,
             @Param("reason") String reason,
             @Param("offset") int offset, @Param("limit") int limit);
+
+    /**
+     * 按 ID 查单条工单详情（联 {@code post} 取标题与累计风险分）。
+     *
+     * <p>与列表查询分开：详情要回 {@code description}/{@code evidence}（复核材料）
+     * 与处理结果三列，而列表刻意不带这些字段——列表是队列视图，多回一次性内容
+     * 只会让分页响应变重。</p>
+     *
+     * @param id 举报 ID
+     * @return {@link ReportDetailRow} 详情行；不存在返回 {@code null}
+     */
+    ReportDetailRow selectDetailById(@Param("id") long id);
 }

@@ -39,6 +39,16 @@ public final class NfrMedia {
     public static final int MAX_SIZE_BYTES = 20 * 1024 * 1024;
 
     /**
+     * 单条举报的凭证图片上限（openapi {@code POST /posts/{post_id}/report}
+     * 与 {@code ConversationReportRequest} 的 {@code evidence maxItems: 3}）。
+     *
+     * <p>举报凭证只用于人工复核定位问题，不是内容展示位，故与帖子媒体上限
+     * {@link #MAX_MEDIA_COUNT} 分开取值；DTO 校验与 service 二次校验共用本常量，
+     * 避免两处各写一个数字。</p>
+     */
+    public static final int REPORT_EVIDENCE_MAX = 3;
+
+    /**
      * 工具类：禁止实例化。
      */
     private NfrMedia() {

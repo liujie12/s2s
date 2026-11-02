@@ -11,6 +11,7 @@ import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -26,6 +27,9 @@ import com.s2s.server.auth.IdentityBindingService;
 import com.s2s.server.cert.CertService;
 import com.s2s.server.chat.ContactApplyService;
 import com.s2s.server.contact.dto.ContactInfo;
+import com.s2s.server.contact.dto.ReportDetail;
+import com.s2s.server.contact.dto.ReportDetailRow;
+import com.s2s.server.post.MediaService;
 import com.s2s.server.post.PostModerationService;
 import com.s2s.server.contact.dto.ReportRequest;
 import com.s2s.server.contact.dto.ReportResult;
@@ -35,6 +39,7 @@ import com.s2s.server.contact.mapper.ContactEventMapper;
 import com.s2s.server.contact.mapper.ContactPostMapper;
 import com.s2s.server.contact.mapper.ReportMapper;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -82,6 +87,7 @@ class ContactServiceTest {
     private CryptoFacade cryptoFacade;
     private CertService certService;
     private PostModerationService postModerationService;
+    private MediaService mediaService;
     private IdentityBindingService identityBindingService;
     private ContactApplyService contactApplyService;
     private ContactService service;
@@ -105,11 +111,13 @@ class ContactServiceTest {
         cryptoFacade = new CryptoFacade(List.of(KEY_V1));
         certService = mock(CertService.class);
         postModerationService = mock(PostModerationService.class);
+        mediaService = mock(MediaService.class);
         identityBindingService = mock(IdentityBindingService.class);
         contactApplyService = mock(ContactApplyService.class);
         service = new ContactService(rateGuard, contactPostMapper, contactEventMapper,
                 reportMapper, cryptoFacade, auditLogWriter, new ObjectMapper(),
-                certService, postModerationService, identityBindingService, contactApplyService);
+                certService, postModerationService, mediaService, identityBindingService,
+                contactApplyService);
         when(rateGuard.remainingToday(anyLong(), any())).thenReturn(27);
         when(certService.isRealnamePassed(anyLong())).thenReturn(true);
         when(certService.isEnterpriseVerified(anyLong())).thenReturn(false);
@@ -377,6 +385,10 @@ class ContactServiceTest {
         verify(postModerationService).applyRiskDelta(postId, 50);
         verify(postModerationService, never()).auditTakedown(anyLong(), any(), any());
 
+        // 凭证在落库前逐条校验归属与 commit 态（防越权取图 / 空对象）
+        verify(mediaService).ensureOwnedCommittedImage(VIEWER_ID, "m1");
+        verify(mediaService).ensureOwnedCommittedImage(VIEWER_ID, "m2");
+
         verify(auditLogWriter).write(any(AuditEntry.class));
     }
 
@@ -453,6 +465,55 @@ class ContactServiceTest {
         ArgumentCaptor<ReportEntity> captor = ArgumentCaptor.forClass(ReportEntity.class);
         verify(reportMapper).insert(captor.capture());
         assertThat(captor.getValue().getEvidence()).isNull();
+        // 无凭证时不该有任何媒体查询（省一次无意义的 DB 往返）
+        verifyNoInteractions(mediaService);
+    }
+
+    /**
+     * 凭证不合法（越权 / 未 commit / 非图片）→ {@code 40001}，整条举报不落库、
+     * 不累计风险分、不写审计。
+     *
+     * @return void；断言失败即他人媒体或空对象可以进入举报工单
+     */
+    @Test
+    void reportRejectsEvidenceNotOwnedByReporter() {
+        Long postId = 1001L;
+        when(contactPostMapper.selectContactRow(postId))
+                .thenReturn(row(postId, encryptedAad(postId), 1, "phone", "active"));
+        doThrow(BizException.of(ErrorCode.PARAM_INVALID)).when(mediaService)
+                .ensureOwnedCommittedImage(VIEWER_ID, "not-mine");
+
+        assertThatThrownBy(() -> service.report(VIEWER_ID, postId,
+                new ReportRequest("fraud", null, List.of("not-mine"))))
+                .isInstanceOf(BizException.class)
+                .extracting(thrown -> ((BizException) thrown).getErrorCode())
+                .isEqualTo(ErrorCode.PARAM_INVALID);
+
+        verify(reportMapper, never()).insert(any(ReportEntity.class));
+        verify(postModerationService, never()).applyRiskDelta(anyLong(), anyInt());
+        verify(auditLogWriter, never()).write(any(AuditEntry.class));
+    }
+
+    /**
+     * 凭证含空白 ID → {@code 40001}，且在调用媒体服务前就拒绝（避免 null/空串
+     * 进入 {@code Long.valueOf} 抛非业务异常）。
+     *
+     * @return void；断言失败即空白 media_id 会穿透到下层
+     */
+    @Test
+    void reportRejectsBlankEvidenceId() {
+        Long postId = 1001L;
+        when(contactPostMapper.selectContactRow(postId))
+                .thenReturn(row(postId, encryptedAad(postId), 1, "phone", "active"));
+
+        assertThatThrownBy(() -> service.report(VIEWER_ID, postId,
+                new ReportRequest("fraud", null, List.of(" "))))
+                .isInstanceOf(BizException.class)
+                .extracting(thrown -> ((BizException) thrown).getErrorCode())
+                .isEqualTo(ErrorCode.PARAM_INVALID);
+
+        verifyNoInteractions(mediaService);
+        verify(reportMapper, never()).insert(any(ReportEntity.class));
     }
 
     /**
@@ -588,6 +649,56 @@ class ContactServiceTest {
                 .isInstanceOf(BizException.class)
                 .extracting(thrown -> ((BizException) thrown).getErrorCode())
                 .isEqualTo(ErrorCode.POST_GONE);
+    }
+
+    /**
+     * 工单详情：把库内 {@code evidence} JSON 解析成 media_id 列表，并透传复核材料。
+     *
+     * @return void；断言失败即后台看不到用户举证，或 JSON 解析错位
+     */
+    @Test
+    void reportDetailParsesEvidenceAndMapsRow() {
+        LocalDateTime createdAt = LocalDateTime.of(2026, 10, 1, 9, 0);
+        when(reportMapper.selectDetailById(5L)).thenReturn(new ReportDetailRow(
+                5L, 1001L, "标题", "fraud", "对方要求先付款", "[\"101\",\"102\"]",
+                50, "pending", 0, 80, createdAt, null, null));
+
+        ReportDetail detail = service.reportDetailForAdmin(5L);
+
+        assertThat(detail.reportId()).isEqualTo(5L);
+        assertThat(detail.description()).isEqualTo("对方要求先付款");
+        assertThat(detail.evidence()).containsExactly("101", "102");
+        assertThat(detail.riskScore()).isEqualTo(80);
+        assertThat(detail.createdAt()).isEqualTo(createdAt);
+    }
+
+    /**
+     * 工单详情：无凭证行 → 空列表（不返回 null，调用方可直接遍历）。
+     *
+     * @return void
+     */
+    @Test
+    void reportDetailWithoutEvidenceReturnsEmptyList() {
+        when(reportMapper.selectDetailById(5L)).thenReturn(new ReportDetailRow(
+                5L, 1001L, "标题", "other", null, null,
+                5, "pending", 0, 5, LocalDateTime.of(2026, 10, 1, 9, 0), null, null));
+
+        assertThat(service.reportDetailForAdmin(5L).evidence()).isEmpty();
+    }
+
+    /**
+     * 工单详情：不存在 → {@code 40001}（后台口径：工单不存在属参数问题）。
+     *
+     * @return void
+     */
+    @Test
+    void reportDetailMissingIsParamInvalid() {
+        when(reportMapper.selectDetailById(anyLong())).thenReturn(null);
+
+        assertThatThrownBy(() -> service.reportDetailForAdmin(404L))
+                .isInstanceOf(BizException.class)
+                .extracting(thrown -> ((BizException) thrown).getErrorCode())
+                .isEqualTo(ErrorCode.PARAM_INVALID);
     }
 
     /**

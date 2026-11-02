@@ -468,6 +468,25 @@ class NfrMedia {
   static const int maxAudioSeconds = 60;
 }
 
+/// 举报载荷约束（口径源 `docs/api/openapi.yaml` 的
+/// `POST /posts/{post_id}/report` 与 `ConversationReportRequest`）。
+///
+/// 消费方一律引用本类常量名，不得复制字面量。
+class NfrReport {
+  const NfrReport._();
+
+  /// 补充说明长度上限（契约 `remark` 的 `maxLength: 200`）。
+  ///
+  /// 服务端超过即回 `40001`；输入框在此处截断，避免用户打完一段才收到失败。
+  static const int remarkMaxLength = 200;
+
+  /// 证据图片数量上限（契约 `evidence` 的 `maxItems: 3`）。
+  ///
+  /// 与帖子媒体的 [NfrMedia.maxMediaCount] 分开：凭证只用于人工复核，
+  /// 不是内容展示位，上限按复核可读性定，不随发布媒体额度变化。
+  static const int evidenceMaxCount = 3;
+}
+
 /// §6.12 T1 匹配的 Hard Filter 与精排粒度。
 ///
 /// **2026-09-02 缺陷评审第 14 条定案**：Hard Filter 类目粒度由三级放宽为二级，

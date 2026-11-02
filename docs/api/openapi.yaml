@@ -3636,6 +3636,37 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '500': { $ref: '#/components/responses/InternalError' }
 
+  /admin/reports/{id}:
+    get:
+      tags: [admin]
+      summary: 举报工单详情（含补充说明与凭证签名 URL）
+      operationId: adminGetReportDetail
+      x-batch: Batch2
+      x-domain: admin
+      description: |
+        PRD §9.10.1 ④。列表只回队列所需的排序字段；复核所需的用户补充说明
+        （`description`）与凭证图（`evidence_urls`）只在本接口返回，避免队列响应变重。
+        `evidence_urls` 为限时签名 URL，已失效/已删除的凭证会被过滤（不阻断整单查看）。
+        **查看即敏感操作**：读取与审计留痕**同事务**，逐次记录操作人、角色与举报 ID。
+        **权限：内容审核员或超级管理员**，其余角色回 `40305`。
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 举报 ID
+          schema: { type: integer, format: int64 }
+        - $ref: '#/components/parameters/XInteractionId'
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminReportDetail' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: 举报不存在（回 40001） }
+        '500': { $ref: '#/components/responses/InternalError' }
+
   /admin/reports/{id}/handle:
     post:
       tags: [admin]
@@ -4663,6 +4694,41 @@ components:
         total: { type: integer, format: int64 }
         page: { type: integer, format: int32 }
         page_size: { type: integer, format: int32 }
+
+    AdminReportDetail:
+      type: object
+      description: 举报工单详情（PRD §9.10.1 ④；复核用，含补充说明与凭证）
+      required: [report_id, post_id, reason, status, evidence_urls, risk_score]
+      properties:
+        report_id: { type: integer, format: int64 }
+        post_id: { type: integer, format: int64 }
+        post_title: { type: string, description: 被举报帖子标题 }
+        reason: { type: string, description: 举报原因枚举 }
+        description:
+          type: string
+          nullable: true
+          description: 用户补充说明（契约字段名 `remark`，落 `report.description`）
+        evidence_urls:
+          type: array
+          description: |
+            凭证图片的限时签名 URL（按报告内顺序；已失效/已删除的凭证被过滤）。
+            后台可直接渲染，不需要再换取图地址。
+          items: { type: string }
+        weight: { type: integer, format: int32, description: 该举报的风险分贡献 }
+        status: { type: string, description: 工单状态（pending/handled/dismissed） }
+        is_false_report: { type: integer, format: int32, description: 是否已打标误报（0/1） }
+        risk_score: { type: integer, format: int32, description: 被举报帖子累计风险分 }
+        created_at: { type: string, format: date-time, description: 举报时间 }
+        handled_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: 处理时间（未处理为 null）
+        handler_id:
+          type: integer
+          format: int64
+          nullable: true
+          description: 处理人 admin_user.id（未处理为 null）
 
     AdminReportHandleRequest:
       type: object

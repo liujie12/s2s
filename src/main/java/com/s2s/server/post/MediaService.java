@@ -175,6 +175,27 @@ public class MediaService {
     }
 
     /**
+     * 校验媒体是「本人已 commit 的图片」（举报凭证引用前的闸门）。
+     *
+     * <p>与 {@link #ensureOwned} 的差别是多了两道：未 commit（{@code pending}）的记录
+     * 尚未经 HEAD 二次校验与 EXIF 剥离，后台按它取图会拿到不存在或未处理的对象；
+     * 音频不在举报凭证的允许范围内（客户端只提供图片入口）。任一不满足均回
+     * {@code 40001} —— 与归属校验同一码值，不新增错误码。</p>
+     *
+     * @param userId  当前用户 user_id
+     * @param mediaId 媒体 ID
+     * @throws BizException 媒体不存在/非本人/未 commit/非图片 → 40001
+     */
+    public void ensureOwnedCommittedImage(Long userId, String mediaId) {
+        PostMediaEntity media = loadOwned(userId, mediaId);
+        boolean committedImage = AUDIT_PASS.equals(media.getAuditStatus())
+                && NfrMedia.ALLOWED_CONTENT_TYPES.contains(media.getContentType());
+        if (!committedImage) {
+            throw BizException.of(ErrorCode.PARAM_INVALID);
+        }
+    }
+
+    /**
      * 为「本人媒体」签发普通只读 GET 签名 URL（catalog 展示用，不带缩放参数）。
      *
      * <p>与 {@link #signAiReadAccess} 的区别：后者给 AI 上游用、图片带等比缩放参数；
@@ -205,6 +226,34 @@ public class MediaService {
             return null;
         }
         PostMediaEntity media = mediaMapper.selectById(mediaId);
+        return media == null ? null : ossClient.signAccessUrl(readableKeyOf(media));
+    }
+
+    /**
+     * 为后台复核查看举报凭证签发只读 URL（**不做归属校验**）。
+     *
+     * <p>与 {@link #signPublicReadUrl} 的实现相同，分列只为让调用点可读：那个方法面向
+     * 「详情页公开证照」，本方法面向「已鉴权后台的举报复核」。举报凭证可能含敏感内容，
+     * 任何把它接到前台页面的改动都应在代码审查时一眼可见。</p>
+     *
+     * <p><b>容错</b>：工单可能引用已删除的媒体（历史行或清理任务），或存着非数字 ID。
+     * 这类条目不阻断整条工单的查看，返回 {@code null} 由调用方过滤——少一张图
+     * 好过整页打不开。</p>
+     *
+     * @param mediaId 媒体 ID 字符串（举报 {@code evidence} 数组元素）
+     * @return {@link String} 只读签名 URL；空白/非数字/媒体不存在时返回 {@code null}
+     */
+    public String signAdminEvidenceUrl(String mediaId) {
+        if (mediaId == null || mediaId.isBlank()) {
+            return null;
+        }
+        final Long id;
+        try {
+            id = Long.valueOf(mediaId);
+        } catch (NumberFormatException exception) {
+            return null;
+        }
+        PostMediaEntity media = mediaMapper.selectById(id);
         return media == null ? null : ossClient.signAccessUrl(readableKeyOf(media));
     }
 

@@ -3,6 +3,7 @@ package com.s2s.server.admin.report;
 import com.s2s.server.admin.AdminContext;
 import com.s2s.server.admin.dto.AdminReportBatchHandleRequest;
 import com.s2s.server.admin.dto.AdminReportConversationResponse;
+import com.s2s.server.admin.dto.AdminReportDetailResponse;
 import com.s2s.server.admin.dto.AdminReportHandleRequest;
 import com.s2s.server.admin.dto.AdminReportPageResponse;
 import com.s2s.server.common.audit.OperatorRole;
@@ -56,6 +57,22 @@ public class AdminReportController {
             @RequestParam(name = "page_size", required = false) Integer pageSize) {
         return adminReportService.list(AdminContext.currentRole(http), status, reason, page,
                 pageSize);
+    }
+
+    /**
+     * 举报工单详情（{@code GET /admin/reports/{id}}；含补充说明与凭证签名 URL）。
+     *
+     * <p>查看动作逐次写审计（与 {@link #conversation} 同口径）；RBAC 由 service 判定。</p>
+     *
+     * @param http     当前请求（取后台角色/操作人）
+     * @param reportId 举报 ID
+     * @return {@link AdminReportDetailResponse} 详情
+     */
+    @GetMapping("/{id}")
+    public AdminReportDetailResponse detail(HttpServletRequest http,
+            @PathVariable("id") long reportId) {
+        return adminReportService.detail(AdminContext.currentRole(http),
+                AdminContext.currentAdminId(http), reportId);
     }
 
     /**

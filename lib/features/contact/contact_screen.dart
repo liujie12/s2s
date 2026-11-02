@@ -42,11 +42,13 @@ import '../../core/network/api_error_code.dart';
 import '../../core/network/api_exception.dart';
 import '../../design_tokens.dart';
 import '../../domain/listing_detail.dart';
+import '../../nfr_constants.dart';
 import '../../router/app_router.dart';
 import '../auth/auth_repository.dart';
 import '../detail/post_detail_provider.dart';
 import '../message/conversation_entry.dart';
 import '../message/message_list_provider.dart';
+import '../publish/media_section.dart';
 import 'contact_repository.dart';
 import 'report_reason.dart';
 
@@ -342,22 +344,28 @@ class _ContactScreenState extends ConsumerState<ContactScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(hint)));
   }
 
-  /// 举报原因面板（§7.7 五个原因 / §9.10.3 风险分累计）。
+  /// 举报原因、补充说明与证据的上传面板（§7.7 五个原因 / §9.10.3 风险分累计）。
   ///
   /// 提交走 `POST /posts/{id}/report`。**面板里的原因文案与契约值都取自
   /// [ReportReason]**（唯一落点）：面板显示中文、提交发契约值，
   /// 两处若各存一份，改一个词就会让提交的原因与运营配置的权重表对不上。
+  ///
+  /// **为什么要 `isScrollControlled`**：面板含 5 个原因 + 说明输入 + 证据缩略图，
+  /// 小屏/展开键盘后会超过半屏；半屏固定高度会把提交按钮挤出可视区，
+  /// 用户只能下滑关闭、误以为「提交不了」。
   void _openReportSheet() {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Color(AppColors.surface),
+      isScrollControlled: true,
+      useSafeArea: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.xl)),
       ),
       builder: (sheetContext) => _ReportSheet(
-        onSubmit: (reason) async {
+        onSubmit: (draft) async {
           Navigator.of(sheetContext).pop();
-          await _submitReport(reason);
+          await _submitReport(draft);
         },
       ),
     );
@@ -369,12 +377,15 @@ class _ContactScreenState extends ConsumerState<ContactScreen> {
   /// 已经举报成功、坐等处理。每种失败都按服务端语义给对应文案
   /// （熔断 42903 / 已下架 41001 与网络异常三者对用户的意义不同）。
   ///
-  /// @param reason 用户选择的原因（枚举值同时携带中文文案与契约值）
-  Future<void> _submitReport(ReportReason reason) async {
+  /// 参数：[draft] 面板收集到的完整载荷（原因 + 可选说明 + 可选证据）。
+  Future<void> _submitReport(_ReportDraft draft) async {
     try {
-      await ref
-          .read(contactRepositoryProvider)
-          .submitReport(widget.listingId, reason: reason);
+      await ref.read(contactRepositoryProvider).submitReport(
+            widget.listingId,
+            reason: draft.reason,
+            remark: draft.remark,
+            evidence: draft.evidence,
+          );
       if (!mounted) return;
       // 文案照 §7.8：「已受理，24h 内处理」。
       ScaffoldMessenger.of(context).showSnackBar(
@@ -886,15 +897,41 @@ class _ReportEntry extends StatelessWidget {
   }
 }
 
-/// 举报原因选择面板（§7.7 五个原因）。
+/// 举报面板收集到的载荷（原因必填，说明与证据可空）。
+///
+/// **独立成形而不是三个回调参数**：三者必须一起送达，拆开会让「只传了原因、
+/// 漏了证据」在调用点看不出来。证据只存 media_id（不存本地字节），
+/// 面板关闭即释放。
+class _ReportDraft {
+  const _ReportDraft({
+    required this.reason,
+    this.remark,
+    this.evidence = const <String>[],
+  });
+
+  /// 举报原因。
+  final ReportReason reason;
+
+  /// 补充说明（已 trim；空串归一为 null）。
+  final String? remark;
+
+  /// 已 commit 的证据图片 media_id。
+  final List<String> evidence;
+}
+
+/// 举报面板（§7.7 五个原因 + 补充说明 + 证据）。
 ///
 /// 原因清单直接由 [ReportReason] 驱动（`values` 遍历）：面板上的中文与提交用的
 /// 契约值同源，不存在「面板加了第六项但提交映射没跟」的错位。
+///
+/// **证据为什么复用发布页的 [MediaSection]**：上传链路（票据 → OSS 直传 →
+/// commit）与选图归一化都已在那套组件里，举报证据只是「上限 3 张、无封面/裁剪」
+/// 的简化用法。另写一套上传 UI 等于把同一条链路维护两遍。
 class _ReportSheet extends StatefulWidget {
   const _ReportSheet({required this.onSubmit});
 
-  /// 提交回调：参数为用户选中的原因（枚举值，同时携带中文文案与契约值）。
-  final ValueChanged<ReportReason> onSubmit;
+  /// 提交回调：携带面板收集到的完整载荷（原因 + 可选说明 + 可选证据）。
+  final ValueChanged<_ReportDraft> onSubmit;
 
   @override
   State<_ReportSheet> createState() => _ReportSheetState();
@@ -903,60 +940,151 @@ class _ReportSheet extends StatefulWidget {
 class _ReportSheetState extends State<_ReportSheet> {
   ReportReason? _selected;
 
+  /// 补充说明输入。
+  final TextEditingController _remark = TextEditingController();
+
+  /// 已 commit 的证据 media_id（由 [MediaSection] 上报，未传完的不在其中）。
+  List<String> _evidence = const <String>[];
+
+  @override
+  void dispose() {
+    _remark.dispose();
+    super.dispose();
+  }
+
+  /// 组装提交载荷（说明 trim 后为空则不传该键）。
+  ///
+  /// 参数：无。
+  /// 返回：[_ReportDraft]；调用前须保证 [_selected] 非空。
+  _ReportDraft _draft() {
+    final remark = _remark.text.trim();
+    return _ReportDraft(
+      reason: _selected!,
+      remark: remark.isEmpty ? null : remark,
+      evidence: _evidence,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '举报原因',
-              style: TextStyle(
-                fontSize: AppTypeScale.h3.size,
-                fontWeight: FontWeight.w600,
-                color: Color(AppColors.textPrimary),
-              ),
-            ),
-            const SizedBox(height: AppSpacing.md),
-            ...ReportReason.values.map(
-              (r) => RadioListTile<ReportReason>(
-                value: r,
-                // ignore: deprecated_member_use
-                groupValue: _selected,
-                // ignore: deprecated_member_use
-                onChanged: (v) => setState(() => _selected = v),
-                title: Text(
-                  r.label,
-                  style: TextStyle(fontSize: AppTypeScale.body.size),
-                ),
-                contentPadding: EdgeInsets.zero,
-                dense: true,
-                activeColor: Color(AppColors.primary),
-              ),
-            ),
-            const SizedBox(height: AppSpacing.md),
-            SizedBox(
-              width: double.infinity,
-              height: 44,
-              child: FilledButton(
-                // 未选原因不可提交：无原因的举报无法进入 §9.10.3 的权重计算。
-                onPressed: _selected == null
-                    ? null
-                    : () => widget.onSubmit(_selected!),
-                style: FilledButton.styleFrom(
-                  backgroundColor: Color(AppColors.primary),
-                  disabledBackgroundColor: Color(AppColors.border),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(AppRadius.full),
+        // 键盘弹出时把面板整体抬起：说明输入框在面板中部，不抬会被键盘盖住。
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.viewInsetsOf(context).bottom,
+        ),
+        child: ConstrainedBox(
+          // 面板内容随证据张数增长，限制在 85% 屏高并允许内部滚动：
+          // 不设上限会把提交按钮顶出屏幕，设死半屏则小屏放不下。
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(context).height * 0.85,
+          ),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '举报原因',
+                  style: TextStyle(
+                    fontSize: AppTypeScale.h3.size,
+                    fontWeight: FontWeight.w600,
+                    color: Color(AppColors.textPrimary),
                   ),
                 ),
-                child: const Text('提交举报'),
-              ),
+                const SizedBox(height: AppSpacing.md),
+                ...ReportReason.values.map(
+                  (r) => RadioListTile<ReportReason>(
+                    value: r,
+                    // ignore: deprecated_member_use
+                    groupValue: _selected,
+                    // ignore: deprecated_member_use
+                    onChanged: (v) => setState(() => _selected = v),
+                    title: Text(
+                      r.label,
+                      style: TextStyle(fontSize: AppTypeScale.body.size),
+                    ),
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    activeColor: Color(AppColors.primary),
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                Text(
+                  '补充说明（选填）',
+                  style: TextStyle(
+                    fontSize: AppTypeScale.small.size,
+                    fontWeight: FontWeight.w600,
+                    color: Color(AppColors.textPrimary),
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.xs),
+                TextField(
+                  controller: _remark,
+                  maxLength: NfrReport.remarkMaxLength,
+                  minLines: 2,
+                  maxLines: 3,
+                  style: TextStyle(fontSize: AppTypeScale.body.size),
+                  decoration: InputDecoration(
+                    hintText: '描述具体情况，便于核实',
+                    hintStyle: TextStyle(
+                      fontSize: AppTypeScale.body.size,
+                      color: Color(AppColors.textPlaceholder),
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(AppRadius.md),
+                    ),
+                    contentPadding: const EdgeInsets.all(AppSpacing.md),
+                  ),
+                ),
+                Text(
+                  '证据（选填，最多 ${NfrReport.evidenceMaxCount} 张）',
+                  style: TextStyle(
+                    fontSize: AppTypeScale.small.size,
+                    fontWeight: FontWeight.w600,
+                    color: Color(AppColors.textPrimary),
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.xs),
+                MediaSection(
+                  maxCount: NfrReport.evidenceMaxCount,
+                  simple: true,
+                  onChanged: (ids) => _evidence = ids,
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(top: AppSpacing.xs),
+                  child: Text(
+                    // 未传完的图不在 media_ids 里：明说时序，避免用户以为点了提交就带上了。
+                    '图片上传完成后随举报一并提交',
+                    style: TextStyle(
+                      fontSize: AppTypeScale.caption.size,
+                      color: Color(AppColors.textPlaceholder),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                SizedBox(
+                  width: double.infinity,
+                  height: 44,
+                  child: FilledButton(
+                    // 未选原因不可提交：无原因的举报无法进入 §9.10.3 的权重计算。
+                    onPressed: _selected == null
+                        ? null
+                        : () => widget.onSubmit(_draft()),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Color(AppColors.primary),
+                      disabledBackgroundColor: Color(AppColors.border),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(AppRadius.full),
+                      ),
+                    ),
+                    child: const Text('提交举报'),
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );

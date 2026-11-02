@@ -16,6 +16,7 @@ import static org.mockito.Mockito.when;
 
 import com.s2s.server.admin.dto.AdminReportBatchHandleRequest;
 import com.s2s.server.admin.dto.AdminReportConversationResponse;
+import com.s2s.server.admin.dto.AdminReportDetailResponse;
 import com.s2s.server.admin.dto.AdminReportPageResponse;
 import com.s2s.server.chat.ChatReportService;
 import com.s2s.server.chat.dto.ConversationBody;
@@ -27,8 +28,10 @@ import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
 import com.s2s.server.contact.ContactService;
 import com.s2s.server.contact.dto.ReportContext;
+import com.s2s.server.contact.dto.ReportDetail;
 import com.s2s.server.contact.dto.ReportTicketPage;
 import com.s2s.server.contact.dto.ReportTicketRow;
+import com.s2s.server.post.MediaService;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -49,6 +52,9 @@ class AdminReportServiceTest {
     /** chat 域服务（mock）。 */
     private ChatReportService chatReportService;
 
+    /** 媒体服务（mock）。 */
+    private MediaService mediaService;
+
     /** 审计写入器（mock）。 */
     private AuditLogWriter auditLogWriter;
 
@@ -62,8 +68,10 @@ class AdminReportServiceTest {
     void setUp() {
         contactService = mock(ContactService.class);
         chatReportService = mock(ChatReportService.class);
+        mediaService = mock(MediaService.class);
         auditLogWriter = mock(AuditLogWriter.class);
-        service = new AdminReportService(contactService, chatReportService, auditLogWriter);
+        service = new AdminReportService(contactService, chatReportService, mediaService,
+                auditLogWriter);
     }
 
     /**
@@ -236,5 +244,45 @@ class AdminReportServiceTest {
                 .isEqualTo(ErrorCode.NO_PERMISSION);
         verify(contactService, never()).reportContext(any(Long.class));
         verify(chatReportService, never()).bodyForReport(any(), any(), any());
+    }
+
+    /**
+     * 详情：透传补充说明，凭证逐个换签名 URL，已失效的凭证被过滤，并写一条查看审计。
+     *
+     * @return void；断言失败即后台看不到举证内容，或查看行为无留痕
+     */
+    @Test
+    void detailSignsEvidenceAndWritesAudit() {
+        when(contactService.reportDetailForAdmin(1L)).thenReturn(new ReportDetail(
+                1L, 9L, "标题", "fraud", "对方要求先付款", List.of("101", "102"),
+                50, "pending", 0, 50, LocalDateTime.of(2026, 10, 1, 9, 0), null, null));
+        when(mediaService.signAdminEvidenceUrl("101")).thenReturn("https://oss/101");
+        // 已删除的凭证：签名返回 null，应被过滤而不是让整单失败
+        when(mediaService.signAdminEvidenceUrl("102")).thenReturn(null);
+
+        AdminReportDetailResponse response = service.detail(OperatorRole.AUDITOR, 5L, 1L);
+
+        assertThat(response.description()).isEqualTo("对方要求先付款");
+        assertThat(response.evidenceUrls()).containsExactly("https://oss/101");
+        assertThat(response.status()).isEqualTo("pending");
+        assertThat(response.handledAt()).isNull();
+        verify(auditLogWriter).write(any(AuditEntry.class));
+    }
+
+    /**
+     * 详情同样受 RBAC 约束：非内容审核员/超管 → 40305，且不触达 contact/media 服务。
+     *
+     * @param role 被测角色
+     * @return void；断言失败即越权可查看举报凭证
+     */
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(names = {"OPERATOR", "ALGO"})
+    void detailNonAuditorDenied(OperatorRole role) {
+        assertThatThrownBy(() -> service.detail(role, 5L, 1L))
+                .isInstanceOf(BizException.class)
+                .extracting(e -> ((BizException) e).getErrorCode())
+                .isEqualTo(ErrorCode.NO_PERMISSION);
+        verify(contactService, never()).reportDetailForAdmin(1L);
+        verify(mediaService, never()).signAdminEvidenceUrl(anyString());
     }
 }

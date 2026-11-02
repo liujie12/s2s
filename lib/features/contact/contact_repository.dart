@@ -208,6 +208,7 @@ class ContactRepository {
   ///   [postId]        被举报帖子 ID；
   ///   [reason]        举报原因（契约值取自 [ReportReason.apiValue]）；
   ///   [remark]        补充说明（可空，契约上限 200 字）；
+  ///   [evidence]      证据图片的 media_id（可空，契约上限 3 张；须为本人已 commit 的图片）；
   ///   [interactionId] 交互起点生成的 X-Interaction-Id；null 由拦截器兜底。
   /// 返回：`report_id`（服务端生成的举报记录 ID）。
   /// 抛出：[ContactException]（`postGone` 帖子不存在/不可见、`circuitBroken`
@@ -216,6 +217,7 @@ class ContactRepository {
     int postId, {
     required ReportReason reason,
     String? remark,
+    List<String>? evidence,
     String? interactionId,
   }) async {
     try {
@@ -226,6 +228,8 @@ class ContactRepository {
           // remark 为空时整个键不传：契约 required 只有 reason，
           // 传空串会把「没填」变成「填了个空」。
           if (remark != null && remark.isNotEmpty) 'remark': remark,
+          // 证据同理：空列表不传，让「无凭证」在服务端只有一个表示法（落 null）。
+          if (evidence != null && evidence.isNotEmpty) 'evidence': evidence,
         },
         options: _interactionOptions(interactionId),
       );

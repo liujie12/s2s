@@ -2,11 +2,13 @@ package com.s2s.server.admin.report;
 
 import com.s2s.server.admin.dto.AdminReportBatchHandleRequest;
 import com.s2s.server.admin.dto.AdminReportConversationResponse;
+import com.s2s.server.admin.dto.AdminReportDetailResponse;
 import com.s2s.server.admin.dto.AdminReportPageResponse;
 import com.s2s.server.chat.ChatReportService;
 import com.s2s.server.chat.dto.ConversationBody;
 import com.s2s.server.contact.ContactService;
 import com.s2s.server.contact.dto.ReportContext;
+import com.s2s.server.contact.dto.ReportDetail;
 import com.s2s.server.contact.dto.ReportTicketPage;
 import com.s2s.server.contact.dto.ReportTicketRow;
 import com.s2s.server.common.audit.AuditEntry;
@@ -15,8 +17,10 @@ import com.s2s.server.common.audit.OperatorRole;
 import com.s2s.server.common.constants.NfrAdmin;
 import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
+import com.s2s.server.post.MediaService;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Objects;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -43,6 +47,9 @@ public class AdminReportService {
     /** 审计动作：查看被举报会话正文（逐次留痕，PRD §9.10.1 同类口径）。 */
     static final String ACTION_CONVERSATION_VIEW = "report.conversation.view";
 
+    /** 审计动作：查看举报工单详情（含补充说明与凭证图，逐次留痕）。 */
+    static final String ACTION_DETAIL_VIEW = "report.detail.view";
+
     /** 审计目标类型：举报工单。 */
     static final String TARGET_REPORT = "report";
 
@@ -58,6 +65,9 @@ public class AdminReportService {
     /** chat 域服务（举报双方会话正文定位）。 */
     private final ChatReportService chatReportService;
 
+    /** 媒体服务（举报凭证签名 URL）。 */
+    private final MediaService mediaService;
+
     /** 审计写入器（唯一写入处）。 */
     private final AuditLogWriter auditLogWriter;
 
@@ -66,12 +76,15 @@ public class AdminReportService {
      *
      * @param contactService    contact 域服务
      * @param chatReportService chat 域服务（会话正文）
+     * @param mediaService      媒体服务（凭证签名 URL）
      * @param auditLogWriter    审计写入器
      */
     public AdminReportService(ContactService contactService,
-            ChatReportService chatReportService, AuditLogWriter auditLogWriter) {
+            ChatReportService chatReportService, MediaService mediaService,
+            AuditLogWriter auditLogWriter) {
         this.contactService = contactService;
         this.chatReportService = chatReportService;
+        this.mediaService = mediaService;
         this.auditLogWriter = auditLogWriter;
     }
 
@@ -127,6 +140,40 @@ public class AdminReportService {
                 TARGET_CONVERSATION, body.conversationId(), null, null, null));
         return new AdminReportConversationResponse(reportId, body.conversationId(),
                 body.messages());
+    }
+
+    /**
+     * 举报工单详情（{@code GET /admin/reports/{id}}；含补充说明与凭证签名 URL）。
+     *
+     * <p><b>为什么查看也要审计</b>：详情比列表多出「用户写的说明 + 凭证图」，属于
+     * 「查看用户内容」。口径与 {@link #conversationBody} 一致——查看动作逐次留痕，
+     * 且与读取同事务：审计写不进去就让整次查看失败，宁可不看也不留下无记录的访问。</p>
+     *
+     * <p><b>凭证签名失败不阻断</b>：已删除/非数字的 media_id 返回 {@code null}，
+     * 由这里过滤掉；少一张图好过整条工单打不开。</p>
+     *
+     * @param callerRole 调用者角色
+     * @param adminId    操作人 ID（审计）
+     * @param reportId   举报 ID
+     * @return {@link AdminReportDetailResponse} 详情（凭证为签名 URL 数组）
+     * @throws BizException 非内容审核员/超管 → 40305；举报不存在 → 40001
+     */
+    @Transactional
+    public AdminReportDetailResponse detail(OperatorRole callerRole, Long adminId, long reportId) {
+        requireAuditorOrSuper(callerRole);
+        ReportDetail detail = contactService.reportDetailForAdmin(reportId);
+        List<String> evidenceUrls = detail.evidence().stream()
+                .map(mediaService::signAdminEvidenceUrl)
+                .filter(Objects::nonNull)
+                .toList();
+        auditLogWriter.write(new AuditEntry(adminId, callerRole, ACTION_DETAIL_VIEW,
+                TARGET_REPORT, reportId, null, null, null));
+        return new AdminReportDetailResponse(detail.reportId(), detail.postId(),
+                detail.postTitle(), detail.reason(), detail.description(), evidenceUrls,
+                detail.weight(), detail.status(), detail.isFalseReport(), detail.riskScore(),
+                detail.createdAt() == null ? null : detail.createdAt().toInstant(ZoneOffset.UTC),
+                detail.handledAt() == null ? null : detail.handledAt().toInstant(ZoneOffset.UTC),
+                detail.handlerId());
     }
 
     /**

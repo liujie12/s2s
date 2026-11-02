@@ -22,6 +22,7 @@ import com.s2s.server.common.ratelimit.RateLimitEntries;
 import com.s2s.server.contact.mapper.ContactEventMapper;
 import com.s2s.server.contact.mapper.ContactPostMapper;
 import com.s2s.server.contact.mapper.ReportMapper;
+import com.s2s.server.post.MediaService;
 import com.s2s.server.post.PostModerationService;
 import java.time.LocalDate;
 import java.util.HashMap;
@@ -63,7 +64,7 @@ class ContactApplyGateTest {
         service = new ContactService(rateGuard, contactPostMapper, mock(ContactEventMapper.class),
                 mock(ReportMapper.class), mock(CryptoFacade.class), mock(AuditLogWriter.class),
                 new ObjectMapper(), mock(CertService.class), mock(PostModerationService.class),
-                identityBindingService, contactApplyService);
+                mock(MediaService.class), identityBindingService, contactApplyService);
     }
 
     /**

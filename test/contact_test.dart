@@ -260,6 +260,8 @@ void main() {
       final body = harness.server.lastRequest!.body as Map<String, Object?>;
       expect(body['reason'], 'wrong_category');
       expect(body.containsKey('remark'), isFalse);
+      // 无凭证时不传键：让服务端把「无凭证」只落成 null 一种形态
+      expect(body.containsKey('evidence'), isFalse);
     });
 
     test('填了 remark 时原样透传', () async {
@@ -275,6 +277,25 @@ void main() {
       final body = harness.server.lastRequest!.body as Map<String, Object?>;
       expect(body['reason'], 'fraud');
       expect(body['remark'], '要求先付款');
+    });
+
+    test('填了 evidence 时按 media_id 数组透传（上限由契约约束）', () async {
+      harness.stub('POST', '/api/v1/posts/1/report', (req) async {
+        return MockResponse(
+          status: 200,
+          body: ApiEnvelope.success(data: {'report_id': 90, 'status': 'pending'}),
+        );
+      });
+
+      await repo.submitReport(
+        1,
+        reason: ReportReason.fraud,
+        evidence: const <String>['101', '102'],
+      );
+
+      final body = harness.server.lastRequest!.body as Map<String, Object?>;
+      expect(body['reason'], 'fraud');
+      expect(body['evidence'], <String>['101', '102']);
     });
 
     test('42903 → circuitBroken（举报频次熔断与联系熔断文案一致）', () async {

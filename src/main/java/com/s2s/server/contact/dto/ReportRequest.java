@@ -2,6 +2,7 @@ package com.s2s.server.contact.dto;
 
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
+import com.s2s.server.common.constants.NfrMedia;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import java.util.List;
@@ -27,5 +28,6 @@ import java.util.List;
 public record ReportRequest(
         @NotBlank(message = "reason") String reason,
         @Size(max = 200, message = "remark") String remark,
-        @Size(max = 3, message = "evidence") List<String> evidence) {
+        @Size(max = NfrMedia.REPORT_EVIDENCE_MAX, message = "evidence")
+        List<String> evidence) {
 }

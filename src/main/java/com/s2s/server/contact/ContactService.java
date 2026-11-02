@@ -1,6 +1,7 @@
 package com.s2s.server.contact;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.s2s.server.auth.IdentityBindingService;
 import com.s2s.server.cert.CertService;
@@ -9,12 +10,15 @@ import com.s2s.server.chat.ContactApplyService;
 import com.s2s.server.common.audit.AuditEntry;
 import com.s2s.server.common.audit.AuditLogWriter;
 import com.s2s.server.common.audit.OperatorRole;
+import com.s2s.server.common.constants.NfrMedia;
 import com.s2s.server.common.crypto.CryptoFacade;
 import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
 import com.s2s.server.common.ratelimit.RateLimitEntries;
 import com.s2s.server.contact.dto.ContactInfo;
 import com.s2s.server.contact.dto.ReportContext;
+import com.s2s.server.contact.dto.ReportDetail;
+import com.s2s.server.contact.dto.ReportDetailRow;
 import com.s2s.server.contact.dto.ReportRequest;
 import com.s2s.server.contact.dto.ReportResult;
 import com.s2s.server.contact.dto.ReportTicketPage;
@@ -24,6 +28,7 @@ import com.s2s.server.contact.entity.ReportEntity;
 import com.s2s.server.contact.mapper.ContactEventMapper;
 import com.s2s.server.contact.mapper.ContactPostMapper;
 import com.s2s.server.contact.mapper.ReportMapper;
+import com.s2s.server.post.MediaService;
 import com.s2s.server.post.PostModerationService;
 import com.s2s.server.post.PostStatus;
 import java.time.LocalDate;
@@ -85,6 +90,7 @@ public class ContactService {
     private final ObjectMapper objectMapper;
     private final CertService certService;
     private final PostModerationService postModerationService;
+    private final MediaService mediaService;
     private final IdentityBindingService identityBindingService;
     private final ContactApplyService contactApplyService;
 
@@ -100,6 +106,7 @@ public class ContactService {
      * @param objectMapper          举报凭证 JSON 序列化
      * @param certService           认证域服务（举报方实名门槛/企业权重判定，[153] B2-5 ④）
      * @param postModerationService 帖子治理服务（风险分累计/审核下架，[153] B2-5 ④）
+     * @param mediaService          媒体服务（举报凭证归属与 commit 态校验）
      * @param identityBindingService 身份绑定门禁（B2-6a：未绑手机号禁止查看联系方式）
      * @param contactApplyService    联系方式申请链路（需申请帖的取号闸门，R22 / R24）
      */
@@ -112,6 +119,7 @@ public class ContactService {
             ObjectMapper objectMapper,
             CertService certService,
             PostModerationService postModerationService,
+            MediaService mediaService,
             IdentityBindingService identityBindingService,
             ContactApplyService contactApplyService) {
         this.rateGuard = rateGuard;
@@ -123,6 +131,7 @@ public class ContactService {
         this.objectMapper = objectMapper;
         this.certService = certService;
         this.postModerationService = postModerationService;
+        this.mediaService = mediaService;
         this.identityBindingService = identityBindingService;
         this.contactApplyService = contactApplyService;
     }
@@ -332,6 +341,11 @@ public class ContactService {
     /**
      * 举报落库的唯一写入实现（帖子举报与会话内举报共用）。
      *
+     * <p><b>凭证先校验后落库</b>：{@code evidence} 由客户端传入，未经校验的 ID 既可能是
+     * 伪造/他人媒体（后台复核时越权取图），也可能是未 commit 的空对象（取图 404）。
+     * 故在计分与写库之前统一过 {@link #validateEvidence}，失败即整条举报不落库 ——
+     * 宁可让用户重选图片，也不收下一条无法复核的工单。</p>
+     *
      * @param reporterId     举报人 user_id
      * @param postId         被举报帖子 ID
      * @param reportedUserId 被举报人 user_id
@@ -340,9 +354,11 @@ public class ContactService {
      * @param evidence       证据 media_ids（可空；空列表与 {@code null} 均落 {@code null}）
      * @param accumulateRisk 是否累计风险分并参与自动下架判定
      * @return {@link ReportResult} 举报 ID + 初始状态 pending
+     * @throws BizException 凭证非法（越权/未 commit/非图片/超上限）→ 40001
      */
     private ReportResult createReport(Long reporterId, Long postId, Long reportedUserId,
             String reason, String description, List<String> evidence, boolean accumulateRisk) {
+        validateEvidence(reporterId, evidence);
         // [153] B2-5 ④ §9.10.3 风险分 = 原因分 × 举报方权重（企业认证 ×1.5）。
         // 权重落 report.weight 列（评审/回撤都靠它，不能只存在内存里）。
         int contribution = accumulateRisk
@@ -399,6 +415,28 @@ public class ContactService {
         }
         return new ReportContext(report.getId(), report.getPostId(), report.getReporterId(),
                 report.getReportedUserId(), report.getReason());
+    }
+
+    /**
+     * 单条举报工单详情（后台复核入口；PRD §9.10.1 ④）。
+     *
+     * <p><b>与 {@link #reportContext} 分开而不是扩参数</b>：后者只用于定位会话正文，
+     * 刻意不回描述与凭证（材料每多一个出口就多一处泄露面）；本方法只服务于后台
+     * 复核页，明文交出的前提是调用方在入口处已做 RBAC 与查看留痕。</p>
+     *
+     * @param reportId 举报 ID
+     * @return {@link ReportDetail} 含补充说明与凭证 media_ids（无凭证时为空列表）
+     * @throws BizException 举报不存在 → 40001（后台口径：工单不存在属参数问题）
+     */
+    public ReportDetail reportDetailForAdmin(long reportId) {
+        ReportDetailRow row = reportMapper.selectDetailById(reportId);
+        if (row == null) {
+            throw BizException.of(ErrorCode.PARAM_INVALID);
+        }
+        return new ReportDetail(row.reportId(), row.postId(), row.postTitle(), row.reason(),
+                row.description(), parseEvidence(row.evidenceJson()), row.weight(), row.status(),
+                row.isFalseReport(), row.riskScore(), row.createdAt(), row.handledAt(),
+                row.handlerId());
     }
 
     /**
@@ -485,6 +523,60 @@ public class ContactService {
     public long countContactsByLeafBetween(int leafCategoryId, java.time.LocalDateTime from,
             java.time.LocalDateTime to) {
         return contactPostMapper.countContactsByLeafBetween(leafCategoryId, from, to);
+    }
+
+    /**
+     * 校验举报凭证（media_ids）：数量上限、非空、属于举报人本人、已 commit 的图片。
+     *
+     * <p><b>为什么必须在写入侧校验而不是只信 DTO</b>：{@code @Size(max=3)} 只约束条数，
+     * 约束不了「这个 media_id 是谁的」与「它是否真的传完了」。若不校验，举报人可塞入
+     * 他人 media_id（后台复核按 ID 取图即越权查看他人内容），或塞入只签了票据、
+     * 从未 commit 的 ID（对象不存在，后台取图 404）。两类都让工单无法复核。</p>
+     *
+     * <p>空列表与 {@code null} 合法（凭证是加分项、不是受理门槛，契约 {@code required}
+     * 只有 {@code reason}）。任一 ID 非法即整条举报拒绝（40001），不做「剔除坏项后
+     * 收下剩余项」——静默丢凭证会让用户以为证据已提交。</p>
+     *
+     * @param reporterId 举报人 user_id（归属校验基准）
+     * @param evidence   证据 media_ids（可空）
+     * @throws BizException 超上限 / 含空值 / 越权 / 未 commit / 非图片 → 40001
+     */
+    private void validateEvidence(Long reporterId, List<String> evidence) {
+        if (evidence == null || evidence.isEmpty()) {
+            return;
+        }
+        if (evidence.size() > NfrMedia.REPORT_EVIDENCE_MAX) {
+            throw BizException.of(ErrorCode.PARAM_INVALID);
+        }
+        for (String mediaId : evidence) {
+            if (mediaId == null || mediaId.isBlank()) {
+                throw BizException.of(ErrorCode.PARAM_INVALID);
+            }
+            mediaService.ensureOwnedCommittedImage(reporterId, mediaId);
+        }
+    }
+
+    /**
+     * 把 {@code report.evidence} 的 JSON 文本解析为 media_id 列表（后台复核用）。
+     *
+     * <p>与 {@link #toEvidenceJson} 互逆：写入侧受控，故解析失败按缺陷处理、直接抛
+     * {@link IllegalStateException}，不把「凭证读不出来」静默降级成「该举报没有凭证」——
+     * 后者会让运营误判「举报人没举证」。</p>
+     *
+     * @param evidenceJson 库内 JSON 文本（可空）
+     * @return {@link List} media_id 列表；null / 空白时为空列表（不返回 null，
+     *         便于调用方直接遍历）
+     * @throws IllegalStateException JSON 损坏时抛出（写入侧受控，失败即缺陷）
+     */
+    private List<String> parseEvidence(String evidenceJson) {
+        if (evidenceJson == null || evidenceJson.isBlank()) {
+            return List.of();
+        }
+        try {
+            return objectMapper.readValue(evidenceJson, new TypeReference<List<String>>() { });
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("report.evidence 解析失败: " + evidenceJson, exception);
+        }
     }
 
     /**

@@ -42,4 +42,29 @@
         LIMIT #{limit} OFFSET #{offset}
     </select>
 
+    <!--
+      单条工单详情（后台复核入口；PRD §9.10.1 ④）。
+      与列表的差异是补上复核材料（description / evidence）与处理结果三列；
+      列表不带这些字段，避免队列表单响应变重。
+      主键查询命中 PRIMARY，联 post 走主键，代价可忽略。
+    -->
+    <select id="selectDetailById" resultType="com.s2s.server.contact.dto.ReportDetailRow">
+        SELECT r.id              AS reportId,
+               r.post_id         AS postId,
+               p.title           AS postTitle,
+               r.reason          AS reason,
+               r.description     AS description,
+               r.evidence        AS evidenceJson,
+               r.weight          AS weight,
+               r.status          AS status,
+               r.is_false_report AS isFalseReport,
+               p.risk_score      AS riskScore,
+               r.created_at      AS createdAt,
+               r.handled_at      AS handledAt,
+               r.handler_id      AS handlerId
+        FROM report r
+        JOIN post p ON p.id = r.post_id
+        WHERE r.id = #{id}
+    </select>
+
 </mapper>
