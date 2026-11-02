@@ -10,6 +10,7 @@
 library;
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:zhaoyazhao/core/network/api_client.dart';
 
@@ -128,11 +129,20 @@ class MapRepository {
       'page': ?page,
       'page_size': ?pageSize,
     };
+    final Stopwatch stopwatch = Stopwatch()..start();
     final response = await _dio.get<Object?>(
       '/posts/search',
       queryParameters: query,
       options: _interactionOptions(interactionId),
     );
+    if (kDebugMode) {
+      // 列表首屏耗时定位（2026-11-01）：只打网络段与参数摘要，不含正文与坐标明文。
+      debugPrint(
+        '[SEARCH] net=${stopwatch.elapsedMilliseconds}ms sort=${sort ?? '-'} '
+        'radius=$radius size=${pageSize ?? '-'} '
+        'at=${DateTime.now().toIso8601String()}',
+      );
+    }
     return SearchPostsPageDto.fromJson(response.data);
   }
 

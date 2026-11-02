@@ -12,6 +12,7 @@
 /// 放了会跳占位屏）、位置文案（需逆地理编码，依赖高德 Key）。
 library;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -38,6 +39,9 @@ import 'location_panel.dart';
 import 'map_dto.dart';
 import 'search_conditions.dart';
 import 'voice_search_sheet.dart';
+
+/// 列表渲染打点的节流时间戳（仅 kDebugMode 使用，release 下不参与逻辑）。
+int _kLastSearchUiLogMs = 0;
 
 class ListScreen extends ConsumerWidget {
   const ListScreen({super.key});
@@ -68,6 +72,25 @@ class ListScreen extends ConsumerWidget {
       sort: sort.apiValue,
     );
     final pageAsync = ref.watch(searchPagerProvider(query));
+    // 弱网兜底（2026-11-01）：换成新条件后首帧还没有数据时，先接着展示上一份
+    // 成功结果 + 顶部进度条，而不是整屏空白转圈（实测弱网下这一段要数秒）。
+    final SearchPageState? fallback = pageAsync.isLoading
+        ? ref.read(searchPageCacheProvider).mostRecent
+        : null;
+    if (kDebugMode) {
+      // 列表首屏耗时的「渲染段」打点（2026-11-01）：与 [SEARCH] 网络段对照，
+      // 差值即「响应已到但页面还没出列表」的耗时。500ms 节流避免 build 刷屏。
+      pageAsync.whenData((page) {
+        final int now = DateTime.now().millisecondsSinceEpoch;
+        if (now - _kLastSearchUiLogMs > 500) {
+          _kLastSearchUiLogMs = now;
+          debugPrint(
+            '[SEARCH-UI] total=${page.total} '
+            'at=${DateTime.now().toIso8601String()}',
+          );
+        }
+      });
+    }
 
     /// 打开底部筛选面板（与地图页同一份 [FilterPanel]）。
     ///
@@ -126,13 +149,14 @@ class ListScreen extends ConsumerWidget {
                   ),
             ),
           ),
-          _SortBar(count: pageAsync.asData?.value.total),
+          _SortBar(count: (pageAsync.asData?.value ?? fallback)?.total),
           const Divider(height: 1),
           Expanded(
             child: _buildBody(
               ref,
               pageAsync,
               query,
+              fallback: fallback,
               onChangeCenter: () => openFilter(locationView: true),
             ),
           ),
@@ -145,10 +169,15 @@ class ListScreen extends ConsumerWidget {
   ///
   /// 空态与加载态必须分开：空结果要回显筛选条件并提供「扩大到全城」，
   /// 而加载中是等数据 —— 两者都画成空白时，用户会把「还没回来」读成「没有内容」。
+  ///
+  /// [fallback] 是「切换条件后新数据尚未返回」时用来顶住屏幕的上一份结果
+  /// （2026-11-01 弱网兜底）：此时顶部显示进度条，列表保持可见，
+  /// 新结果到达即替换 —— 既不让用户空等，也不把旧结果当成新条件的结论。
   Widget _buildBody(
     WidgetRef ref,
     AsyncValue<SearchPageState> async,
     SearchQuery query, {
+    SearchPageState? fallback,
     required VoidCallback onChangeCenter,
   }) {
     if (async.hasError && !async.isLoading) {
@@ -156,14 +185,17 @@ class ListScreen extends ConsumerWidget {
         onRetry: () => ref.invalidate(searchPagerProvider(query)),
       );
     }
-    final page = async.asData?.value;
+    final page = async.asData?.value ?? fallback;
     if (page == null) {
       return const Center(child: CircularProgressIndicator());
     }
     if (page.items.isEmpty) {
-      return _EmptyState(onChangeCenter: onChangeCenter);
+      // 空态只在本轮已返回时给：否则会把「还在刷新」误读成「没有内容」。
+      return async.asData != null
+          ? _EmptyState(onChangeCenter: onChangeCenter)
+          : const Center(child: CircularProgressIndicator());
     }
-    return _ListingList(
+    final list = _ListingList(
       cards: page.items,
       hasMore: page.hasMore,
       isLoadingMore: page.isLoadingMore,
@@ -172,6 +204,15 @@ class ListScreen extends ConsumerWidget {
       onLoadMore: () =>
           ref.read(searchPagerProvider(query).notifier).loadMore(),
     );
+    if (async.asData == null) {
+      return Column(
+        children: [
+          const LinearProgressIndicator(minHeight: 2),
+          Expanded(child: list),
+        ],
+      );
+    }
+    return list;
   }
 
   /// 顶部栏（PRD §6.4.3：标题 + 地图视图跳转）。

@@ -14,6 +14,8 @@
 /// 发生的情况写代码。
 library;
 
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/cache/pin_cache.dart';
@@ -22,6 +24,7 @@ import '../perf/layer_switch_recorder.dart';
 import 'map_dto.dart';
 import 'map_repository.dart';
 import 'search_conditions.dart';
+import 'search_page_cache.dart';
 import 'stress_data.dart';
 
 /// 地图图钉请求参数（值相等即复用，故实现 ==/hashCode）。
@@ -539,6 +542,12 @@ class SearchPageState {
   }
 }
 
+/// 列表首屏本地缓存实例（**非** autoDispose：要活过列表页与 pager 的销毁，
+/// 否则每次进页面都从零开始，命中率恒为 0，弱网兜底等于没做）。
+final searchPageCacheProvider = Provider<SearchPageCache>(
+  (ref) => SearchPageCache(),
+);
+
 /// 列表分页 Provider（`isAutoDispose: true` 理由同 [pinsProvider]）。
 ///
 /// 首屏在 `build` 拉第 1 页，后续页由 [SearchPager.loadMore] 累积。
@@ -558,15 +567,56 @@ class SearchPager extends AsyncNotifier<SearchPageState> {
   /// 本实例对应的请求参数。
   final SearchQuery query;
 
+  /// 本实例是否已被销毁（后台静默刷新回来时不得再写 state）。
+  bool _disposed = false;
+
   @override
   Future<SearchPageState> build() async {
+    ref.onDispose(() => _disposed = true);
+    final SearchPageCache cache = ref.read(searchPageCacheProvider);
+    final SearchPageState? cached = cache.read(query);
+    if (cached != null) {
+      // 弱网兜底（2026-11-01）：上次同条件的第一页立刻可见，
+      // 网络刷新在后台进行，回来后覆盖 —— 首帧不再等网络。
+      unawaited(_refreshInBackground(cache));
+      return cached;
+    }
     final MergedSearchPage first = await _fetchPage(1);
+    final SearchPageState page = _firstPageState(first);
+    cache.write(query, page);
+    return page;
+  }
+
+  /// 第一页响应 → 分页状态（首屏与后台刷新共用，避免两处字段漂移）。
+  ///
+  /// 参数：[first] 服务端返回的第一页。
+  /// 返回：[SearchPageState]，下一页固定为 2。
+  SearchPageState _firstPageState(MergedSearchPage first) {
     return SearchPageState(
       items: first.items,
       total: first.total,
       nextPage: 2,
       categoryVersionStale: first.categoryVersionStale,
     );
+  }
+
+  /// 缓存命中后的后台静默刷新（stale-while-revalidate）。
+  ///
+  /// 失败**不改状态**：已经展示的缓存内容仍然可用，弱网下把列表打成
+  /// 错误页比显示略旧的数据更糟；下次进入页面会再刷一次。
+  ///
+  /// 参数：[cache] 首屏缓存实例（刷新成功后回写，供下次命中最新的那一份）。
+  /// 返回：无（异常内部消化）。
+  Future<void> _refreshInBackground(SearchPageCache cache) async {
+    try {
+      final MergedSearchPage first = await _fetchPage(1);
+      if (_disposed) return;
+      final SearchPageState page = _firstPageState(first);
+      cache.write(query, page);
+      state = AsyncData(page);
+    } catch (_) {
+      // 静默降级：保留缓存内容，不打扰用户（无日志，避免把正文/坐标带进诊断）。
+    }
   }
 
   /// 加载下一页。
