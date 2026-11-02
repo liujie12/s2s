@@ -47,15 +47,17 @@ public record MyProfile(
      * （无资质徽章）。</p>
      *
      * @param user 用户实体
+     * @param avatarUrl 已签名的头像 URL（由 {@code AvatarUrlAssembler} 从对象键现签；可空）
      * @param phoneBound 是否已绑定手机号（由 {@code IdentityBindingService} 查询）
      * @param wechatBound 是否已绑定微信（由 {@code IdentityBindingService} 查询）
      * @return {@link MyProfile} 本人资料
      */
-    public static MyProfile from(UserEntity user, boolean phoneBound, boolean wechatBound) {
+    public static MyProfile from(UserEntity user, String avatarUrl,
+            boolean phoneBound, boolean wechatBound) {
         return new MyProfile(
                 user.getId(),
                 user.getNickname(),
-                user.getAvatarUrl(),
+                avatarUrl,
                 user.getRealnameStatus(),
                 List.of(),
                 user.getDefaultRadius(),

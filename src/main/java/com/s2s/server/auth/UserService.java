@@ -8,6 +8,8 @@ import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
 import com.s2s.server.common.moderation.MediaAuditChecker;
 import com.s2s.server.common.moderation.SensitiveWordChecker;
+import com.s2s.server.post.AvatarUrlAssembler;
+import com.s2s.server.post.MediaService;
 import org.springframework.stereotype.Service;
 
 /**
@@ -20,12 +22,13 @@ import org.springframework.stereotype.Service;
  * <ul>
  *   <li>昵称过敏感词 → {@code 40901}（{@link SensitiveWordChecker}，Batch1 桩）；</li>
  *   <li>头像 media_id 须 audit_status=pass 否则 {@code 40902}
- *       （{@link MediaAuditChecker}，Batch1 桩）；</li>
+ *       （{@link MediaAuditChecker}，真实实现见 {@link MediaService}）；</li>
  *   <li>局部更新，仅提交变更字段（契约 {@code minProperties: 1}）。</li>
  * </ul>
  *
- * <p>头像 URL 转换：Batch1 media 服务未落地，avatar_media_id 校验通过后先存原值
- * （TODO：post 域 MediaService 落地后转 OSS 临时访问地址）。</p>
+ * <p>头像存储：{@code avatar_media_id} 经 {@link MediaService#readableAvatarKey} 校验
+ * 归属与审核后，落库为稳定对象键；出参 URL 由 {@link AvatarUrlAssembler} 现签，
+ * 避免把 15 分钟有效的签名地址写进数据库。</p>
  *
  * <p>出处：详设 §5.1（auth 域）、plan R5/R6、KTD4（白名单投影）。</p>
  */
@@ -38,27 +41,39 @@ public class UserService {
     /** 敏感词检测（昵称，Batch1 桩）。 */
     private final SensitiveWordChecker sensitiveWordChecker;
 
-    /** 媒体审核（头像，Batch1 桩）。 */
+    /** 媒体审核（头像，真实实现见 {@link MediaService}）。 */
     private final MediaAuditChecker mediaAuditChecker;
 
     /** 身份绑定状态查询（B2-6a：phone_bound / wechat_bound）。 */
     private final IdentityBindingService identityBindingService;
 
+    /** 媒体服务（头像归属校验 + 对象键解析）。 */
+    private final MediaService mediaService;
+
+    /** 头像 URL 组装器（对象键现签，读取路径使用）。 */
+    private final AvatarUrlAssembler avatarUrlAssembler;
+
     /**
-     * 构造用户资料服务，注入持久层、敏感词检测与媒体审核。
+     * 构造用户资料服务，注入持久层、敏感词检测、媒体审核与头像组装。
      *
      * @param userMapper          用户 Mapper
      * @param sensitiveWordChecker 敏感词检测（昵称）
      * @param mediaAuditChecker    媒体审核（头像）
      * @param identityBindingService 身份绑定状态查询（B2-6a）
+     * @param mediaService         媒体服务（头像归属校验与对象键解析）
+     * @param avatarUrlAssembler   头像 URL 组装器（对象键现签）
      */
     public UserService(UserMapper userMapper, SensitiveWordChecker sensitiveWordChecker,
             MediaAuditChecker mediaAuditChecker,
-            IdentityBindingService identityBindingService) {
+            IdentityBindingService identityBindingService,
+            MediaService mediaService,
+            AvatarUrlAssembler avatarUrlAssembler) {
         this.userMapper = userMapper;
         this.sensitiveWordChecker = sensitiveWordChecker;
         this.mediaAuditChecker = mediaAuditChecker;
         this.identityBindingService = identityBindingService;
+        this.mediaService = mediaService;
+        this.avatarUrlAssembler = avatarUrlAssembler;
     }
 
     /**
@@ -73,7 +88,8 @@ public class UserService {
         if (user == null) {
             throw BizException.of(ErrorCode.UNAUTHORIZED);
         }
-        return MyProfile.from(user, identityBindingService.isPhoneBound(userId),
+        return MyProfile.from(user, avatarUrlAssembler.toUrl(user.getAvatarUrl()),
+                identityBindingService.isPhoneBound(userId),
                 identityBindingService.isWechatBound(userId));
     }
 
@@ -106,15 +122,16 @@ public class UserService {
         }
         if (request.avatarMediaId() != null) {
             mediaAuditChecker.checkApproved(request.avatarMediaId());
-            // TODO(post 域落地后)：media_id 转 OSS 临时访问地址再落 avatar_url
-            user.setAvatarUrl(request.avatarMediaId());
+            // 落稳定对象键而不是签名 URL：签名 15 分钟过期，读取时由 AvatarUrlAssembler 现签。
+            user.setAvatarUrl(mediaService.readableAvatarKey(userId, request.avatarMediaId()));
         }
         if (request.defaultRadius() != null) {
             user.setDefaultRadius(request.defaultRadius());
         }
 
         userMapper.updateById(user);
-        return MyProfile.from(user, identityBindingService.isPhoneBound(userId),
+        return MyProfile.from(user, avatarUrlAssembler.toUrl(user.getAvatarUrl()),
+                identityBindingService.isPhoneBound(userId),
                 identityBindingService.isWechatBound(userId));
     }
 

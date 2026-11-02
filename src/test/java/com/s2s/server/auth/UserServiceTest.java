@@ -16,6 +16,8 @@ import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
 import com.s2s.server.common.moderation.MediaAuditChecker;
 import com.s2s.server.common.moderation.SensitiveWordChecker;
+import com.s2s.server.post.AvatarUrlAssembler;
+import com.s2s.server.post.MediaService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -47,6 +49,12 @@ class UserServiceTest {
     /** mock 的身份绑定状态服务（B2-6a）。 */
     private IdentityBindingService identityBindingService;
 
+    /** mock 的媒体服务（头像归属校验 + 对象键解析）。 */
+    private MediaService mediaService;
+
+    /** mock 的头像 URL 组装器（对象键现签）。 */
+    private AvatarUrlAssembler avatarUrlAssembler;
+
     /** 被测用户资料服务。 */
     private UserService userService;
 
@@ -61,10 +69,12 @@ class UserServiceTest {
         sensitiveWordChecker = mock(SensitiveWordChecker.class);
         mediaAuditChecker = mock(MediaAuditChecker.class);
         identityBindingService = mock(IdentityBindingService.class);
+        mediaService = mock(MediaService.class);
+        avatarUrlAssembler = mock(AvatarUrlAssembler.class);
         when(identityBindingService.isPhoneBound(1L)).thenReturn(true);
         when(identityBindingService.isWechatBound(1L)).thenReturn(true);
         userService = new UserService(userMapper, sensitiveWordChecker, mediaAuditChecker,
-                identityBindingService);
+                identityBindingService, mediaService, avatarUrlAssembler);
     }
 
     /**
@@ -124,6 +134,25 @@ class UserServiceTest {
                 .satisfies(ex -> assertThat(((BizException) ex).getErrorCode())
                         .isEqualTo(ErrorCode.IMAGE_REJECTED));
         verify(userMapper, org.mockito.Mockito.never()).updateById(any(UserEntity.class));
+    }
+
+    /**
+     * 场景三之二：改头像成功 → 落库为对象键，出参为现签 URL。
+     *
+     * @return void
+     */
+    @Test
+    void updateAvatarSucceedsWithSignedUrl() {
+        when(userMapper.selectById(1L)).thenReturn(existingUser());
+        when(mediaService.readableAvatarKey(1L, "media-2")).thenReturn("display/abc.jpg");
+        when(avatarUrlAssembler.toUrl("display/abc.jpg"))
+                .thenReturn("https://signed/avatar.jpg");
+
+        MyProfile profile = userService.updateMyProfile(1L,
+                new UpdateProfileRequest(null, "media-2", null));
+
+        assertThat(profile.avatarUrl()).isEqualTo("https://signed/avatar.jpg");
+        verify(userMapper).updateById(any(UserEntity.class));
     }
 
     /**

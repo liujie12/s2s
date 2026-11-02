@@ -26,6 +26,7 @@ import com.s2s.server.common.ratelimit.RateLimitKeys;
 import com.s2s.server.common.ratelimit.RateLimiter;
 import com.s2s.server.common.ratelimit.RateLimitTrack;
 import com.s2s.server.common.web.UuidV4;
+import com.s2s.server.post.AvatarUrlAssembler;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -124,6 +125,9 @@ public class AuthService {
     /** 身份绑定状态查询与门禁（B2-6a）。 */
     private final IdentityBindingService identityBindingService;
 
+    /** 头像 URL 组装器（对象键现签，登录响应中的 user 头像）。 */
+    private final AvatarUrlAssembler avatarUrlAssembler;
+
     /**
      * 构造认证服务，注入 Redis、限频、加解密、持久层与 JWT 签发器。
      *
@@ -139,13 +143,15 @@ public class AuthService {
      * @param jwtVerifier        JWT 验签器（续期验签允许过期）
      * @param wechatCodeVerifier 微信 code→unionid 交换组件（B2-6a）
      * @param identityBindingService 身份绑定状态查询与门禁（B2-6a）
+     * @param avatarUrlAssembler 头像 URL 组装器（对象键现签）
      */
     public AuthService(StringRedisTemplate redisTemplate, RateLimiter rateLimiter,
             ObjectMapper objectMapper, List<Pepper> peppers, CryptoFacade cryptoFacade,
             UserMapper userMapper, UserIdentityMapper userIdentityMapper,
             DeviceMapper deviceMapper, JwtIssuer jwtIssuer, JwtVerifier jwtVerifier,
             WechatCodeVerifier wechatCodeVerifier,
-            IdentityBindingService identityBindingService) {
+            IdentityBindingService identityBindingService,
+            AvatarUrlAssembler avatarUrlAssembler) {
         this.redisTemplate = redisTemplate;
         this.rateLimiter = rateLimiter;
         this.objectMapper = objectMapper;
@@ -158,6 +164,7 @@ public class AuthService {
         this.jwtVerifier = jwtVerifier;
         this.wechatCodeVerifier = wechatCodeVerifier;
         this.identityBindingService = identityBindingService;
+        this.avatarUrlAssembler = avatarUrlAssembler;
     }
 
     /**
@@ -194,7 +201,8 @@ public class AuthService {
         String token = jwtIssuer.issue(resolve.user().getId());
         Instant expireAt = Instant.now().plus(Duration.ofDays(NfrAuth.TOKEN_TTL_DAYS));
         return new LoginResult(token, expireAt, resolve.isNewUser(),
-                MyProfile.from(resolve.user(), true,
+                MyProfile.from(resolve.user(),
+                        avatarUrlAssembler.toUrl(resolve.user().getAvatarUrl()), true,
                         identityBindingService.isWechatBound(resolve.user().getId())));
     }
 
@@ -236,6 +244,7 @@ public class AuthService {
         Instant expireAt = Instant.now().plus(Duration.ofDays(NfrAuth.TOKEN_TTL_DAYS));
         return new LoginResult(jwt, expireAt, resolve.isNewUser(),
                 MyProfile.from(resolve.user(),
+                        avatarUrlAssembler.toUrl(resolve.user().getAvatarUrl()),
                         identityBindingService.isPhoneBound(resolve.user().getId()), true));
     }
 
@@ -282,7 +291,8 @@ public class AuthService {
         if (currentPhone != null) {
             if (java.util.Arrays.equals(currentPhone.getIdentityHash(), phoneHash)) {
                 deleteCode(phone);
-                return MyProfile.from(user, true, identityBindingService.isWechatBound(userId));
+                return MyProfile.from(user, avatarUrlAssembler.toUrl(user.getAvatarUrl()),
+                        true, identityBindingService.isWechatBound(userId));
             }
             throw BizException.of(ErrorCode.PARAM_INVALID);
         }
@@ -314,7 +324,8 @@ public class AuthService {
         user.setPhoneMask(maskPhone(phone));
         userMapper.updateById(user);
         deleteCode(phone);
-        return MyProfile.from(user, true, identityBindingService.isWechatBound(userId));
+        return MyProfile.from(user, avatarUrlAssembler.toUrl(user.getAvatarUrl()),
+                true, identityBindingService.isWechatBound(userId));
     }
 
     /**
@@ -350,7 +361,8 @@ public class AuthService {
                         .eq("identity_type", UserIdentityTypes.WECHAT));
         if (currentWechat != null) {
             if (java.util.Arrays.equals(currentWechat.getIdentityHash(), unionidHash)) {
-                return MyProfile.from(user, identityBindingService.isPhoneBound(userId), true);
+                return MyProfile.from(user, avatarUrlAssembler.toUrl(user.getAvatarUrl()),
+                        identityBindingService.isPhoneBound(userId), true);
             }
             throw BizException.of(ErrorCode.PARAM_INVALID);
         }
@@ -378,7 +390,8 @@ public class AuthService {
             throw BizException.of(ErrorCode.QUALIFICATION_NEEDED);
         }
 
-        return MyProfile.from(user, identityBindingService.isPhoneBound(userId), true);
+        return MyProfile.from(user, avatarUrlAssembler.toUrl(user.getAvatarUrl()),
+                identityBindingService.isPhoneBound(userId), true);
     }
 
     /**

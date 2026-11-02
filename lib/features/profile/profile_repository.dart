@@ -33,6 +33,30 @@ class ProfileRepository {
     return MyProfileDto.fromJson(response.data);
   }
 
+  /// 更新本人资料（`PATCH /users/me`，局部提交）。
+  ///
+  /// `Idempotency-Key` 由 `HeaderInterceptor` 对写接口缺失时注入，本层不重复生成。
+  ///
+  /// 参数：[nickname] 新昵称（null＝不改）；[avatarMediaId] 已 commit 且过审的头像媒体 ID
+  ///   （null＝不改）；[interactionId] 交互起点生成的 X-Interaction-Id。
+  /// 返回：[MyProfileDto] 更新后的本人资料。
+  /// 抛出：[ApiException] 敏感词 `40901` / 头像未过审 `40902` / 未登录 `40101` 等。
+  Future<MyProfileDto> updateMyProfile({
+    String? nickname,
+    String? avatarMediaId,
+    String? interactionId,
+  }) async {
+    final body = <String, Object?>{};
+    if (nickname != null) body['nickname'] = nickname;
+    if (avatarMediaId != null) body['avatar_media_id'] = avatarMediaId;
+    final response = await _dio.patch<Object?>(
+      '/users/me',
+      data: body,
+      options: _interactionOptions(interactionId),
+    );
+    return MyProfileDto.fromJson(response.data);
+  }
+
   /// 组装携带 X-Interaction-Id 的按请求选项。
   ///
   /// 参数：[interactionId] 交互 ID，null 表示无透传值。

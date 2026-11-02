@@ -648,6 +648,21 @@ class NfrCert {
   static const int detailQuotaLimitPerDay = 5;
 }
 
+/// §3.4.2 个人资料编辑（profile 域，2026-11-02）。
+///
+/// 双端口径：后端 `UpdateProfileRequest` 的 `@Size(min = 1, max = 20)`
+/// 与 openapi `PATCH /users/me` 的 `nickname` 约束；前端输入框引用本值，
+/// 禁写死数字（详设 §0.1「不复制字面量」）。
+class NfrProfile {
+  const NfrProfile._();
+
+  /// 昵称最小长度（字符）。
+  static const int nicknameMinLength = 1;
+
+  /// 昵称最大长度（字符）。
+  static const int nicknameMaxLength = 20;
+}
+
 /// §8.3.4 站内会话与消息阈值（chat 域，2026-10-31）。
 ///
 /// 双端口径：后端镜像为 `common/constants/ChatLimits.java`（Java 侧为主源），

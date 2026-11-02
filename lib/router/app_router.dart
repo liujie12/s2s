@@ -35,6 +35,7 @@ import '../features/notify/notification_screen.dart';
 import '../features/post/my_publish_screen.dart';
 import '../features/privacy/privacy_consent.dart';
 import '../features/privacy/privacy_gate_screen.dart';
+import '../features/profile/profile_edit_screen.dart';
 import '../features/profile/profile_screen.dart';
 import '../features/publish/ai_confirm_args.dart';
 import '../features/publish/ai_confirm_screen.dart';
@@ -67,6 +68,9 @@ class AppRoutes {
   static const String home = '/';
   static const String messages = '/messages';
   static const String profile = '/profile';
+
+  /// 编辑资料（个人中心头部卡进入；顶层全屏页，不带底部导航）。
+  static const String profileEdit = '/profile/edit';
 
   /// 会话详情（挂在「消息」分支下，切 Tab 不丢会话栈）。
   static const String messageDetail = '/messages/:id';
@@ -312,6 +316,11 @@ final List<RouteBase> _routes = [
     path: AppRoutes.settings,
     // [B2-11]：设置（settings-screen）。
     builder: (context, state) => const SettingsScreen(),
+  ),
+  GoRoute(
+    path: AppRoutes.profileEdit,
+    // 2026-11-02：编辑资料（profile-edit-screen），入口在个人中心头部卡。
+    builder: (context, state) => const ProfileEditScreen(),
   ),
   GoRoute(
     path: AppRoutes.trust,

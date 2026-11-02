@@ -33,6 +33,7 @@ import com.s2s.server.common.crypto.Pepper;
 import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
 import com.s2s.server.common.ratelimit.RateLimiter;
+import com.s2s.server.post.AvatarUrlAssembler;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -133,7 +134,7 @@ class AuthServiceTest {
                 Pepper.of(1, "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"));
         authService = new AuthService(redisTemplate, rateLimiter, objectMapper, peppers,
                 cryptoFacade, userMapper, userIdentityMapper, deviceMapper, jwtIssuer, jwtVerifier,
-                wechatCodeVerifier, identityBindingService);
+                wechatCodeVerifier, identityBindingService, mock(AvatarUrlAssembler.class));
     }
 
     /**

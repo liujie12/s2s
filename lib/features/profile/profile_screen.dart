@@ -77,7 +77,10 @@ class ProfileScreen extends ConsumerWidget {
               child: ListView(
                 padding: EdgeInsets.zero,
                 children: [
-                  _HeaderCard(profileAsync: profileAsync),
+                  _HeaderCard(
+                    profileAsync: profileAsync,
+                    onEdit: () => context.push(AppRoutes.profileEdit),
+                  ),
                   _EntryGroup(
                     badges: badges,
                     realnamePassed:
@@ -137,65 +140,84 @@ class ProfileScreen extends ConsumerWidget {
 }
 
 /// 头部卡：头像 + 昵称/脱敏号 + 实名状态行。
+///
+/// 整卡可点进入「编辑资料」（PRD §3.4.2，2026-11-02）；头像右下角相机角标
+/// 负责把「可编辑」这件事显性化，避免无图占位圆看起来不可点。
 class _HeaderCard extends StatelessWidget {
   /// 构造头部卡。
   ///
-  /// 参数：[profileAsync] 本人资料三态。
-  const _HeaderCard({required this.profileAsync});
+  /// 参数：[profileAsync] 本人资料三态；[onEdit] 点击头部进入编辑资料的回调。
+  const _HeaderCard({required this.profileAsync, required this.onEdit});
 
   /// 本人资料三态。
   final AsyncValue<MyProfileDto> profileAsync;
 
+  /// 点击头部进入编辑资料的回调。
+  final VoidCallback onEdit;
+
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return Material(
       color: Color(AppColors.surface),
-      padding: const EdgeInsets.all(AppSpacing.lg),
       child: profileAsync.when(
-        loading: () => const _HeaderSkeleton(),
-        error: (error, _) => _HeaderError(error: asApiException(error)),
-        data: (profile) => Row(
-          children: [
-            _Avatar(url: profile.avatarUrl),
-            const SizedBox(width: AppSpacing.md),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    _displayName(profile),
-                    style: TextStyle(
-                      fontSize: AppTypeScale.h3.size,
-                      fontWeight: FontWeight.w600,
-                      color: Color(AppColors.textPrimary),
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.xs),
-                  Row(
+        loading: () => const Padding(
+          padding: EdgeInsets.all(AppSpacing.lg),
+          child: _HeaderSkeleton(),
+        ),
+        error: (error, _) => Padding(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          child: _HeaderError(error: asApiException(error)),
+        ),
+        data: (profile) => InkWell(
+          onTap: onEdit,
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            child: Row(
+              children: [
+                _Avatar(url: profile.avatarUrl, showEditBadge: true),
+                const SizedBox(width: AppSpacing.md),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (profile.isRealnamePassed)
-                        Icon(Icons.check, size: 14, color: Color(AppColors.success)),
-                      if (profile.isRealnamePassed) const SizedBox(width: AppSpacing.xs),
                       Text(
-                        profile.isRealnamePassed ? '已实名' : '未实名',
+                        _displayName(profile),
                         style: TextStyle(
-                          fontSize: AppTypeScale.small.size,
-                          color: Color(AppColors.textSecondary),
+                          fontSize: AppTypeScale.h3.size,
+                          fontWeight: FontWeight.w600,
+                          color: Color(AppColors.textPrimary),
                         ),
                       ),
-                      Text(
-                        '· 资质认证待完成',
-                        style: TextStyle(
-                          fontSize: AppTypeScale.small.size,
-                          color: Color(AppColors.textSecondary),
-                        ),
+                      const SizedBox(height: AppSpacing.xs),
+                      Row(
+                        children: [
+                          if (profile.isRealnamePassed)
+                            Icon(Icons.check,
+                                size: 14, color: Color(AppColors.success)),
+                          if (profile.isRealnamePassed)
+                            const SizedBox(width: AppSpacing.xs),
+                          Text(
+                            profile.isRealnamePassed ? '已实名' : '未实名',
+                            style: TextStyle(
+                              fontSize: AppTypeScale.small.size,
+                              color: Color(AppColors.textSecondary),
+                            ),
+                          ),
+                          Text(
+                            '· 资质认证待完成',
+                            style: TextStyle(
+                              fontSize: AppTypeScale.small.size,
+                              color: Color(AppColors.textSecondary),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -285,18 +307,23 @@ class _SignedOutHeader extends StatelessWidget {
 }
 
 /// 头像（无图时纯色占位圆）。
+///
+/// [showEditBadge] 为 true 时在右下角叠一个相机角标，向用户提示「点头像可编辑」。
 class _Avatar extends StatelessWidget {
   /// 构造头像。
   ///
-  /// 参数：[url] 头像 URL（可空）。
-  const _Avatar({required this.url});
+  /// 参数：[url] 头像 URL（可空）；[showEditBadge] 是否显示相机角标。
+  const _Avatar({required this.url, this.showEditBadge = false});
 
   /// 头像 URL。
   final String? url;
 
+  /// 是否显示相机角标。
+  final bool showEditBadge;
+
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final avatar = Container(
       width: 56,
       height: 56,
       decoration: BoxDecoration(
@@ -312,6 +339,32 @@ class _Avatar extends StatelessWidget {
               // 头像加载失败退回占位圆，不显示破图。
               errorBuilder: (context, error, stack) => const SizedBox.shrink(),
             ),
+    );
+    if (!showEditBadge) return avatar;
+    return SizedBox(
+      width: 56,
+      height: 56,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          avatar,
+          Positioned(
+            right: -2,
+            bottom: -2,
+            child: Container(
+              width: 20,
+              height: 20,
+              decoration: BoxDecoration(
+                color: Color(AppColors.primary),
+                shape: BoxShape.circle,
+                border: Border.all(color: Color(AppColors.surface), width: 2),
+              ),
+              child: const Icon(Icons.photo_camera,
+                  size: 10, color: Colors.white),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

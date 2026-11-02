@@ -23,6 +23,7 @@ import com.s2s.server.map.dto.PinsCompactResponse;
 import com.s2s.server.map.dto.SearchPostsResponse;
 import com.s2s.server.map.mapper.MapPostMapper;
 import com.s2s.server.ops.OpsFollowUpService;
+import com.s2s.server.post.AvatarUrlAssembler;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
@@ -49,7 +50,8 @@ class MapServiceTest {
     void setUp() {
         mapper = mock(MapPostMapper.class);
         categoryService = mock(CategoryService.class);
-        mapService = new MapService(mapper, categoryService, mock(OpsFollowUpService.class));
+        mapService = new MapService(mapper, categoryService,
+                mock(OpsFollowUpService.class), mock(AvatarUrlAssembler.class));
     }
 
     /**

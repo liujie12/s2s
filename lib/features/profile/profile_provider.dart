@@ -51,6 +51,26 @@ class MyProfileNotifier extends Notifier<AsyncValue<MyProfileDto>> {
     }
   }
 
+  /// 更新本人资料并同步内存态（`PATCH /users/me`）。
+  ///
+  /// 成功后直接用响应覆盖 [state]，避免「保存成功但页面仍显示旧昵称/旧头像」。
+  /// 失败不吞异常：交给编辑页按错误码给文案（40901 敏感词 / 40902 头像未过审）。
+  ///
+  /// 参数：[nickname] 新昵称（null＝不改）；[avatarMediaId] 头像媒体 ID（null＝不改）。
+  /// 返回：[MyProfileDto] 更新后的资料。
+  /// 抛出：[ApiException] 业务错误或传输错误（调用方处理）。
+  Future<MyProfileDto> updateProfile({
+    String? nickname,
+    String? avatarMediaId,
+  }) async {
+    final updated = await ref.read(profileRepositoryProvider).updateMyProfile(
+          nickname: nickname,
+          avatarMediaId: avatarMediaId,
+        );
+    state = AsyncValue.data(updated);
+    return updated;
+  }
+
   /// 重新拉取（错误态重试 / 下拉刷新）。
   ///
   /// 参数：无。

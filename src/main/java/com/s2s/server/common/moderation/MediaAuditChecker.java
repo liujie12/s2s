@@ -8,9 +8,8 @@ import com.s2s.server.common.error.ErrorCode;
  *
  * <p>职责：校验媒体是否已通过审核（{@code audit_status=pass}），未过审抛
  * {@link BizException}({@code 40902})。消费方为 auth 域头像 media_id（U8）与
- * post 域发布 media 校验（后续条目），故抽象为 common 接口；实现归 post 域
- * {@code MediaService}（查 {@code post_media.audit_status}），Batch1 未落地，
- * 由桩实现承载（见 {@link NoopMediaAuditChecker}）。</p>
+ * post 域发布 media 校验，故抽象为 common 接口；实现归 post 域
+ * {@code MediaService}（查 {@code post_media.audit_status}）。</p>
  *
  * <p>出处：详设 §5.1（头像 media_id 须 audit_status=pass）、§5.3.2（媒体校验）、
  * ErrorCode 40902。</p>

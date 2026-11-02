@@ -161,6 +161,10 @@ Future<void> _pumpProfile(
         path: '/login',
         builder: (context, state) => const Scaffold(body: Text('login')),
       ),
+      GoRoute(
+        path: '/profile/edit',
+        builder: (context, state) => const Scaffold(body: Text('edit')),
+      ),
     ],
   );
   await tester.pumpWidget(
@@ -209,6 +213,19 @@ void main() {
     expect(find.text('0 未读'), findsOneWidget);
     expect(find.text('退出登录'), findsOneWidget);
     expect(find.text('未登录'), findsNothing);
+  });
+
+  testWidgets('点击头部卡进入编辑资料页', (tester) async {
+    await _pumpProfile(
+      tester,
+      sessionNotifier: _StubSessionNotifier(_session('u-1')),
+      profileRepository: _FakeProfileRepository(_profile('用户0845')),
+    );
+
+    await tester.tap(find.text('用户0845 186****0845'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('edit'), findsOneWidget);
   });
 
   testWidgets('退出登录后回到未登录形态，且换号登录不残留上一个账号资料', (tester) async {

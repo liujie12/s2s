@@ -23,6 +23,7 @@ import com.s2s.server.chat.mapper.MessageMapper;
 import com.s2s.server.common.constants.ChatLimits;
 import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
+import com.s2s.server.post.AvatarUrlAssembler;
 import com.s2s.server.post.MediaService;
 import com.s2s.server.realtime.RealtimePublisher;
 import java.io.IOException;
@@ -57,6 +58,7 @@ class ChatQueryServiceTest {
     private final ConversationMemberMapper memberMapper = mock(ConversationMemberMapper.class);
     private final MessageMapper messageMapper = mock(MessageMapper.class);
     private final MediaService mediaService = mock(MediaService.class);
+    private final AvatarUrlAssembler avatarUrlAssembler = mock(AvatarUrlAssembler.class);
     private final RealtimePublisher realtimePublisher = mock(RealtimePublisher.class);
 
     private ChatQueryService queryService;
@@ -68,7 +70,9 @@ class ChatQueryServiceTest {
     void setUp() {
         queryService = new ChatQueryService(
                 conversationMapper, memberMapper, messageMapper, mediaService,
-                realtimePublisher);
+                avatarUrlAssembler, realtimePublisher);
+        // 测试夹具里的头像已是绝对 URL：组装器原样透传，避免 mock 默认 null 改变断言。
+        when(avatarUrlAssembler.toUrl(any())).thenAnswer(inv -> inv.getArgument(0));
         when(memberMapper.selectMember(CONVERSATION_ID, USER_ID))
                 .thenReturn(new ConversationMemberEntity());
     }

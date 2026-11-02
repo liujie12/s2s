@@ -5,6 +5,7 @@ import com.s2s.server.common.constants.NfrAi;
 import com.s2s.server.common.constants.NfrMedia;
 import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
+import com.s2s.server.common.moderation.MediaAuditChecker;
 import com.s2s.server.post.dto.MediaCommitResult;
 import com.s2s.server.post.dto.UploadTicket;
 import com.s2s.server.post.entity.PostMediaEntity;
@@ -22,7 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
  * 以及发布时的 reject 判定与归属校验。</p>
  */
 @Service
-public class MediaService {
+public class MediaService implements MediaAuditChecker {
 
     /** 审核状态：待审核（ticket 后、commit 前）。 */
     static final String AUDIT_PENDING = "pending";
@@ -193,6 +194,45 @@ public class MediaService {
         if (!committedImage) {
             throw BizException.of(ErrorCode.PARAM_INVALID);
         }
+    }
+
+    /**
+     * 校验媒体是否已过审（{@link MediaAuditChecker} 的真实实现）。
+     *
+     * <p>媒体不存在或未过审一律返回 {@code 40902}：头像引用 {@code media_id}
+     * 是唯一消费点，语义上等价于「这张图不能作为头像使用」。</p>
+     *
+     * @param mediaId 媒体 ID（已 commit 的 media_id）
+     * @throws BizException 媒体不存在 / 未过审 → {@code 40902}；media_id 非数字 → {@code 40001}
+     */
+    @Override
+    public void checkApproved(String mediaId) {
+        PostMediaEntity media = mediaMapper.selectById(parseMediaId(mediaId));
+        if (media == null || !AUDIT_PASS.equals(media.getAuditStatus())) {
+            throw BizException.of(ErrorCode.IMAGE_REJECTED);
+        }
+    }
+
+    /**
+     * 解析本人头像媒体为可读对象键（写入 {@code user.avatar_url} 的稳定引用）。
+     *
+     * <p>为什么存对象键而不是签名 URL：OSS 签名 URL 只有 15 分钟有效期，落库后
+     * 很快失效；对象键稳定，读取时由 {@code AvatarUrlAssembler} 现签。</p>
+     *
+     * @param userId  当前用户 user_id（归属校验，防 IDOR）
+     * @param mediaId 媒体 ID（已 commit 的 avatar_media_id）
+     * @return {@link String} 可读对象键（展示图键）
+     * @throws BizException 非本人 / 不存在 / 非图片 → {@code 40001}；未过审 → {@code 40902}
+     */
+    public String readableAvatarKey(Long userId, String mediaId) {
+        PostMediaEntity media = loadOwned(userId, mediaId);
+        if (!AUDIT_PASS.equals(media.getAuditStatus())) {
+            throw BizException.of(ErrorCode.IMAGE_REJECTED);
+        }
+        if (!NfrMedia.ALLOWED_CONTENT_TYPES.contains(media.getContentType())) {
+            throw BizException.of(ErrorCode.PARAM_INVALID);
+        }
+        return readableKeyOf(media);
     }
 
     /**

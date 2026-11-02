@@ -19,6 +19,7 @@ import com.s2s.server.common.constants.ChatLimits;
 import com.s2s.server.realtime.RealtimePublisher;
 import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
+import com.s2s.server.post.AvatarUrlAssembler;
 import com.s2s.server.post.MediaService;
 import com.s2s.server.post.PostStatus;
 import java.time.LocalDateTime;
@@ -48,6 +49,7 @@ public class ChatQueryService {
     private final ConversationMemberMapper memberMapper;
     private final MessageMapper messageMapper;
     private final MediaService mediaService;
+    private final AvatarUrlAssembler avatarUrlAssembler;
     private final RealtimePublisher realtimePublisher;
 
     /**
@@ -57,17 +59,20 @@ public class ChatQueryService {
      * @param memberMapper       会话成员持久层（成员校验与已读水位）
      * @param messageMapper      消息持久层（分页与增量）
      * @param mediaService       媒体服务（列表行帖子首图签名 URL，R3）
+     * @param avatarUrlAssembler 对方头像 URL 组装器（对象键现签）
      * @param realtimePublisher  实时通道事件（已读水位推进通知对方）
      */
     public ChatQueryService(ConversationMapper conversationMapper,
             ConversationMemberMapper memberMapper,
             MessageMapper messageMapper,
             MediaService mediaService,
+            AvatarUrlAssembler avatarUrlAssembler,
             RealtimePublisher realtimePublisher) {
         this.conversationMapper = conversationMapper;
         this.memberMapper = memberMapper;
         this.messageMapper = messageMapper;
         this.mediaService = mediaService;
+        this.avatarUrlAssembler = avatarUrlAssembler;
         this.realtimePublisher = realtimePublisher;
     }
 
@@ -104,7 +109,7 @@ public class ChatQueryService {
                     PostStatus.isGoneForOthers((String) row.get("post_status")),
                     toLong(row.get("peer_id")),
                     (String) row.get("peer_nickname"),
-                    (String) row.get("peer_avatar_url"),
+                    avatarUrlAssembler.toUrl((String) row.get("peer_avatar_url")),
                     (String) row.get("last_message_type"),
                     (String) row.get("last_message_preview"),
                     toInstant(row.get("last_message_at")),

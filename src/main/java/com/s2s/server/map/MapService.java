@@ -14,6 +14,7 @@ import com.s2s.server.map.dto.PostCard;
 import com.s2s.server.map.dto.SearchPostsResponse;
 import com.s2s.server.map.mapper.MapPostMapper;
 import com.s2s.server.ops.OpsFollowUpService;
+import com.s2s.server.post.AvatarUrlAssembler;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Duration;
@@ -80,18 +81,23 @@ public class MapService {
     private final MapPostMapper mapPostMapper;
     private final CategoryService categoryService;
     private final OpsFollowUpService opsFollowUpService;
+    private final AvatarUrlAssembler avatarUrlAssembler;
 
     /**
      * 构造地图域服务。
      *
      * @param mapPostMapper   map 只读查询 Mapper
      * @param categoryService 分类树服务（提供版本协商）
+     * @param opsFollowUpService 运营跟进服务
+     * @param avatarUrlAssembler 作者头像 URL 组装器（对象键现签）
      */
     public MapService(MapPostMapper mapPostMapper, CategoryService categoryService,
-            OpsFollowUpService opsFollowUpService) {
+            OpsFollowUpService opsFollowUpService,
+            AvatarUrlAssembler avatarUrlAssembler) {
         this.mapPostMapper = mapPostMapper;
         this.categoryService = categoryService;
         this.opsFollowUpService = opsFollowUpService;
+        this.avatarUrlAssembler = avatarUrlAssembler;
     }
 
     /**
@@ -464,7 +470,7 @@ public class MapService {
         AuthorBrief author = new AuthorBrief(
                 ((Number) row.get("author_id")).longValue(),
                 (String) row.get("nickname"),
-                (String) row.get("avatar_url"),
+                avatarUrlAssembler.toUrl((String) row.get("avatar_url")),
                 (String) row.get("realname_status"),
                 List.of());
 

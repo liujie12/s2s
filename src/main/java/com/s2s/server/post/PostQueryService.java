@@ -57,6 +57,7 @@ public class PostQueryService {
     private final DetailQuotaGate detailQuotaGate;
     private final FavoriteQueryService favoriteQueryService;
     private final PostCredentialAssembler credentialAssembler;
+    private final AvatarUrlAssembler avatarUrlAssembler;
 
     /**
      * 构造 post 读服务。
@@ -71,6 +72,7 @@ public class PostQueryService {
      * @param detailQuotaGate    未实名详情额度闸
      * @param favoriteQueryService 收藏只读查询（跨域 service 接口，详情页 {@code favorited}）
      * @param credentialAssembler 帖级凭证声明组装器（详情页资质行）
+     * @param avatarUrlAssembler 作者头像 URL 组装器（对象键现签）
      */
     public PostQueryService(PostQueryMapper postQueryMapper,
             PostMediaMapper postMediaMapper,
@@ -81,7 +83,8 @@ public class PostQueryService {
             CertService certService,
             DetailQuotaGate detailQuotaGate,
             FavoriteQueryService favoriteQueryService,
-            PostCredentialAssembler credentialAssembler) {
+            PostCredentialAssembler credentialAssembler,
+            AvatarUrlAssembler avatarUrlAssembler) {
         this.postQueryMapper = postQueryMapper;
         this.postMediaMapper = postMediaMapper;
         this.mediaAssembler = mediaAssembler;
@@ -92,6 +95,7 @@ public class PostQueryService {
         this.detailQuotaGate = detailQuotaGate;
         this.favoriteQueryService = favoriteQueryService;
         this.credentialAssembler = credentialAssembler;
+        this.avatarUrlAssembler = avatarUrlAssembler;
     }
 
     /**
@@ -136,7 +140,7 @@ public class PostQueryService {
         AuthorBrief author = new AuthorBrief(
                 toLong(row.get("author_id")),
                 (String) row.get("author_nickname"),
-                (String) row.get("author_avatar_url"),
+                avatarUrlAssembler.toUrl((String) row.get("author_avatar_url")),
                 (String) row.get("author_realname_status"),
                 // qualification_badges：Batch1 资质源为 cert 空壳，恒空列表（AuthorBrief 注释）
                 List.of());
