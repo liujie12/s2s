@@ -40,4 +40,13 @@ extension AiPublishModeX on AiPublishMode {
 
   /// 本期是否可用（四模式已全量开放）。
   bool get isAvailable => true;
+
+  /// 是否在「AI 帮我发」入口弹层中呈现。
+  ///
+  /// 2026-11-02 用户裁定：屏蔽 ③ 一问一答与 ④ 抢发（只保留 ① 拍图说一句、
+  /// ② 语音零键盘）。**能力与路由保留**，后续放开只改这一处判定。
+  bool get shownInEntry => switch (this) {
+    AiPublishMode.media || AiPublishMode.voice => true,
+    AiPublishMode.dialog || AiPublishMode.flash => false,
+  };
 }

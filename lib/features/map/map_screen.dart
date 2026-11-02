@@ -157,11 +157,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   /// AI FAB 的左上角位置（相对地图 Stack）。null = 默认右下角。
   ///
-  /// 允许拖动的原因：筛选面板展开后占满底部，FAB 固定在右下会压住分类胶囊，
-  /// 导致「全部/工作/房屋」点不到（2026-10-17 真机反馈）。
+  /// 只由「面板展开自动抬升 / 关闭还原」写入，**不接受用户拖动**
+  /// （2026-11-02 真机反馈：拖到顶部后停在状态栏下且不会自动归位，遂取消拖动）。
   Offset? _aiFabPosition;
 
-  /// FAB 与地图 Stack 的 key：拖动时用两者换算当前位置并做边界夹取。
+  /// FAB 与地图 Stack 的 key：避让时用两者换算当前位置。
   final GlobalKey _aiFabKey = GlobalKey();
   final GlobalKey _mapStackKey = GlobalKey();
 
@@ -558,9 +558,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   bottom: AppSpacing.md,
                   child: PerfPanel(),
                 ),
-              // 「AI 帮我发」FAB（PRD §6.13 T6-①）：悬浮于首页右下，唤起四模式。
-              // 可拖动；筛选面板展开时自动抬到面板上方（不隐藏，保证入口始终可见）。
-              _buildAiFab(constraints),
+              // 「AI 帮我发」FAB（PRD §6.13 T6-①）：悬浮于首页右下，唤起入口弹层。
+              // 筛选面板展开时自动抬到面板上方，关闭后还原（不隐藏，入口始终可见）。
+              _buildAiFab(),
             ],
           );
         },
@@ -568,21 +568,17 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     );
   }
 
-  /// 构建可拖动的「AI 帮我发」FAB。
+  /// 构建「AI 帮我发」FAB（位置由自动避让决定，不支持拖动）。
   ///
-  /// 未拖动过时仍用右下角定位（`right/bottom`），拖动过一次后改用
-  /// 左上角坐标（[_aiFabPosition]），让按钮停在用户放下的位置。
-  ///
-  /// 参数：[constraints] 地图 Stack 的尺寸约束（拖动边界夹取用）。
+  /// 默认右下角；筛选面板展开时由 [_avoidFilterPanel] 抬到面板上方，
+  /// 关闭后由 [_restoreFabAfterPanel] 还原。
   ///
   /// 返回：定位好的 FAB 控件。
-  Widget _buildAiFab(BoxConstraints constraints) {
+  Widget _buildAiFab() {
     final position = _aiFabPosition;
-    final fab = GestureDetector(
+    final fab = AiPublishFab(
       key: _aiFabKey,
-      // 只接管拖动；点击仍由内部 InkWell 处理（位移小于 slop 时两个手势不冲突）。
-      onPanUpdate: (details) => _moveAiFab(details.delta, constraints),
-      child: AiPublishFab(onTap: () => startAiPublish(context, ref)),
+      onTap: () => startAiPublish(context, ref),
     );
     if (position == null) {
       return Positioned(
@@ -592,33 +588,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       );
     }
     return Positioned(left: position.dx, top: position.dy, child: fab);
-  }
-
-  /// 按拖动增量移动 FAB，并把左上角夹在 Stack 可见范围内。
-  ///
-  /// 参数：
-  /// - [delta] 本次拖动位移；
-  /// - [constraints] Stack 尺寸约束。
-  ///
-  /// 返回：void。
-  void _moveAiFab(Offset delta, BoxConstraints constraints) {
-    final fabBox = _aiFabKey.currentContext?.findRenderObject() as RenderBox?;
-    final stackBox =
-        _mapStackKey.currentContext?.findRenderObject() as RenderBox?;
-    if (fabBox == null || stackBox == null) return;
-    // 当前位置从渲染树读：无论此刻由 right/bottom 还是 left/top 定位都成立。
-    final current = fabBox.localToGlobal(Offset.zero, ancestor: stackBox);
-    final next = Offset(
-      (current.dx + delta.dx).clamp(
-        0.0,
-        math.max(0.0, constraints.maxWidth - fabBox.size.width),
-      ),
-      (current.dy + delta.dy).clamp(
-        0.0,
-        math.max(0.0, constraints.maxHeight - fabBox.size.height),
-      ),
-    );
-    setState(() => _aiFabPosition = next);
   }
 
   /// 筛选面板展开后，把 FAB 抬到面板顶边之上（帧后测量，避免遮挡分类胶囊）。

@@ -1,7 +1,7 @@
-/// 「AI 帮我发」入口测试（PRD §6.13 T6-① + §5.9 四模式）。
+/// 「AI 帮我发」入口测试（PRD §6.13 T6-① + §5.9）。
 ///
-/// 守的是「入口把四种模式如实呈现、且可用/不可用分流正确」这条线：
-/// 弹层少一个模式 = 漏做；把未实现的模式点成可用 = 假入口（比漏做更坏）。
+/// 守的是「入口呈现哪些模式与产品裁定一致」这条线：2026-11-02 用户裁定
+/// 屏蔽 ③一问一答 / ④抢发，只保留 ①拍图说一句 / ②语音零键盘。
 library;
 
 import 'package:flutter/material.dart';
@@ -58,16 +58,15 @@ void main() {
       expect(find.text('AI 帮我发'), findsOneWidget);
     });
 
-    testWidgets('点击后弹四模式（四模式全可用，无「即将开放」）', (tester) async {
+    testWidgets('点击后只弹两种模式（③一问一答 / ④抢发已屏蔽）', (tester) async {
       await pumpFab(tester);
       await tester.tap(find.text('AI 帮我发'));
       await tester.pumpAndSettle();
 
       expect(find.text('拍张图，说一句'), findsOneWidget);
       expect(find.text('语音说，零键盘'), findsOneWidget);
-      expect(find.text('一问一答，新手引导'), findsOneWidget);
-      expect(find.text('抢发：先占位再补全'), findsOneWidget);
-      // B2-4 四模式已全量开放 —— 不再有占位标注
+      expect(find.text('一问一答，新手引导'), findsNothing);
+      expect(find.text('抢发：先占位再补全'), findsNothing);
       expect(find.text('即将开放'), findsNothing);
     });
 
@@ -103,33 +102,6 @@ void main() {
       await tester.tap(find.text('拍张图，说一句'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('开始识别'));
-      await tester.pumpAndSettle();
-
-      expect(find.textContaining('先拍 1 张图'), findsOneWidget);
-    });
-  });
-
-  group('§5.9 模式④ 抢发', () {
-    testWidgets('选④ → 出现「标题 + 拍照」弹层（含 24h 补全说明）', (tester) async {
-      await pumpFab(tester);
-      await tester.tap(find.text('AI 帮我发'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('抢发：先占位再补全'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('抢发：先占位，再补全'), findsOneWidget);
-      expect(find.textContaining('24 小时内补全'), findsWidgets);
-      expect(find.text('标题'), findsWidgets);
-      expect(find.text('拍好了，去发布'), findsOneWidget);
-    });
-
-    testWidgets('未选图点「拍好了，去发布」→ 提示先加图', (tester) async {
-      await pumpFab(tester);
-      await tester.tap(find.text('AI 帮我发'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('抢发：先占位再补全'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('拍好了，去发布'));
       await tester.pumpAndSettle();
 
       expect(find.textContaining('先拍 1 张图'), findsOneWidget);

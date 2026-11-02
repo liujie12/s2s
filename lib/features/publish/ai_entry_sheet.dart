@@ -1,12 +1,13 @@
-/// 「AI 帮我发」入口与快速输入（PRD §6.13 T6-① + §5.9 模式①/④）。
+/// 「AI 帮我发」入口与快速输入（PRD §6.13 T6-① + §5.9 模式①/②）。
 ///
 /// **入口位置**：首页右下「AI 帮我发」FAB（Accent 专用色，PRD §1.4.2
-/// 「Accent 的唯一用途 = AI 猜角标 + AI 帮我发 FAB」）。点击后弹四模式。
+/// 「Accent 的唯一用途 = AI 猜角标 + AI 帮我发 FAB」）。点击后弹模式选择。
 ///
 /// **本期实现**：
 /// - ① 多媒体：拍 1 张图（相机优先）+ 说 1 句话 → 上传图 → 进确认页（带 `media_id`）；
-/// - ④ 抢发：填标题 + 拍 1 张图 → 上传图 → 进确认页（`flashMode`，可落 🔴）；
-/// - ②③ 呈现但禁用（注明「即将开放」），不做假入口（见 [AiPublishModeX.isAvailable]）。
+/// - ② 语音零键盘：录一段音频 → 上传 → 带 `voice_media_id` 进确认页；
+/// - ③ 一问一答 / ④ 抢发：**入口不呈现**（2026-11-02 用户裁定，判定见
+///   [AiPublishModeX.shownInEntry]）；能力与路由保留，后续放开只改该判定。
 ///
 /// **为什么快速输入用 BottomSheet 而非新路由**：它不需要出现在深链/返回栈语义里，
 /// 且「弹层 → 选完即进确认页」是同一手势上下文，开新页会多一次返回栈折叠。
@@ -167,7 +168,9 @@ class _AiModeSheet extends StatelessWidget {
               ),
             ),
           ),
-          for (final mode in AiPublishMode.values)
+          // 入口只呈现 ①拍图说一句 / ②语音零键盘；③一问一答与 ④抢发对外屏蔽
+          //（2026-11-02 用户裁定，判定见 [AiPublishModeX.shownInEntry]）。
+          for (final mode in AiPublishMode.values.where((m) => m.shownInEntry))
             _AiModeRow(
               mode: mode,
               onTap: () => Navigator.of(context).pop(mode),
