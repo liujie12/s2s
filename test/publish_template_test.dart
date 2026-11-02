@@ -155,9 +155,9 @@ void main() {
   });
 
   group('§5.8 强制认证拦截的判定依据', () {
-    test('高敏叶子返回对应资质：家政 → 个人资质', () {
+    test('高敏叶子同样返回 none（2026-11-01 取消认证要求）', () {
       final leafId = categoryPathOf(50101)[2].id;
-      expect(requiredCertForLeaf(leafId), RequiredCert.personalQualification);
+      expect(requiredCertForLeaf(leafId), RequiredCert.none);
     });
 
     test('二手闲置等普通类目返回 none', () {

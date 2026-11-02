@@ -9,6 +9,12 @@
 # packages, and plugins designed to encourage good coding practices.
 include: package:flutter_lints/flutter.yaml
 
+analyzer:
+  exclude:
+    # docs/ 下的 .dart 是设计存档快照（如 docs/design/ui/originals/），
+    # 非工程源码；其相对 import 在 lib/ 外解析不到，会污染门禁 S4。
+    - docs/**
+
 linter:
   # The lint rules applied to this project can be customized in the
   # section below to disable rules from the `package:flutter_lints/flutter.yaml`

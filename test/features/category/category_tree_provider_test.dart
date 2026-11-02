@@ -3,7 +3,8 @@
 /// 三组覆盖：
 ///   - [CategoryTreeStore]：持久化存取与坏缓存自愈（shared_preferences
 ///     mock 注入，同 device_id_provider_test 模式）；
-///   - [categoryNodesFromDtos]：DTO→domain 转换（requiredCert 本地映射三态）；
+///   - [categoryNodesFromDtos]：DTO→domain 转换（requiredCert 经 requiredCertForLeaf
+///     现恒 none —— 2026-11-01 取消认证要求）；
 ///   - [CategoryTreeNotifier]：缓存先行 → 版本协商 → unchanged 保持 /
 ///     full 替换 + 落盘 + 清 Pin 口子的全状态机，走 NetworkChainHarness
 ///     真 HTTP 栈（不 mock repository）。
@@ -97,16 +98,16 @@ void main() {
   });
 
   group('categoryNodesFromDtos 转换', () {
-    test('叶子 10101/10102 映射 enterprise（内置常量树显式声明档）', () {
+    test('叶子 10101/10102 同样为 none（2026-11-01 取消认证要求）', () {
       final nodes = categoryNodesFromDtos(
         CategoryTreeDto.fromJson(serverCategoryTreePayload()).categories,
       );
 
       final leaves = nodes.single.children.single.children;
       expect(leaves.first.id, 10101);
-      expect(leaves.first.requiredCert, RequiredCert.enterprise);
+      expect(leaves.first.requiredCert, RequiredCert.none);
       expect(leaves.last.id, 10102);
-      expect(leaves.last.requiredCert, RequiredCert.enterprise);
+      expect(leaves.last.requiredCert, RequiredCert.none);
     });
 
     test('线上新增叶子（内置常量树查不到）→ none 回退，不阻断不报错', () {
@@ -233,7 +234,7 @@ void main() {
       expect(tree.single.id, 1); // 工作：线上树
       final leaf = tree.single.children.single.children.first;
       expect(leaf.id, 10101);
-      expect(leaf.requiredCert, RequiredCert.enterprise);
+      expect(leaf.requiredCert, RequiredCert.none); // 2026-11-01 取消认证要求
       // 无缓存时协商不带 version（契约：缺省即强制全量）。
       expect(
         Uri.parse(harness.server.received.single.path).queryParameters,
