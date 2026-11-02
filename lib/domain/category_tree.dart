@@ -572,3 +572,17 @@ List<CategoryNode> get leafCategories => [
 /// 按叶子 ID 取节点。不存在返回 null（同 [categoryPathOf] 的容错取向）。
 CategoryNode? leafCategoryById(int leafId) =>
     categoryPathOf(leafId).lastOrNull;
+
+/// 叶子的原始资质标记（§4.3 认证类型表 / §2.9 高敏标记），供与认证拦截
+/// 无关的维度使用 —— 当前唯一消费方是 §5.10 AI 配额「高敏类目 +10」分层。
+///
+/// 与 `requiredCertForLeaf`（publish_template.dart）的分工：后者是发布前
+/// 拦截判定，2026-11-01 起恒 `none`（0d9a2d5 取消发布链路认证要求）；
+/// 本函数读内置常量树的原始映射，不受该裁定影响 —— 配额分层是额度规则，
+/// 不是拦截，高敏类目耗费更多模型审查资源的事实不因取消拦截而改变。
+///
+/// 参数 [leafId] 叶子类目 ID。
+/// 返回：[RequiredCert] 原始标记；ID 不存在返回 `none`（同 [categoryPathOf]
+///   的容错取向，分类树版本落后是 §16.4 预期内状态）。
+RequiredCert rawRequiredCertOfLeaf(int leafId) =>
+    leafCategoryById(leafId)?.requiredCert ?? RequiredCert.none;

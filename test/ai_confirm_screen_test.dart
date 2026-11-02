@@ -291,10 +291,10 @@ void main() {
       expect(find.textContaining('今日 AI 额度已用 2 / 20 次'), findsOneWidget);
     });
 
-    testWidgets('高敏类目不再标 +10（2026-11-01 取消认证要求，资质维度失效）',
+    testWidgets('高敏类目在文案里标出 +10（读原始映射，不受取消认证影响）',
         (tester) async {
       await pump(tester, complete().withCategory(50101));
-      expect(find.textContaining('高敏类目 +10'), findsNothing);
+      expect(find.textContaining('高敏类目 +10'), findsOneWidget);
     });
   });
 

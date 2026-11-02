@@ -331,4 +331,22 @@ void main() {
   test('版本号非空且形如 yyyy-MM-dd.n（§2.9 版本号 + 本地缓存的比对依据）', () {
     expect(RegExp(r'^\d{4}-\d{2}-\d{2}\.\d+$').hasMatch(categoryTreeVersion), isTrue);
   });
+
+  group('rawRequiredCertOfLeaf（§5.10 配额高敏维度的原始映射）', () {
+    test('高敏叶子返回原始资质：家政 50101 → 个人资质', () {
+      expect(rawRequiredCertOfLeaf(50101), RequiredCert.personalQualification);
+    });
+
+    test('工作类叶子返回 enterprise（内置常量树显式声明档）', () {
+      expect(rawRequiredCertOfLeaf(10101), RequiredCert.enterprise);
+    });
+
+    test('普通叶子返回 none（二手闲置 40101）', () {
+      expect(rawRequiredCertOfLeaf(40101), RequiredCert.none);
+    });
+
+    test('脏 ID 返回 none 而非抛错（树版本落后是预期内状态）', () {
+      expect(rawRequiredCertOfLeaf(999999), RequiredCert.none);
+    });
+  });
 }

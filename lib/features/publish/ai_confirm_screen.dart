@@ -744,7 +744,10 @@ class _AiConfirmScreenState extends ConsumerState<AiConfirmScreen> {
         _QuotaNote(
           verified: ref.watch(isLoggedInProvider),
           level: _assessment.level,
-          sensitive: _form.requiredCert != RequiredCert.none,
+          // §5.10 高敏维度读原始映射（取消认证拦截不影响配额分层）。
+          sensitive: _form.leafCategoryId != null &&
+              rawRequiredCertOfLeaf(_form.leafCategoryId!) !=
+                  RequiredCert.none,
           quota: _quota,
         ),
       ],
