@@ -33,10 +33,10 @@ import 'search_repository.dart';
 const int _kRecentLocationMax = 5;
 
 /// 逆地理文案缓存 key：坐标按原值，精度提升（fix 变化）才算新点。
-typedef _Point = ({double lat, double lng});
+typedef GeoPoint = ({double lat, double lng});
 
 /// 坐标 → 可读地址（失败为空串，由调用方回退文案）。
-final _addressLabelProvider = FutureProvider.family<String, _Point>(
+final addressLabelProvider = FutureProvider.family<String, GeoPoint>(
   (ref, point) => reverseGeocodeLabel(lat: point.lat, lng: point.lng),
 );
 
@@ -356,16 +356,19 @@ class _LocationPanelState extends ConsumerState<LocationPanel> {
     final EffectiveFilter effective = ref.watch(effectiveFilterProvider);
     final LocationFix? fix = ref.watch(locationFixProvider);
     final List<RecentLocation> recent = ref.watch(recentLocationsProvider);
+    // 逆地理三态：loading 与「取不到地址」必须区分，否则用户看到的是占位词而不是原因。
+    final ({bool loading, String label}) fixAddress = fix == null
+        ? (loading: false, label: '')
+        : _watchedAddress(ref, lat: fix.lat, lng: fix.lng);
     final String fixLabel = _relocating
         ? '定位中…'
         : (fix == null
               ? '未获取到定位'
-              : _watchedLabel(
-                  ref,
-                  lat: fix.lat,
-                  lng: fix.lng,
-                  fallback: '当前位置',
-                ));
+              : (fixAddress.loading
+                    ? '正在获取地址…'
+                    : (fixAddress.label.isEmpty
+                          ? '暂时无法获取位置名称'
+                          : fixAddress.label)));
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(
@@ -482,6 +485,10 @@ class _LocationPanelState extends ConsumerState<LocationPanel> {
 
   /// 当前搜索位置（只读：地名 + 来源 + 半径说明）。
   ///
+  /// 圆心是「我的位置」时必须显示逆地理地址，而不是把来源标签再抄一遍：
+  /// 用户要看的是「我现在以哪里为中心搜」，`我的位置` 本身不含信息量。
+  /// 逆地理未就绪与失败也给不同文案，避免把「还没算出来」误读成「已定位」。
+  ///
   /// 参数：[effective] 生效条件；[fix] 本会话定位点。
   /// 返回：信息块控件。
   Widget _buildCurrentSearchBlock({
@@ -490,12 +497,22 @@ class _LocationPanelState extends ConsumerState<LocationPanel> {
   }) {
     final bool hasAnchor =
         effective.anchorLat != null && effective.anchorLng != null;
-    final String name = hasAnchor
-        ? (effective.anchorName ?? '自选位置')
-        : (fix != null ? '我的位置' : '未校准');
-    final String source = hasAnchor
-        ? locationSourceLabel(effective.anchorSource)
-        : (fix != null ? '我的位置' : '未校准');
+    final String source;
+    final String name;
+    if (hasAnchor) {
+      source = locationSourceLabel(effective.anchorSource);
+      name = effective.anchorName ?? '自选位置';
+    } else if (fix != null) {
+      source = '我的位置';
+      final ({bool loading, String label}) address =
+          _watchedAddress(ref, lat: fix.lat, lng: fix.lng);
+      name = address.loading
+          ? '正在获取地址…'
+          : (address.label.isEmpty ? '暂时无法获取位置名称' : address.label);
+    } else {
+      source = '未校准';
+      name = '未校准';
+    }
     final String note = effective.radius == SearchRadius.city
         ? '全城范围，列表与地图共用'
         : '半径 ${effective.radius.label} 以该点为准，列表与地图共用';
@@ -530,14 +547,17 @@ class _LocationPanelState extends ConsumerState<LocationPanel> {
                 ),
               ),
             ),
-            const SizedBox(width: AppSpacing.xs),
-            Text(
-              source,
-              style: TextStyle(
-                fontSize: AppTypeScale.caption.size,
-                color: const Color(AppColors.textSecondary),
+            // 来源与地名同值时（如「未校准」「自选位置」）不再重复一遍。
+            if (source != name) ...[
+              const SizedBox(width: AppSpacing.xs),
+              Text(
+                source,
+                style: TextStyle(
+                  fontSize: AppTypeScale.caption.size,
+                  color: const Color(AppColors.textSecondary),
+                ),
               ),
-            ),
+            ],
           ],
         ),
         const SizedBox(height: 2),
@@ -748,6 +768,24 @@ class _LocationPanelState extends ConsumerState<LocationPanel> {
   }
 }
 
+/// 读取某点的逆地理三态（加载中 / 有地址 / 取不到）。
+///
+/// 为什么区分三态：`reverseGeocodeLabel` 失败返回空串，如果调用方只做
+/// 「空串 → 显示占位词」，用户无法分辨「还没返回」和「拿不到地址」。
+///
+/// 参数：[ref] 组件引用；[lat]/[lng] 坐标。
+/// 返回：(loading, label)；未加载完时 label 为空串。
+({bool loading, String label}) _watchedAddress(
+  WidgetRef ref, {
+  required double lat,
+  required double lng,
+}) {
+  final AsyncValue<String> async =
+      ref.watch(addressLabelProvider((lat: lat, lng: lng)));
+  if (async.isLoading) return (loading: true, label: '');
+  return (loading: false, label: async.asData?.value ?? '');
+}
+
 /// 读取某点的逆地理文案（未取到/未注入 Key 时返回 [fallback]）。
 ///
 /// 参数：[ref] 组件引用；[lat]/[lng] 坐标；[fallback] 空文案时的兜底。
@@ -758,9 +796,7 @@ String _watchedLabel(
   required double lng,
   String fallback = '',
 }) {
-  final String label =
-      ref.watch(_addressLabelProvider((lat: lat, lng: lng))).asData?.value ??
-      '';
+  final String label = _watchedAddress(ref, lat: lat, lng: lng).label;
   return label.isEmpty ? fallback : label;
 }
 
