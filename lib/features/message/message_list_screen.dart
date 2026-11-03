@@ -7,6 +7,8 @@
 /// 三种基础态（R33）：空态、首屏加载骨架、拉取失败重试。
 library;
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -14,6 +16,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../../core/network/api_exception.dart';
 import '../../core/time_format.dart';
+import '../../core/ui/footprint_geometry.dart';
 import '../../core/ui/list_states.dart';
 import '../../design_tokens.dart';
 import '../../router/app_router.dart';
@@ -76,6 +79,54 @@ class _MessageListScreenState extends ConsumerState<MessageListScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(asApiException(e).uiMessage)),
       );
+    }
+  }
+
+  /// 左滑后二次确认并执行删除（V33「仅自己删除」）。
+  ///
+  /// 请求成功后才返回 true：由 Provider 立即移除该行，滑动动画结束即消失。
+  /// 失败（如服务端未部署该接口）返回 false，行回弹保持可见，避免用户误以为已删。
+  ///
+  /// 参数：[item] 待删除会话。
+  /// 返回：[Future<bool>]；成功 true，取消或失败 false。
+  Future<bool> _confirmDelete(ConversationDto item) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('删除会话'),
+        content: Text(
+          '删除后「${item.peerNickname}」将从你的消息列表移除，对方不受影响；'
+          '再收到新消息时会重新出现。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(
+              '删除',
+              style: TextStyle(color: Color(AppColors.error)),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return false;
+
+    try {
+      await ref
+          .read(conversationsProvider.notifier)
+          .deleteConversation(item.conversationId);
+      return true;
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('删除失败：${asApiException(e).uiMessage}')),
+        );
+      }
+      return false;
     }
   }
 
@@ -203,13 +254,20 @@ class _MessageListScreenState extends ConsumerState<MessageListScreen> {
             return const ListEndRow();
           }
           final item = data.items[index - 1];
-          return _ConversationRow(
-            item: item,
-            // 会话详情挂在「消息」分支的子路由上（切 Tab 不丢栈）；
-            // 把列表行作为 extra 带过去，详情页无需再为标题/缩略图补一次请求。
-            onTap: () => context.push(
-              '/messages/${item.conversationId}',
-              extra: item,
+          // 左滑删除（V33「仅自己删除」）：服务号行不在此分支，天然不可删（R12）。
+          return Dismissible(
+            key: ValueKey<String>('conversation-${item.conversationId}'),
+            direction: DismissDirection.endToStart,
+            background: const _DeleteBackground(),
+            confirmDismiss: (_) => _confirmDelete(item),
+            child: _ConversationRow(
+              item: item,
+              // 会话详情挂在「消息」分支的子路由上（切 Tab 不丢栈）；
+              // 把列表行作为 extra 带过去，详情页无需再为标题/缩略图补一次请求。
+              onTap: () => context.push(
+                '/messages/${item.conversationId}',
+                extra: item,
+              ),
             ),
           );
         },
@@ -421,6 +479,40 @@ class _Avatar extends StatelessWidget {
   }
 }
 
+/// 左滑会话行时露出的删除底（error 实底 + 白色图标与文字）。
+class _DeleteBackground extends StatelessWidget {
+  /// 构造删除底。
+  const _DeleteBackground();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Color(AppColors.error),
+      alignment: Alignment.centerRight,
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.delete_outline,
+            size: 20,
+            color: Color(AppColors.surface),
+          ),
+          const SizedBox(width: AppSpacing.xs),
+          Text(
+            '删除',
+            style: TextStyle(
+              fontSize: AppTypeScale.body.size,
+              fontWeight: FontWeight.w600,
+              color: Color(AppColors.surface),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// 服务号行（R12 / R13）：永久置顶、无删除手势，点击进既有通知中心。
 class _ServiceRow extends StatelessWidget {
   /// 构造服务号行。
@@ -458,13 +550,9 @@ class _ServiceRow extends StatelessWidget {
                 color: Color(AppColors.primary),
                 shape: BoxShape.circle,
               ),
-              child: Text(
-                '鸭',
-                style: TextStyle(
-                  fontSize: AppTypeScale.body.size,
-                  fontWeight: FontWeight.w600,
-                  color: Color(AppColors.surface),
-                ),
+              child: const CustomPaint(
+                size: Size.square(44),
+                painter: _ServiceFootprintPainter(),
               ),
             ),
             const SizedBox(width: AppSpacing.md),
@@ -540,6 +628,36 @@ class _ServiceRow extends StatelessWidget {
       ),
     );
   }
+}
+
+/// 服务号头像内的品牌脚印（主色圆底 + 白色脚印，A3 同源）。
+///
+/// 变换与登录页 `_BrandFootprintPainter` 一致（72dp 基准
+/// translate(36,33.5) rotate(14°) scale(0.52) translate(-54,-45)），
+/// 按实际边长等比缩放；几何走共享真源 [FootprintGeometry]，不复制坐标。
+class _ServiceFootprintPainter extends CustomPainter {
+  const _ServiceFootprintPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final double k = size.width / 72;
+    canvas.save();
+    canvas
+      ..translate(36 * k, 33.5 * k)
+      ..rotate(14 * math.pi / 180)
+      ..scale(0.52 * k)
+      ..translate(-54, -45);
+    FootprintGeometry.paint(
+      canvas,
+      Paint()
+        ..color = const Color(AppColors.surface)
+        ..style = PaintingStyle.fill,
+    );
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _ServiceFootprintPainter oldDelegate) => false;
 }
 
 /// 帖子缩略图（R3 / R4）：44px；下架置灰并标注「已下架」，无图渲染占位块。

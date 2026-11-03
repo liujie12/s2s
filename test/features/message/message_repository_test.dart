@@ -69,6 +69,43 @@ void main() {
     });
   });
 
+  group('deleteConversation', () {
+    test('走 DELETE 并成功返回', () async {
+      String? method;
+      String? path;
+      harness.stub('DELETE', '/api/v1/conversations/9', (req) async {
+        method = req.method;
+        path = req.path;
+        return MockResponse(
+          body: ApiEnvelope.success(data: {'conversation_id': 9}),
+        );
+      });
+
+      await repo.deleteConversation(conversationId: 9);
+
+      expect(method, 'DELETE');
+      expect(path, '/api/v1/conversations/9');
+    });
+
+    test('40305 映射为既有异常（非成员/会话不存在同一响应）', () async {
+      harness.stub('DELETE', '/api/v1/conversations/9', (req) async {
+        return MockResponse(
+          status: 403,
+          body: ApiEnvelope.failure(40305, '会话不存在或已不可访问'),
+        );
+      });
+
+      try {
+        await repo.deleteConversation(conversationId: 9);
+        fail('应抛出 40305');
+      } catch (e) {
+        final error = harness.apiErrorOf(e);
+        expect(error.code, ApiErrorCode.noPermission);
+        expect(error.message, '会话不存在或已不可访问');
+      }
+    });
+  });
+
   group('fetchConversations', () {
     test('解析可空字段与未读布尔', () async {
       harness.stub('GET', '/api/v1/conversations', (req) async {

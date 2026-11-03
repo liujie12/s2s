@@ -24,12 +24,31 @@ class _FakeConversations extends ConversationsNotifier {
   /// refresh 调用次数。
   int refreshCalls = 0;
 
+  /// 删除调用次数（V33 左滑删除）。
+  int deleteCalls = 0;
+
   @override
   AsyncValue<ConversationsData> build() => value;
 
   @override
   Future<void> refresh() async {
     refreshCalls++;
+  }
+
+  @override
+  Future<void> deleteConversation(int conversationId) async {
+    deleteCalls++;
+    final current = state.asData?.value;
+    if (current == null) return;
+    state = AsyncValue.data(
+      ConversationsData(
+        items: current.items
+            .where((item) => item.conversationId != conversationId)
+            .toList(growable: false),
+        total: current.total > 0 ? current.total - 1 : 0,
+        page: current.page,
+      ),
+    );
   }
 
   @override
@@ -206,6 +225,32 @@ void main() {
       tester.getTopLeft(find.text('服务号')).dy,
       lessThan(tester.getTopLeft(find.text('王师傅')).dy),
     );
+  });
+
+  testWidgets('会话行左滑删除：二次确认后移除，服务号行不可删', (tester) async {
+    final fake = await _pumpScreen(
+      tester,
+      conversations: AsyncValue.data(
+        ConversationsData(
+          items: [_conversation(id: 1, nickname: '王师傅')],
+          total: 1,
+          page: 1,
+        ),
+      ),
+    );
+
+    // 只有会话行包了 Dismissible，服务号置顶行不可滑动删除（R12 / V33）
+    expect(find.byType(Dismissible), findsOneWidget);
+
+    await tester.drag(find.text('王师傅'), const Offset(-500, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('删除会话'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(TextButton, '删除'));
+    await tester.pumpAndSettle();
+
+    expect(fake.deleteCalls, 1);
+    expect(find.text('王师傅'), findsNothing);
   });
 
   testWidgets('权限被拒后顶部提示常驻，可关闭', (tester) async {

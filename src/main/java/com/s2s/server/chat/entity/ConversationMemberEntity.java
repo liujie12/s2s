@@ -33,6 +33,15 @@ public class ConversationMemberEntity {
     /** 未读期间已推送标记：1=已推过首条，读会话时复位（KTD7）。 */
     private Integer pushedUnread;
 
+    /**
+     * 用户从自己列表删除会话的时刻（V33）：非空=对本人不可见。
+     *
+     * <p>仅本人口径：对方成员行不受影响；会话与消息仍保留（举报取证需要）。
+     * 收到新消息或本人重新发起时由 {@code ConversationMemberMapper#restoreVisibility}
+     * 清空，会话重新出现在列表。</p>
+     */
+    private LocalDateTime deletedAt;
+
     /** 创建时间（库内默认值）。 */
     private LocalDateTime createdAt;
 
@@ -69,6 +78,14 @@ public class ConversationMemberEntity {
 
     public void setPushedUnread(Integer pushedUnread) {
         this.pushedUnread = pushedUnread;
+    }
+
+    public LocalDateTime getDeletedAt() {
+        return deletedAt;
+    }
+
+    public void setDeletedAt(LocalDateTime deletedAt) {
+        this.deletedAt = deletedAt;
     }
 
     public LocalDateTime getCreatedAt() {

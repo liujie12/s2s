@@ -125,6 +125,7 @@
   .row + .row::before{content:"";position:absolute;left:72px;right:0;top:0;height:1px;background:var(--border);}
   .avatar{width:44px;height:44px;border-radius:var(--r-full);flex:none;display:grid;place-items:center;background:var(--primary-light);color:var(--primary-dark);font-size:14px;font-weight:600;}
   .avatar.sys{background:var(--primary);color:var(--surface);}
+  .avatar.sys .avatar-fp{width:20px;height:25px;display:block;}
   .row-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;}
   .row-top{display:flex;align-items:center;gap:var(--sm);}
   .row-name{font-size:14px;line-height:21px;font-weight:500;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
@@ -259,6 +260,17 @@
 </style>
 </head>
 <body>
+<!-- fp0 脚印几何真源（与 lib/core/ui/footprint_geometry.dart 同源坐标） -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="fp0" viewBox="26 10 56 70">
+    <g fill="currentColor" transform="rotate(14 54 45)">
+      <ellipse cx="40" cy="35" rx="7.2" ry="9.8" transform="rotate(-15 40 35)"/>
+      <ellipse cx="54" cy="30.5" rx="7.6" ry="10.6"/>
+      <ellipse cx="68" cy="35" rx="7.2" ry="9.8" transform="rotate(15 68 35)"/>
+      <path d="M37 57C37 50.5 44.5 48.5 54 48.5S71 50.5 71 57c0 5.5-3.5 9.5-7 15-3.5 6-4.5 12-10 12s-6.5-6-10-12c-3.5-5.5-7-9.5-7-15Z"/>
+    </g>
+  </symbol>
+</svg>
 <div class="page">
 
   <header class="page-head">
@@ -356,7 +368,7 @@
               <div class="list">
 
                 <div class="row">
-                  <div class="avatar sys">鸭</div>
+                  <div class="avatar sys"><svg class="avatar-fp"><use href="#fp0"/></svg></div>
                   <div class="row-main">
                     <div class="row-top"><span class="row-name">服务号</span><span class="chip-top">置顶</span><span class="row-time">09:12</span></div>
                     <div class="row-sub">你的「静安两居」被联系了 3 次</div>
@@ -410,7 +422,7 @@
             </div>
           </div>
         </div>
-        <p class="frame-note"><b>行高 72</b>：头像 44 + 主文两行 + 右侧 44 缩略图；未读只挂 8px 红点，不显示条数。服务号用「置顶」胶囊常驻首位，不可左滑删除。</p>
+        <p class="frame-note"><b>行高 72</b>：头像 44 + 主文两行 + 右侧 44 缩略图；未读只挂 8px 红点，不显示条数。服务号用「置顶」胶囊常驻首位，不可左滑删除；会话行左滑露出「删除」（V33 仅自己删除，二次确认）。</p>
       </div>
 
       <div class="frame-cell">
@@ -421,7 +433,7 @@
           <div class="screen-body">
             <div class="list" style="flex:none;">
               <div class="row">
-                <div class="avatar sys">鸭</div>
+                <div class="avatar sys"><svg class="avatar-fp"><use href="#fp0"/></svg></div>
                 <div class="row-main">
                   <div class="row-top"><span class="row-name">服务号</span><span class="chip-top">置顶</span><span class="row-time">09:12</span></div>
                   <div class="row-sub">你的「静安两居」被联系了 3 次</div>
@@ -843,7 +855,7 @@
           <div class="screen-body" style="position:relative;">
             <div class="list">
               <div class="row">
-                <div class="avatar sys">鸭</div>
+                <div class="avatar sys"><svg class="avatar-fp"><use href="#fp0"/></svg></div>
                 <div class="row-main">
                   <div class="row-top"><span class="row-name">服务号</span><span class="chip-top">置顶</span><span class="row-time">09:12</span></div>
                   <div class="row-sub">你的「静安两居」被联系了 3 次</div>
@@ -1127,11 +1139,11 @@
           <td class="k">App 图标（启动器）</td>
           <td>56 × 56；圆角 14；角标只向外扩，不缩图标图形；未读数 0 时角标整块移除</td>
           <td>—</td>
-          <td>底 primary；鸭头图形 surface</td>
+          <td>底 primary；脚印图形 surface</td>
         </tr>
         <tr>
           <td class="k">会话行</td>
-          <td>最小高 72；内边距 12 / 16；头像 44；右侧缩略图 44、圆角 8；分隔线左缩进 72</td>
+          <td>最小高 72；内边距 12 / 16；头像 44；右侧缩略图 44、圆角 8；分隔线左缩进 72；左滑露出 error 实底「删除」（二次确认后仅移除自己列表）</td>
           <td>昵称 <span class="tag">body 14</span> 500；摘要 <span class="tag">small 12</span>；时间 <span class="tag">caption 11</span></td>
           <td>昵称 textPrimary；摘要 textSecondary；时间 textPlaceholder；分隔线 border</td>
         </tr>
@@ -1143,9 +1155,9 @@
         </tr>
         <tr>
           <td class="k">服务号行</td>
-          <td>同会话行；头像常驻 primary 实底；「置顶」胶囊 10/12、内边距 2 5、圆角 4</td>
+          <td>同会话行；头像常驻 primary 实底 + 白色品牌脚印（fp0，与登录页 / 发布键同源）；「置顶」胶囊 10/12、内边距 2 5、圆角 4</td>
           <td>昵称 <span class="tag">body 14</span> 500</td>
-          <td>胶囊 primaryLight 底 + primaryDark 字；头像 primary 底 + surface 字</td>
+          <td>胶囊 primaryLight 底 + primaryDark 字；头像 primary 底 + surface 脚印</td>
         </tr>
         <tr>
           <td class="k">帖子上下文卡</td>

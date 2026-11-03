@@ -124,6 +124,7 @@
         JOIN message m
           ON m.conversation_id = c.id
         WHERE cm.user_id = #{userId}
+          AND cm.deleted_at IS NULL
           AND c.last_message_at &gt;= #{visibleSince}
           AND m.seq &gt; cm.last_read_seq
           AND (m.visible_to IS NULL OR m.visible_to = #{userId})

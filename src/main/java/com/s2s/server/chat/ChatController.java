@@ -5,6 +5,7 @@ import com.s2s.server.chat.dto.ApplyStateResponse;
 import com.s2s.server.chat.dto.ConversationCreateRequest;
 import com.s2s.server.chat.dto.ConversationCreateResponse;
 import com.s2s.server.chat.dto.ConversationPageResponse;
+import com.s2s.server.chat.dto.ConversationRemoveResponse;
 import com.s2s.server.chat.dto.ConversationReportRequest;
 import com.s2s.server.chat.dto.MessagePageResponse;
 import com.s2s.server.chat.dto.MessageSendRequest;
@@ -18,6 +19,7 @@ import com.s2s.server.common.web.AuthContext;
 import com.s2s.server.contact.dto.ReportResult;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -120,6 +122,24 @@ public class ChatController {
             HttpServletRequest httpRequest) {
         Long userId = requireUserId(httpRequest);
         return chatQueryService.listConversations(userId, page, pageSize);
+    }
+
+    /**
+     * 把会话从我的消息列表删除（{@code DELETE /conversations/{conversation_id}}，V33）。
+     *
+     * <p>仅本人口径：只移除自己的列表行，对方不受影响；会话与消息保留用于举报取证。
+     * 再次收到新消息或本人重新发起同一会话时会话自动恢复可见。重复删除幂等。</p>
+     *
+     * @param conversationId 会话 ID（路径参数）
+     * @param httpRequest    当前请求（取登录态）
+     * @return {@link ConversationRemoveResponse} 被移除的会话 ID
+     */
+    @DeleteMapping("/conversations/{conversation_id}")
+    public ConversationRemoveResponse removeConversation(
+            @PathVariable("conversation_id") Long conversationId,
+            HttpServletRequest httpRequest) {
+        Long userId = requireUserId(httpRequest);
+        return chatService.removeConversation(userId, conversationId);
     }
 
     /**

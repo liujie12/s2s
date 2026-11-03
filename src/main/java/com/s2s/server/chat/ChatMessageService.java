@@ -104,6 +104,10 @@ public class ChatMessageService {
         MessageEntity message = messageWriter.appendLocked(conversation, userId,
                 MessageType.TEXT, content, null);
 
+        // V33：新消息唤醒被任一方删除的会话——清空双方成员行的 deleted_at，
+        // 使会话重新出现在已删除方的列表并产生未读（删除是「仅自己、可恢复」的口径）。
+        memberMapper.restoreVisibilityForMembers(conversationId);
+
         // 推送只在本会话未读期间推首条（KTD7），且只推不落站内通知（KTD6）；
         // 配额/通道不可用时静默降级，不影响已落库的消息。
         Long receiverId = userId.equals(conversation.getInitiatorId())

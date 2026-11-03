@@ -137,6 +137,24 @@ class MessageRepository {
     return ConversationReadResultDto.fromJson(response.data);
   }
 
+  /// 删除会话（`DELETE /conversations/{id}`，V33「仅自己删除」）。
+  ///
+  /// 只把会话从当前用户的消息列表移除，对方不受影响；会话与消息仍保留。
+  /// 再次收到新消息或本人重新发起时会话自动恢复可见。重复删除幂等。
+  ///
+  /// 参数：[conversationId] 会话 ID；[interactionId] X-Interaction-Id。
+  /// 返回：[Future<void>]。
+  /// 抛出：[ApiException]（40305 非成员/会话不存在）/传输错误。
+  Future<void> deleteConversation({
+    required int conversationId,
+    String? interactionId,
+  }) async {
+    await _dio.delete<Object?>(
+      '/conversations/$conversationId',
+      options: _writeOptions(interactionId: interactionId),
+    );
+  }
+
   /// 未读汇总（`GET /unread-summary`，R8 / KTD9 唯一出口）。
   ///
   /// 参数：[interactionId] X-Interaction-Id。

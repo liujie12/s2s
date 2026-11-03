@@ -37,6 +37,9 @@
       隐藏窗口作为查询下界（c.last_message_at >= visibleSince），不写状态、不做定时任务：
       新的往来写入后 last_message_at 自然越过下界，会话重新可见。
 
+      用户主动删除（V33）：cm.deleted_at 非空即对我不可见；对方成员行不受影响，
+      会话与消息仍保留（举报取证）。收到新消息或本人重新发起时该列被清空。
+
       对方 = CASE 派生（发起人视角对方是发布者，反之亦然），避免把双方都查出来后由
       Java 判方向。
 
@@ -90,6 +93,7 @@
         JOIN post p
           ON p.id = c.post_id
         WHERE c.last_message_at &gt;= #{visibleSince}
+          AND cm.deleted_at IS NULL
         ORDER BY c.last_message_at DESC, c.id DESC
         LIMIT #{limit} OFFSET #{offset}
     </select>
@@ -105,6 +109,7 @@
           ON cm.conversation_id = c.id
          AND cm.user_id = #{userId}
         WHERE c.last_message_at &gt;= #{visibleSince}
+          AND cm.deleted_at IS NULL
     </select>
 
 </mapper>

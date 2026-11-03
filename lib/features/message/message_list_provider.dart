@@ -123,6 +123,35 @@ class ConversationsNotifier extends Notifier<AsyncValue<ConversationsData>> {
     }
   }
 
+  /// 删除会话（V33「仅自己删除」）：成功后本地移除该行并刷新未读角标。
+  ///
+  /// 删除即视为读完（服务端同步把已读水位推到当前最大序号），因此未读汇总必须
+  /// 立刻按服务端口径回落，不能等下一次轮询。失败原样抛出，由页面提示并保留该行。
+  ///
+  /// 参数：[conversationId] 会话 ID。
+  /// 返回：[Future<void>]。
+  Future<void> deleteConversation(int conversationId) async {
+    await ref.read(messageRepositoryProvider).deleteConversation(
+      conversationId: conversationId,
+    );
+    if (!ref.read(isLoggedInProvider)) return;
+    final latest = state.asData?.value;
+    if (latest == null) return;
+    final remaining = latest.items
+        .where((item) => item.conversationId != conversationId)
+        .toList(growable: false);
+    state = AsyncValue.data(
+      ConversationsData(
+        items: remaining,
+        total: remaining.length == latest.items.length
+            ? latest.total
+            : (latest.total > 0 ? latest.total - 1 : 0),
+        page: latest.page,
+      ),
+    );
+    await ref.read(unreadSummaryProvider.notifier).refresh();
+  }
+
   /// 触底加载下一页。
   ///
   /// 参数：无。

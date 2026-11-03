@@ -2490,7 +2490,8 @@ paths:
       x-domain: chat
       description: |
         按最后一条消息时间倒序；90 天双方无往来的会话不出现（R5 / KTD8，隐藏是查询
-        条件而非删除，数据保留用于举报取证）。帖子下架不影响会话，行内以
+        条件而非删除，数据保留用于举报取证）；用户主动删除（`DELETE /conversations/{id}`，
+        仅本人口径）的会话同样不出现，且不影响对方列表。帖子下架不影响会话，行内以
         `post_gone=true` 让客户端置灰缩略图并标注「已下架」（R4）。
         每行只出未读布尔值（R9：普通会话行只显示红点，条数只在未读汇总与「服务号」行出现）。
       parameters:
@@ -2511,6 +2512,48 @@ paths:
                       data: { $ref: '#/components/schemas/ConversationPage' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /conversations/{conversation_id}:
+    delete:
+      tags: [chat]
+      summary: 删除会话（仅自己）
+      operationId: removeConversation
+      x-batch: Batch2
+      x-domain: chat
+      description: |
+        把会话从当前用户的消息列表移除（V33）。**仅本人口径**：对方列表不受影响，
+        会话与消息数据仍保留（举报取证，与 PRD §7.4.2 / §9.7 一致）；删除同时把已读
+        水位推到会话当前最大序号，未读角标随即回落。再次收到对方新消息、或本人重新
+        发起同一会话时会话自动恢复可见。重复删除幂等。服务号不是会话，无本接口。
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/XDeviceId'
+        - name: conversation_id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/ConversationRemoveResult' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: '`40305` 会话不存在或当前用户不是成员。'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+              examples:
+                notMember:
+                  summary: 会话不存在或非成员（40305）
+                  value: { code: 40305, message: 会话不存在或已不可访问, data: null, request_id: req_7f3b07 }
         '500': { $ref: '#/components/responses/InternalError' }
 
   /conversations/{conversation_id}/messages:
@@ -6149,6 +6192,15 @@ components:
         created:
           type: boolean
           description: true=本次新建（消耗一次每日额度）；false=复用既有会话（含 90 天隐藏后恢复）
+
+    ConversationRemoveResult:
+      type: object
+      description: |
+        会话删除结果。「删除」是仅本人口径：只从当前用户的消息列表移除，对方不受影响，
+        会话与消息仍保留（举报取证）；再次收到新消息或本人重新发起时恢复可见。
+      required: [conversation_id]
+      properties:
+        conversation_id: { type: integer, format: int64 }
 
     ConversationItem:
       type: object

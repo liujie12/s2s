@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.s2s.server.admin.config.AdminConfigKeys;
 import com.s2s.server.chat.dto.ConversationCreateRequest;
 import com.s2s.server.chat.dto.ConversationCreateResponse;
+import com.s2s.server.chat.dto.ConversationRemoveResponse;
 import com.s2s.server.chat.entity.ConversationEntity;
 import com.s2s.server.chat.entity.ConversationMemberEntity;
 import com.s2s.server.chat.mapper.ConversationMapper;
@@ -100,6 +101,7 @@ public class ChatService {
         ConversationEntity existing = findExisting(anchor.postId(), userId);
         if (existing != null) {
             restoreVisibilityIfHidden(existing);
+            restoreMemberVisibility(existing.getId(), userId);
             return new ConversationCreateResponse(existing.getId(), false);
         }
 
@@ -117,6 +119,7 @@ public class ChatService {
                 throw exception;
             }
             restoreVisibilityIfHidden(raced);
+            restoreMemberVisibility(raced.getId(), userId);
             return new ConversationCreateResponse(raced.getId(), false);
         }
 
@@ -125,6 +128,35 @@ public class ChatService {
 
         consumeNewConversationQuota(userId);
         return new ConversationCreateResponse(conversation.getId(), true);
+    }
+
+    /**
+     * 把会话从当前用户的消息列表删除（{@code DELETE /conversations/{id}}，V33）。
+     *
+     * <p><b>仅本人口径</b>：只置当前用户成员行的 {@code deleted_at}，对方列表不受影响；
+     * 会话与消息仍保留（举报取证需要，与 PRD §7.4.2 / §9.7 一致）。删除同时把已读水位
+     * 推到会话当前最大序号，避免「列表里看不到、未读却一直亮着」。</p>
+     *
+     * <p>恢复由两条链路负责：对方再发新消息（{@code ChatMessageService} 清空双方
+     * {@code deleted_at}），或本人重新从详情页发起同一会话（{@link #openConversation}）。
+     * 重复删除幂等。</p>
+     *
+     * @param userId         当前登录用户 ID（控制器已保证非 null）
+     * @param conversationId 会话 ID
+     * @return {@link ConversationRemoveResponse} 被移除的会话 ID
+     * @throws BizException {@code 40305} 会话不存在或当前用户不是成员
+     */
+    @Transactional
+    public ConversationRemoveResponse removeConversation(Long userId, Long conversationId) {
+        ConversationMemberEntity member = memberMapper.selectMember(conversationId, userId);
+        ConversationEntity conversation = conversationMapper.selectById(conversationId);
+        if (member == null || conversation == null) {
+            // 与成员校验同一响应：不泄露会话存在性（R32）
+            throw BizException.of(ErrorCode.NO_PERMISSION, ChatCopy.CONVERSATION_NOT_FOUND);
+        }
+        int lastSeq = conversation.getLastSeq() == null ? 0 : conversation.getLastSeq();
+        memberMapper.hideConversation(conversationId, userId, lastSeq);
+        return new ConversationRemoveResponse(conversationId);
     }
 
     /**
@@ -171,6 +203,18 @@ public class ChatService {
         }
         conversation.setLastMessageAt(now);
         conversationMapper.updateById(conversation);
+    }
+
+    /**
+     * 恢复本人对被删会话的可见性（V33：重新发起同一会话时调用）。
+     *
+     * <p>只清自己那一行，不触碰对方；未删除时该更新命中 0 行，天然幂等。</p>
+     *
+     * @param conversationId 会话 ID
+     * @param userId         当前登录用户 ID
+     */
+    private void restoreMemberVisibility(Long conversationId, Long userId) {
+        memberMapper.restoreVisibility(conversationId, userId);
     }
 
     /**

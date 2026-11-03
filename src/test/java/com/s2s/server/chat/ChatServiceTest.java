@@ -3,6 +3,7 @@ package com.s2s.server.chat;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -13,6 +14,7 @@ import static org.mockito.Mockito.when;
 import com.s2s.server.admin.config.AdminConfigKeys;
 import com.s2s.server.chat.dto.ConversationCreateRequest;
 import com.s2s.server.chat.dto.ConversationCreateResponse;
+import com.s2s.server.chat.dto.ConversationRemoveResponse;
 import com.s2s.server.chat.entity.ConversationEntity;
 import com.s2s.server.chat.entity.ConversationMemberEntity;
 import com.s2s.server.chat.mapper.ConversationMapper;
@@ -116,6 +118,8 @@ class ChatServiceTest {
         assertThat(response.created()).isFalse();
         verify(conversationMapper, never()).insert(any(ConversationEntity.class));
         verify(rateLimiter, never()).incrementAndCheck(any());
+        // V33：重新发起同一会话时清空本人被删标记，会话回到列表
+        verify(memberMapper).restoreVisibility(901L, INITIATOR_ID);
     }
 
     /**
@@ -240,5 +244,49 @@ class ChatServiceTest {
 
         assertThat(response.conversationId()).isEqualTo(904L);
         assertThat(response.created()).isFalse();
+    }
+
+    /**
+     * 删除会话（V33）：只置本人成员行的 deleted_at，并把已读水位推到当前最大序号。
+     *
+     * @return void；断言失败即删除后未读仍亮着，或动到对方成员行
+     */
+    @Test
+    void removeConversationHidesOnlyCurrentUserRow() {
+        ConversationMemberEntity member = new ConversationMemberEntity();
+        member.setConversationId(905L);
+        member.setUserId(INITIATOR_ID);
+        ConversationEntity conversation = new ConversationEntity();
+        conversation.setId(905L);
+        conversation.setLastSeq(7);
+        when(memberMapper.selectMember(905L, INITIATOR_ID)).thenReturn(member);
+        when(conversationMapper.selectById(905L)).thenReturn(conversation);
+
+        ConversationRemoveResponse response = chatService.removeConversation(INITIATOR_ID, 905L);
+
+        assertThat(response.conversationId()).isEqualTo(905L);
+        verify(memberMapper).hideConversation(905L, INITIATOR_ID, 7);
+        // 对方成员行不参与任何写入
+        verify(memberMapper, never()).hideConversation(905L, OWNER_ID, 7);
+    }
+
+    /**
+     * 删除会话（V33）：非成员与不存在同一响应，不泄露会话存在性（R32）。
+     *
+     * @return void；断言失败即陌生人可探测会话是否存在
+     */
+    @Test
+    void removeConversationRejectsNonMember() {
+        when(memberMapper.selectMember(905L, INITIATOR_ID)).thenReturn(null);
+
+        assertThatThrownBy(() -> chatService.removeConversation(INITIATOR_ID, 905L))
+                .isInstanceOf(BizException.class)
+                .satisfies(thrown -> {
+                    BizException exception = (BizException) thrown;
+                    assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.NO_PERMISSION);
+                    assertThat(exception.getMessage())
+                            .isEqualTo(ChatCopy.CONVERSATION_NOT_FOUND);
+                });
+        verify(memberMapper, never()).hideConversation(any(), any(), anyInt());
     }
 }

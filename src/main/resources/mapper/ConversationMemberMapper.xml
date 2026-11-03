@@ -17,6 +17,7 @@
                user_id,
                last_read_seq,
                pushed_unread,
+               deleted_at,
                created_at,
                updated_at
         FROM conversation_member
@@ -73,6 +74,50 @@
         WHERE conversation_id = #{conversationId}
           AND user_id = #{userId}
           AND pushed_unread = 0
+    </update>
+
+    <!--
+      仅自己删除会话（V33）：只动当前用户那一行，对方成员行不受影响。
+
+      删除即视为读完：水位一并推到会话当前最大序号，避免「列表里看不到、未读却
+      一直亮着」；pushed_unread 复位，恢复后的下一条新消息还能再推一次（KTD7）。
+
+      重复删除幂等：deleted_at 反复写当前时刻，结果仍是「不可见」。
+      EXPLAIN 结论：UPDATE 按复合主键等值命中，锁单行。
+    -->
+    <update id="hideConversation">
+        UPDATE conversation_member
+        SET deleted_at = CURRENT_TIMESTAMP,
+            last_read_seq = GREATEST(last_read_seq, #{lastReadSeq}),
+            pushed_unread = 0
+        WHERE conversation_id = #{conversationId}
+          AND user_id = #{userId}
+    </update>
+
+    <!--
+      恢复本人可见性（V33）：本人重新从详情页发起会话时调用。
+      只改自己那一行；未删除时 updated_at 也可能被写，故用 deleted_at 非空做条件
+      避免无意义更新（MyBatis 返回 0 即无需恢复）。
+      幂等：重复调用结果为「可见」。
+    -->
+    <update id="restoreVisibility">
+        UPDATE conversation_member
+        SET deleted_at = NULL
+        WHERE conversation_id = #{conversationId}
+          AND user_id = #{userId}
+          AND deleted_at IS NOT NULL
+    </update>
+
+    <!--
+      新消息唤醒会话（V33）：双方成员行中已删除的清空 deleted_at，使会话重新出现在
+      各自列表。只命中非空行，活跃会话不会被本语句更新（无写放大）。
+      EXPLAIN 结论：UPDATE 命中复合主键前缀 conversation_id（type=ref），至多两行。
+    -->
+    <update id="restoreVisibilityForMembers">
+        UPDATE conversation_member
+        SET deleted_at = NULL
+        WHERE conversation_id = #{conversationId}
+          AND deleted_at IS NOT NULL
     </update>
 
 </mapper>

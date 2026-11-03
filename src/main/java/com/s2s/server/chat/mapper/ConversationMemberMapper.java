@@ -70,4 +70,41 @@ public interface ConversationMemberMapper extends BaseMapper<ConversationMemberE
      */
     int markPushed(@Param("conversationId") Long conversationId,
             @Param("userId") Long userId);
+
+    /**
+     * 把会话从指定用户的列表删除（V33；仅本人口径）。
+     *
+     * <p>一次更新同时做三件事：置 {@code deleted_at} 让列表与未读汇总过滤掉该会话；
+     * 把已读水位推到会话当前最大序号（删除即视为读完，未读不回弹）；复位
+     * {@code pushed_unread}，使恢复后的下一条新消息仍可推送。重复调用幂等。</p>
+     *
+     * @param conversationId 会话 ID
+     * @param userId         成员 user_id（只动自己那一行，对方不受影响）
+     * @param lastReadSeq    会话当前最大序号（删除时刻的水位）
+     * @return int 受影响行数（0 表示不是成员或会话已不存在）
+     */
+    int hideConversation(@Param("conversationId") Long conversationId,
+            @Param("userId") Long userId,
+            @Param("lastReadSeq") int lastReadSeq);
+
+    /**
+     * 恢复指定用户对会话的可见性（V33：本人重新发起会话时调用）。
+     *
+     * @param conversationId 会话 ID
+     * @param userId         成员 user_id
+     * @return int 受影响行数（未删除时为 0，幂等）
+     */
+    int restoreVisibility(@Param("conversationId") Long conversationId,
+            @Param("userId") Long userId);
+
+    /**
+     * 恢复会话双方成员的可见性（V33：收到新消息时调用）。
+     *
+     * <p>只清除非空的 {@code deleted_at}：对方已删除的会话在收到新消息后重新出现在
+     * 其列表并产生未读，与「删除后可被新消息唤醒」的口径一致。</p>
+     *
+     * @param conversationId 会话 ID
+     * @return int 受影响行数（无人删除时为 0）
+     */
+    int restoreVisibilityForMembers(@Param("conversationId") Long conversationId);
 }

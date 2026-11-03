@@ -114,6 +114,8 @@ class ChatMessageServiceTest {
         assertThat(patchCaptor.getValue().getLastMessagePreview()).isEqualTo("你好");
 
         verify(contactEventMapper, never()).insert(any(ContactEventEntity.class));
+        // V33：新消息唤醒被任一方删除的会话
+        verify(memberMapper).restoreVisibilityForMembers(CONVERSATION_ID);
         // 推送只发给对方，且不在此处落站内通知（KTD6）
         verify(chatPushService).notifyNewMessage(OTHER_ID, CONVERSATION_ID);
         // 实时事件同样只指向对方，游标为本次落库的 seq

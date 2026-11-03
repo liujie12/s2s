@@ -93,6 +93,27 @@ class ChatSchemaTest {
     }
 
     /**
+     * V33：conversation_member 增加 deleted_at，承载「仅自己删除会话」。
+     *
+     * @throws IOException 迁移文件不可读时抛出
+     */
+    @Test
+    @DisplayName("V33 增加 conversation_member.deleted_at：仅自己删除、可被新消息唤醒")
+    void addsMemberDeletedAtForUserLevelRemoval() throws IOException {
+        Path migration = Path.of("src", "main", "resources", "db", "migration",
+                "V33__conversation_member_deleted_at.sql");
+        assertThat(Files.isRegularFile(migration))
+                .as("V33 迁移文件必须存在（缺失会让删除接口启动即失败）")
+                .isTrue();
+
+        String sql = Files.readString(migration, StandardCharsets.UTF_8);
+        assertThat(sql)
+                .as("只给成员表加列：删除是仅本人口径，不动会话与消息")
+                .contains("ALTER TABLE `conversation_member`");
+        assertThat(sql).as("可见性列").contains("`deleted_at`");
+    }
+
+    /**
      * 迁移版本号唯一：同版本号会让 Flyway 在启动期直接失败。
      *
      * @throws IOException 迁移目录不可读时抛出
