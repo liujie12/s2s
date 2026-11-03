@@ -94,10 +94,7 @@ class _MessageListScreenState extends ConsumerState<MessageListScreen> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('删除会话'),
-        content: Text(
-          '删除后「${item.peerNickname}」将从你的消息列表移除，对方不受影响；'
-          '再收到新消息时会重新出现。',
-        ),
+        content: const Text('确定删除该会话吗？'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
