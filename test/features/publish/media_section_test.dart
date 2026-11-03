@@ -100,7 +100,9 @@ void main() {
       ),
     );
 
-    await tester.tap(find.text('相册'));
+    await tester.tap(find.text('添加照片'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('从相册选择'));
     await tester.pumpAndSettle();
 
     expect(find.text('1 / 9 · 第 1 张为详情封面'), findsOneWidget);
@@ -197,7 +199,9 @@ void main() {
       ),
     );
 
-    await tester.tap(find.text('相册'));
+    await tester.tap(find.text('添加照片'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('从相册选择'));
     await tester.pumpAndSettle();
 
     final thumb = tester.getSemantics(
@@ -247,6 +251,8 @@ void main() {
       ),
     );
 
+    await tester.tap(find.text('添加照片'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('拍照'));
     await tester.pumpAndSettle();
 
@@ -293,6 +299,9 @@ void main() {
       ),
     );
 
+    // 单图场景（证照/联系方式截图）：先点「添加照片」方块，再从底部选来源
+    await tester.tap(find.text('添加照片'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('拍照'));
     await tester.pumpAndSettle();
 

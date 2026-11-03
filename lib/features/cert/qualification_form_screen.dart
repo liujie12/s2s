@@ -94,7 +94,6 @@ class _QualificationFormScreenState extends ConsumerState<QualificationFormScree
   ];
 
   bool _submitting = false;
-  bool _deleting = false;
   String? _error;
 
   /// 添加成功后停留在本页的「已添加」态。
@@ -111,6 +110,34 @@ class _QualificationFormScreenState extends ConsumerState<QualificationFormScree
 
   /// 是否编辑态。
   bool get _isEditing => widget.initialQualification != null;
+
+  /// 证照大图预览的最大缩放倍数（与详情页同一手感）。
+  static const double _maxImageScale = 4;
+
+  /// 查看证照原图（可双指缩放，点任意处关闭）。
+  ///
+  /// 参数：[url] 已上传证照的签名 URL。
+  /// 返回：[Future<void>]；关闭弹层后完成。
+  Future<void> _showImage(String url) async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(AppSpacing.lg),
+        child: GestureDetector(
+          onTap: () => Navigator.of(dialogContext).pop(),
+          child: InteractiveViewer(
+            maxScale: _maxImageScale,
+            child: Image.network(
+              url,
+              fit: BoxFit.contain,
+              errorBuilder: (_, _, _) => const SizedBox.shrink(),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
   /// 去完成实名（未实名时表单顶部横幅的入口）。
   ///
@@ -371,48 +398,6 @@ class _QualificationFormScreenState extends ConsumerState<QualificationFormScree
     }
   }
 
-  /// 二次确认后删除这张资质（仅编辑态）。
-  ///
-  /// 参数：无。
-  /// 返回：[Future<void>]。
-  Future<void> _delete() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('删除这张资质？'),
-        content: const Text('删除后，已发布的帖子不再展示这张证。这个操作不能撤销。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-    setState(() {
-      _deleting = true;
-      _error = null;
-    });
-    try {
-      await ref
-          .read(certRepositoryProvider)
-          .deleteQualification(widget.initialQualification!.certId);
-      if (!mounted) return;
-      context.pop(true);
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _deleting = false;
-        _error = _messageOf(error);
-      });
-    }
-  }
-
   /// 把异常映射为面向用户的提示文案。
   ///
   /// 参数：[error] catch 到的对象（ApiException 或传输层异常）。
@@ -537,24 +522,54 @@ class _QualificationFormScreenState extends ConsumerState<QualificationFormScree
         ),
         if (_isEditing && (draft.imageUrl ?? '').isNotEmpty) ...[
           const SizedBox(height: AppSpacing.sm),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(AppRadius.md),
-            child: Image.network(
-              draft.imageUrl!,
-              width: 96,
-              height: 96,
-              fit: BoxFit.cover,
-              errorBuilder: (_, _, _) => const SizedBox(width: 96, height: 96),
-            ),
+          // 缩略图与「添加照片」并排：换图入口贴着当前照片，少占一行。
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              // 用 Align 给回松约束：Column 默认 stretch 会把 width:96 顶成整宽，
+              // 图片虽然不会被拉伸（cover 只裁切），但会变成整宽 × 96 的窄条。
+              // 点按缩略图打开原图（contain + 可缩放），补足 cover 裁掉的内容。
+              Align(
+                alignment: Alignment.topLeft,
+                child: Semantics(
+                  button: true,
+                  label: '查看证照大图',
+                  child: GestureDetector(
+                    onTap: () => _showImage(draft.imageUrl!),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(AppRadius.md),
+                      child: Image.network(
+                        draft.imageUrl!,
+                        width: 96,
+                        height: 96,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, _, _) =>
+                            const SizedBox(width: 96, height: 96),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: MediaSection(
+                  key: ValueKey('cert-media-$index-$_formEpoch'),
+                  maxCount: NfrMedia.maxMediaCount,
+                  simple: true,
+                  onChanged: (ids) => _onMediaChanged(index, ids),
+                ),
+              ),
+            ],
+          ),
+        ] else ...[
+          const SizedBox(height: AppSpacing.sm),
+          MediaSection(
+            key: ValueKey('cert-media-$index-$_formEpoch'),
+            maxCount: NfrMedia.maxMediaCount,
+            simple: true,
+            onChanged: (ids) => _onMediaChanged(index, ids),
           ),
         ],
-        const SizedBox(height: AppSpacing.sm),
-        MediaSection(
-          key: ValueKey('cert-media-$index-$_formEpoch'),
-          maxCount: NfrMedia.maxMediaCount,
-          simple: true,
-          onChanged: (ids) => _onMediaChanged(index, ids),
-        ),
         if (draft.ocrLoading)
           Padding(
             padding: const EdgeInsets.only(top: AppSpacing.sm),
@@ -628,7 +643,7 @@ class _QualificationFormScreenState extends ConsumerState<QualificationFormScree
 
   @override
   Widget build(BuildContext context) {
-    final busy = _submitting || _deleting;
+    final busy = _submitting;
     // 未实名横幅只在添加态出现；状态未加载（null）时不臆测，交给服务端 40302 兜底。
     final realnamePassed =
         ref.watch(trustOverviewProvider).value?.cert.isRealnamePassed;
@@ -685,16 +700,6 @@ class _QualificationFormScreenState extends ConsumerState<QualificationFormScree
                         : const Text('提交'),
                   ),
                 ),
-                if (_isEditing) ...[
-                  const SizedBox(height: AppSpacing.md),
-                  TextButton(
-                    onPressed: busy ? null : _delete,
-                    style: TextButton.styleFrom(
-                      foregroundColor: const Color(AppColors.errorText),
-                    ),
-                    child: const Text('删除这张资质'),
-                  ),
-                ],
               ],
             ),
     );

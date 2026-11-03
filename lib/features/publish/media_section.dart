@@ -841,7 +841,7 @@ class _Thumb extends StatelessWidget {
   }
 }
 
-/// 空态来源入口：拍照主按钮 + 相册次按钮。
+/// 空态来源入口：一个「添加照片」方块 + 底部来源选择（拍照 / 相册）。
 class _EmptyEntry extends StatelessWidget {
   const _EmptyEntry({
     required this.enabled,
@@ -858,113 +858,99 @@ class _EmptyEntry extends StatelessWidget {
   /// 相册回调。
   final VoidCallback onAlbum;
 
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: _EntryButton(
-            enabled: enabled,
-            filled: true,
-            onTap: onCamera,
-            icon: Icons.photo_camera_outlined,
-            label: '拍照',
-          ),
-        ),
-        const SizedBox(width: AppSpacing.sm),
-        Expanded(
-          child: _EntryButton(
-            enabled: enabled,
-            filled: false,
-            onTap: onAlbum,
-            icon: Icons.photo_library_outlined,
-            label: '相册',
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-/// 空态来源入口按钮：[filled] 为真时实心主按钮，否则描边次按钮。
-class _EntryButton extends StatelessWidget {
-  const _EntryButton({
-    required this.enabled,
-    required this.filled,
-    required this.onTap,
-    required this.icon,
-    required this.label,
-  });
-
-  /// 是否可点。
-  final bool enabled;
-
-  /// 是否实心（主按钮）。
-  final bool filled;
-
-  /// 点按回调。
-  final VoidCallback onTap;
-
-  /// 图标。
-  final IconData icon;
-
-  /// 文案。
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final Color foreground;
-    final Color background;
-    if (filled) {
-      foreground = Colors.white;
-      background = const Color(AppColors.primary);
-    } else {
-      foreground = const Color(AppColors.primary);
-      background = const Color(AppColors.surface);
-    }
-    return Material(
-      color: enabled ? background : const Color(AppColors.border),
+  /// 弹出来源选择（拍照 / 相册）。
+  ///
+  /// 把两个来源收进一个「添加照片」方块，避免两个同权重按钮与页面主按钮
+  /// 抢视觉（发布页、证照页、联系方式截图共用同一空态）。
+  ///
+  /// 参数：[context] 构建上下文。
+  /// 返回：[Future<void>]。
+  Future<void> _openSourceSheet(BuildContext context) async {
+    final pick = await showModalBottomSheet<_SourcePick>(
+      context: context,
+      backgroundColor: Color(AppColors.surface),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-        side: filled
-            ? BorderSide.none
-            : BorderSide(
-                color: Color(enabled ? AppColors.primary : AppColors.border),
-              ),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(AppRadius.lg),
+        ),
       ),
-      child: InkWell(
-        onTap: enabled ? onTap : null,
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-        child: SizedBox(
-          height: 48,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                icon,
-                size: 20,
-                color: enabled
-                    ? foreground
-                    : const Color(AppColors.textPlaceholder),
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: AppSpacing.sm),
+            ListTile(
+              leading: Icon(
+                Icons.photo_camera_outlined,
+                color: Color(AppColors.primary),
               ),
-              const SizedBox(width: AppSpacing.xs),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: AppTypeScale.body.size,
-                  fontWeight: FontWeight.w600,
-                  color: enabled
-                      ? foreground
-                      : const Color(AppColors.textPlaceholder),
-                ),
+              title: const Text('拍照'),
+              onTap: () =>
+                  Navigator.of(sheetContext).pop(_SourcePick.camera),
+            ),
+            ListTile(
+              leading: Icon(
+                Icons.photo_library_outlined,
+                color: Color(AppColors.primary),
               ),
-            ],
+              title: const Text('从相册选择'),
+              onTap: () => Navigator.of(sheetContext).pop(_SourcePick.album),
+            ),
+            const SizedBox(height: AppSpacing.xs),
+          ],
+        ),
+      ),
+    );
+    if (pick == _SourcePick.camera) {
+      onCamera();
+    } else if (pick == _SourcePick.album) {
+      onAlbum();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Opacity(
+        opacity: enabled ? 1 : 0.4,
+        child: Material(
+          color: Color(AppColors.primaryLight),
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          child: InkWell(
+            onTap: enabled ? () => _openSourceSheet(context) : null,
+            borderRadius: BorderRadius.circular(AppRadius.md),
+            child: SizedBox(
+              width: 64,
+              height: 48,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.add_a_photo_outlined,
+                    size: 18,
+                    color: Color(AppColors.primary),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '添加照片',
+                    style: TextStyle(
+                      fontSize: AppTypeScale.caption.size,
+                      color: Color(AppColors.primary),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ),
     );
   }
 }
+
+/// 照片来源。
+enum _SourcePick { camera, album }
 
 /// 拍后比例三选一里的动作项。
 class _SheetAction extends StatelessWidget {

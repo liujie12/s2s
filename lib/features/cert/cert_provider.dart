@@ -41,23 +41,6 @@ class TrustOverview {
   /// 参数：[level] 完整度档位。
   /// 返回：int。
   int countOf(CompletenessLevel level) => distribution[level] ?? 0;
-
-  /// 在架信息的「平均档位」（全部信息同档时显示该档；否则按占比最高的档）。
-  ///
-  /// 参数：无。
-  /// 返回：[CompletenessLevel]；无在架信息时回 [CompletenessLevel.red]。
-  CompletenessLevel get dominantLevel {
-    if (activeCount == 0) return CompletenessLevel.red;
-    var best = CompletenessLevel.red;
-    var bestCount = -1;
-    for (final level in CompletenessLevel.values) {
-      if (countOf(level) > bestCount) {
-        best = level;
-        bestCount = countOf(level);
-      }
-    }
-    return best;
-  }
 }
 
 /// trust 页状态机。

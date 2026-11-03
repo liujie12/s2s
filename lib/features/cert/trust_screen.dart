@@ -3,12 +3,12 @@
 /// 结构（对齐设计稿 `buildTrust`）：
 ///   ① 第一层 · 个人实名（成功描边卡，通过态 doneTag；未通过则给「去完成实名」入口）
 ///   ② 第二层 · 资质认证 —— **资质档案列表**（每张证一行：证名 + 已添加 + 编辑 ›，
-///      底部「＋ 添加资质」）
-///   ③ 我的信任指标（实名 / 资质 N 项 / 完整度 + 在架信息完整度分布 + T4 红线注）
+///      左滑删除，底部「＋ 添加资质」）
+///   ③ 我的信任指标（仅在架信息完整度分布；不含实名/资质重复摘要与 T4 声明）
 ///
 /// 交互口径（资质方案 R1/R9/R10）：添加与编辑共用 `qualification_form_screen`；
-/// 删除只在编辑页底部，档案行只有「编辑 ›」。表单提交/删除成功以 `true` 回传，
-/// 本页据此刷新总览。
+/// 删除只走档案行左滑（二次确认），编辑页不再承载删除。表单提交成功以 `true`
+/// 回传，本页据此刷新总览。
 library;
 
 import 'package:flutter/material.dart';
@@ -23,6 +23,7 @@ import '../../router/app_router.dart';
 import '../auth/auth_repository.dart';
 import 'cert_models.dart';
 import 'cert_provider.dart';
+import 'cert_repository.dart';
 
 /// 信任与认证页。
 class TrustScreen extends ConsumerWidget {
@@ -75,6 +76,7 @@ class TrustScreen extends ConsumerWidget {
                 cert: overview.cert,
                 onEdit: (item) => _openForm(context, ref, qualification: item),
                 onAdd: () => _openForm(context, ref),
+                onDelete: (item) => _deleteQualification(context, ref, item),
               ),
               const SizedBox(height: AppSpacing.md),
               _MetricsCard(overview: overview),
@@ -83,6 +85,56 @@ class TrustScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  /// 左滑删除一张资质：二次确认 → 调删除接口 → 刷新总览。
+  ///
+  /// 删除入口只在档案列表（本页），编辑页不再承载删除，避免表单底部出现
+  /// 与主按钮同级的高危操作。返回 true 让 Dismissible 完成滑出动画；
+  /// 失败保持行可见并提示。
+  ///
+  /// 参数：
+  ///   [context] 构建上下文；[ref] Provider 容器；[item] 待删除资质。
+  /// 返回：[Future<bool>] 是否删除成功。
+  static Future<bool> _deleteQualification(
+    BuildContext context,
+    WidgetRef ref,
+    CertQualification item,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('删除这张资质？'),
+        content: const Text('删除后，已发布的帖子不再展示这张证，且不能撤销。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(
+              '删除',
+              style: TextStyle(color: Color(AppColors.errorText)),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return false;
+
+    try {
+      await ref.read(certRepositoryProvider).deleteQualification(item.certId);
+      await ref.read(trustOverviewProvider.notifier).refresh();
+      return true;
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(asApiException(error).uiMessage)),
+        );
+      }
+      return false;
+    }
   }
 
   /// 打开实名认证页；返回后刷新状态总览。
@@ -206,11 +258,13 @@ class _Layer1Card extends StatelessWidget {
 /// 第二层卡（资质档案列表）。
 class _Layer2Card extends StatelessWidget {  /// 构造第二层卡。
   ///
-  /// 参数：[cert] 认证状态；[onEdit] 编辑某张资质；[onAdd] 添加资质。
+  /// 参数：[cert] 认证状态；[onEdit] 编辑某张资质；[onAdd] 添加资质；
+  /// [onDelete] 左滑删除某张资质（返回是否删除成功）。
   const _Layer2Card({
     required this.cert,
     required this.onEdit,
     required this.onAdd,
+    required this.onDelete,
   });
 
   /// 认证状态。
@@ -221,6 +275,9 @@ class _Layer2Card extends StatelessWidget {  /// 构造第二层卡。
 
   /// 添加回调。
   final VoidCallback onAdd;
+
+  /// 删除回调：二次确认与请求由页面负责，返回 true 才让行滑出。
+  final Future<bool> Function(CertQualification) onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -265,7 +322,13 @@ class _Layer2Card extends StatelessWidget {  /// 构造第二层卡。
           else
             for (final item in items) ...[
               const SizedBox(height: AppSpacing.md),
-              _CertRow(item: item, onEdit: () => onEdit(item)),
+              Dismissible(
+                key: ValueKey('cert-row-${item.certId}'),
+                direction: DismissDirection.endToStart,
+                background: const _DeleteBackground(),
+                confirmDismiss: (_) => onDelete(item),
+                child: _CertRow(item: item, onEdit: () => onEdit(item)),
+              ),
             ],
           const SizedBox(height: AppSpacing.sm),
           Align(
@@ -280,6 +343,28 @@ class _Layer2Card extends StatelessWidget {  /// 构造第二层卡。
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// 左滑露出的删除底色。
+class _DeleteBackground extends StatelessWidget {
+  /// 构造删除底色。
+  const _DeleteBackground();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      alignment: Alignment.centerRight,
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+      decoration: BoxDecoration(
+        color: const Color(AppColors.errorText),
+        borderRadius: BorderRadius.circular(AppRadius.md),
+      ),
+      child: const Text(
+        '删除',
+        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
       ),
     );
   }
@@ -337,7 +422,7 @@ class _CertRow extends StatelessWidget {
   }
 }
 
-/// 我的信任指标卡。
+/// 我的信任指标卡（只留在架信息完整度分布）。
 class _MetricsCard extends StatelessWidget {
   /// 构造信任指标卡。
   ///
@@ -349,7 +434,6 @@ class _MetricsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cert = overview.cert;
     return Container(
       decoration: BoxDecoration(
         color: Color(AppColors.surface),
@@ -369,25 +453,7 @@ class _MetricsCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: AppSpacing.sm),
-          Row(
-            children: [
-              if (cert.isRealnamePassed) ...[
-                Icon(Icons.check, size: 14, color: Color(AppColors.success)),
-                const SizedBox(width: AppSpacing.xs),
-                _plain('实名'),
-              ],
-              const SizedBox(width: AppSpacing.md),
-              Icon(Icons.check, size: 14, color: Color(AppColors.success)),
-              const SizedBox(width: AppSpacing.xs),
-              _plain('资质 ${cert.passedQualificationCount} 项'),
-              const SizedBox(width: AppSpacing.md),
-              _plain('完整度'),
-              const SizedBox(width: AppSpacing.xs),
-              _levelTag(overview.dominantLevel),
-            ],
-          ),
           if (overview.activeCount > 0) ...[
-            const SizedBox(height: AppSpacing.sm),
             _plain('我在架的 ${overview.activeCount} 条信息完整度分布'),
             const SizedBox(height: AppSpacing.sm),
             Row(
@@ -404,15 +470,8 @@ class _MetricsCard extends StatelessWidget {
                 ],
               ],
             ),
-          ],
-          const SizedBox(height: AppSpacing.sm),
-          Text(
-            '只看信息真实性与完整性，不做人的信誉评级（T4 红线）',
-            style: TextStyle(
-              fontSize: AppTypeScale.caption.size,
-              color: Color(AppColors.textSecondary),
-            ),
-          ),
+          ] else
+            _plain('暂无在架信息'),
         ],
       ),
     );
