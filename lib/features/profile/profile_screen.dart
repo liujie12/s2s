@@ -51,18 +51,6 @@ class ProfileScreen extends ConsumerWidget {
             color: Color(AppColors.textPrimary),
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => context.push(AppRoutes.settings),
-            child: Text(
-              '设置',
-              style: TextStyle(
-                fontSize: AppTypeScale.body.size,
-                color: Color(AppColors.primary),
-              ),
-            ),
-          ),
-        ],
       ),
       // 登录态决定整页形态：未登录只给「未登录 + 登录入口」，不渲染任何
       // 账号数据与条目，避免退出后仍显示上一个账号的缓存。

@@ -5,7 +5,8 @@
 ///
 /// 未读为**双通道**（设计稿口径）：红点 + 标题色阶（未读 text-primary /
 /// 已读 text-secondary），不可只做红点。行尾**不带 chevron**（PRD §8.3.3
-/// 「不做展开态」），点击跳对应详情。
+/// 「不做展开态」），点击先标记该条已读，再按 `target` 跳转；系统类通知
+/// `target.kind=none`（如实名/资质通过），点击反馈即红点消失。
 library;
 
 import 'package:flutter/material.dart';
@@ -16,6 +17,9 @@ import '../../core/network/api_exception.dart';
 import '../../core/time_format.dart';
 import '../../core/ui/list_states.dart';
 import '../../design_tokens.dart';
+import '../../router/app_router.dart';
+import '../message/message_list_provider.dart';
+import '../profile/profile_provider.dart';
 import 'notification_dto.dart';
 import 'notification_provider.dart';
 
@@ -74,16 +78,61 @@ class _NotificationScreenState extends ConsumerState<NotificationScreen> {
 
   /// 全部已读并提示失败。
   ///
+  /// 成功后同步刷新未读角标：本页只重拉通知列表，而底部「消息」Tab 数字与
+  /// 「我的 › 通知中心」右侧「N 未读」读的是另外两个 Provider，不刷就不会消失。
+  ///
   /// 参数：无。
   /// 返回：[Future<void>]。
   Future<void> _markAllRead() async {
     try {
       await ref.read(notificationsProvider.notifier).markAllRead();
+      await _syncUnreadBadges();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(asApiException(e).uiMessage)),
       );
+    }
+  }
+
+  /// 同步未读角标（底部 Tab 数字 + 「我的」页入口角标）。
+  ///
+  /// 未读总数唯一来源是 [unreadSummaryProvider]（KTD14）；「我的」页角标是
+  /// 另一条独立聚合流，两者都必须重拉，否则已读后角标仍停在旧数字。
+  ///
+  /// 参数：无。
+  /// 返回：[Future<void>]。
+  Future<void> _syncUnreadBadges() async {
+    await Future.wait<void>([
+      ref.read(unreadSummaryProvider.notifier).refresh(),
+      ref.read(myPageBadgesProvider.notifier).refresh(),
+    ]);
+  }
+
+  /// 点击单条通知：先标记已读，再按 `target` 跳转。
+  ///
+  /// 系统类通知（如实名/资质通过）契约 `target.kind=none`，没有可跳页面；
+  /// 此时点击的反馈就是红点消失、标题转为已读色阶，避免「点了没反应」。
+  ///
+  /// 参数：[item] 被点击的通知。
+  /// 返回：[Future<void>]。
+  Future<void> _openItem(NotificationDto item) async {
+    if (!item.isRead) {
+      try {
+        await ref.read(notificationsProvider.notifier).markOneRead(item.id);
+        await _syncUnreadBadges();
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(asApiException(e).uiMessage)),
+        );
+      }
+    }
+    if (!mounted) return;
+    if (item.targetKind == 'cert') {
+      context.push(AppRoutes.trust);
+    } else if (item.targetKind == 'post' && item.targetPostId != null) {
+      context.push('/detail/${item.targetPostId}');
     }
   }
 
@@ -165,7 +214,10 @@ class _NotificationScreenState extends ConsumerState<NotificationScreen> {
           if (index == data.items.length) {
             return const ListEndRow();
           }
-          return _NotifyRow(item: data.items[index]);
+          return _NotifyRow(
+            item: data.items[index],
+            onTap: () => _openItem(data.items[index]),
+          );
         },
       ),
     );
@@ -226,16 +278,19 @@ class _SegTabs extends StatelessWidget {
 class _NotifyRow extends StatelessWidget {
   /// 构造通知行。
   ///
-  /// 参数：[item] 通知项。
-  const _NotifyRow({required this.item});
+  /// 参数：[item] 通知项；[onTap] 点击回调（标记已读 + 按 target 跳转）。
+  const _NotifyRow({required this.item, required this.onTap});
 
   /// 通知项。
   final NotificationDto item;
 
+  /// 点击回调。
+  final VoidCallback onTap;
+
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: () => _openTarget(context),
+      onTap: onTap,
       child: Container(
         decoration: BoxDecoration(
           color: Color(AppColors.surface),
@@ -291,6 +346,7 @@ class _NotifyRow extends StatelessWidget {
                 if (!item.isRead) ...[
                   const SizedBox(height: AppSpacing.xs),
                   Container(
+                    key: ValueKey('unread-dot-${item.id}'),
                     width: 8,
                     height: 8,
                     decoration: BoxDecoration(
@@ -317,16 +373,6 @@ class _NotifyRow extends StatelessWidget {
         'cert' => Icons.check_circle_outline,
         _ => Icons.notifications_none,
       };
-
-  /// 点击跳转目标（`target.kind=post` → 详情；其余暂不跳）。
-  ///
-  /// 参数：[context] 构建上下文。
-  /// 返回：void。
-  void _openTarget(BuildContext context) {
-    if (item.targetKind == 'post' && item.targetPostId != null) {
-      context.push('/detail/${item.targetPostId}');
-    }
-  }
 }
 
 /// 空态。

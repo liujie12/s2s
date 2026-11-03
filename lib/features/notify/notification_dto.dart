@@ -66,6 +66,21 @@ class NotificationDto {
 
   /// 跳转目标帖子 ID（target.kind=post 时有值；可空）。
   final int? targetPostId;
+
+  /// 复制并覆盖已读态（点击单条后本地就地更新，避免整页重拉闪烁）。
+  ///
+  /// 参数：[isRead] 新已读态；null 表示沿用当前值。
+  /// 返回：[NotificationDto] 新实例。
+  NotificationDto copyWith({bool? isRead}) => NotificationDto(
+        id: id,
+        type: type,
+        title: title,
+        isRead: isRead ?? this.isRead,
+        createdAt: createdAt,
+        content: content,
+        targetKind: targetKind,
+        targetPostId: targetPostId,
+      );
 }
 
 /// 通知分页响应 DTO（openapi `/notifications` 的 data）。

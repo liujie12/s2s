@@ -176,6 +176,34 @@ class NotificationsNotifier extends Notifier<AsyncValue<NotificationsData>> {
     await ref.read(notificationRepositoryProvider).markRead();
     await refresh();
   }
+
+  /// 单条已读（点击通知行时调用；就地更新，不整页重拉）。
+  ///
+  /// 系统通知（如「资质认证已通过」）没有跳转目标，点击的唯一反馈就是红点消失，
+  /// 因此这里必须真把 `is_read` 写回服务端，而不是只改本地颜色。
+  ///
+  /// 参数：[id] 通知 ID。
+  /// 返回：[Future<void>]。
+  /// 抛出：[ApiException]（40101 未登录 / 传输错误）由页面提示。
+  Future<void> markOneRead(int id) async {
+    await ref.read(notificationRepositoryProvider).markRead(ids: [id]);
+    final current = state.asData?.value;
+    if (current == null) return;
+    final wasUnread = current.items.any((item) => item.id == id && !item.isRead);
+    state = AsyncValue.data(
+      NotificationsData(
+        items: [
+          for (final item in current.items)
+            item.id == id ? item.copyWith(isRead: true) : item,
+        ],
+        total: current.total,
+        page: current.page,
+        unreadCount: wasUnread && current.unreadCount > 0
+            ? current.unreadCount - 1
+            : current.unreadCount,
+      ),
+    );
+  }
 }
 
 /// 通知列表 Provider。
