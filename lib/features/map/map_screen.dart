@@ -157,7 +157,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   /// AI FAB 的左上角位置（相对地图 Stack）。null = 默认右下角。
   ///
-  /// 只由「面板展开自动抬升 / 关闭还原」写入，**不接受用户拖动**
+  /// 只由「遮挡物（筛选面板 / 详情卡）自动抬升 / 收起还原」写入，**不接受用户拖动**
   /// （2026-11-02 真机反馈：拖到顶部后停在状态栏下且不会自动归位，遂取消拖动）。
   Offset? _aiFabPosition;
 
@@ -165,18 +165,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   final GlobalKey _aiFabKey = GlobalKey();
   final GlobalKey _mapStackKey = GlobalKey();
 
-  /// 筛选面板 key：展开时测量其顶边，用于把 FAB 自动抬到面板上方。
-  final GlobalKey _filterPanelKey = GlobalKey();
-
-  /// 是否已排过「FAB 避让筛选面板」的帧后校正（防重复调度）。
-  bool _fabAvoidScheduled = false;
-
-  /// FAB 是否被筛选面板自动抬起，以及抬起前的位置。
+  /// 底部遮挡物 key：筛选面板 / 详情信息卡。
   ///
-  /// 面板关闭后要还原，否则 FAB 会停在半空（2026-10-26 真机验收发现）。
-  bool _fabLiftedForPanel = false;
-  Offset? _fabPositionBeforePanel;
-  bool _fabRestoreScheduled = false;
+  /// 两者弹出时测量其顶边，用于把 FAB 自动抬到遮挡物上方。
+  final GlobalKey _filterPanelKey = GlobalKey();
+  final GlobalKey _listingCardKey = GlobalKey();
+
+  /// 是否已排过「FAB 避让底部遮挡物」的帧后校正（防重复调度）。
+  bool _fabAvoidScheduled = false;
 
   @override
   void initState() {
@@ -381,12 +377,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               fix != null &&
               _distanceMeters(_centerLat, _centerLng, fix.lat, fix.lng) >
                   viewportShortSideMeters * _kRecenterShowDistanceRatio;
-          // 面板展开时排一次帧后避让，让 FAB 抬到面板上方（入口保持可见）；
-          // 面板关闭后还原到抬起前的位置。
-          if (panelExpanded) {
-            _avoidFilterPanel();
-          } else if (_fabLiftedForPanel) {
-            _restoreFabAfterPanel();
+          // 筛选面板展开 / 详情卡弹出时排一次帧后避让，把 FAB 抬到遮挡物上方
+          //（入口保持可见）；遮挡物收起后回默认右下角。
+          if (panelExpanded ||
+              _selectedListingId != null ||
+              _aiFabPosition != null) {
+            _avoidAiFab();
           }
 
           return Stack(
@@ -537,16 +533,28 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   left: AppSpacing.md,
                   right: AppSpacing.md,
                   bottom: AppSpacing.md,
-                  child: _ListingInfoCard(
-                    // 选中态存的是 Marker 层的 String 标识（§10.4.3），
-                    // 拉详情要 int —— 解析收敛在此一处（与 detail 路由同一口径）。
-                    listingId: int.tryParse(_selectedListingId!) ?? -1,
-                    // 距离基准＝用户真实位置（2026-10-29 用户反馈：原来按视口中心算，
-                    // 拖地图后距离会跟着变，且与「离我多远」无关）。
-                    // 未授权定位/暂无定位结果时才退回视口中心，保证卡片仍能用。
-                    centerLat: fix?.lat ?? _centerLat,
-                    centerLng: fix?.lng ?? _centerLng,
-                    onClose: () => setState(() => _selectedListingId = null),
+                  // 详情异步到达后卡片高度会变（加载态 → 数据态多一行「查看详情」），
+                  // 高度一变就重新测量：否则 FAB 只按加载态高度避让，卡片长高后会再次被压住。
+                  child: NotificationListener<SizeChangedLayoutNotification>(
+                    onNotification: (_) {
+                      _avoidAiFab();
+                      return true;
+                    },
+                    child: SizeChangedLayoutNotifier(
+                      child: _ListingInfoCard(
+                        key: _listingCardKey,
+                        // 选中态存的是 Marker 层的 String 标识（§10.4.3），
+                        // 拉详情要 int —— 解析收敛在此一处（与 detail 路由同一口径）。
+                        listingId: int.tryParse(_selectedListingId!) ?? -1,
+                        // 距离基准＝用户真实位置（2026-10-29 用户反馈：原来按视口中心算，
+                        // 拖地图后距离会跟着变，且与「离我多远」无关）。
+                        // 未授权定位/暂无定位结果时才退回视口中心，保证卡片仍能用。
+                        centerLat: fix?.lat ?? _centerLat,
+                        centerLng: fix?.lng ?? _centerLng,
+                        onClose: () =>
+                            setState(() => _selectedListingId = null),
+                      ),
+                    ),
                   ),
                 ),
               // POC-B 性能面板（PRD §6.10.1）。放右下而非顶部：顶部已被筛选
@@ -570,8 +578,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   /// 构建「AI 帮我发」FAB（位置由自动避让决定，不支持拖动）。
   ///
-  /// 默认右下角；筛选面板展开时由 [_avoidFilterPanel] 抬到面板上方，
-  /// 关闭后由 [_restoreFabAfterPanel] 还原。
+  /// 默认右下角；筛选面板展开或详情信息卡弹出时由 [_avoidAiFab] 抬到遮挡物上方，
+  /// 遮挡物收起后自动回默认位。
   ///
   /// 返回：定位好的 FAB 控件。
   Widget _buildAiFab() {
@@ -590,15 +598,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     return Positioned(left: position.dx, top: position.dy, child: fab);
   }
 
-  /// 筛选面板展开后，把 FAB 抬到面板顶边之上（帧后测量，避免遮挡分类胶囊）。
+  /// 让 FAB 避让底部遮挡物（筛选面板 / 详情信息卡），没有遮挡物时回默认右下角。
   ///
-  /// **不隐藏 FAB**：它是发布主入口之一，展开筛选时消失会让用户以为功能没了
-  /// （2026-10-17 真机反馈）。只做位置避让，入口始终可见。
+  /// 遮挡物高度随内容变化（标题换行、副标题长短），必须帧后测量其顶边，
+  /// 不能写死偏移；两者同时存在时取更靠上（更高）的那个顶边。
   ///
   /// 参数：无。
-  ///
   /// 返回：void（实际移动在帧后回调里完成）。
-  void _avoidFilterPanel() {
+  void _avoidAiFab() {
     if (_fabAvoidScheduled) return;
     _fabAvoidScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -607,41 +614,40 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       final fabBox = _aiFabKey.currentContext?.findRenderObject() as RenderBox?;
       final stackBox =
           _mapStackKey.currentContext?.findRenderObject() as RenderBox?;
-      final panelBox =
-          _filterPanelKey.currentContext?.findRenderObject() as RenderBox?;
-      if (fabBox == null || stackBox == null || panelBox == null) return;
-      final panelTop = panelBox
-          .localToGlobal(Offset.zero, ancestor: stackBox)
-          .dy;
+      if (fabBox == null || stackBox == null) return;
+
+      final double? obstacleTop = _bottomObstacleTop(stackBox);
+      if (obstacleTop == null) {
+        // 遮挡物已收起 → 回默认右下角；已在默认位则不动，避免无谓重建。
+        if (_aiFabPosition != null) setState(() => _aiFabPosition = null);
+        return;
+      }
+
       final fabTopLeft = fabBox.localToGlobal(Offset.zero, ancestor: stackBox);
       final gap = AppSpacing.md.toDouble();
-      // 已经在面板上方（含安全间距）就不动，避免每帧抖动。
-      if (fabTopLeft.dy + fabBox.size.height + gap <= panelTop) return;
-      // 只记录第一次自动抬起前的位置；面板展开期间重复校正不覆盖。
-      if (!_fabLiftedForPanel) {
-        _fabPositionBeforePanel = _aiFabPosition;
-        _fabLiftedForPanel = true;
-      }
-      final nextTop = math.max(0.0, panelTop - fabBox.size.height - gap);
+      // 已经在遮挡物上方（含安全间距）就不动，避免每帧抖动。
+      if (fabTopLeft.dy + fabBox.size.height + gap <= obstacleTop) return;
+      final nextTop = math.max(0.0, obstacleTop - fabBox.size.height - gap);
+      if ((fabTopLeft.dy - nextTop).abs() < 0.5) return;
       setState(() => _aiFabPosition = Offset(fabTopLeft.dx, nextTop));
     });
   }
 
-  /// 筛选面板关闭后，把 FAB 还原到自动抬起前的位置。
+  /// 量出底部遮挡物的顶边（相对地图 Stack）。
   ///
-  /// 参数：无；返回：void（实际移动在帧后回调完成）。
-  void _restoreFabAfterPanel() {
-    if (_fabRestoreScheduled) return;
-    _fabRestoreScheduled = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _fabRestoreScheduled = false;
-      if (!mounted) return;
-      setState(() {
-        _aiFabPosition = _fabPositionBeforePanel;
-        _fabPositionBeforePanel = null;
-        _fabLiftedForPanel = false;
-      });
-    });
+  /// 参数：
+  /// - [stackBox]：地图 Stack 的渲染盒，用于统一坐标系。
+  ///
+  /// 返回：遮挡物顶边 y（逻辑像素）；当前没有遮挡物时为 null。
+  double? _bottomObstacleTop(RenderBox stackBox) {
+    double? top;
+    for (final key in <GlobalKey>[_filterPanelKey, _listingCardKey]) {
+      final box = key.currentContext?.findRenderObject() as RenderBox?;
+      if (box == null || !box.attached) continue;
+      final double y = box.localToGlobal(Offset.zero, ancestor: stackBox).dy;
+      if (top == null || y < top) top = y;
+    }
+    return top;
   }
 
   /// 地图主体：按合规守卫结果二选一。
@@ -1601,6 +1607,7 @@ class _RecenterButton extends StatelessWidget {
 /// 而不是往紧凑格式里加字段 —— 那会破坏它「压体积」的存在前提。
 class _ListingInfoCard extends ConsumerWidget {
   const _ListingInfoCard({
+    super.key,
     required this.listingId,
     required this.centerLat,
     required this.centerLng,
