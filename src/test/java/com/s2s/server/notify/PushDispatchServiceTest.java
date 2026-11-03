@@ -8,9 +8,11 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.s2s.server.auth.PushPlatform;
+import com.s2s.server.auth.SettingService;
 import com.s2s.server.auth.entity.DeviceEntity;
 import com.s2s.server.auth.mapper.DeviceMapper;
 import com.s2s.server.notify.mapper.NotificationMapper;
@@ -53,6 +55,9 @@ class PushDispatchServiceTest {
     /** mock 的发送器路由表。 */
     private PushSenderRegistry senderRegistry;
 
+    /** mock 的用户设置（总开关 + 分通道）。 */
+    private SettingService settingService;
+
     /** 被测下发编排。 */
     private PushDispatchService dispatchService;
 
@@ -67,8 +72,33 @@ class PushDispatchServiceTest {
         deviceMapper = mock(DeviceMapper.class);
         quotaGate = mock(PushQuotaGate.class);
         senderRegistry = mock(PushSenderRegistry.class);
+        settingService = mock(SettingService.class);
+        when(settingService.isSystemNotifyEnabled(anyLong())).thenReturn(true);
+        when(settingService.isInteractionNotifyEnabled(anyLong())).thenReturn(true);
+        when(settingService.isCertNotifyEnabled(anyLong())).thenReturn(true);
         dispatchService = new PushDispatchService(
-                notificationMapper, deviceMapper, quotaGate, senderRegistry);
+                notificationMapper, deviceMapper, quotaGate, senderRegistry, settingService);
+    }
+
+    /**
+     * 分通道关闭：站内与推送都不产生，也不占用配额。
+     *
+     * @return void
+     */
+    @Test
+    void dispatchSkipsEverythingWhenChannelDisabled() {
+        when(settingService.isInteractionNotifyEnabled(USER_ID)).thenReturn(false);
+
+        PushDispatchResult result = dispatchService.dispatch(
+                USER_ID, NotifyType.INTERACTION, "标题", "摘要", 1001L);
+
+        assertThat(result.stationNotified()).isFalse();
+        assertThat(result.quotaAvailable()).isFalse();
+        assertThat(result.attempted()).isZero();
+        assertThat(result.accepted()).isZero();
+        verify(notificationMapper, never()).insertNotification(anyLong(), anyString(), anyString(),
+                any(), any(), any(LocalDateTime.class));
+        verifyNoInteractions(deviceMapper, quotaGate, senderRegistry);
     }
 
     /**

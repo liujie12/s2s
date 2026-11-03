@@ -8,6 +8,9 @@ import com.s2s.server.cert.entity.CertEntity;
 import com.s2s.server.common.audit.AuditEntry;
 import com.s2s.server.common.audit.AuditLogWriter;
 import com.s2s.server.common.audit.OperatorRole;
+import com.s2s.server.notify.NotifyCopy;
+import com.s2s.server.notify.NotifyType;
+import com.s2s.server.notify.PushDispatchService;
 import com.s2s.server.common.constants.NfrAdmin;
 import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
@@ -49,15 +52,21 @@ public class AdminCertService {
     /** 审计写入器（唯一写入处）。 */
     private final AuditLogWriter auditLogWriter;
 
+    /** 通知写入编排（认证审核结果）。 */
+    private final PushDispatchService pushDispatchService;
+
     /**
      * 构造后台认证审核服务。
      *
-     * @param certService    cert 域服务
-     * @param auditLogWriter 审计写入器
+     * @param certService         cert 域服务
+     * @param auditLogWriter      审计写入器
+     * @param pushDispatchService 通知写入编排（认证审核结果）
      */
-    public AdminCertService(CertService certService, AuditLogWriter auditLogWriter) {
+    public AdminCertService(CertService certService, AuditLogWriter auditLogWriter,
+            PushDispatchService pushDispatchService) {
         this.certService = certService;
         this.auditLogWriter = auditLogWriter;
+        this.pushDispatchService = pushDispatchService;
     }
 
     /**
@@ -109,6 +118,13 @@ public class AdminCertService {
             throw BizException.of(ErrorCode.POST_GONE);
         }
         certService.markReviewed(certId, approved, req.rejectReason());
+        if (cert.getUserId() != null) {
+            pushDispatchService.dispatch(cert.getUserId(), NotifyType.CERT,
+                    approved ? NotifyCopy.CERT_APPROVED_TITLE : NotifyCopy.CERT_REJECTED_TITLE,
+                    approved ? NotifyCopy.CERT_APPROVED_SUMMARY
+                            : NotifyCopy.certRejectedSummary(req.rejectReason()),
+                    certId);
+        }
         auditLogWriter.write(new AuditEntry(adminId, callerRole,
                 approved ? ACTION_CERT_APPROVE : ACTION_CERT_REJECT,
                 TARGET_CERT, certId, null, null, approved ? null : req.rejectReason()));

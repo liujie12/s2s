@@ -27,6 +27,9 @@ import com.s2s.server.common.crypto.CryptoFacade;
 import com.s2s.server.common.crypto.Pepper;
 import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
+import com.s2s.server.notify.NotifyCopy;
+import com.s2s.server.notify.NotifyType;
+import com.s2s.server.notify.PushDispatchService;
 import com.s2s.server.post.MediaService;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -136,6 +139,9 @@ public class CertService {
     /** 大模型供应商（证照图抽取证名）。 */
     private final AiProvider aiProvider;
 
+    /** 通知写入编排（实名/资质通过通知）。 */
+    private final PushDispatchService pushDispatchService;
+
     /**
      * 构造认证服务。
      *
@@ -148,12 +154,13 @@ public class CertService {
      * @param certFailureRecorder  核验失败计数与锁定记录器
      * @param mediaService         媒体服务（证照图归属校验与签名）
      * @param aiProvider           大模型供应商（证照图抽取）
+     * @param pushDispatchService  通知写入编排（实名/资质通过通知）
      */
     public CertService(UserService userService, CertMapper certMapper,
             RealnameProvider realnameProvider, CryptoFacade cryptoFacade,
             List<Pepper> peppers, AuditLogWriter auditLogWriter,
             CertFailureRecorder certFailureRecorder, MediaService mediaService,
-            AiProvider aiProvider) {
+            AiProvider aiProvider, PushDispatchService pushDispatchService) {
         this.userService = userService;
         this.certMapper = certMapper;
         this.realnameProvider = realnameProvider;
@@ -163,6 +170,7 @@ public class CertService {
         this.certFailureRecorder = certFailureRecorder;
         this.mediaService = mediaService;
         this.aiProvider = aiProvider;
+        this.pushDispatchService = pushDispatchService;
     }
 
     /**
@@ -260,6 +268,8 @@ public class CertService {
         userService.applyRealnameResult(userId, REALNAME_STATUS_PASSED, encrypted.ciphertext(),
                 idCardHash, idCardLast4, encrypted.keyVersion());
         writeCertApproved(userId);
+        pushDispatchService.dispatch(userId, NotifyType.SYSTEM,
+                NotifyCopy.REALNAME_APPROVED_TITLE, NotifyCopy.REALNAME_APPROVED_SUMMARY, null);
         // 用户触发留痕 operator_role 取 user（DEC-11 / [147]）
         auditLogWriter.write(AuditEntry.minimal(userId, OperatorRole.USER,
                 AUDIT_ACTION_REALNAME_SUBMIT, AUDIT_TARGET_USER, userId));
@@ -352,6 +362,9 @@ public class CertService {
         }
         auditLogWriter.write(AuditEntry.minimal(userId, OperatorRole.USER,
                 AUDIT_ACTION_QUALIFICATION_SUBMIT, AUDIT_TARGET_USER, userId));
+        pushDispatchService.dispatch(userId, NotifyType.SYSTEM,
+                NotifyCopy.QUALIFICATION_APPROVED_TITLE,
+                NotifyCopy.QUALIFICATION_APPROVED_SUMMARY, null);
         return new QualificationBatchSubmitResult(results);
     }
 

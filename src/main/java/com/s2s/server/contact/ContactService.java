@@ -28,6 +28,9 @@ import com.s2s.server.contact.entity.ReportEntity;
 import com.s2s.server.contact.mapper.ContactEventMapper;
 import com.s2s.server.contact.mapper.ContactPostMapper;
 import com.s2s.server.contact.mapper.ReportMapper;
+import com.s2s.server.notify.NotifyCopy;
+import com.s2s.server.notify.NotifyType;
+import com.s2s.server.notify.PushDispatchService;
 import com.s2s.server.post.MediaService;
 import com.s2s.server.post.PostModerationService;
 import com.s2s.server.post.PostStatus;
@@ -93,6 +96,7 @@ public class ContactService {
     private final MediaService mediaService;
     private final IdentityBindingService identityBindingService;
     private final ContactApplyService contactApplyService;
+    private final PushDispatchService pushDispatchService;
 
     /**
      * 构造联系域服务。
@@ -109,6 +113,7 @@ public class ContactService {
      * @param mediaService          媒体服务（举报凭证归属与 commit 态校验）
      * @param identityBindingService 身份绑定门禁（B2-6a：未绑手机号禁止查看联系方式）
      * @param contactApplyService    联系方式申请链路（需申请帖的取号闸门，R22 / R24）
+     * @param pushDispatchService    通知写入编排（「你的发布被联系了」互动通知）
      */
     public ContactService(ContactRateGuard rateGuard,
             ContactPostMapper contactPostMapper,
@@ -121,7 +126,8 @@ public class ContactService {
             PostModerationService postModerationService,
             MediaService mediaService,
             IdentityBindingService identityBindingService,
-            ContactApplyService contactApplyService) {
+            ContactApplyService contactApplyService,
+            PushDispatchService pushDispatchService) {
         this.rateGuard = rateGuard;
         this.contactPostMapper = contactPostMapper;
         this.contactEventMapper = contactEventMapper;
@@ -134,6 +140,7 @@ public class ContactService {
         this.mediaService = mediaService;
         this.identityBindingService = identityBindingService;
         this.contactApplyService = contactApplyService;
+        this.pushDispatchService = pushDispatchService;
     }
 
     /**
@@ -219,6 +226,12 @@ public class ContactService {
         event.setToUserId(ownerId);
         event.setChannelType(channel);
         contactEventMapper.insert(event);
+
+        // [7.1] 通知发布者（互动通知；本人查看自己的帖子不通知）
+        if (!ownerId.equals(viewerId)) {
+            pushDispatchService.dispatch(ownerId, NotifyType.INTERACTION,
+                    NotifyCopy.CONTACTED_TITLE, NotifyCopy.CONTACTED_SUMMARY, postId);
+        }
 
         // [8] 审计留痕（与 [7] 同事务；用户触发的解密留痕 operator_role 取 user，
         //     不再用 system 兜底 —— 依据 DEC-11 / [147]）

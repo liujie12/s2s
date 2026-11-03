@@ -20,13 +20,14 @@ import org.junit.jupiter.api.Test;
 class ErrorCodeTest {
 
     /**
-     * 断言枚举总数恰为 25（24 业务码 + {@code OK(0)}，编码规范 §0.2「不新增错误码」）。
+     * 断言枚举总数恰为 26（25 业务码 + {@code OK(0)}，编码规范 §0.2「不新增错误码」；
+     * 2026-11-02 新增 {@code 41002} 后口径为 26）。
      *
      * @return void；断言失败即枚举被增删，违反「唯一口径源 PRD §12.5」纪律
      */
     @Test
-    void totalCountIsExactly25() {
-        assertThat(ErrorCode.values()).hasSize(25);
+    void totalCountIsExactly26() {
+        assertThat(ErrorCode.values()).hasSize(26);
     }
 
     /**

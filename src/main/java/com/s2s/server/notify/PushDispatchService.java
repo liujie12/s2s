@@ -2,6 +2,7 @@ package com.s2s.server.notify;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.s2s.server.auth.PushPlatform;
+import com.s2s.server.auth.SettingService;
 import com.s2s.server.auth.entity.DeviceEntity;
 import com.s2s.server.auth.mapper.DeviceMapper;
 import com.s2s.server.common.ratelimit.RateLimitKeys;
@@ -55,6 +56,9 @@ public class PushDispatchService {
     /** 通道发送器路由表。 */
     private final PushSenderRegistry senderRegistry;
 
+    /** 用户设置（总开关 + 分通道开关，跨域只调 service）。 */
+    private final SettingService settingService;
+
     /**
      * 构造下发编排。
      *
@@ -62,13 +66,16 @@ public class PushDispatchService {
      * @param deviceMapper       设备读 Mapper
      * @param quotaGate          每日配额闸
      * @param senderRegistry     通道发送器路由表
+     * @param settingService     用户设置（总开关 + 分通道开关）
      */
     public PushDispatchService(NotificationMapper notificationMapper, DeviceMapper deviceMapper,
-            PushQuotaGate quotaGate, PushSenderRegistry senderRegistry) {
+            PushQuotaGate quotaGate, PushSenderRegistry senderRegistry,
+            SettingService settingService) {
         this.notificationMapper = notificationMapper;
         this.deviceMapper = deviceMapper;
         this.quotaGate = quotaGate;
         this.senderRegistry = senderRegistry;
+        this.settingService = settingService;
     }
 
     /**
@@ -84,6 +91,10 @@ public class PushDispatchService {
     @Transactional
     public PushDispatchResult dispatch(Long userId, NotifyType type, String title, String summary,
             Long targetId) {
+        if (!channelEnabled(userId, type)) {
+            // 用户关闭了该分通道（或总开关）：站内与推送都不产生，避免「关了还收到」。
+            return new PushDispatchResult(false, false, 0, 0);
+        }
         notificationMapper.insertNotification(userId, type.wire(), title, summary, targetId,
                 LocalDateTime.now());
 
@@ -110,6 +121,21 @@ public class PushDispatchService {
             }
         }
         return new PushDispatchResult(true, true, targets.size(), accepted);
+    }
+
+    /**
+     * 判断接收者是否开启该通知通道（总开关 + 分通道，缺行/缺列默认开启）。
+     *
+     * @param userId 接收者 user_id
+     * @param type   通知类型
+     * @return boolean true＝允许写站内并推送
+     */
+    private boolean channelEnabled(Long userId, NotifyType type) {
+        return switch (type) {
+            case SYSTEM -> settingService.isSystemNotifyEnabled(userId);
+            case INTERACTION -> settingService.isInteractionNotifyEnabled(userId);
+            case CERT -> settingService.isCertNotifyEnabled(userId);
+        };
     }
 
     /**

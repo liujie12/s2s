@@ -198,6 +198,61 @@ public class SettingService {
     }
 
     /**
+     * 判断某用户是否接收系统通知（站内写入 + 推送）。
+     *
+     * <p>受「接收通知」总开关与「系统通知」分通道双重约束；缺设置行/缺列按开启。</p>
+     *
+     * @param userId 接收者 user_id（调用方保证非 null）
+     * @return boolean false 表示用户已关闭系统通知
+     */
+    public boolean isSystemNotifyEnabled(Long userId) {
+        return channelNotifyOf(userId, "notify_system");
+    }
+
+    /**
+     * 判断某用户是否接收互动通知（站内写入 + 推送）。
+     *
+     * <p>受「接收通知」总开关与「互动通知」分通道双重约束；缺设置行/缺列按开启。</p>
+     *
+     * @param userId 接收者 user_id（调用方保证非 null）
+     * @return boolean false 表示用户已关闭互动通知
+     */
+    public boolean isInteractionNotifyEnabled(Long userId) {
+        return channelNotifyOf(userId, "notify_interaction");
+    }
+
+    /**
+     * 判断某用户是否接收认证通知（站内写入 + 推送）。
+     *
+     * <p>受「接收通知」总开关与「认证通知」分通道双重约束；缺设置行/缺列按开启。</p>
+     *
+     * @param userId 接收者 user_id（调用方保证非 null）
+     * @return boolean false 表示用户已关闭认证通知
+     */
+    public boolean isCertNotifyEnabled(Long userId) {
+        return channelNotifyOf(userId, "notify_cert");
+    }
+
+    /**
+     * 读取总开关 + 指定分通道开关（缺行/缺列一律默认开启）。
+     *
+     * @param userId 接收者 user_id
+     * @param column 分通道列名（{@code notify_system}/{@code notify_interaction}/{@code notify_cert}）
+     * @return boolean true＝该通道可写站内通知并推送
+     */
+    private boolean channelNotifyOf(Long userId, String column) {
+        Map<String, Object> row = userSettingMapper.selectByUserId(userId);
+        if (row == null) {
+            return true;
+        }
+        if (row.get("notify_enabled") != null && !isTrue(row.get("notify_enabled"))) {
+            return false;
+        }
+        Object channel = row.get(column);
+        return channel == null || isTrue(channel);
+    }
+
+    /**
      * 从设置行读「消息通知」开关（缺行/缺列一律默认开启）。
      *
      * @param row {@code user_setting} 行（可空）

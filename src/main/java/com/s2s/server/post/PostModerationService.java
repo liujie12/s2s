@@ -3,6 +3,9 @@ package com.s2s.server.post;
 import com.s2s.server.common.audit.AuditEntry;
 import com.s2s.server.common.audit.AuditLogWriter;
 import com.s2s.server.common.audit.OperatorRole;
+import com.s2s.server.notify.NotifyCopy;
+import com.s2s.server.notify.NotifyType;
+import com.s2s.server.notify.PushDispatchService;
 import com.s2s.server.post.entity.PostEntity;
 import com.s2s.server.post.mapper.PostMapper;
 import org.springframework.stereotype.Service;
@@ -37,15 +40,21 @@ public class PostModerationService {
     /** 审计写入器（唯一写入处）。 */
     private final AuditLogWriter auditLogWriter;
 
+    /** 通知写入编排（下架通知）。 */
+    private final PushDispatchService pushDispatchService;
+
     /**
      * 构造帖子治理服务。
      *
-     * @param postMapper     post 表 Mapper
-     * @param auditLogWriter 审计写入器
+     * @param postMapper          post 表 Mapper
+     * @param auditLogWriter      审计写入器
+     * @param pushDispatchService 通知写入编排（下架通知）
      */
-    public PostModerationService(PostMapper postMapper, AuditLogWriter auditLogWriter) {
+    public PostModerationService(PostMapper postMapper, AuditLogWriter auditLogWriter,
+            PushDispatchService pushDispatchService) {
         this.postMapper = postMapper;
         this.auditLogWriter = auditLogWriter;
+        this.pushDispatchService = pushDispatchService;
     }
 
     /**
@@ -93,6 +102,12 @@ public class PostModerationService {
         patch.setStatus(PostStatus.DB_ARCHIVED);
         patch.setStatusReason(PostStatus.REASON_AUDIT_TAKEDOWN);
         postMapper.updateById(patch);
+
+        // 下架是唯一收口点：自动下架、后台单条/批量下架都会走到这里，通知作者一次。
+        if (post.getUserId() != null) {
+            pushDispatchService.dispatch(post.getUserId(), NotifyType.SYSTEM,
+                    NotifyCopy.TAKEDOWN_TITLE, NotifyCopy.TAKEDOWN_SUMMARY, postId);
+        }
 
         auditLogWriter.write(new AuditEntry(operatorId, role, ACTION_AUDIT_TAKEDOWN,
                 TARGET_POST, postId, null, "{\"statusReason\":2}", null));

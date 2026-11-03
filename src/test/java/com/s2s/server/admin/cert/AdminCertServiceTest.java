@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -16,6 +17,8 @@ import com.s2s.server.admin.dto.CertReviewRequest;
 import com.s2s.server.cert.CertService;
 import com.s2s.server.cert.dto.CertReviewPage;
 import com.s2s.server.cert.entity.CertEntity;
+import com.s2s.server.notify.NotifyType;
+import com.s2s.server.notify.PushDispatchService;
 import com.s2s.server.common.audit.AuditEntry;
 import com.s2s.server.common.audit.AuditLogWriter;
 import com.s2s.server.common.audit.OperatorRole;
@@ -40,6 +43,9 @@ class AdminCertServiceTest {
     /** 审计写入器（mock）。 */
     private AuditLogWriter auditLogWriter;
 
+    /** 通知写入编排（mock）。 */
+    private PushDispatchService pushDispatchService;
+
     /** 被测服务。 */
     private AdminCertService service;
 
@@ -50,7 +56,8 @@ class AdminCertServiceTest {
     void setUp() {
         certService = mock(CertService.class);
         auditLogWriter = mock(AuditLogWriter.class);
-        service = new AdminCertService(certService, auditLogWriter);
+        pushDispatchService = mock(PushDispatchService.class);
+        service = new AdminCertService(certService, auditLogWriter, pushDispatchService);
     }
 
     /**
@@ -135,6 +142,8 @@ class AdminCertServiceTest {
 
         verify(certService).markReviewed(eq(9L), eq(true), any());
         verify(auditLogWriter).write(any(AuditEntry.class));
+        verify(pushDispatchService).dispatch(eq(100L), eq(NotifyType.CERT), anyString(),
+                anyString(), eq(9L));
     }
 
     /**
@@ -150,6 +159,8 @@ class AdminCertServiceTest {
 
         verify(certService).markReviewed(eq(9L), eq(false), eq("证照模糊"));
         verify(auditLogWriter).write(any(AuditEntry.class));
+        verify(pushDispatchService).dispatch(eq(100L), eq(NotifyType.CERT), anyString(),
+                anyString(), eq(9L));
     }
 
     /**

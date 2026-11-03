@@ -29,6 +29,7 @@ import com.s2s.server.common.crypto.CryptoFacade;
 import com.s2s.server.common.crypto.Pepper;
 import com.s2s.server.common.error.BizException;
 import com.s2s.server.common.error.ErrorCode;
+import com.s2s.server.notify.PushDispatchService;
 import com.s2s.server.post.MediaService;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -68,7 +69,8 @@ class CertServiceTest {
         mediaService = mock(MediaService.class);
         aiProvider = mock(AiProvider.class);
         service = new CertService(userService, certMapper, realnameProvider, cryptoFacade,
-                PEPPERS, auditLogWriter, certFailureRecorder, mediaService, aiProvider);
+                PEPPERS, auditLogWriter, certFailureRecorder, mediaService, aiProvider,
+                mock(PushDispatchService.class));
     }
 
     /**

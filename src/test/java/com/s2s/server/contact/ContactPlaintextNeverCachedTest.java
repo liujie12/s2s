@@ -19,6 +19,7 @@ import com.s2s.server.chat.ContactApplyService;
 import com.s2s.server.common.audit.AuditLogWriter;
 import com.s2s.server.auth.IdentityBindingService;
 import com.s2s.server.cert.CertService;
+import com.s2s.server.notify.PushDispatchService;
 import com.s2s.server.post.MediaService;
 import com.s2s.server.post.PostModerationService;
 import com.s2s.server.common.crypto.CryptoFacade;
@@ -144,7 +145,7 @@ class ContactPlaintextNeverCachedTest {
                 cryptoFacade, mock(AuditLogWriter.class), new ObjectMapper(),
                 mock(CertService.class), mock(PostModerationService.class),
                 mock(MediaService.class), mock(IdentityBindingService.class),
-                mock(ContactApplyService.class));
+                mock(ContactApplyService.class), mock(PushDispatchService.class));
     }
 
     /**

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
@@ -29,6 +30,8 @@ import com.s2s.server.chat.ContactApplyService;
 import com.s2s.server.contact.dto.ContactInfo;
 import com.s2s.server.contact.dto.ReportDetail;
 import com.s2s.server.contact.dto.ReportDetailRow;
+import com.s2s.server.notify.NotifyType;
+import com.s2s.server.notify.PushDispatchService;
 import com.s2s.server.post.MediaService;
 import com.s2s.server.post.PostModerationService;
 import com.s2s.server.contact.dto.ReportRequest;
@@ -90,6 +93,7 @@ class ContactServiceTest {
     private MediaService mediaService;
     private IdentityBindingService identityBindingService;
     private ContactApplyService contactApplyService;
+    private PushDispatchService pushDispatchService;
     private ContactService service;
 
     /**
@@ -114,10 +118,11 @@ class ContactServiceTest {
         mediaService = mock(MediaService.class);
         identityBindingService = mock(IdentityBindingService.class);
         contactApplyService = mock(ContactApplyService.class);
+        pushDispatchService = mock(PushDispatchService.class);
         service = new ContactService(rateGuard, contactPostMapper, contactEventMapper,
                 reportMapper, cryptoFacade, auditLogWriter, new ObjectMapper(),
                 certService, postModerationService, mediaService, identityBindingService,
-                contactApplyService);
+                contactApplyService, pushDispatchService);
         when(rateGuard.remainingToday(anyLong(), any())).thenReturn(27);
         when(certService.isRealnamePassed(anyLong())).thenReturn(true);
         when(certService.isEnterpriseVerified(anyLong())).thenReturn(false);
@@ -153,6 +158,26 @@ class ContactServiceTest {
         assertThat(eventCaptor.getValue().getChannelType()).isEqualTo("phone");
 
         verify(auditLogWriter).write(any(AuditEntry.class));
+        verify(pushDispatchService).dispatch(eq(OWNER_ID), eq(NotifyType.INTERACTION),
+                anyString(), anyString(), eq(postId));
+    }
+
+    /**
+     * 自己查看自己的帖子：仍正常返回联系方式，但不产生「被联系」通知。
+     *
+     * @return void；断言失败即会出现自我通知
+     */
+    @Test
+    void viewContactDoesNotNotifyOwnerWhenViewingOwnPost() {
+        Long postId = 1002L;
+        Map<String, Object> selfRow = row(postId, encryptedAad(postId), 1, "phone", "active");
+        selfRow.put("user_id", OWNER_ID);
+        when(contactPostMapper.selectContactRow(postId)).thenReturn(selfRow);
+
+        service.viewContact(OWNER_ID, postId, dimensions());
+
+        verify(pushDispatchService, never()).dispatch(anyLong(), any(), anyString(), anyString(),
+                anyLong());
     }
 
     /**
