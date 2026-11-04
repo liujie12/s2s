@@ -2529,6 +2529,7 @@ paths:
       parameters:
         - $ref: '#/components/parameters/XInteractionId'
         - $ref: '#/components/parameters/XDeviceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
         - name: conversation_id
           in: path
           required: true

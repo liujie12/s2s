@@ -3,8 +3,6 @@ package com.s2s.server.common.ratelimit;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -14,8 +12,8 @@ import java.util.Arrays;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.core.script.RedisScript;
 
 /**
  * {@link RateLimiter} 计数与超限判定测试（[122] U4；详设 §3.4；编码规范 §1.2）。
@@ -29,11 +27,11 @@ import org.springframework.data.redis.core.script.RedisScript;
  * </ol>
  *
  * <p><b>测试策略（[122] review P0 回归）</b>：Redis 用 Mockito mock 的
- * {@link StringRedisTemplate}，{@code execute} 返回 <b>{@code String}</b>（而非 {@code List<Long>}）——
- * 真实运行时 StringRedisTemplate 的 {@code StringRedisSerializer} 会把 Lua 数字返回值
- * 反序列化为 {@code String}，此前的测试 mock 返回 {@code List<Long>} 掩盖了
- * {@code ClassCastException} 类型失配（green-while-red）。本测试锁定真实类型，
- * 验证 {@link RateLimiter#toLong(Object)} 的可靠解包。
+ * {@link StringRedisTemplate}，{@code execute(RedisCallback)} 返回 <b>{@code Long}</b>——
+ * 与真实路径一致（{@code ReturnType.INTEGER} 由 Lettuce 直接返回数值，不经 value 序列化器）。
+ * DEF-01 的两次失败（{@code resultType=null} → STATUS、{@code Long.class} → 反序列化）
+ * 均源于 {@code DefaultScriptExecutor}，故实现改为 {@code RedisCallback} 直连 eval；
+ * 本测试按新签名桩住 {@link RedisCallback}，验证超限判定与解包。
  */
 class RateLimiterTest {
 
@@ -62,8 +60,7 @@ class RateLimiterTest {
      */
     @Test
     void singleKeyUnderLimitReturnsNegative() {
-        when(redisTemplate.execute(any(RedisScript.class), anyList(), anyString()))
-                .thenReturn("5");
+        when(redisTemplate.execute(any(RedisCallback.class))).thenReturn(5L);
 
         long result = rateLimiter.incrementAndCheck(singleEntry("rl:contact:uid:1:1d:20260918", 60, 60, 10));
 
@@ -78,8 +75,7 @@ class RateLimiterTest {
      */
     @Test
     void singleKeyOverLimitThrowsWithRetryAfter() {
-        when(redisTemplate.execute(any(RedisScript.class), anyList(), anyString()))
-                .thenReturn("11");
+        when(redisTemplate.execute(any(RedisCallback.class))).thenReturn(11L);
 
         assertThatThrownBy(() -> rateLimiter.incrementAndCheck(
                 singleEntry("rl:contact:uid:1:1d:20260918", 60, 42, 10)))
@@ -99,9 +95,7 @@ class RateLimiterTest {
      */
     @Test
     void multiTrackOverLimitTakesMaxRetryAfter() {
-        when(redisTemplate.execute(any(RedisScript.class), any(List.class), anyString()))
-                .thenReturn("11")
-                .thenReturn("11");
+        when(redisTemplate.execute(any(RedisCallback.class))).thenReturn(11L);
 
         List<RateLimiter.RateLimitEntry> entries = Arrays.asList(
                 new RateLimiter.RateLimitEntry("rl:a:1", 60, 10, 10, ErrorCode.CONTACT_LIMIT),
@@ -124,7 +118,7 @@ class RateLimiterTest {
      */
     @Test
     void redisFailureIsSwallowedAndAllows() {
-        when(redisTemplate.execute(any(RedisScript.class), anyList(), anyString()))
+        when(redisTemplate.execute(any(RedisCallback.class)))
                 .thenThrow(new RuntimeException("Redis connection refused"));
 
         long result = rateLimiter.incrementAndCheck(
@@ -140,8 +134,7 @@ class RateLimiterTest {
      */
     @Test
     void nullLuaResultIsSwallowedAndAllows() {
-        when(redisTemplate.execute(any(RedisScript.class), anyList(), anyString()))
-                .thenReturn(null);
+        when(redisTemplate.execute(any(RedisCallback.class))).thenReturn(null);
 
         long result = rateLimiter.incrementAndCheck(
                 singleEntry("rl:track:uid:1:1m", 60, 60, 60));
@@ -157,9 +150,9 @@ class RateLimiterTest {
      */
     @Test
     void multiTrackPartialOverLimitTakesOverLimitTrack() {
-        when(redisTemplate.execute(any(RedisScript.class), any(List.class), anyString()))
-                .thenReturn("11")
-                .thenReturn("5");
+        when(redisTemplate.execute(any(RedisCallback.class)))
+                .thenReturn(11L)
+                .thenReturn(5L);
 
         List<RateLimiter.RateLimitEntry> entries = Arrays.asList(
                 new RateLimiter.RateLimitEntry("rl:a:1", 60, 30, 10, ErrorCode.CONTACT_LIMIT),

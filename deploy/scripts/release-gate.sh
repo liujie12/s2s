@@ -436,6 +436,16 @@ $(echo "${ANALYZE_OUT}" | tail -n 20 | sed 's/^/        /')"
 $(tail -n 25 "${REPO}/build/release-gate.test.log" | sed 's/^/        /')"
     fi
 
+    # S5-Contract 真模式只读契约：用与发布包相同的 baseUrl 打正式环境。
+    # 只读、无写操作；未注入 define 时整组跳过，不影响无网环境。
+    if run_win "${FLUTTER_WIN}" test test/contract/readonly_contract_test.dart \
+        --dart-define="${DEFINE_BASE_URL}" > "${REPO}/build/release-gate.contract.log" 2>&1; then
+      pass "S5-Contract 真模式只读契约通过（输出见 build/release-gate.contract.log）"
+    else
+      fail "S5-Contract 真模式只读契约未通过，末尾输出：
+$(tail -n 25 "${REPO}/build/release-gate.contract.log" | sed 's/^/        /')"
+    fi
+
     # S6 flutter build apk --release（含 --dart-define 注入）
     if [[ -z "${AMAP_ANDROID_KEY:-}" ]]; then
       skip "S6-Key" "未提供 AMAP_ANDROID_KEY，构建出的包地图将走降级底图（P0 五环之一不可验）"

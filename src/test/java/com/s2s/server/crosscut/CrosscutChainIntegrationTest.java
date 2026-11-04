@@ -2,7 +2,6 @@ package com.s2s.server.crosscut;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -28,9 +27,9 @@ import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
-import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
@@ -89,10 +88,10 @@ class CrosscutChainIntegrationTest {
      */
     @Test
     void rateLimitPrecedesIdempotency() throws Exception {
-        // CONTACT_UID 轨 limit=30，Lua 返回 "31"（String，模拟 StringRedisSerializer 真实反序列化）
-        // 触发超限；Retry-After 为 entry.retryAfterSeconds（自然日到零点秒数，动态值，断言存在即可）
-        when(redis.execute(any(RedisScript.class), anyList(), anyString()))
-                .thenReturn("31");
+        // CONTACT_UID 轨 limit=30，Lua 返回 31L（ReturnType.INTEGER 直返 Long）触发超限；
+        // Retry-After 为 entry.retryAfterSeconds（自然日到零点秒数，动态值，断言存在即可）
+        when(redis.execute(any(RedisCallback.class)))
+                .thenReturn(31L);
 
         MockMvc mvc = buildMockMvc();
         mvc.perform(post("/stub/limited-idempotent")

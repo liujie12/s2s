@@ -5,7 +5,7 @@
 ///      未透传时由拦截器兜底生成（§11.1.1）；
 ///   2. Authorization 是唯一「每次重写」的头：登录态变化后带新 Token，
 ///      未登录时**头键不存在**（非空串，§11.2）；
-///   3. Idempotency-Key 仅 POST/PATCH 注入，GET 不注入（§11.2）；
+///   3. Idempotency-Key 仅写接口（POST/PATCH/DELETE）注入，GET 不注入（§11.2）；
 ///   9. 隐私同意前无 X-Device-Id，同意后注入（R7，PRD §6.5.1 隐私门）。
 ///
 /// 走生产同款 harness（真实 HTTP 栈 + 完整拦截器链），断言落在 mock 服务
@@ -46,6 +46,8 @@ void main() {
         await harness.dio.post<Object?>(path, data: const {}, options: options);
       case 'PATCH':
         await harness.dio.patch<Object?>(path, data: const {}, options: options);
+      case 'DELETE':
+        await harness.dio.delete<Object?>(path, options: options);
       default:
         throw ArgumentError('echoRequest 未覆盖方法：$method');
     }
@@ -161,6 +163,12 @@ void main() {
     test('PATCH 请求注入 Idempotency-Key', () async {
       final req = await echoRequest('PATCH', '/echo');
       expect(req.header('idempotency-key'), isNotNull);
+    });
+
+    test('DELETE 请求注入 Idempotency-Key', () async {
+      final req = await echoRequest('DELETE', '/echo');
+      expect(req.header('idempotency-key'), isNotNull,
+          reason: '删除同属写接口，重试不得产生第二次副作用');
     });
   });
 

@@ -10,7 +10,7 @@
 ///      **containsKey 才写**，绝不覆盖调用方透传值。重试经
 ///      `dio.fetch(requestOptions)` 会重走完整 onRequest 链（§11.1.1），
 ///      只有显式判存在性才能在两种 dio 行为下都保全首次生成的两键；
-///   3. `Idempotency-Key` 仅写接口（POST/PATCH）注入，GET 不注入；
+///   3. `Idempotency-Key` 仅写接口（POST/PATCH/DELETE）注入，GET 不注入；
 ///   4. 隐私同意态是硬门（PRD §6.5.1 / 计划 R7）：同意态经构造回调
 ///      **每次请求实时读取**，同意前即使设备 ID 已生成也不注入
 ///      `X-Device-Id`——不依赖「首个请求必在同意之后」的时序假设。
@@ -144,12 +144,14 @@ class HeaderInterceptor extends Interceptor {
     }
   }
 
-  /// 写接口（POST/PATCH）缺失时注入 `Idempotency-Key`（§11.2）。
+  /// 写接口（POST/PATCH/DELETE）缺失时注入 `Idempotency-Key`（§11.2）。
   ///
   /// GET 不注入：读请求无写副作用，不需要服务端 SETNX 幂等占位
-  /// （详设 §3.3）。已存在即视为透传或重试路径，逐字保留——
-  /// 重试时无条件覆盖会让服务端把重发当成新写请求，幂等保护当场失效
-  /// （§11.1.1）。
+  /// （详设 §3.3）。DELETE 也注入：删除在契约上与其它写接口同属
+  /// 「需要重放保护」的一类（如 `DELETE /conversations/{id}` 声明了
+  /// `Idempotency-Key`），重试不得产生第二次副作用。已存在即视为透传
+  /// 或重试路径，逐字保留——重试时无条件覆盖会让服务端把重发当成新写
+  /// 请求，幂等保护当场失效（§11.1.1）。
   ///
   /// 参数：[options] 本次请求配置。
   /// 返回：void。
@@ -166,9 +168,9 @@ class HeaderInterceptor extends Interceptor {
   /// `post`），统一大写后比较。
   ///
   /// 参数：[method] 请求方法字符串。
-  /// 返回：[bool] true 仅当方法为 POST 或 PATCH。
+  /// 返回：[bool] true 当方法为 POST、PATCH 或 DELETE。
   bool _isWriteMethod(String method) {
     final upper = method.toUpperCase();
-    return upper == 'POST' || upper == 'PATCH';
+    return upper == 'POST' || upper == 'PATCH' || upper == 'DELETE';
   }
 }

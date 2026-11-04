@@ -124,7 +124,7 @@ void main() {
       expect(harness.server.lastRequest!.method, 'GET');
     });
 
-    test('GET 不注入 Idempotency-Key —— 幂等键只给 POST/PATCH（§11.2）', () async {
+    test('GET 不注入 Idempotency-Key —— 幂等键只给写接口（POST/PATCH/DELETE，§11.2）', () async {
       stubContactSuccess(harness);
 
       await repo.fetchFullContact(postId: 1);

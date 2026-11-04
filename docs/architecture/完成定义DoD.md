@@ -47,7 +47,7 @@
 | # | 检查项 | 口径出处 |
 | --- | --- | --- |
 | F1 | DTO 可空性与 schema `required` 逐字对齐、无 `?? 默认值` 掩盖、解析失败抛 `ApiException(parseError)` | §5.2 |
-| F2 | 三头 containsKey 才写、Authorization 每次重写、幂等键仅 POST/PATCH 注入 | §5.3 |
+| F2 | 三头 containsKey 才写、Authorization 每次重写、幂等键仅写接口（POST/PATCH/DELETE）注入 | §5.3 |
 | F3 | 错误码行为映射落位（autoRetry/promptWithRetryAfter/silentRequeue/forceRefetch/refreshToken），UI 报错格式 `{message}（{request_id}）` | §5.4、§5.3 |
 | F4 | `AsyncValue` 三态逐页处理、无 `.value!` 强解、骨架屏/空态/错误态齐备 | §5.6 |
 | F5 | 取消竞态：`CancelToken` 发新 cancel 旧、`result=cancelled` 埋点照常上报 | §5.6 |

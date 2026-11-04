@@ -8,9 +8,9 @@ import java.time.LocalDate;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.redis.connection.ReturnType;
+import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.core.script.DefaultRedisScript;
-import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Component;
 
 /**
@@ -62,17 +62,23 @@ public class RateLimiter {
      *   <li>{@code return current} —— 单值返回，消费侧经 {@link #toLong(Object)} 解包。</li>
      * </ol>
      *
-     * <p>resultType 保持 {@code null}：StringRedisTemplate 的 value 序列化器会把返回值
-     * 反序列化为 {@code String}，强制 {@code Long.class} 反而在反序列化处抛
-     * {@code ClassCastException}（review P0 根因）。
+     * <p><b>为什么不用 {@code RedisScript} + {@code DefaultScriptExecutor}（DEF-01，2026-11-04）</b>：
+     * 该路径在 {@code resultType} 为 {@code null} 时映射 {@code ReturnType.STATUS}，
+     * Lettuce 用 {@code StatusOutput} 解整数回包抛
+     * {@code UnsupportedOperationException}；声明 {@code Long.class} 虽选对 {@code INTEGER}，
+     * 但随后 {@code ScriptUtils.deserializeResult} 仍会用模板的
+     * {@code StringRedisSerializer} 反序列化 {@code Long}，同样失败。两次失败都被
+     * {@code catch (Exception)} 当作「写失败放行」吞掉，导致全局限频静默失效。
+     * 故改为 {@link RedisCallback} 直连 {@code eval(..., ReturnType.INTEGER, ...)}：
+     * 整数回包由 Lettuce 直接返回 {@code Long}，不经过任何 value 序列化器；
+     * 消费侧仍经 {@link #toLong(Object)} 兼容其它形态。
      */
-    private static final RedisScript<Object> INCR_EXPIRE_SCRIPT = new DefaultRedisScript<>(
-            "local current = redis.call('INCR', KEYS[1])\n"
+    private static final byte[] INCR_EXPIRE_SCRIPT =
+            ("local current = redis.call('INCR', KEYS[1])\n"
                     + "if current == 1 then\n"
                     + "  redis.call('EXPIRE', KEYS[1], ARGV[1])\n"
                     + "end\n"
-                    + "return current"
-    );
+                    + "return current").getBytes(StandardCharsets.UTF_8);
 
     /**
      * 构造限频计数器。
@@ -109,11 +115,14 @@ public class RateLimiter {
 
         for (RateLimitEntry entry : entries) {
             try {
-                Object result = redisTemplate.execute(
-                        INCR_EXPIRE_SCRIPT,
-                        java.util.Collections.singletonList(entry.key()),
-                        String.valueOf(entry.ttlSeconds())
-                );
+                Object result = redisTemplate.execute((RedisCallback<Object>) connection ->
+                        connection.scriptingCommands().eval(
+                                INCR_EXPIRE_SCRIPT,
+                                ReturnType.INTEGER,
+                                1,
+                                entry.key().getBytes(StandardCharsets.UTF_8),
+                                String.valueOf(entry.ttlSeconds())
+                                        .getBytes(StandardCharsets.UTF_8)));
                 long current = toLong(result);
                 if (current > entry.limit()) {
                     // 超限：Retry-After 用「用户可见剩余秒」（不含键 TTL 缓冲），取最大值

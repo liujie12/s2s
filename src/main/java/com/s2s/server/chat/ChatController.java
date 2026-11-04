@@ -134,6 +134,7 @@ public class ChatController {
      * @param httpRequest    当前请求（取登录态）
      * @return {@link ConversationRemoveResponse} 被移除的会话 ID
      */
+    @Idempotent
     @DeleteMapping("/conversations/{conversation_id}")
     public ConversationRemoveResponse removeConversation(
             @PathVariable("conversation_id") Long conversationId,

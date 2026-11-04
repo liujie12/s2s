@@ -1,0 +1,169 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-11-04",
+  "note": "整体测试证据账本：数字唯一来源。人工执行后由执行人追加，禁止手抄到其他文档。",
+  "environment": {
+    "backend": "https://s2s.build110.com",
+    "mode": "prod",
+    "readonly_only": true,
+    "docker_required": false
+  },
+  "frontend": {
+    "command": "flutter test",
+    "passed": 1170,
+    "failed": 0,
+    "skipped": 13,
+    "skipped_reason": "两组真模式套件未注入 define 时整组跳过：只读契约 7 条 + 登录态契约 6 条"
+  },
+  "backend": {
+    "command": "mvn test",
+    "tests": 748,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source": "target/surefire-reports/*.txt 汇总"
+  },
+  "contract_real": {
+    "command": "flutter test test/contract/readonly_contract_test.dart --dart-define=S2S_API_BASE_URL=https://s2s.build110.com",
+    "passed": 7,
+    "failed": 0,
+    "cases": [
+      "GET /categories/tree 分类树与版本号",
+      "GET /cities 城市数组",
+      "GET /map/pins 与 mode 匹配的图钉结构",
+      "GET /posts/search 分页结构且无敏感字段",
+      "GET /posts/{post_id} 详情（无数据则跳过）",
+      "GET /map/pins 缺参数回 40001",
+      "GET /users/me 未登录回 40101"
+    ]
+  },
+  "static_analysis": {
+    "command": "flutter analyze",
+    "result": "No issues found"
+  },
+  "gates": {
+    "frontend_gate_suites": {
+      "command": "flutter test test/gates/anti_redundancy_gate_test.dart test/gates/quality_gate_test.dart",
+      "tests": 41,
+      "failed": 0
+    },
+    "backend_static_assertions": {
+      "command": "mvn -q \"-Dtest=MapperScanCoverageTest,CryptoFacadeCallSiteTest\" test",
+      "tests": 5,
+      "failed": 0
+    },
+    "release_gate_syntax": {
+      "command": "bash -n deploy/scripts/release-gate.sh",
+      "result": "exit 0"
+    }
+  },
+  "reverse_checks": [
+    {
+      "id": "RC-01",
+      "judgment": "写接口必须声明 Idempotency-Key（openapi 契约门禁）",
+      "injection": "DELETE /conversations/{conversation_id} 实际缺少 Idempotency-Key 声明（既有缺陷）",
+      "expected": "FAIL，并点名该接口",
+      "actual": "FAIL: ['DELETE /conversations/{conversation_id}']",
+      "restored": "契约补 IdempotencyKey 参数 + ChatController 加 @Idempotent + 前端 HeaderInterceptor 覆盖 DELETE；复跑 PASS",
+      "evidence": "test/gates/openapi_contract_gate_test.dart 运行输出"
+    },
+    {
+      "id": "RC-02",
+      "judgment": "部署门禁外壳三档退出码（gate-lib.sh）",
+      "injection": "临时 bash 进程分别调用 pass / fail / skip / not_applicable",
+      "expected": "pass=0, fail=1, skip=2, N/A=0, fail+skip=1",
+      "actual": "pass=0, fail=1, skip=2, N/A=0, fail+skip=1",
+      "restored": "无文件改动（仅进程内调用）",
+      "evidence": "bash -c 'source deploy/scripts/gate-lib.sh; <case>; gate_conclude probe'"
+    },
+    {
+      "id": "RC-03",
+      "judgment": "每个 Mapper 恰被一种机制承载（MapperScanCoverageTest）",
+      "injection": "测试内置变异自检 judgementRejectsEachBrokenShape（漏承载/双承载/包名不符）",
+      "expected": "每种破坏形状判红、合法形状不误报",
+      "actual": "PASS（2 tests, 0 failures）",
+      "restored": "无需恢复（合成输入）",
+      "evidence": "target/surefire-reports/com.s2s.server.MapperScanCoverageTest.txt"
+    },
+    {
+      "id": "RC-04",
+      "judgment": "CryptoFacade.decrypt 调用点计数（CryptoFacadeCallSiteTest）",
+      "injection": "测试内置变异自检：多调用点 / 注释干扰 / 方法边界切分",
+      "expected": "破坏形状判红、合法形状不误报",
+      "actual": "PASS（3 tests, 0 failures）",
+      "restored": "无需恢复（合成输入）",
+      "evidence": "target/surefire-reports/com.s2s.server.contact.CryptoFacadeCallSiteTest.txt"
+    },
+    {
+      "id": "RC-05",
+      "judgment": "前端反冗余与质量门禁（for 重试 / values.byName / 后门码 / 密钥扫描）",
+      "injection": "两组门禁内置正反样本变异自检",
+      "expected": "违规样本判红、合法样本不误报",
+      "actual": "PASS（41 tests, 0 failures）",
+      "restored": "无需恢复（合成输入）",
+      "evidence": "flutter test test/gates/anti_redundancy_gate_test.dart test/gates/quality_gate_test.dart"
+    }
+  ],
+  "authenticated_flow": {
+    "command": "flutter test test/contract/authenticated_flow_test.dart --dart-define=S2S_API_BASE_URL=<prod> --dart-define=S2S_TEST_PHONE=<白名单测试号>",
+    "passed": 5,
+    "failed": 0,
+    "skipped": 1,
+    "passed_cases": [
+      "登录成功并返回本人资料（token / is_new_user / user.id）",
+      "GET /users/me 返回本人白名单视图（phone_mask 脱敏、无 real_name / id_card）",
+      "IT-03 同 Key 重发只创建一条帖子（post_id=10017，测后下架）",
+      "Token 续期返回新 token",
+      "退出登录后旧 Token 立即失效（40101）"
+    ],
+    "skipped_cases": [
+      "IT-04 发送验证码限频：DEF-01，实测未生效，待发版"
+    ],
+    "notes": "只产生登录/设备/限频计数，不写业务数据（IT-03 例外，见 test_data_residue）；手机号运行时注入、不入库。2026-11-04 测试号切换为白名单内 186****0845（首次登录自动注册）；原号 159****6851 的限频计数未清理，复用前需先删键"
+  },
+  "test_data_residue": [
+    {
+      "type": "post",
+      "post_id": 10017,
+      "title_prefix": "[测试] 幂等探针",
+      "state": "offline",
+      "created_at": "2026-11-04",
+      "reason": "IT-03 正向幂等验证需要真实写；正式环境无删除接口，已下架",
+      "cleanup": "待管理端或 DB 清理；不在用户可见列表"
+    }
+  ],
+  "defects": [
+    {
+      "id": "DEF-01",
+      "severity": "P0",
+      "title": "生产环境发送短信验证码限频未生效（疑似 Redis Lua fail-open）",
+      "observed_at": "2026-11-04",
+      "environment": "prod",
+      "evidence": "同一手机号连续 4 次 POST /auth/sms/send 全部 200；阈值 SMS_PHONE_LIMIT_PER_MINUTE=1，预期第 2 次起 42905 且带 Retry-After，实际无 429、无 Retry-After",
+      "suspected_cause": "RateLimiter.incrementAndCheck 对 Redis 异常 fail-open（WARN 后跳过该轨）；生产 Redis 上 Lua EVAL 可能失败，需后端日志确认具体异常",
+      "root_cause": "已确认（两层）：① RedisScript resultType=null 时 Spring Data Redis 3.5.13 的 ReturnType.fromJavaType(null) 映射为 STATUS，Lettuce 用 StatusOutput 解整数回包抛 UnsupportedOperationException；② 仅改 Long.class 仍失败——DefaultScriptExecutor 在取回结果后会用 StringRedisTemplate 的 StringRedisSerializer 调 deserializeResult，Long 无法按 String 反序列化。两次异常都被 catch(Exception) 当作 Redis 故障 fail-open，所有限频轨永久放行（Lua 本身已在 Redis 执行，键有值有 TTL）",
+      "impact": "短信轰炸防护、登录失败限频、发帖/联系方式/埋点等多轨限频全部失效；幂等 SETNX 不受影响",
+      "fix": "绕过 DefaultScriptExecutor：RateLimiter 改用 RedisCallback 直连 scriptingCommands().eval(script, ReturnType.INTEGER, ...)，整数回包由 Lettuce 直接返回 Long，不经任何 value 序列化器；同步改 RateLimiterTest 与 CrosscutChainIntegrationTest 的桩；mvn test 748 通过",
+      "action": "2026-11-04 首次发版未生效（当时仅改 Long.class）；需再次发版后重跑 authenticated_flow_test 的 IT-04 用例",
+      "status": "fixed_pending_deploy",
+      "owner": "backend + ops"
+    }
+  ],
+  "not_verified": [
+    {
+      "item": "IT-06 审计同事务 / IT-11 定时任务 / IT-13 埋点落库",
+      "reason": "正式环境无 DB 访问；只验接口可观察部分，DB 断言记 SKIP",
+      "exit_condition": "获得只读 DB 连接或运维提供查询结果后补跑"
+    },
+    {
+      "item": "IT-14 管理端接口",
+      "reason": "无管理员测试账号；/admin/login 走独立 RBAC，仓库与部署配置均无默认凭据",
+      "exit_condition": "提供 super_admin / auditor 测试账号后执行"
+    },
+    {
+      "item": "PT-01 ~ PT-05 读接口压测",
+      "reason": "需显式批准后方可在正式环境执行",
+      "exit_condition": "批准后按 1–3 并发 × 1 分钟起步"
+    }
+  ]
+}
