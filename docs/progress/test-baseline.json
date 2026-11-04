@@ -106,19 +106,18 @@
   ],
   "authenticated_flow": {
     "command": "flutter test test/contract/authenticated_flow_test.dart --dart-define=S2S_API_BASE_URL=<prod> --dart-define=S2S_TEST_PHONE=<白名单测试号>",
-    "passed": 5,
+    "passed": 6,
     "failed": 0,
-    "skipped": 1,
+    "skipped": 0,
     "passed_cases": [
       "登录成功并返回本人资料（token / is_new_user / user.id）",
       "GET /users/me 返回本人白名单视图（phone_mask 脱敏、无 real_name / id_card）",
       "IT-03 同 Key 重发只创建一条帖子（post_id=10017，测后下架）",
+      "IT-04 连续发送触发 42905 且携带 Retry-After=3600",
       "Token 续期返回新 token",
       "退出登录后旧 Token 立即失效（40101）"
     ],
-    "skipped_cases": [
-      "IT-04 发送验证码限频：DEF-01，实测未生效，待发版"
-    ],
+    "skipped_cases": [],
     "notes": "只产生登录/设备/限频计数，不写业务数据（IT-03 例外，见 test_data_residue）；手机号运行时注入、不入库。2026-11-04 测试号切换为白名单内 186****0845（首次登录自动注册）；原号 159****6851 的限频计数未清理，复用前需先删键"
   },
   "test_data_residue": [
@@ -144,8 +143,10 @@
       "root_cause": "已确认（两层）：① RedisScript resultType=null 时 Spring Data Redis 3.5.13 的 ReturnType.fromJavaType(null) 映射为 STATUS，Lettuce 用 StatusOutput 解整数回包抛 UnsupportedOperationException；② 仅改 Long.class 仍失败——DefaultScriptExecutor 在取回结果后会用 StringRedisTemplate 的 StringRedisSerializer 调 deserializeResult，Long 无法按 String 反序列化。两次异常都被 catch(Exception) 当作 Redis 故障 fail-open，所有限频轨永久放行（Lua 本身已在 Redis 执行，键有值有 TTL）",
       "impact": "短信轰炸防护、登录失败限频、发帖/联系方式/埋点等多轨限频全部失效；幂等 SETNX 不受影响",
       "fix": "绕过 DefaultScriptExecutor：RateLimiter 改用 RedisCallback 直连 scriptingCommands().eval(script, ReturnType.INTEGER, ...)，整数回包由 Lettuce 直接返回 Long，不经任何 value 序列化器；同步改 RateLimiterTest 与 CrosscutChainIntegrationTest 的桩；mvn test 748 通过",
-      "action": "2026-11-04 首次发版未生效（当时仅改 Long.class）；需再次发版后重跑 authenticated_flow_test 的 IT-04 用例",
-      "status": "fixed_pending_deploy",
+      "action": "2026-11-04 发版 a87af4a 后复验通过：authenticated_flow 6/6，IT-04 连续发送触发 429，Retry-After=3600",
+      "verified_at": "2026-11-04",
+      "verification_evidence": "IT04_RETRY_AFTER=3600；同号 1 小时轨超限后第 6 次发送返回 429/42905",
+      "status": "verified_fixed",
       "owner": "backend + ops"
     }
   ],
