@@ -281,6 +281,8 @@ class _MyPublishScreenState extends ConsumerState<MyPublishScreen> {
       // 编辑态回显「查看联系方式需申请」（R19），否则保存其他字段会把它悄悄关掉。
       contactApplyRequired: detail.contactApplyRequired,
       contact: '',
+      // 编辑态回显有效期（2026-11-08 起可改）：expire_at 为空即常驻。
+      permanent: detail.expireAt == null,
     );
   }
 

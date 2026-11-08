@@ -12,6 +12,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.s2s.server.ai.AiQuotaGate;
 import com.s2s.server.auth.IdentityBindingService;
 import com.s2s.server.category.TemplateService;
@@ -349,6 +350,63 @@ class PostServiceTest {
     }
 
     /**
+     * 编辑：7 天帖改常驻 → 把 {@code expire_at} 置空（常驻不自动下架）。
+     *
+     * @return void；断言失败即编辑切常驻后仍会被到期任务下架
+     */
+    @Test
+    void updatePost切换常驻置空到期时间() {
+        stubSuccessfulUpdate(activeRow());
+
+        postService.updatePost(1L, 100L, updateReq(null, "permanent"));
+
+        assertThat(captureUpdateWrapper().getSqlSet()).contains("expire_at");
+    }
+
+    /**
+     * 编辑：常驻帖改回 7 天 → 以当前时刻重算 {@code expire_at}。
+     *
+     * @return void；断言失败即常驻改回 7 天时仍是 NULL（永远不会到期）
+     */
+    @Test
+    void updatePost常驻改回7天重算到期() {
+        stubSuccessfulUpdate(permanentRow());
+
+        postService.updatePost(1L, 100L, updateReq(null, "7d"));
+
+        assertThat(captureUpdateWrapper().getSqlSet()).contains("expire_at");
+    }
+
+    /**
+     * 编辑：7 天帖保持 7 天（只改其它字段）→ 不碰 {@code expire_at}。
+     *
+     * <p>否则每次编辑都会把到期日静默续成「此刻 + 7 天」，绕过续期动作。</p>
+     *
+     * @return void；断言失败即普通编辑会偷偷延长有效期
+     */
+    @Test
+    void updatePost保持7天不改到期时间() {
+        stubSuccessfulUpdate(activeRow());
+
+        postService.updatePost(1L, 100L, updateReq(null, "7d"));
+
+        assertThat(captureUpdateWrapper().getSqlSet()).doesNotContain("expire_at");
+    }
+
+    /**
+     * 编辑：非法 validity → 40001（不静默回落成 7 天）。
+     *
+     * @return void
+     */
+    @Test
+    void updatePost非法validity回40001() {
+        assertThatThrownBy(() -> postService.updatePost(1L, 100L, updateReq(null, "30d")))
+                .isInstanceOf(BizException.class)
+                .extracting(e -> ((BizException) e).getErrorCode())
+                .isEqualTo(ErrorCode.PARAM_INVALID);
+    }
+
+    /**
      * 重发：帖子不存在 / 非本人 → 41001（不区分，避免按 id 探测）。
      *
      * @return void
@@ -431,9 +489,57 @@ class PostServiceTest {
      * @return {@link PostUpdateRequest} 载荷
      */
     private static PostUpdateRequest updateReq(String contactValue) {
+        return updateReq(contactValue, null);
+    }
+
+    /**
+     * 造编辑载荷（含有效期）。
+     *
+     * @param contactValue 联系方式值；{@code null} 表示保留原密文不改
+     * @param validity     有效期（{@code 7d}/{@code permanent}；{@code null}=本次不改）
+     * @return {@link PostUpdateRequest} 载荷
+     */
+    private static PostUpdateRequest updateReq(String contactValue, String validity) {
         return new PostUpdateRequest(4L, "resource", 10101, "新标题", 60.0, "小时", "新描述",
                 Map.of("k", "v"), 120.15, 30.28, null, false, List.of(),
-                contactValue == null ? null : "phone", contactValue, null, null);
+                contactValue == null ? null : "phone", contactValue, null, null, validity);
+    }
+
+    /**
+     * 桩成功更新路径（update 命中 1 行、详情可重查）。
+     *
+     * @param row 编辑前后重查返回的帖子行
+     * @return void
+     */
+    private void stubSuccessfulUpdate(PostEntity row) {
+        when(postMapper.update(isNull(), any())).thenReturn(1);
+        when(postMapper.selectById(100L)).thenReturn(row);
+        when(mediaMapper.selectList(any())).thenReturn(List.of());
+        when(mediaMapper.update(isNull(), any())).thenReturn(0);
+    }
+
+    /**
+     * 捕获本次编辑写库的 UpdateWrapper（用于断言是否改写 expire_at）。
+     *
+     * @return 捕获到的更新条件构造器
+     */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private UpdateWrapper<PostEntity> captureUpdateWrapper() {
+        ArgumentCaptor<UpdateWrapper<PostEntity>> captor =
+                (ArgumentCaptor) ArgumentCaptor.forClass(UpdateWrapper.class);
+        verify(postMapper).update(isNull(), captor.capture());
+        return captor.getValue();
+    }
+
+    /**
+     * 造常驻帖行（{@code expire_at} 为空）。
+     *
+     * @return {@link PostEntity} active 且常驻的行
+     */
+    private static PostEntity permanentRow() {
+        PostEntity post = activeRow();
+        post.setExpireAt(null);
+        return post;
     }
 
     /**

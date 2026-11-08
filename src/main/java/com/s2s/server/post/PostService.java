@@ -392,6 +392,21 @@ public class PostService {
         if (req.contactApplyRequired() != null) {
             update.set("contact_apply_required", Boolean.TRUE.equals(req.contactApplyRequired()) ? 1 : 0);
         }
+        // 有效期可改（2026-11-08 口径变更，PRD §5.11）：PATCH 语义 null = 本次不改。
+        // 仅在「目标状态与现值不同」时改 expire_at —— 否则只改标题也会把 7 天帖
+        // 静默续期成「此刻 + 7 天」，等于绕过续期动作。
+        if (req.validity() != null) {
+            if (NfrPost.VALIDITY_PERMANENT.equals(req.validity())) {
+                update.set("expire_at", null);
+            } else if (NfrPost.VALIDITY_DAYS.equals(req.validity())) {
+                PostEntity current = postMapper.selectById(postId);
+                if (current != null && current.getExpireAt() == null) {
+                    update.set("expire_at", LocalDateTime.now().plusDays(NfrPost.VALID_DAYS));
+                }
+            } else {
+                throw BizException.of(ErrorCode.PARAM_INVALID);
+            }
+        }
         update.setSql("version = version + 1");
 
         int affected = postMapper.update(null, update);

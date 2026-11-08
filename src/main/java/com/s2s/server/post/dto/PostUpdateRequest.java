@@ -37,6 +37,9 @@ import java.util.Map;
  * @param contactValue   联系方式值（可空 = 保留原密文不改）
  * @param certIds        资质栏挂载结果（{@code null} = 本次不改动；空列表 = 取消全部挂载）
  * @param contactApplyRequired 查看联系方式是否需申请（{@code null}=本次不改；改回关闭不回收已同意的人，R23）
+ * @param validity       有效期（{@code 7d} / {@code permanent}；{@code null}=本次不改）。
+ *                       仅在目标状态与现值不同时改写 {@code expire_at}：
+ *                       7 天帖保持不变、常驻帖改回 7 天时以当前时刻重算，7 天帖改常驻置 NULL。
  */
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public record PostUpdateRequest(
@@ -56,5 +59,6 @@ public record PostUpdateRequest(
         String contactType,
         @Size(max = 64) String contactValue,
         List<Long> certIds,
-        Boolean contactApplyRequired) {
+        Boolean contactApplyRequired,
+        String validity) {
 }

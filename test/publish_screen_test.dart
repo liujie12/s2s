@@ -134,6 +134,30 @@ void main() {
       expect(find.byType(DropdownButton<int>), findsNothing);
     });
 
+    testWidgets('编辑态仍可改有效期，且按现值回显（2026-11-08 二次口径）',
+        (tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(
+            home: PublishScreen(
+              args: PublishScreenArgs(
+                initialForm: const PublishFormState(permanent: true),
+                editPostId: 100,
+                editVersion: 1,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await scrollTo(tester, '有效期');
+
+      // 旧口径的只读提示必须消失：编辑能改，才谈得上「改回 7 天」。
+      expect(find.textContaining('编辑不会改变'), findsNothing);
+      expect(find.text('7 天（默认）'), findsOneWidget);
+      expect(find.text('常驻'), findsOneWidget);
+    });
+
     testWidgets('联系方式段：「查看联系方式需申请」默认关闭且可切换（R19）', (tester) async {
       await pumpPublish(tester);
       await scrollTo(tester, '联系方式');

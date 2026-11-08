@@ -5853,6 +5853,14 @@ components:
               description: |
                 改回「不需要申请」或开启「需申请」（V30 / R19、R23）。缺省 = 本次不改；
                 改回 `false` **不收回已同意的人**（R23），已批准的会话仍可直接取号。
+            validity:
+              type: string
+              enum: [7d, permanent]
+              description: |
+                有效期（2026-11-08 二次口径：编辑态可改）。缺省 = 本次不改。
+                仅当目标与现值不同才改写 `expire_at`：7 天帖保持不变（避免普通编辑
+                把到期日静默续期），常驻帖改回 7 天按当前时刻 + 7 天重算，7 天帖改常驻置 NULL。
+                非法取值回 `40001`。
           description: |
             [B2-8] 编辑载荷。字段集与 `PostCreateRequest` 一致，**但 `contact_type`/`contact_value`
             可空**——`contact_value` 为 `null` 表示**保留原密文不改**（完整联系方式明文唯一出口是

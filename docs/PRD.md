@@ -1042,6 +1042,7 @@ U2 浏览时按分类筛选：首页一级分类 Tab → 列表页二级筛选 �
 **发布有效期管理（全文唯一口径）**：
 
 - **默认 7 天，可选常驻（2026-11-08 增加）**：发布页第 7 段二选一 —— **7 天（默认）** / **常驻**；常驻 = 永久提供、**不自动下架、不推送续期提醒**，适合长期有效的资源或需求，用户仍可随时手动下架；默认值不变，常驻需用户主动选择；
+- **编辑可改有效期（2026-11-08 二次口径）**：编辑页第 7 段与发布页同款二选一，按当前 `expire_at` 回显（为空 = 常驻）。保存时**仅在目标与现值不同才改写到期日**：7 天帖保持原到期日不变（避免普通编辑静默续期）、常驻帖改回 7 天按保存时刻 + 7 天重算、7 天帖改常驻置空；编辑载荷缺省 `validity` = 本次不改；
 - **7 天一键刷新**：每 7 天弹"这条还在吗？点一下继续挂 7 天"，每次刷新续 7 天，可无限次刷新（常驻帖无此提醒）；
 - **14 天不刷新自动从地图推荐池下架**（仍保留在列表页历史 + 个人中心可手动重发）；
 - **重发有效期默认同为 7 天**，用户可在发布页改选常驻；
@@ -2409,7 +2410,7 @@ POC 拆为**算法级（POC-A）与定标级（POC-B）两级**，二者回答�
 | POST | `/posts/precheck` | 提交前校验（敏感词 + 禁发类目 + 认证拦截） | out: `blocked`,`reasons[]`,`need_cert`,`cert_type` | §5.7 强制认证拦截 / §9.6 |
 | POST | `/posts` | 发布 | in: `type`(resource/demand),`leaf_category_id`,`title`,`price`,`price_unit`,`desc`,`lng`,`lat`,`address`,`media_ids[]`,`contact_channel`,`contact_value`,`contact_apply_required`(缺省 false，R19),`validity`(`7d`/`permanent`，缺省 `7d`，2026-11-08),`template_values{}`；out: `post_id`,`completeness_level`,`completeness_conditions{}`(供发布完成页「还差哪几项」回显),`restricted`(未实名受限态) | §5.7 / §5.11 / §3.7 先发后审 / §9.8 |
 | GET | `/posts/{id}` | 详情 | out: post 全字段 + **`version`**(int64，乐观锁) + `owner`(脱敏) + `trust_signals` | §7.4.1 / 架构 §5.2.1 |
-| PATCH | `/posts/{id}` | 编辑 | — | §8.3.1 |
+| PATCH | `/posts/{id}` | 编辑（字段同发布；`validity` 可改，缺省 = 不改） | in: 发布同款字段 + `version`(必带) + `cert_ids[]` + `contact_apply_required` + `validity`(`7d`/`permanent`，2026-11-08) | §8.3.1 / §5.11 |
 | POST | `/posts/{id}/renew` | 一键刷新续 7 天（常驻帖保持常驻，`expire_at` 仍为空） | out: `expire_at` | §5.11 有效期 |
 | POST | `/posts/{id}/repost` | 一键重发（带原内容） | out: 新 `post_id` | §8.3.1 |
 | PATCH | `/posts/{id}/status` | 上/下架（取值须合 §8.6 状态机：`active` / `archived`） | in: `action`(`offline`/`republish`/`renew`),**`version`**(int64，必带) | §8.6 状态机 / 架构 §5.2.1 |

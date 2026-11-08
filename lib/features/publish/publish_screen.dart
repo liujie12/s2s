@@ -428,6 +428,8 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
                   'version': widget.args.editVersion,
                   // 资质栏整体替换：编辑态总是上送（空列表 = 取消全部挂载）
                   'cert_ids': _form.certIds,
+                  // 有效期可改（2026-11-08）：显式上送，空/缺省会让服务端按「不改」处理。
+                  'validity': _form.validity,
                   // 联系方式策略显式上送：改回 false 即恢复一键取号（R23 不收回已同意者）。
                   'contact_apply_required': _form.contactApplyRequired,
                 },
@@ -840,10 +842,9 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
             title: '有效期',
             done: true,
             // §5.11（2026-11-08 口径）：默认 7 天 / 常驻二选一。
-            // 编辑态不提供切换：有效期在发布时确定，契约编辑载荷也不含 validity。
+            // 编辑态同样可改（2026-11-08 二次口径）：服务端按目标与现值差异改写到期日。
             child: _ValiditySelector(
               permanent: _form.permanent,
-              readOnly: _isEditing,
               onChanged: (permanent) =>
                   _updateForm(_form.copyWith(permanent: permanent)),
             ),
@@ -1020,7 +1021,6 @@ class _ValiditySelector extends StatelessWidget {
   const _ValiditySelector({
     required this.permanent,
     required this.onChanged,
-    this.readOnly = false,
   });
 
   /// 当前是否选择常驻。
@@ -1029,14 +1029,8 @@ class _ValiditySelector extends StatelessWidget {
   /// 切换回调：参数 = 是否常驻。
   final ValueChanged<bool> onChanged;
 
-  /// 编辑态只读（有效期发布时确定，编辑载荷不含 `validity`）。
-  final bool readOnly;
-
   @override
   Widget build(BuildContext context) {
-    if (readOnly) {
-      return const _HintText('有效期在发布时确定，编辑不会改变；如需调整请重新发布。');
-    }
     return Column(
       children: [
         _ValidityOption(
