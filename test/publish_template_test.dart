@@ -136,7 +136,7 @@ void main() {
       expect(templateForLeaf(-1).isGeneric, isTrue);
     });
 
-    test('48 个叶子全部能取到模板，且四类命中专属模板、其余走通用', () {
+    test('120 个叶子全部能取到模板，且四类命中专属模板、其余走通用', () {
       var specific = 0;
       for (final leaf in leafCategories) {
         final t = templateForLeaf(leaf.id);

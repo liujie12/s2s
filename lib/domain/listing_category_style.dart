@@ -56,7 +56,7 @@ extension ListingCategoryStyle on ListingCategory {
   };
 }
 
-/// 二级分类图标（PRD §6.4.2「二级图标映射表」，2026-10-28 定稿）。
+/// 二级分类图标（PRD §6.4.2「二级图标映射表」，2026-10-28 定稿 / 2026-11-08 扩到 25 行）。
 ///
 /// 参数：[leafCategoryId] 服务端叶子类目 ID（如 `10101`）；传 null 表示未知叶子。
 /// 返回：该叶子所属二级的字形；叶子未登记或为 null 时返回 null。
@@ -86,8 +86,8 @@ IconData? l2CategoryIconOfMid(int? midCategoryId) =>
 
 /// 分类图标名 → 字形的**唯一解析入口**（服务端 `category.icon` 的消费点）。
 ///
-/// 键取自 PRD §6.4.2 两表「Material 名」列：一级 5 行 + 二级 21 行
-/// （其中 101/402 与一级同形，故实际键 24 个）。
+/// 键取自 PRD §6.4.2 两表「Material 名」列：一级 5 行 + 二级 25 行
+/// （其中 101/402 与一级同形，故实际键 28 个）。
 ///
 /// 参数：[name] 服务端下发的 Material Symbols 名；null 返回 null。
 /// 返回：对应字形；未登记名返回 null —— 与 [l2CategoryIcon] 同取向，
@@ -112,7 +112,7 @@ IconData nodeIconOf(CategoryNode node) =>
     node.topCategory?.icon ??
     neutralCategoryIcon;
 
-/// 二级 ID → PRD 表里的 Material 名（21 行）。
+/// 二级 ID → PRD 表里的 Material 名（25 行）。
 ///
 /// 只存名字、不存字形：字形统一由 [_categoryIconByName] 解析，
 /// 保证「服务端下发名」与「本地按 ID 兜底」走同一条查表路径，
@@ -121,14 +121,18 @@ const Map<int, String> _l2IconNameByMid = {
   101: 'work',
   102: 'work_history',
   103: 'person_search',
+  104: 'local_shipping',
+  105: 'point_of_sale',
   201: 'apartment',
   202: 'real_estate_agent',
   203: 'hotel',
   204: 'support_agent',
+  205: 'business_center',
   301: 'airport_shuttle',
   302: 'car_rental',
   303: 'sell',
   304: 'hail',
+  305: 'car_repair',
   401: 'inventory_2',
   402: 'volunteer_activism',
   403: 'search',
@@ -141,7 +145,7 @@ const Map<int, String> _l2IconNameByMid = {
   505: 'directions_run',
 };
 
-/// Material 名 → 字形（PRD §6.4.2 一级 5 行 + 二级 21 行，去重后 24 键）。
+/// Material 名 → 字形（PRD §6.4.2 一级 5 行 + 二级 25 行，去重后 28 键）。
 ///
 /// 为什么用字符串键而不是「服务端下发图标号」：契约里 `icon` 本就是
 /// Material Symbols 名（数据库设计 `category.icon` 列注释），改名即改配置，
@@ -153,17 +157,21 @@ const Map<String, IconData> _categoryIconByName = {
   'directions_car': Icons.directions_car,
   'volunteer_activism': Icons.volunteer_activism,
   'build': Icons.build,
-  // 二级（§6.4.2 二级图标映射表，2026-10-28 定稿）
+  // 二级（§6.4.2 二级图标映射表，2026-10-28 定稿 / 2026-11-08 扩到 25 行）
   'work_history': Icons.work_history,
   'person_search': Icons.person_search,
+  'local_shipping': Icons.local_shipping,
+  'point_of_sale': Icons.point_of_sale,
   'apartment': Icons.apartment,
   'real_estate_agent': Icons.real_estate_agent,
   'hotel': Icons.hotel,
   'support_agent': Icons.support_agent,
+  'business_center': Icons.business_center,
   'airport_shuttle': Icons.airport_shuttle,
   'car_rental': Icons.car_rental,
   'sell': Icons.sell,
   'hail': Icons.hail,
+  'car_repair': Icons.car_repair,
   'inventory_2': Icons.inventory_2,
   'pets': Icons.pets,
   'campaign': Icons.campaign,

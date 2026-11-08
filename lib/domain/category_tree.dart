@@ -1,4 +1,4 @@
-/// 三级分类树（PRD §2.4 首期建议树 / §2.9 实现逻辑 / §12.3 `/categories/tree`）。
+/// 三级分类树（PRD §2.4 分类三级树 / §2.9 实现逻辑 / §12.3 `/categories/tree`）。
 ///
 /// 为什么现在建：它是发布页的硬前置 —— 没有叶子类目就取不到模板 Schema
 /// （§5.7 按 `leaf_category_id` 映射模板），级联选择器（§5.4.2 三列）也无数据源。
@@ -11,6 +11,12 @@
 /// 为什么用单一 [CategoryNode] 自引用结构而不是三个层级类：§13.2 的 `category`
 /// 表就是自引用单表（`parent_id`），三个类会让「按 parent_id 回溯面包屑」这件事
 /// 退化成三段 switch。级联选择器也只需对同一种节点做三次列表渲染。
+///
+/// 2026-11-08 扩类：按用户反馈「二三级分类 item 不够多」，参照闲鱼一级类目、
+/// 58 同城（保洁清洗 / 家电维修 / 搬家 / 管道疏通 / 招聘 / 房产 / 二手）与
+/// 啄木鸟家庭维修（15 个服务大类）把规模从 5/21/48 扩到 5/25/120。
+/// **只追加、不重排**：原有编号全部保留，新二级 104/105/205/305 与新叶子
+/// 一律顺延，避免历史 `post.leaf_category_id` 指向错类。
 library;
 
 import 'listing_category.dart';
@@ -20,7 +26,7 @@ import 'listing_category.dart';
 /// 现为编译期常量，接后端后改为「本地缓存值 + 服务端下发值比对」：
 /// 版本未变则服务端返回 `code=0,data=null`（§12.3），客户端继续用缓存。
 /// TODO(M5)：改为可持久化字段，接 `GET /categories/tree`。
-const String categoryTreeVersion = '2026-08-31.1';
+const String categoryTreeVersion = '2026-11-08.1';
 
 /// 发布该叶子类目所需的认证类型（§4.3 认证类型表 / §2.9 末条高敏标记）。
 ///
@@ -120,7 +126,7 @@ class CategoryNode {
 ///
 /// [topId] 一级类目编号，取自 §2.4（工作 1 / 房屋 2 / 车辆 3 / 生活 4 / 服务 5）
 ///
-/// 返回：对应枚举；编号不在 1..5 时返回 null（不抛异常，理由见 [topCategoryOf]）
+/// 返回：对应枚举；编号不在 1..5 时返回 null（不抛异常，理由见 [topCategory]）
 ListingCategory? _topCategoryOfTopId(int topId) => switch (topId) {
   1 => ListingCategory.work,
   2 => ListingCategory.house,
@@ -134,7 +140,7 @@ ListingCategory? _topCategoryOfTopId(int topId) => switch (topId) {
 ///
 /// 参数 [leafCategoryId] 服务端下发的叶子类目 ID（如 `10101`）。
 /// 返回：二级类目 ID（如 `101`）。**不做合法性校验** —— 未登记的编号由调用方
-///   按「查不到」降级（与 [topCategoryOf] 返回 null 同取向）。
+///   按「查不到」降级（与 [topCategory] 返回 null 同取向）。
 ///
 /// 为什么单独成一个函数而不是各处写 `leaf ~/ 100`：这条整除规则与
 /// [categoryPathOf] 的回溯是同一份契约，散在调用点写就会有一处写错而无人发现
@@ -149,7 +155,7 @@ int midCategoryIdOf(int leafCategoryId) => leafCategoryId ~/ 100;
 ///
 /// **实现刻意遍历分类树，而不是按编码规则取前几位。** `10101` 的前两位是 `10`，
 /// 看起来能映射，但那依赖服务端类目编码规则永不变；而分类树带版本号
-/// （[categoryTreeVersion]）且会演进。遍历 48 个叶子的成本可忽略，换来的是
+/// （[categoryTreeVersion]）且会演进。遍历 120 个叶子的成本可忽略，换来的是
 /// 「编码规则改了也不会静默错」。
 ///
 /// [leafCategoryId] 服务端下发的叶子类目 ID（如 `10101`）
@@ -175,7 +181,7 @@ ListingCategory? topCategoryOf(
   return null;
 }
 
-/// 全量分类树（§2.4 逐字建模，5 一级 / 21 二级 / 48 叶子）。
+/// 全量分类树（§2.4 逐字建模，5 一级 / 25 二级 / 120 叶子）。
 ///
 /// 名称与层级严格照抄 §2.4，不做「顺手规整」——
 /// 例如二级「二手闲置转让」不简写为「闲置」、「家政/保洁」保留斜杠：
@@ -216,6 +222,11 @@ const List<CategoryNode> categoryTree = [
             name: '其他全职',
             requiredCert: RequiredCert.enterprise,
           ),
+          CategoryNode(
+            id: 10106,
+            name: '普工/技工',
+            requiredCert: RequiredCert.enterprise,
+          ),
         ],
       ),
       CategoryNode(
@@ -237,6 +248,21 @@ const List<CategoryNode> categoryTree = [
             name: '小时工',
             requiredCert: RequiredCert.enterprise,
           ),
+          CategoryNode(
+            id: 10204,
+            name: '促销/展会兼职',
+            requiredCert: RequiredCert.enterprise,
+          ),
+          CategoryNode(
+            id: 10205,
+            name: '快递分拣/打包',
+            requiredCert: RequiredCert.enterprise,
+          ),
+          CategoryNode(
+            id: 10206,
+            name: '传单派发',
+            requiredCert: RequiredCert.enterprise,
+          ),
         ],
       ),
       CategoryNode(
@@ -247,6 +273,71 @@ const List<CategoryNode> categoryTree = [
           // 对他要求企业认证等于把找工作的人挡在门外，与 §3.7
           // 「不做成必须认证才能用」的取向相反，故不打标。
           CategoryNode(id: 10301, name: '个人求职'),
+          CategoryNode(id: 10302, name: '全职求职'),
+          CategoryNode(id: 10303, name: '兼职求职'),
+        ],
+      ),
+      CategoryNode(
+        id: 104,
+        name: '司机/物流',
+        children: [
+          // 与 101/102 同为「雇主招人」，沿用企业认证口径。
+          CategoryNode(
+            id: 10401,
+            name: '货运司机',
+            requiredCert: RequiredCert.enterprise,
+          ),
+          CategoryNode(
+            id: 10402,
+            name: '网约车/代驾',
+            requiredCert: RequiredCert.enterprise,
+          ),
+          CategoryNode(
+            id: 10403,
+            name: '快递员/外卖骑手',
+            requiredCert: RequiredCert.enterprise,
+          ),
+          CategoryNode(
+            id: 10404,
+            name: '装卸搬运',
+            requiredCert: RequiredCert.enterprise,
+          ),
+          CategoryNode(
+            id: 10405,
+            name: '跟车/押运',
+            requiredCert: RequiredCert.enterprise,
+          ),
+        ],
+      ),
+      CategoryNode(
+        id: 105,
+        name: '销售/客服',
+        children: [
+          CategoryNode(
+            id: 10501,
+            name: '销售专员',
+            requiredCert: RequiredCert.enterprise,
+          ),
+          CategoryNode(
+            id: 10502,
+            name: '电话销售',
+            requiredCert: RequiredCert.enterprise,
+          ),
+          CategoryNode(
+            id: 10503,
+            name: '网络销售',
+            requiredCert: RequiredCert.enterprise,
+          ),
+          CategoryNode(
+            id: 10504,
+            name: '客服专员',
+            requiredCert: RequiredCert.enterprise,
+          ),
+          CategoryNode(
+            id: 10505,
+            name: '售后客服',
+            requiredCert: RequiredCert.enterprise,
+          ),
         ],
       ),
     ],
@@ -278,13 +369,32 @@ const List<CategoryNode> categoryTree = [
             name: '整租出租',
             requiredCert: RequiredCert.enterprise,
           ),
+          CategoryNode(
+            id: 20104,
+            name: '单间出租',
+            requiredCert: RequiredCert.enterprise,
+          ),
+          CategoryNode(
+            id: 20105,
+            name: '床位出租',
+            requiredCert: RequiredCert.enterprise,
+          ),
+          CategoryNode(
+            id: 20106,
+            name: '合租找室友',
+            requiredCert: RequiredCert.enterprise,
+          ),
         ],
       ),
       CategoryNode(
         id: 202,
         name: '求租/找房',
         // 求租方不发布房源，不适用房源认证。
-        children: [CategoryNode(id: 20201, name: '个人求租')],
+        children: [
+          CategoryNode(id: 20201, name: '个人求租'),
+          CategoryNode(id: 20202, name: '合租求租'),
+          CategoryNode(id: 20203, name: '整租求租'),
+        ],
       ),
       CategoryNode(
         id: 203,
@@ -293,6 +403,16 @@ const List<CategoryNode> categoryTree = [
           CategoryNode(
             id: 20301,
             name: '短租民宿',
+            requiredCert: RequiredCert.enterprise,
+          ),
+          CategoryNode(
+            id: 20302,
+            name: '日租公寓',
+            requiredCert: RequiredCert.enterprise,
+          ),
+          CategoryNode(
+            id: 20303,
+            name: '短租床位',
             requiredCert: RequiredCert.enterprise,
           ),
         ],
@@ -304,6 +424,49 @@ const List<CategoryNode> categoryTree = [
           CategoryNode(
             id: 20401,
             name: '房源线索/中介合作',
+            requiredCert: RequiredCert.enterprise,
+          ),
+          CategoryNode(
+            id: 20402,
+            name: '租房政策咨询',
+            requiredCert: RequiredCert.enterprise,
+          ),
+          CategoryNode(
+            id: 20403,
+            name: '验房/带看服务',
+            requiredCert: RequiredCert.enterprise,
+          ),
+        ],
+      ),
+      CategoryNode(
+        id: 205,
+        name: '二手房/商业地产',
+        children: [
+          // 房源发布 / 经营类挂载沿用 §4.3 企业认证；求购方不发布房源，不认证。
+          CategoryNode(
+            id: 20501,
+            name: '二手房出售',
+            requiredCert: RequiredCert.enterprise,
+          ),
+          CategoryNode(id: 20502, name: '二手房求购'),
+          CategoryNode(
+            id: 20503,
+            name: '商铺出租/转让',
+            requiredCert: RequiredCert.enterprise,
+          ),
+          CategoryNode(
+            id: 20504,
+            name: '写字楼出租',
+            requiredCert: RequiredCert.enterprise,
+          ),
+          CategoryNode(
+            id: 20505,
+            name: '厂房/仓库',
+            requiredCert: RequiredCert.enterprise,
+          ),
+          CategoryNode(
+            id: 20506,
+            name: '车位租售',
             requiredCert: RequiredCert.enterprise,
           ),
         ],
@@ -336,6 +499,16 @@ const List<CategoryNode> categoryTree = [
             name: '周末拼车',
             requiredCert: RequiredCert.vehicle,
           ),
+          CategoryNode(
+            id: 30104,
+            name: '机场/车站接送',
+            requiredCert: RequiredCert.vehicle,
+          ),
+          CategoryNode(
+            id: 30105,
+            name: '长期拼车',
+            requiredCert: RequiredCert.vehicle,
+          ),
         ],
       ),
       CategoryNode(
@@ -352,6 +525,21 @@ const List<CategoryNode> categoryTree = [
             name: '货车出租',
             requiredCert: RequiredCert.vehicle,
           ),
+          CategoryNode(
+            id: 30203,
+            name: '大巴/中巴出租',
+            requiredCert: RequiredCert.vehicle,
+          ),
+          CategoryNode(
+            id: 30204,
+            name: '婚车租赁',
+            requiredCert: RequiredCert.vehicle,
+          ),
+          CategoryNode(
+            id: 30205,
+            name: '以租代购',
+            requiredCert: RequiredCert.vehicle,
+          ),
         ],
       ),
       CategoryNode(
@@ -359,13 +547,37 @@ const List<CategoryNode> categoryTree = [
         name: '二手车转让',
         // 转让是一次性买卖，§4.3 只对「拼车/租车」强制车辆认证，
         // 不擅自扩大到转让 —— 扩大范围等于我替产品改了准入门槛。
-        children: [CategoryNode(id: 30301, name: '个人二手车')],
+        children: [
+          CategoryNode(id: 30301, name: '个人二手车'),
+          CategoryNode(id: 30302, name: '轿车转让'),
+          CategoryNode(id: 30303, name: 'SUV/MPV 转让'),
+          CategoryNode(id: 30304, name: '货车/工程车转让'),
+          CategoryNode(id: 30305, name: '摩托车/电动车转让'),
+        ],
       ),
       CategoryNode(
         id: 304,
         name: '求搭车/求拼',
         // 求搭车方没有车，要求行驶证会是一道无法满足的门。
-        children: [CategoryNode(id: 30401, name: '个人求搭车')],
+        children: [
+          CategoryNode(id: 30401, name: '个人求搭车'),
+          CategoryNode(id: 30402, name: '长期拼车求带'),
+          CategoryNode(id: 30403, name: '顺路捎带'),
+        ],
+      ),
+      CategoryNode(
+        id: 305,
+        name: '汽车维修/保养',
+        // §4.3 只对「拼车/租车」强制车辆认证；维修保养属普通服务，
+        // 不擅自把行驶证要求扩大到修车方（否则等于替产品加门槛）。
+        children: [
+          CategoryNode(id: 30501, name: '维修保养'),
+          CategoryNode(id: 30502, name: '洗车美容'),
+          CategoryNode(id: 30503, name: '轮胎/电瓶'),
+          CategoryNode(id: 30504, name: '钣金喷漆'),
+          CategoryNode(id: 30505, name: '汽车改装'),
+          CategoryNode(id: 30506, name: '道路救援'),
+        ],
       ),
     ],
   ),
@@ -384,6 +596,7 @@ const List<CategoryNode> categoryTree = [
           CategoryNode(id: 40103, name: '数码电子'),
           CategoryNode(id: 40104, name: '服饰鞋包'),
           CategoryNode(id: 40105, name: '其他二手'),
+          CategoryNode(id: 40106, name: '运动户外'),
         ],
       ),
       CategoryNode(
@@ -393,6 +606,7 @@ const List<CategoryNode> categoryTree = [
           CategoryNode(id: 40201, name: '临时借物'),
           CategoryNode(id: 40202, name: '邻里互助'),
           CategoryNode(id: 40203, name: '物品交换'),
+          CategoryNode(id: 40204, name: '工具借用'),
         ],
       ),
       CategoryNode(
@@ -409,6 +623,9 @@ const List<CategoryNode> categoryTree = [
         children: [
           CategoryNode(id: 40401, name: '宠物寄养'),
           CategoryNode(id: 40402, name: '宠物领养'),
+          CategoryNode(id: 40403, name: '宠物用品'),
+          CategoryNode(id: 40404, name: '宠物代遛'),
+          CategoryNode(id: 40405, name: '宠物医疗'),
         ],
       ),
       CategoryNode(
@@ -417,6 +634,7 @@ const List<CategoryNode> categoryTree = [
         children: [
           CategoryNode(id: 40501, name: '个人求购'),
           CategoryNode(id: 40502, name: '邻里求助'),
+          CategoryNode(id: 40503, name: '好物推荐'),
         ],
       ),
     ],
@@ -447,6 +665,21 @@ const List<CategoryNode> categoryTree = [
             name: '开荒保洁',
             requiredCert: RequiredCert.personalQualification,
           ),
+          CategoryNode(
+            id: 50104,
+            name: '家电清洗',
+            requiredCert: RequiredCert.personalQualification,
+          ),
+          CategoryNode(
+            id: 50105,
+            name: '玻璃/窗户清洗',
+            requiredCert: RequiredCert.personalQualification,
+          ),
+          CategoryNode(
+            id: 50106,
+            name: '保姆/月嫂/钟点工',
+            requiredCert: RequiredCert.personalQualification,
+          ),
         ],
       ),
       CategoryNode(
@@ -468,6 +701,21 @@ const List<CategoryNode> categoryTree = [
             name: '家具安装',
             requiredCert: RequiredCert.personalQualification,
           ),
+          CategoryNode(
+            id: 50204,
+            name: '管道疏通',
+            requiredCert: RequiredCert.personalQualification,
+          ),
+          CategoryNode(
+            id: 50205,
+            name: '开锁换锁',
+            requiredCert: RequiredCert.personalQualification,
+          ),
+          CategoryNode(
+            id: 50206,
+            name: '防水补漏',
+            requiredCert: RequiredCert.personalQualification,
+          ),
         ],
       ),
       CategoryNode(
@@ -482,6 +730,26 @@ const List<CategoryNode> categoryTree = [
           CategoryNode(
             id: 50302,
             name: '技能教学',
+            requiredCert: RequiredCert.personalQualification,
+          ),
+          CategoryNode(
+            id: 50303,
+            name: '语言培训',
+            requiredCert: RequiredCert.personalQualification,
+          ),
+          CategoryNode(
+            id: 50304,
+            name: '艺术/乐器',
+            requiredCert: RequiredCert.personalQualification,
+          ),
+          CategoryNode(
+            id: 50305,
+            name: '职业考证',
+            requiredCert: RequiredCert.personalQualification,
+          ),
+          CategoryNode(
+            id: 50306,
+            name: '体育培训',
             requiredCert: RequiredCert.personalQualification,
           ),
         ],
@@ -500,6 +768,26 @@ const List<CategoryNode> categoryTree = [
             name: '上门按摩',
             requiredCert: RequiredCert.personalQualification,
           ),
+          CategoryNode(
+            id: 50403,
+            name: '美发造型',
+            requiredCert: RequiredCert.personalQualification,
+          ),
+          CategoryNode(
+            id: 50404,
+            name: '美甲美睫',
+            requiredCert: RequiredCert.personalQualification,
+          ),
+          CategoryNode(
+            id: 50405,
+            name: '上门理发',
+            requiredCert: RequiredCert.personalQualification,
+          ),
+          CategoryNode(
+            id: 50406,
+            name: '足疗/采耳',
+            requiredCert: RequiredCert.personalQualification,
+          ),
         ],
       ),
       CategoryNode(
@@ -514,6 +802,26 @@ const List<CategoryNode> categoryTree = [
           CategoryNode(
             id: 50502,
             name: '代跑腿',
+            requiredCert: RequiredCert.personalQualification,
+          ),
+          CategoryNode(
+            id: 50503,
+            name: '代排队',
+            requiredCert: RequiredCert.personalQualification,
+          ),
+          CategoryNode(
+            id: 50504,
+            name: '代买代送',
+            requiredCert: RequiredCert.personalQualification,
+          ),
+          CategoryNode(
+            id: 50505,
+            name: '代办证件',
+            requiredCert: RequiredCert.personalQualification,
+          ),
+          CategoryNode(
+            id: 50506,
+            name: '陪诊/陪护',
             requiredCert: RequiredCert.personalQualification,
           ),
         ],
@@ -563,7 +871,7 @@ String? categoryPathLabel(int leafId, {List<CategoryNode> tree = categoryTree}) 
   return path.isEmpty ? null : path.map((n) => n.name).join(' > ');
 }
 
-/// 全量叶子类目（模板绑定与「不超过 60 个」上限校验的依据，§2.3）。
+/// 全量叶子类目（模板绑定与「不超过 120 个」上限校验的依据，§2.3）。
 List<CategoryNode> get leafCategories => [
   for (final top in categoryTree)
     for (final mid in top.children) ...mid.children,

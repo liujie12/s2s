@@ -8,6 +8,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zhaoyazhao/domain/category_tree.dart';
 import 'package:zhaoyazhao/features/discovery/discovery_filter.dart';
 import 'package:zhaoyazhao/features/discovery/effective_filter_provider.dart';
 import 'package:zhaoyazhao/features/discovery/filter_panel.dart';
@@ -131,14 +132,17 @@ void main() {
     // 二级图标与文字并排（PRD §6.4.2 验收口径）：404 宠物相关 → Icons.pets。
     expect(find.byIcon(Icons.pets), findsWidgets);
 
-    // 点二级「宠物相关」主体：写入该二级下全部叶子（40401 寄养 / 40402 领养）。
+    // 点二级「宠物相关」主体：写入该二级下全部叶子（寄养 / 领养 / 用品 / 代遛 / 医疗）。
     // 曾经的缺陷是 _leavesOf 只展开一层，传二级节点得到空集，点了没反应。
     await tester.tap(find.text('宠物相关'));
     await tester.pumpAndSettle();
-    expect(container.read(discoveryFilterProvider).leafCategoryIds, {
-      40401,
-      40402,
-    });
+    final petsLeaves = categoryPathOf(40401)[1].children
+        .map((node) => node.id)
+        .toSet();
+    expect(
+      container.read(discoveryFilterProvider).leafCategoryIds,
+      petsLeaves,
+    );
 
     // 再点一次整组取消。
     await tester.tap(find.text('宠物相关'));

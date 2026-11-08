@@ -40,12 +40,12 @@ void main() {
       }
     });
 
-    test('叶子总数不超过 60（§2.3 首期上限）', () {
+    test('叶子总数不超过 120（§2.3 上限）', () {
       // 上限是产品定的运营约束：类目越多，发布时选择成本越高。
       // 这条断言会在有人「顺手多加几个类目」时失败，而这正是它存在的目的。
-      expect(leafCategories.length, lessThanOrEqualTo(60));
+      expect(leafCategories.length, lessThanOrEqualTo(120));
       // 同时守下界：树被误删一半时长度会骤降，而页面只表现为「少了些选项」。
-      expect(leafCategories.length, 48);
+      expect(leafCategories.length, 120);
     });
   });
 
@@ -202,9 +202,9 @@ void main() {
         for (final mid in top.children) mid.children.first.id,
     ];
 
-    test('21 个二级全部有字形，且两两不同 —— 同族共用字形等于没做二级区分', () {
+    test('25 个二级全部有字形，且两两不同 —— 同族共用字形等于没做二级区分', () {
       final ids = leafIds();
-      expect(ids.length, 21);
+      expect(ids.length, 25);
       final icons = [for (final id in ids) l2CategoryIcon(id)];
       expect(
         icons.where((i) => i == null),
@@ -241,7 +241,7 @@ void main() {
   });
 
   group('服务端 icon 名解析（DB `category.icon` → API → domain → 渲染）', () {
-    /// PRD §6.4.2 两表「Material 名」列：一级 5 + 二级 21。
+    /// PRD §6.4.2 两表「Material 名」列：一级 5 + 二级 25。
     ///
     /// 这里是**名字清单的守门断言**：PRD 改表而代码漏跟时，它会失败。
     const names = [
@@ -251,17 +251,21 @@ void main() {
       'directions_car',
       'volunteer_activism',
       'build',
-      // 二级（2026-10-28 定稿）
+      // 二级（2026-10-28 定稿 / 2026-11-08 扩到 25）
       'work_history',
       'person_search',
+      'local_shipping',
+      'point_of_sale',
       'apartment',
       'real_estate_agent',
       'hotel',
       'support_agent',
+      'business_center',
       'airport_shuttle',
       'car_rental',
       'sell',
       'hail',
+      'car_repair',
       'inventory_2',
       'search',
       'pets',

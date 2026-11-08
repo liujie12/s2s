@@ -23,10 +23,14 @@ void main() {
 
     test('选定「工作」只展开工作下的叶子，不含房屋等其它大类', () {
       final ids = leafCategoryIdsFor(const {ListingCategory.work});
+      final workLeaves = categoryTree.first.children
+          .expand((mid) => mid.children)
+          .length;
 
-      expect(ids, hasLength(9));
+      expect(ids, hasLength(workLeaves));
       expect(ids, containsAll(const [10101, 10102, 10103, 10104, 10105]));
       expect(ids, containsAll(const [10201, 10202, 10203, 10301]));
+      expect(ids, containsAll(const [10401, 10501]));
       expect(ids, isNot(contains(20101)));
     });
 
@@ -35,12 +39,14 @@ void main() {
         ListingCategory.work,
         ListingCategory.house,
       });
+      final unionCount = [...categoryTree[0].children, ...categoryTree[1].children]
+          .expand((mid) => mid.children)
+          .length;
 
       expect(ids, contains(10101));
       expect(ids, contains(20101));
       expect(ids, isNot(contains(30101)));
-      // 工作 9 + 房屋 6（201xx 3 + 202xx 1 + 203xx 1 + 204xx 1）
-      expect(ids, hasLength(15));
+      expect(ids, hasLength(unionCount));
     });
   });
 

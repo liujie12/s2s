@@ -628,7 +628,7 @@ class _CategorySectionState extends ConsumerState<_CategorySection> {
   /// 读取当前显式选中集（动作回调用）。
   ///
   /// **不能直接用 `EffectiveFilter.leafCategoryIds`**：投影在「全部分类」时会
-  /// 展开成全部 48 个叶子供请求使用，拿来当选中态会让面板一打开就显示全选。
+  /// 展开成全部 120 个叶子供请求使用，拿来当选中态会让面板一打开就显示全选。
   /// 一律走 `explicitCategorySelectionProvider`（按「意图叶子 → 持久叶子 →
   /// 持久整类展开 → 空集」还原）；面板自己读两个源会成为第二读写点，
   /// 同源门禁 `single_source_test.dart` 会 FAIL。
