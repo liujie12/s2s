@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-04",
+  "generated_at": "2026-11-08",
   "note": "整体测试证据账本：数字唯一来源。人工执行后由执行人追加，禁止手抄到其他文档。",
   "environment": {
     "backend": "https://s2s.build110.com",
@@ -10,9 +10,10 @@
   },
   "frontend": {
     "command": "flutter test",
-    "passed": 1170,
+    "passed": 1178,
     "failed": 0,
     "skipped": 13,
+    "measured_at": "2026-11-08",
     "skipped_reason": "两组真模式套件未注入 define 时整组跳过：只读契约 7 条 + 登录态契约 6 条"
   },
   "backend": {
@@ -120,6 +121,87 @@
     "skipped_cases": [],
     "notes": "只产生登录/设备/限频计数，不写业务数据（IT-03 例外，见 test_data_residue）；手机号运行时注入、不入库。2026-11-04 测试号切换为白名单内 186****0845（首次登录自动注册）；原号 159****6851 的限频计数未清理，复用前需先删键"
   },
+  "manual_cases": {
+    "executed_at": "2026-11-08",
+    "device": {
+      "model": "Redmi 21091116C (pissarro)",
+      "os": "Android 13 / MIUI V816.0.24.0.TKTCNXM",
+      "resolution": "1080x2400",
+      "build": "release 1.0.0 (com.s2s.zhaoyazhao, lastUpdateTime 2026-11-08 21:41)"
+    },
+    "evidence_dir": "build/manual-evidence/2026-11-08/",
+    "results": [
+      {
+        "case": "MC-01",
+        "result": "PASS(partial)",
+        "covered": [
+          "8 个页面走查：地图发现 / 发布页（含分类·有效期·媒体）/ 消息空态 / 我的 / 设置 / 登录页 / 我的发布 / 编辑资料",
+          "按钮态抽样：主按钮可用（确认选择）、禁用（未勾协议时的发布键）、文字钮（编辑/下架）、危险钮（退出登录/删除）",
+          "空态：消息页「还没有会话」渲染正常",
+          "输入框：登录页手机号/验证码聚焦态正常"
+        ],
+        "not_covered": [
+          "第 6 项骨架屏录屏未采集",
+          "第 8 项对比度 8 组未逐组取样",
+          "第 9 项字体放大到最大：adb 改 system font_scale=1.3 未触发 MIUI 配置刷新，App 与系统 UI 均未缩放，记 SKIP"
+        ],
+        "skip_reason": "字体放大项受 ROM 限制无法用 adb 触发，需人工在 设置→显示→字体大小 调至最大后复测"
+      },
+      {
+        "case": "MC-02",
+        "result": "FAIL",
+        "detail": "场景 B 第 4 步不符：从系统设置授予定位权限后返回 App，页面仍停在「定位被关掉了」，未自动复评；杀进程重启后立即恢复（地图居中我的位置）",
+        "covered": [
+          "场景 B-1 先授权并成功定位（地图出绿点）PASS",
+          "场景 B-2 撤销权限后进入 B 态：标题「定位被关掉了」+「去系统设置打开」+「手动选择城市」PASS",
+          "场景 B-3 点主按钮跳到系统「应用信息」页 PASS",
+          "底图判定：真实高德底图 + Pin 正常，无白屏/无「Key 未配置」PASS",
+          "场景 C 降级提示：观察到「定位失败，已切换到默认位置」并落到默认中心，不崩溃 PASS（未做连续失败计数）"
+        ],
+        "skipped": ["场景 A 首次安装未授权：未清数据，未执行"],
+        "defect": "DEF-02"
+      },
+      {
+        "case": "MC-03",
+        "result": "PASS(partial)",
+        "covered": [
+          "步骤 1 PASS：application.yml 中 HUAWEI_PUSH_ENABLED / XIAOMI_PUSH_ENABLED 默认 false；运行期 logcat 无发送器注册日志"
+        ],
+        "skipped": [
+          "步骤 2/3/5：缺第二个测试账号（prod 白名单仅 186****0845），无法构造 A→B 站内通知与未读角标",
+          "步骤 4：无生产后端日志访问"
+        ]
+      },
+      {
+        "case": "MC-04",
+        "result": "PASS",
+        "detail": "阶段 1 四项全过：勾选协议后点微信 → 行内提示「微信登录暂未开放，请改用手机号登录」；logcat 无 weixin/wechat 外部请求；设置页「微信 · 未绑定」点击同提示，手机号登录态不受影响；复查仍为登录态（186****0845）",
+        "note": "协议未勾选时微信按钮为禁用态（与主按钮同口径），不是缺陷"
+      },
+      {
+        "case": "MC-07",
+        "result": "PASS(partial)",
+        "covered": [
+          "步骤 7 PASS：dumpsys package 声明权限 = INTERNET / NETWORK_STATE / FINE+COARSE_LOCATION / RECORD_AUDIO / POST_NOTIFICATIONS / WIFI_STATE / VIBRATE / MIPUSH_RECEIVE，与 AndroidManifest.xml 一致，无 CAMERA 与存储权限",
+          "步骤 1 PASS(结构)：媒体入口先弹「拍照 / 从相册选择」来源面板，应用侧不申请 CAMERA",
+          "步骤 2 PASS：选「拍照」拉起系统相机 OneShotCamera（ACTION_IMAGE_CAPTURE），未弹应用侧相机权限",
+          "步骤 4 PASS：Android 13 首启弹 POST_NOTIFICATIONS；选「拒绝」后 App 正常渲染，通知中心入口可用"
+        ],
+        "not_covered": [
+          "步骤 1 系统相册选择：来源面板「从相册选择」行紧贴系统导航条，脚本点击被导航条吃掉，未完成系统相册拉起取证",
+          "步骤 2 拍照回传后的图片可用性未验证",
+          "步骤 3 AI 语音 RECORD_AUDIO 未执行",
+          "步骤 5/6：观察到系统通知权限被拒后，设置页「接收通知」仍显示「已开启」，未反映系统态（观察项，未判缺陷）"
+        ]
+      },
+      {
+        "case": "MC-14",
+        "result": "PASS(step4)",
+        "detail": "步骤 4「手机号登录后复查」随 MC-04 一并验证：登录成功进入我的页，手机号脱敏展示 186****0845，登录态正常；微信相关入口不影响手机号登录",
+        "note": "阶段 2（code→openid 后端验收）仍暂缓，触发条件 = 微信登录开发完成 + ICP 备案通过"
+      }
+    ]
+  },
   "test_data_residue": [
     {
       "type": "post",
@@ -148,6 +230,22 @@
       "verification_evidence": "IT04_RETRY_AFTER=3600；同号 1 小时轨超限后第 6 次发送返回 429/42905",
       "status": "verified_fixed",
       "owner": "backend + ops"
+    },
+    {
+      "id": "DEF-02",
+      "severity": "P1",
+      "title": "定位权限从系统设置返回后不自动复评，引导页停留需重启 App",
+      "observed_at": "2026-11-08",
+      "environment": "prod / release 1.0.0 / Redmi 21091116C (Android 13)",
+      "evidence": "MC-02 场景 B：撤销定位权限后进入「定位被关掉了」；点「去系统设置打开」→ 系统应用信息页；adb pm grant 授予 FINE/COARSE 后返回 App，页面仍停在引导页（截图 MC02-B3-location-restored.png）；杀进程重启后立即恢复地图与定位（MC02-B4-after-restart.png）",
+      "root_cause": "LocationPermissionNotifier 只在 openAppSettings() 的 await 处复评一次（openAppSettings 立即返回，不等待用户从设置页回来），且全仓无定位权限相关的 AppLifecycleState.resumed 监听（仅 track_wiring / realtime_wiring 有生命周期回调）",
+      "impact": "用户按引导去系统设置打开定位后返回，App 仍显示「定位被关掉了」，必须杀进程重启才恢复；引导链路闭环缺失",
+      "fix": "已修复（2026-11-08）：LocationGuide 改为 ConsumerStatefulWidget + WidgetsBindingObserver，initState 注册、dispose 注销，didChangeAppLifecycleState 命中 resumed 时调用 locationPermissionProvider.notifier.evaluate()；新增回归用例 test/features/location/location_guide_lifecycle_test.dart（resumed 触发一次复评）。flutter analyze 0 issue；全量 flutter test 1178 passed / 13 skipped / 0 failed",
+      "verified_at": "2026-11-08",
+      "verification_evidence": "debug 包装机复验：撤销定位权限→引导页「开启位置，发现身边」→ pm grant 授权 → HOME 切后台再打开（不杀进程）→ 引导页自动消失、地图渲染（DEF02-03-resumed-fixed.png）",
+      "status": "fixed_pending_release",
+      "note": "修复只在 debug 包验证；11-08 release 包 app-release.apk 未包含该改动，需下次出包后复跑 MC-02",
+      "owner": "frontend"
     }
   ],
   "not_verified": [

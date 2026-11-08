@@ -35,11 +35,55 @@ final locationGuideDismissedProvider =
     );
 
 /// A/B 定位权限引导页。
-class LocationGuide extends ConsumerWidget {
+///
+/// 带生命周期监听：用户按「去系统设置打开」跳到系统设置、授权后返回本 App 时，
+/// 必须重新评估权限态（否则会停在引导页，只能杀进程重启才能恢复，见 DEF-02）。
+class LocationGuide extends ConsumerStatefulWidget {
   const LocationGuide({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<LocationGuide> createState() => _LocationGuideState();
+}
+
+/// 引导页 State：负责注册 `WidgetsBindingObserver`，在 App 回到前台时复评权限。
+class _LocationGuideState extends ConsumerState<LocationGuide>
+    with WidgetsBindingObserver {
+  /// 注册生命周期监听。
+  ///
+  /// 参数：无。
+  /// 返回：无。
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  /// 注销生命周期监听，避免 State 销毁后仍被回调。
+  ///
+  /// 参数：无。
+  /// 返回：无。
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// 生命周期变化回调：回到前台（resumed）时重新评估定位权限态。
+  ///
+  /// 用户从系统设置页返回、或从后台切回时都会触发；复评命中 granted 后
+  /// 引导页随 `locationPermissionProvider` 变化自动让位给地图。
+  ///
+  /// 参数：[state] 当前生命周期状态。
+  /// 返回：无。
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      ref.read(locationPermissionProvider.notifier).evaluate();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final phase = ref.watch(locationPermissionProvider);
     final isA = phase == LocationPermissionPhase.neverGranted;
     // A/B 只有四处不同：标题、说明、主按钮文字、主按钮动作（§6.4.4 末条）。
