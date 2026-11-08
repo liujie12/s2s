@@ -113,7 +113,7 @@ class PostServiceTest {
 
         PostCreateRequest req = new PostCreateRequest(
                 "resource", 10101, "标题", 50.0, "小时", "描述", Map.of(), 120.15, 30.28, null,
-                false, List.of(), "phone", "13800138000", null, null, null);
+                false, List.of(), "phone", "13800138000", null, null, null, null);
 
         PostDetail detail = postService.createPost(1L, req);
 
@@ -139,7 +139,7 @@ class PostServiceTest {
         when(postMapper.selectById(100L)).thenReturn(createSavedRow());
         PostCreateRequest req = new PostCreateRequest(
                 "resource", 10101, "标题", 50.0, "小时", null, Map.of(), 120.15, 30.28, null,
-                false, List.of(), "phone", "13800138000", true, null, null);
+                false, List.of(), "phone", "13800138000", true, null, null, null);
 
         postService.createPost(1L, req);
 
@@ -185,7 +185,7 @@ class PostServiceTest {
     private static PostCreateRequest createReq(Boolean aiAssisted) {
         return new PostCreateRequest(
                 "resource", 10101, "标题", 50.0, "小时", "描述", Map.of(), 120.15, 30.28, null,
-                false, List.of(), "phone", "13800138000", aiAssisted, null, null);
+                false, List.of(), "phone", "13800138000", aiAssisted, null, null, null);
     }
 
     /**
@@ -243,6 +243,53 @@ class PostServiceTest {
                 postService.updateStatus(1L, 100L, new PostStatusUpdateRequest("offline", 3L));
         assertThat(result.status()).isEqualTo("offline");
         assertThat(result.version()).isEqualTo(4L);
+    }
+
+    /**
+     * 发布：{@code validity=permanent} → {@code expire_at} 落 NULL（常驻）。
+     *
+     * @return void；若仍写入到期时刻，常驻帖会被到期任务自动下架
+     */
+    @Test
+    void createPost常驻有效期落空() {
+        when(postMapper.selectById(100L)).thenReturn(createSavedRow());
+        PostCreateRequest req = new PostCreateRequest(
+                "resource", 10101, "标题", 50.0, "小时", "描述", Map.of(), 120.15, 30.28, null,
+                false, List.of(), "phone", "13800138000", null, null, null,
+                com.s2s.server.common.constants.NfrPost.VALIDITY_PERMANENT);
+
+        postService.createPost(1L, req);
+
+        ArgumentCaptor<PostEntity> captor = ArgumentCaptor.forClass(PostEntity.class);
+        verify(postMapper).insert(captor.capture());
+        assertThat(captor.getValue().getExpireAt()).isNull();
+    }
+
+    /**
+     * 续期：常驻帖（{@code expire_at} 为空）续期后必须仍为空。
+     *
+     * @return void；若续期被写成 +7 天，一次「刷新」就把常驻帖变回短期帖
+     */
+    @Test
+    void updateStatus续期常驻帖保持空到期() {
+        PostEntity current = new PostEntity();
+        current.setId(100L);
+        current.setStatus("active");
+        current.setExpireAt(null);
+        current.setVersion(1L);
+        PostEntity after = new PostEntity();
+        after.setId(100L);
+        after.setStatus("active");
+        after.setExpireAt(null);
+        after.setVersion(2L);
+        when(postMapper.selectById(100L)).thenReturn(current, after);
+        when(postMapper.update(isNull(), any())).thenReturn(1);
+
+        PostStatusResult result =
+                postService.updateStatus(1L, 100L, new PostStatusUpdateRequest("renew", 1L));
+
+        assertThat(result.expireAt()).isNull();
+        assertThat(result.version()).isEqualTo(2L);
     }
 
     // ---------------------------------------------------------------------

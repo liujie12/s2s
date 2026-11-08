@@ -14,6 +14,19 @@ public final class NfrPost {
     public static final int VALID_DAYS = 7;
 
     /**
+     * 发布有效期枚举值：默认 7 天（契约缺省即此值，镜像 Dart {@code NfrPostLifecycle.validityDays}）。
+     */
+    public static final String VALIDITY_DAYS = "7d";
+
+    /**
+     * 发布有效期枚举值：常驻（永久提供）。
+     *
+     * <p>落库口径 {@code post.expire_at = NULL}：到期扫描不命中 NULL，
+     * 故常驻帖不会被自动下架（PRD §5.11）。</p>
+     */
+    public static final String VALIDITY_PERMANENT = "permanent";
+
+    /**
      * 工具类：禁止实例化。
      */
     private NfrPost() {

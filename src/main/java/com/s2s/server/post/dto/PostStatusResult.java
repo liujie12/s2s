@@ -12,7 +12,7 @@ import java.time.Instant;
  *
  * @param id       帖子 ID
  * @param status   变更后的状态（API 值，见 {@code PostStatus#toApi}）
- * @param expireAt 变更后的到期时间
+ * @param expireAt 变更后的到期时间；{@code null} = 常驻（不自动下架）
  * @param version  变更后的新版本号
  */
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)

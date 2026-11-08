@@ -22,7 +22,7 @@ import java.time.Instant;
  * @param completenessLevel 完整度档位（0/1/2）
  * @param status            状态（API 值）
  * @param publishAt         发布时间
- * @param expireAt          到期时间
+ * @param expireAt          到期时间；{@code null} = 常驻（不自动下架）
  * @param viewCount         浏览数（{@code post_view_daily} 按帖聚合；人/天去重、排除作者、上线后起算）
  * @param favoriteCount     收藏数（{@code favorite} 按帖聚合；排除作者自收藏）
  * @param contactCount      被查看联系方式次数（{@code contact_event} 按 post_id 聚合，

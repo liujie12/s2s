@@ -46,7 +46,7 @@ import java.util.Map;
  * @param completenessLevel 完整度档位（0/1/2）
  * @param status            状态（API 值，见 {@code PostStatus#toApi}）
  * @param publishAt         发布时间
- * @param expireAt          到期时间
+ * @param expireAt          到期时间；{@code null} = 常驻（不自动下架）
  * @param author            作者摘要（POST /posts 出参不填充，保持 null）
  * @param version           乐观锁版本号
  * @param aiAssisted        本条是否由 T2 AI 智能发布辅助生成（B2-4，PRD §5.9；详情页标识来源）

@@ -35,6 +35,8 @@ import java.util.Map;
  * @param certIds        可选挂载的资质档案 ID 列表（一帖多证；缺省/空 = 本次不展示，
  *                       不阻断发布、不进 precheck 阻断项）
  * @param contactApplyRequired 查看联系方式是否需申请（R19；缺省/null=否，维持既有「一键取号」效率）
+ * @param validity       发布有效期（{@code 7d} 默认 / {@code permanent} 常驻；缺省 = 7 天）。
+ *                       常驻落 {@code expire_at = NULL}，不自动下架
  */
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public record PostCreateRequest(
@@ -54,5 +56,6 @@ public record PostCreateRequest(
         @Size(max = 64) String contactValue,
         Boolean aiAssisted,
         List<Long> certIds,
-        Boolean contactApplyRequired) {
+        Boolean contactApplyRequired,
+        String validity) {
 }

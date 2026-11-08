@@ -218,7 +218,9 @@ public class PostService {
         post.setContactApplyRequired(Boolean.TRUE.equals(req.contactApplyRequired()) ? 1 : 0);
         // 快照发布时实际使用的模板版本，而不是写死常量（V26 起模板会随迁移递增）。
         post.setTemplateVersion(templateService.getTemplateVersion(req.leafCategoryId()));
-        post.setExpireAt(LocalDateTime.now().plusDays(NfrPost.VALID_DAYS));
+        // 有效期：缺省 7 天；validity=permanent 时 expire_at 置空（常驻，不自动下架）。
+        LocalDateTime now = LocalDateTime.now();
+        post.setExpireAt(resolveExpireAt(req.validity(), now));
         postMapper.insert(post);
 
         // [7] contact 双列加密：AAD = post_id，INSERT 后 UPDATE 密文
@@ -288,6 +290,10 @@ public class PostService {
             throw BizException.of(ErrorCode.PARAM_INVALID);
         }
         LocalDateTime now = LocalDateTime.now();
+        // 常驻帖（expire_at 为空）重发/续期必须保持为空，否则一次续期就会把它变回 7 天帖。
+        // 只读一次归属无关的到期列，不据此做存在性判断（非本人/不存在仍由 0 行 → 40903 兜底）。
+        PostEntity current = postMapper.selectById(postId);
+        boolean permanent = current != null && current.getExpireAt() == null;
         UpdateWrapper<PostEntity> update = new UpdateWrapper<>();
         update.eq("id", postId).eq("user_id", userId).eq("version", req.version());
         switch (req.action()) {
@@ -297,7 +303,7 @@ public class PostService {
             case PostStatus.ACTION_REPUBLISH, PostStatus.ACTION_RENEW -> update
                     .set("status", PostStatus.DB_ACTIVE)
                     .set("status_reason", null)
-                    .set("expire_at", now.plusDays(NfrPost.VALID_DAYS));
+                    .set("expire_at", permanent ? null : now.plusDays(NfrPost.VALID_DAYS));
             default -> throw BizException.of(ErrorCode.PARAM_INVALID);
         }
         update.set("status_changed_at", now);
@@ -312,7 +318,9 @@ public class PostService {
         return new PostStatusResult(
                 updated.getId(),
                 PostStatus.toApi(updated.getStatus(), updated.getStatusReason()),
-                updated.getExpireAt().toInstant(ZoneOffset.UTC),
+                updated.getExpireAt() == null
+                        ? null
+                        : updated.getExpireAt().toInstant(ZoneOffset.UTC),
                 updated.getVersion());
     }
 
@@ -583,7 +591,10 @@ public class PostService {
                 post.getCompletenessLevel(),
                 PostStatus.toApi(post.getStatus(), post.getStatusReason()),
                 post.getCreatedAt().toInstant(ZoneOffset.UTC),
-                post.getExpireAt().toInstant(ZoneOffset.UTC),
+                // 常驻帖 expire_at 为空，直接解引用会 NPE
+                post.getExpireAt() == null
+                        ? null
+                        : post.getExpireAt().toInstant(ZoneOffset.UTC),
                 null,
                 post.getVersion(),
                 Boolean.TRUE.equals(post.getAiAssisted()),
@@ -685,5 +696,27 @@ public class PostService {
         } catch (NumberFormatException e) {
             return null;
         }
+    }
+
+    /**
+     * 解析发布有效期并换算到期时刻（PRD §5.11 唯一口径）。
+     *
+     * <p>缺省/null/`7d` → 当前时刻 + {@link NfrPost#VALID_DAYS} 天；
+     * `permanent` → {@code null}（常驻，到期扫描不命中 NULL，故不自动下架）；
+     * 其余取值 → {@code 40001}，不静默回落成 7 天（否则客户端拼错枚举会被悄悄当成默认）。</p>
+     *
+     * @param validity 契约 {@code validity}（7d / permanent；缺省 = 7d）
+     * @param now      当前时刻（与后续写入同一时区口径）
+     * @return 到期时刻；常驻返回 {@code null}
+     * @throws BizException {@code 40001} 取值非法
+     */
+    private static LocalDateTime resolveExpireAt(String validity, LocalDateTime now) {
+        if (validity == null || validity.isBlank() || NfrPost.VALIDITY_DAYS.equals(validity)) {
+            return now.plusDays(NfrPost.VALID_DAYS);
+        }
+        if (NfrPost.VALIDITY_PERMANENT.equals(validity)) {
+            return null;
+        }
+        throw BizException.of(ErrorCode.PARAM_INVALID);
     }
 }

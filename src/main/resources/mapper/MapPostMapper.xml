@@ -34,7 +34,9 @@
     <select id="selectPins" resultType="map">
         SELECT id, lng, lat, leaf_category_id, type, completeness_level
         FROM post
-        WHERE status = 'active' AND expire_at &gt; NOW()
+        <!-- 常驻（expire_at IS NULL）也必须进池：SQL 三值逻辑下 NULL > NOW() 为 unknown，
+             只用 expire_at &gt; NOW() 会把常驻帖整批漏掉（PRD §5.11 2026-11-08 口径）。 -->
+        WHERE status = 'active' AND (expire_at IS NULL OR expire_at &gt; NOW())
         <if test="gridIds != null and communityId == null">
             AND grid_id IN
             <foreach collection="gridIds" item="g" open="(" separator="," close=")">#{g}</foreach>
@@ -57,7 +59,7 @@
     <select id="countPins" resultType="long">
         SELECT COUNT(*)
         FROM post
-        WHERE status = 'active' AND expire_at &gt; NOW()
+        WHERE status = 'active' AND (expire_at IS NULL OR expire_at &gt; NOW())
         <if test="gridIds != null and communityId == null">
             AND grid_id IN
             <foreach collection="gridIds" item="g" open="(" separator="," close=")">#{g}</foreach>
@@ -80,7 +82,7 @@
     <select id="selectClusters" resultType="map">
         SELECT ROUND(AVG(lng), 5) AS lng, ROUND(AVG(lat), 5) AS lat, COUNT(*) AS count
         FROM post
-        WHERE status = 'active' AND expire_at &gt; NOW()
+        WHERE status = 'active' AND (expire_at IS NULL OR expire_at &gt; NOW())
         <if test="gridIds != null and communityId == null">
             AND grid_id IN
             <foreach collection="gridIds" item="g" open="(" separator="," close=")">#{g}</foreach>
@@ -121,7 +123,7 @@
                u.realname_status
         FROM post p
         JOIN user u ON p.user_id = u.id
-        WHERE p.status = 'active' AND p.expire_at &gt; NOW()
+        WHERE p.status = 'active' AND (p.expire_at IS NULL OR p.expire_at &gt; NOW())
         <if test="gridIds != null">
             AND p.grid_id IN
             <foreach collection="gridIds" item="g" open="(" separator="," close=")">#{g}</foreach>
