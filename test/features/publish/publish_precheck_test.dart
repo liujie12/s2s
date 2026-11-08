@@ -226,8 +226,12 @@ void main() {
       await tapSubmit(tester);
 
       expect(postRepo.createCount, 1);
-      // POST 载荷与 precheck 同源（postDraftPayload 唯一构造处）
-      expect(postRepo.lastCreateDraft, postRepo.lastDraft);
+      // POST 载荷与 precheck 同源（postDraftPayload 唯一构造处），仅多出写接口专用键：
+      // validity（2026-11-08 常驻，precheck 的 PostDraft 无此键，故在 POST 时补）。
+      expect(postRepo.lastCreateDraft, {
+        ...?postRepo.lastDraft,
+        'validity': '7d',
+      });
       expect(find.text('成功页占位'), findsOneWidget);
     });
 

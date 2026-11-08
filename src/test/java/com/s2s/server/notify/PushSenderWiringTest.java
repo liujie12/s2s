@@ -25,7 +25,7 @@ class PushSenderWiringTest {
     private static final String FAKE_SECRET = "wiring-test-secret";
 
     /** 打桩包名（须与小米后台一致的真实格式，仅用于装配）。 */
-    private static final String PACKAGE_NAME = "com.s2s.zhaoyazhao.dev";
+    private static final String PACKAGE_NAME = "com.s2s.zhaoyazhao";
 
     /** 模拟生产容器：两个同类型 RestClient bean + JSON 序列化器。 */
     private final ApplicationContextRunner runner = new ApplicationContextRunner()

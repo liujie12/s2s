@@ -105,6 +105,7 @@ Map<String, Object?> _formToJson(PublishFormState form) => <String, Object?>{
   'contact': form.contact,
   'contact_apply_required': form.contactApplyRequired,
   'agreed': form.agreed,
+  'permanent': form.permanent,
 };
 
 /// JSON → 表单快照（容错：任何字段缺失/类型不符一律退默认值）。
@@ -160,6 +161,8 @@ PublishFormState _formFromJson(Object? raw) {
     // 旧草稿没有这个键：退默认「不需要申请」（R19 默认不勾选）。
     contactApplyRequired: (map['contact_apply_required'] as bool?) ?? false,
     agreed: (map['agreed'] as bool?) ?? false,
+    // 旧草稿没有这个键：退默认「7 天」（PRD §5.11 默认口径）。
+    permanent: (map['permanent'] as bool?) ?? false,
     // loadedTemplate 刻意不恢复：见文件头说明，由页面重新拉取。
   );
 }

@@ -118,6 +118,14 @@ void main() {
       expect(find.textContaining('14 天没刷新'), findsOneWidget);
       expect(find.textContaining('不会删除'), findsOneWidget);
     });
+
+    testWidgets('常驻：说明改为不自动下架、可手动下架，不再提续期', (tester) async {
+      await pump(tester, yellow().copyWith(permanent: true));
+      expect(find.textContaining('已设为常驻'), findsOneWidget);
+      expect(find.textContaining('不会到期自动下架'), findsOneWidget);
+      // 常驻没有到期日，继续提「7 天后问你还在不在」会自相矛盾
+      expect(find.textContaining('这条还在吗'), findsNothing);
+    });
   });
 
   group('后续动作出口', () {

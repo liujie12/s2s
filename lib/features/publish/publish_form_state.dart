@@ -17,6 +17,7 @@ import '../../domain/listing_category.dart';
 import '../../domain/publish_completeness.dart';
 import '../../domain/publish_template.dart';
 import '../../domain/route_pair.dart';
+import '../../nfr_constants.dart';
 
 /// 发布类型（§5.4.1 胶囊切换「发布资源 / 发布需求」，对应 §13.2 `post.type`）。
 enum PublishKind {
@@ -117,6 +118,7 @@ class PublishFormState {
     this.contact = '',
     this.contactApplyRequired = false,
     this.agreed = false,
+    this.permanent = false,
   });
 
   final PublishKind kind;
@@ -238,6 +240,17 @@ class PublishFormState {
   /// 是否勾选发布协议（§5.8「协议未勾选 → 主按钮 Disabled」）。
   final bool agreed;
 
+  /// 是否选择「常驻」有效期（PRD §5.11，2026-11-08 增加）。
+  ///
+  /// 默认 `false` = 7 天：产品口径是「默认 7 天」，常驻需用户主动切换，
+  /// 不能让沉默用户在不了解后果时被动进入永久展示。
+  final bool permanent;
+
+  /// 契约 `validity` 取值（`7d` / `permanent`）。
+  String get validity => permanent
+      ? NfrPostLifecycle.validityPermanent
+      : NfrPostLifecycle.validityDays;
+
   /// 当前生效的模板（未选分类时为通用模板）。
   ///
   /// [loadedTemplate] 就位后优先取之（字段集合是服务端口径）；未就位时
@@ -357,6 +370,7 @@ class PublishFormState {
     String? contact,
     bool? contactApplyRequired,
     bool? agreed,
+    bool? permanent,
   }) {
     return PublishFormState(
       kind: kind ?? this.kind,
@@ -379,6 +393,7 @@ class PublishFormState {
       contactApplyRequired:
           contactApplyRequired ?? this.contactApplyRequired,
       agreed: agreed ?? this.agreed,
+      permanent: permanent ?? this.permanent,
     );
   }
 
@@ -425,6 +440,7 @@ class PublishFormState {
       contact: contact,
       contactApplyRequired: contactApplyRequired,
       agreed: agreed,
+      permanent: permanent,
     );
   }
 
@@ -449,7 +465,9 @@ class PublishFormState {
   ///   只含已 commit 成功的媒体）；
   /// - 派生字段（`l2_category_id`/`completeness_level`/`grid_id`/
   ///   `expire_at`/`version`）一律不传（契约：客户端传了也被忽略，
-  ///   不传是对「服务端生成」的正向表达）。
+  ///   不传是对「服务端生成」的正向表达）；
+  /// - `validity`：**不进本载荷**（precheck 的 `PostDraft` schema 无此键），
+  ///   由发布页在 `POST /posts` 时补上（与 `cert_ids` 同法），取值见 [validity]。
   ///
   /// 返回：[Map] 契约 `PostDraft` 形态对象（可直接作请求体）。
   Map<String, Object?> postDraftPayload() {

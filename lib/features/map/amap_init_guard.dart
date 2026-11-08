@@ -29,7 +29,7 @@ import '../privacy/privacy_consent.dart';
 /// 为什么 Key 不进仓库：架构 §9.2 与编码规范 §110 要求客户端地图 Key 仅
 /// **构建期注入**、仓库只留占位。构建命令形如
 /// `flutter run --dart-define=AMAP_ANDROID_KEY=<你的Key>`（也可写在未被 git 跟踪的
-/// 本地脚本里）。Key 与包名 `com.s2s.zhaoyazhao.dev` 绑定，改包名须重申。
+/// 本地脚本里）。Key 与包名 `com.s2s.zhaoyazhao` 绑定，改包名须重申。
 const String kAmapAndroidKeyDefine = 'AMAP_ANDROID_KEY';
 
 /// 构建期注入的 Android Key。未注入时为空串 —— 此时必须走降级底图。

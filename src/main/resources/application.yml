@@ -193,8 +193,8 @@ s2s:
       # 小米推送（v3 REST：AppSecret 作 Authorization；AppId/AppKey 属客户端）
       enabled: ${XIAOMI_PUSH_ENABLED:false}
       app-secret: ${XIAOMI_PUSH_APP_SECRET:}
-      # 包名须与小米推送后台登记一致（当前沿用开发期包名，换正式包名须同步重登）
-      package-name: ${XIAOMI_PUSH_PACKAGE_NAME:com.s2s.zhaoyazhao.dev}
+      # 包名须与小米推送后台登记一致（P3 已冻结正式包名 com.s2s.zhaoyazhao，2026-11-04）
+      package-name: ${XIAOMI_PUSH_PACKAGE_NAME:com.s2s.zhaoyazhao}
       # 私信消息必填项（2026-12-31 前须完成模板接入）：channel 与模板均在小米运营平台申请。
       # 未配置时按普通通道下发（可用于联调/公信消息），配置后自动附带三者。
       channel-id: ${XIAOMI_PUSH_CHANNEL_ID:}

@@ -614,6 +614,12 @@ class NfrPostLifecycle {
 
   /// 连续未刷新即自动下架的天数。
   static const int autoArchiveDays = 14;
+
+  /// 契约 `validity` 的默认值：7 天（服务端缺省也是此值）。
+  static const String validityDays = '7d';
+
+  /// 契约 `validity` 的常驻取值：永久提供，不自动下架。
+  static const String validityPermanent = 'permanent';
 }
 
 /// §5.4.3 拼车「出发时间」控件的交互参数（chip 与滚轮）。

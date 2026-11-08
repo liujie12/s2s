@@ -219,6 +219,15 @@ void main() {
       expect(harness.server.received, hasLength(1));
     });
 
+    test('常驻帖 expire_at=null：解析为 null 不抛（2026-11-08）', () async {
+      final payload = postDetailPayload()..['expire_at'] = null;
+      stubGetPostDetail(harness, 1001, payload: payload);
+
+      final detail = await repo.fetchDetail(1001);
+
+      expect(detail.expireAt, isNull);
+    });
+
     test('price 缺失（面议）：解析为 null 不抛', () async {
       final payload = postDetailPayload()
         ..['price'] = null

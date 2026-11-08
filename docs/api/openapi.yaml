@@ -961,7 +961,7 @@ paths:
         | `l2_category_id` | STORED 生成列 `leaf_category_id DIV 100` |
         | `completeness_level` | STORED 生成列，由 `required_full` / `address_precise` / `leaf_matched` 三条件达成数映射：3→2、2→1、其他→0 |
         | `grid_id` | 服务端按 0.0045° 步长算法计算 |
-        | `expire_at` | 发布时间 + 有效天数（见 lib/nfr_constants.dart NfrPostLifecycle.validDays） |
+        | `expire_at` | `validity=7d`（缺省）= 发布时间 + 7 天（见 lib/nfr_constants.dart NfrPostLifecycle.validDays）；`validity=permanent`（常驻）= `null` |
         | `version` | 初始 0 |
 
         ### 联系方式加密
@@ -1121,7 +1121,8 @@ paths:
         [B2-8]（PRD §8.4「重发」/§8.6「archived → 重发 → 克隆新 draft → 编辑 → active」）。
 
         服务端读取原帖并返回一份**可编辑草稿载荷**（**不落库**）；前端带入发布页编辑态，
-        用户确认后走既有 `POST /posts` 落 `active`（有效期由发布时重置为默认 7 天）。
+        用户确认后走既有 `POST /posts` 落 `active`（有效期由发布时重置为默认 7 天，
+        用户可在发布页改选常驻）。
 
         - **仅 `offline`/`expired` 可重发**（PRD §8.3.1 稿侧：已下架→刷新重发）；其他状态回 `40001`；
         - 帖子不存在或非本人回 `41001`（不区分，避免按 id 探测）；
@@ -1212,7 +1213,11 @@ paths:
                         properties:
                           id: { type: integer, format: int64 }
                           status: { $ref: '#/components/schemas/PostStatusEnum' }
-                          expire_at: { type: string, format: date-time }
+                          expire_at:
+                            type: string
+                            format: date-time
+                            nullable: true
+                            description: 变更后的到期时间；`null` = 常驻（不自动下架，2026-11-08）
                           version:
                             type: integer
                             format: int64
@@ -5813,6 +5818,14 @@ components:
               description: |
                 查看联系方式是否需申请（V30 / R19）。缺省或 `false` = 维持既有「一键取号」
                 效率；`true` = 详情页显示「申请查看联系方式」，中转页不再直接发号（R20 / R25）。
+            validity:
+              type: string
+              enum: [7d, permanent]
+              default: 7d
+              description: |
+                发布有效期（PRD §5.11，2026-11-08 增加常驻）。缺省 = `7d`（7 天，可一键续期）；
+                `permanent` = 常驻：`post.expire_at` 落 `NULL`，不自动下架、不推送续期提醒，
+                用户仍可手动下架。其他取值回 `40001`（不静默回落为 7 天）。
 
     PostUpdateRequest:
       allOf:
@@ -6014,7 +6027,10 @@ components:
         expire_at:
           type: string
           format: date-time
-          description: 到期时间。倒计时文案允许用本地时间计算
+          nullable: true
+          description: |
+            到期时间。倒计时文案允许用本地时间计算。**`null` = 常驻**（2026-11-08）：
+            不自动下架，客户端应显示「常驻有效」而非剩余天数。
         version:
           type: integer
           format: int64
@@ -6067,7 +6083,11 @@ components:
         completeness_level: { $ref: '#/components/schemas/CompletenessLevelEnum' }
         status: { $ref: '#/components/schemas/PostStatusEnum' }
         publish_at: { type: string, format: date-time }
-        expire_at: { type: string, format: date-time }
+        expire_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: 到期时间；`null` = 常驻（不自动下架，2026-11-08）
         view_count:
           type: integer
           format: int64

@@ -33,7 +33,7 @@ class XiaomiPushSenderTest {
     private static final String APP_SECRET = "mi-secret";
 
     /** 打桩包名。 */
-    private static final String PACKAGE_NAME = "com.s2s.zhaoyazhao.dev";
+    private static final String PACKAGE_NAME = "com.s2s.zhaoyazhao";
 
     /** 打桩设备 regid（假值）。 */
     private static final String REG_ID = "reg-1";

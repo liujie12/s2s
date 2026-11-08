@@ -51,6 +51,7 @@ import '../../domain/car_options.dart';
 import '../../domain/category_tree.dart';
 import '../../domain/publish_template.dart';
 import '../../domain/route_pair.dart';
+import '../../nfr_constants.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/text/route_label.dart';
 import '../../router/app_router.dart';
@@ -436,6 +437,9 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
           // precheck 的载荷 schema 没有这两个键，故在这里补，不塞进 `postDraftPayload`。
           final payload = _form.postDraftPayload();
           if (_form.certIds.isNotEmpty) payload['cert_ids'] = _form.certIds;
+          // validity 只在 POST 上有（precheck 的 PostDraft 无此键），与 cert_ids 同法补。
+          // 总是显式上送：常驻是 bool 派生值，不依赖服务端缺省来解释「未勾选」。
+          payload['validity'] = _form.validity;
           // 只在开启时上送：新建的缺省就是 false（一键取号），不上送可让
           // POST 载荷与 precheck 完全同源（契约门禁与既有测试都按同源断言）。
           // 编辑态则总是上送 —— 否则「改回不需要申请」这个关闭动作会被忽略（R23）。
@@ -835,9 +839,13 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
             index: 7,
             title: '有效期',
             done: true,
-            child: _HintText(
-              // §5.11「默认 7 天，不提供其他可选值」—— 故这里是一行说明而非选择器。
-              '默认 $kDefaultValidDays 天，到期可一键刷新续 $kDefaultValidDays 天（不提供其他选项）',
+            // §5.11（2026-11-08 口径）：默认 7 天 / 常驻二选一。
+            // 编辑态不提供切换：有效期在发布时确定，契约编辑载荷也不含 validity。
+            child: _ValiditySelector(
+              permanent: _form.permanent,
+              readOnly: _isEditing,
+              onChanged: (permanent) =>
+                  _updateForm(_form.copyWith(permanent: permanent)),
             ),
           ),
           _SectionCard(
@@ -999,6 +1007,135 @@ class _KindSwitch extends StatelessWidget {
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+/// 有效期选择（§5.11，2026-11-08 起支持「常驻」）。
+///
+/// 默认 7 天、常驻需用户主动切换：默认值就是产品口径，不把常驻做成默认
+/// （长期展示的资源一旦泛滥，地图与推荐池会被历史帖占满）。
+class _ValiditySelector extends StatelessWidget {
+  const _ValiditySelector({
+    required this.permanent,
+    required this.onChanged,
+    this.readOnly = false,
+  });
+
+  /// 当前是否选择常驻。
+  final bool permanent;
+
+  /// 切换回调：参数 = 是否常驻。
+  final ValueChanged<bool> onChanged;
+
+  /// 编辑态只读（有效期发布时确定，编辑载荷不含 `validity`）。
+  final bool readOnly;
+
+  @override
+  Widget build(BuildContext context) {
+    if (readOnly) {
+      return const _HintText('有效期在发布时确定，编辑不会改变；如需调整请重新发布。');
+    }
+    return Column(
+      children: [
+        _ValidityOption(
+          title: '$kDefaultValidDays 天（默认）',
+          description: '到期可一键刷新续 $kDefaultValidDays 天；'
+              '${NfrPostLifecycle.autoArchiveDays} 天未刷新自动退出推荐池',
+          selected: !permanent,
+          onTap: () => onChanged(false),
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        _ValidityOption(
+          title: '常驻',
+          description: '永久提供，不自动下架；适合长期有效的资源或需求，可随时手动下架',
+          selected: permanent,
+          onTap: () => onChanged(true),
+        ),
+      ],
+    );
+  }
+}
+
+/// 单条有效期选项（整行可点，选中态用主色勾 + 描边）。
+class _ValidityOption extends StatelessWidget {
+  const _ValidityOption({
+    required this.title,
+    required this.description,
+    required this.selected,
+    required this.onTap,
+  });
+
+  /// 选项主文案。
+  final String title;
+
+  /// 选项说明（为何选它 / 后果是什么）。
+  final String description;
+
+  /// 是否选中。
+  final bool selected;
+
+  /// 点击选择。
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppRadius.md),
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.md,
+          vertical: AppSpacing.sm,
+        ),
+        decoration: BoxDecoration(
+          color: selected
+              ? const Color(AppColors.primary).withValues(alpha: 0.06)
+              : const Color(AppColors.background),
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          border: Border.all(
+            color: selected
+                ? const Color(AppColors.primary)
+                : const Color(AppColors.border),
+          ),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: AppTypeScale.body.size,
+                      fontWeight:
+                          selected ? FontWeight.w600 : FontWeight.w400,
+                      color: const Color(AppColors.textPrimary),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    description,
+                    style: TextStyle(
+                      fontSize: AppTypeScale.caption.size,
+                      color: const Color(AppColors.textSecondary),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Icon(
+              selected ? Icons.check_circle : Icons.radio_button_unchecked,
+              size: 20,
+              color: selected
+                  ? const Color(AppColors.primary)
+                  : const Color(AppColors.textPlaceholder),
+            ),
+          ],
+        ),
       ),
     );
   }

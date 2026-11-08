@@ -32,7 +32,11 @@ Listing _listing({
   );
 }
 
-ListingDetail _detail({Listing? listing, DateTime? expireAt}) {
+ListingDetail _detail({
+  Listing? listing,
+  DateTime? expireAt,
+  bool permanent = false,
+}) {
   return ListingDetail(
     listing: listing ?? _listing(),
     description: '描述',
@@ -42,7 +46,7 @@ ListingDetail _detail({Listing? listing, DateTime? expireAt}) {
       realNameVerified: true,
     ),
     completeness: CompletenessLevel.green,
-    expireAt: expireAt ?? _now.add(const Duration(days: 7)),
+    expireAt: permanent ? null : (expireAt ?? _now.add(const Duration(days: 7))),
     contactChannel: ContactChannel.phone,
     contactMasked: '138****8888',
     leafCategoryId: 50101, // 服务 > 家政/保洁 > 日常保洁
@@ -90,6 +94,11 @@ void main() {
     test('已过期返回 0 而非负数 —— 负数会渲染成「-1 天后下架」', () {
       final d = _detail(expireAt: _now.subtract(const Duration(days: 1)));
       expect(d.daysUntilExpire(_now), 0);
+    });
+
+    test('常驻（expireAt 为空）返回 null 而非 0 —— 0 会被渲染成「已过期」', () {
+      final d = _detail(permanent: true);
+      expect(d.daysUntilExpire(_now), isNull);
     });
   });
 

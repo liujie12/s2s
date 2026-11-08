@@ -24,6 +24,7 @@ import 'package:go_router/go_router.dart';
 import '../../design_tokens.dart';
 import '../../domain/listing_detail.dart';
 import '../../domain/publish_completeness.dart';
+import '../../nfr_constants.dart';
 import '../../router/app_router.dart';
 import '../notify/push_service.dart';
 import 'publish_form_state.dart';
@@ -104,7 +105,7 @@ class _PublishSuccessScreenState extends ConsumerState<PublishSuccessScreen> {
             const SizedBox(height: AppSpacing.xl),
             _CompletenessCard(assessment: assessment),
             const SizedBox(height: AppSpacing.lg),
-            const _ValidityNote(),
+            _ValidityNote(permanent: form?.permanent ?? false),
             const SizedBox(height: AppSpacing.lg),
             Row(
               children: [
@@ -300,12 +301,15 @@ class _CompletenessCard extends StatelessWidget {
   }
 }
 
-/// 有效期说明（§5.11「默认 7 天」+「7 天一键刷新」+「14 天不刷新自动下架」）。
+/// 有效期说明（§5.11「默认 7 天」/「常驻」+「7 天一键刷新」+「14 天不刷新自动下架」）。
 ///
 /// 放在完成页而不只放在发布页：发布页那一行是「将挂多久」，
 /// 而用户真正需要记住「7 天后会来问你还在不在」的时刻是刚发完。
 class _ValidityNote extends StatelessWidget {
-  const _ValidityNote();
+  const _ValidityNote({required this.permanent});
+
+  /// 本次发布是否选了常驻（true 时不再提续期与 14 天下架）。
+  final bool permanent;
 
   @override
   Widget build(BuildContext context) {
@@ -318,17 +322,21 @@ class _ValidityNote extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(
-            Icons.schedule,
+          Icon(
+            permanent ? Icons.all_inclusive : Icons.schedule,
             size: 16,
-            color: Color(AppColors.textSecondary),
+            color: const Color(AppColors.textSecondary),
           ),
           const SizedBox(width: AppSpacing.sm),
           Expanded(
             child: Text(
-              '有效期 $kDefaultValidDays 天。到期我们会问你「这条还在吗」，'
-              '点一下续 $kDefaultValidDays 天；14 天没刷新会自动从推荐里退出，'
-              '但不会删除。',
+              permanent
+                  ? '已设为常驻：这条信息会一直展示，不会到期自动下架；'
+                      '不需要时可随时在「我的发布」手动下架。'
+                  : '有效期 $kDefaultValidDays 天。到期我们会问你「这条还在吗」，'
+                      '点一下续 $kDefaultValidDays 天；'
+                      '${NfrPostLifecycle.autoArchiveDays} 天没刷新会自动从推荐里退出，'
+                      '但不会删除。',
               style: TextStyle(
                 fontSize: AppTypeScale.caption.size,
                 height: AppTypeScale.caption.lineHeight,

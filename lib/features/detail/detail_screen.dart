@@ -500,12 +500,15 @@ class _InfoSection extends StatelessWidget {
           _MetaRow(icon: Icons.place_outlined, text: detail.address ?? '位置未填写'),
           const SizedBox(height: AppSpacing.xs),
           _MetaRow(
-            icon: Icons.schedule_outlined,
+            icon: days == null ? Icons.all_inclusive : Icons.schedule_outlined,
             // 到期与临期用不同措辞：「1 天后下架」带紧迫感，
             // 而已过期的信息本不该出现在列表里，出现即为数据问题，明确说出来。
-            text: days == 0 ? '已过期' : '$days 天后下架',
+            // 常驻（expire_at 为空）没有到期日，显示「常驻有效」而非空白。
+            text: days == null
+                ? '常驻有效'
+                : (days == 0 ? '已过期' : '$days 天后下架'),
             // 3 天内标警示色：这是用户决定「要不要现在就联系」的关键信息。
-            highlight: days > 0 && days <= 3,
+            highlight: days != null && days > 0 && days <= 3,
           ),
         ],
       ),

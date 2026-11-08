@@ -161,8 +161,9 @@ class ListingDetail {
   /// 下架时间（§13.2 `post.expire_at`，默认 +7 天见 §5.11）。
   ///
   /// 存绝对时刻而非「剩余天数」：剩余天数在页面停留期间会过期，
-  /// 而绝对时刻可以随时重算。
-  final DateTime expireAt;
+  /// 而绝对时刻可以随时重算。**可空**：null = 常驻（2026-11-08 起，
+  /// 常驻帖不自动下架，接口以 `expire_at: null` 表达）。
+  final DateTime? expireAt;
 
   final ContactChannel contactChannel;
 
@@ -236,11 +237,13 @@ class ListingDetail {
   /// 帖级凭证声明列表（资质栏；一帖多证，空列表 = 整栏不渲染）。
   final List<PostCredential> credentials;
 
-  /// 剩余有效期天数（向上取整）。
+  /// 剩余有效期天数（向上取整）；null 表示常驻（无到期日）。
   ///
   /// 参数 [now] 由调用方注入而非内部取 `DateTime.now()`：页面停留时不必重算，
   /// 且测试可固定输入。返回 0 表示已到期。
-  int daysUntilExpire(DateTime now) {
+  int? daysUntilExpire(DateTime now) {
+    final expireAt = this.expireAt;
+    if (expireAt == null) return null;
     final diff = expireAt.difference(now);
     if (diff.isNegative) return 0;
     // 向上取整：剩 25 小时显示「2 天后下架」比「1 天」更安全 ——

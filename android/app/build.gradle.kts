@@ -56,10 +56,9 @@ android {
     }
 
     defaultConfig {
-        // 开发期包名：正式包名依赖 P2 企业域名主体（未办理），故先用 .dev 后缀申请高德开发 Key。
-        // P2/P3 落地后改为正式包名并同步重申 Key —— 替换点仅此一处（说明文档条目 [62]）。
+        // 正式包名（P3 已冻结，2026-11-04）：软著 / APP 备案 / 商店上架 / 高德 Key 均以此为准，定后不可改。
         // 须与高德控制台 Key 绑定的 Package 完全一致，否则报 INVALID_USER_SCODE。
-        applicationId = "com.s2s.zhaoyazhao.dev"
+        applicationId = "com.s2s.zhaoyazhao"
         // minSdk 24：高德 SDK 下限为 21，但 Flutter 3.41.9 低于 24 警告、低于 23 直接构建报错，
         // 取两侧交集为 24（PRD §6.7）。代价是放弃 Android 5.0–6.0。
         minSdk = 24

@@ -271,7 +271,7 @@ class PostDetailDto {
     this.address,
     required this.completenessLevel,
     required this.publishAt,
-    required this.expireAt,
+    this.expireAt,
     required this.author,
     this.media = const [],
     this.credentials = const [],
@@ -320,7 +320,8 @@ class PostDetailDto {
       address: optString(map, 'address', 'PostDetail'),
       completenessLevel: requireInt(map, 'completeness_level', 'PostDetail'),
       publishAt: _requireDateTime(map, 'publish_at', 'PostDetail'),
-      expireAt: _requireDateTime(map, 'expire_at', 'PostDetail'),
+      // 常驻帖 expire_at 为 null（2026-11-08）：按可选解析，null 即常驻。
+      expireAt: _optDateTime(map, 'expire_at', 'PostDetail'),
       author: PostAuthorDto.fromJson(map['author']),
       media: media,
       credentials: map['credentials'] is List
@@ -378,8 +379,8 @@ class PostDetailDto {
   /// 发布时间。
   final DateTime publishAt;
 
-  /// 到期时间。
-  final DateTime expireAt;
+  /// 到期时间；null = 常驻（不自动下架，2026-11-08）。
+  final DateTime? expireAt;
 
   /// 作者摘要。
   final PostAuthorDto author;

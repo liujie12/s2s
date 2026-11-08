@@ -56,8 +56,29 @@ void main() {
       expect(kDescriptionSuggestMax, 200);
     });
 
-    test('有效期默认 7 天（§5.11「默认 7 天，不提供其他可选值」）', () {
+    test('有效期默认 7 天（§5.11「默认 7 天」，2026-11-08 起另可选常驻）', () {
       expect(kDefaultValidDays, 7);
+    });
+  });
+
+  group('有效期（§5.11，2026-11-08 起支持常驻）', () {
+    test('默认 7 天：permanent=false，validity=7d', () {
+      final form = complete();
+      expect(form.permanent, isFalse);
+      expect(form.validity, NfrPostLifecycle.validityDays);
+      expect(form.validity, '7d');
+    });
+
+    test('选择常驻：validity=permanent，且改其它字段不丢失', () {
+      final form = complete().copyWith(permanent: true);
+      expect(form.validity, NfrPostLifecycle.validityPermanent);
+      expect(form.validity, 'permanent');
+      expect(form.copyWith(title: '改了标题').permanent, isTrue);
+    });
+
+    test('validity 不进 precheck 载荷（PostDraft 无此键，POST 时单独补）', () {
+      final payload = complete().copyWith(permanent: true).postDraftPayload();
+      expect(payload.containsKey('validity'), isFalse);
     });
   });
 

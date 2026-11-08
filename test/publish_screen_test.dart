@@ -121,11 +121,16 @@ void main() {
       }
     });
 
-    testWidgets('有效期是一行固定说明而非选择器（§5.11「不提供其他可选值」）', (tester) async {
+    testWidgets('有效期提供「7 天 / 常驻」二选一，默认 7 天（§5.11，2026-11-08）',
+        (tester) async {
       await pumpPublish(tester);
       await scrollTo(tester, '有效期');
-      expect(find.textContaining('默认 7 天'), findsOneWidget);
-      // 若日后有人加了天数下拉，这条会失败 —— 这正是它存在的目的
+      // 两个选项都必须出现：常驻是 2026-11-08 新增能力，入口丢了等于没做
+      expect(find.text('7 天（默认）'), findsOneWidget);
+      expect(find.text('常驻'), findsOneWidget);
+      // 默认仍是 7 天，不把常驻做成默认值
+      expect(find.textContaining('默认 7 天'), findsNothing);
+      // 只有两个互斥选项，不是自由天数选择器
       expect(find.byType(DropdownButton<int>), findsNothing);
     });
 

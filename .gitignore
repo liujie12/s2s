@@ -55,6 +55,9 @@ android/app/release/
 *.jks
 *.keystore
 android/key.properties
+# 推送厂商配置文件（华为 AGC / 荣耀），含应用侧凭据，绝不入库（2026-11-07）
+android/app/agconnect-services.json
+android/app/mcs-services.json
 
 # ── iOS ──
 ios/Pods/
