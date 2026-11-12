@@ -8,6 +8,7 @@
         SELECT user_id
         FROM post
         WHERE id = #{postId}
+          AND deleted_at IS NULL
     </select>
 
     <!-- 明细存在性：命中唯一键 uk_post_viewer_day。 -->

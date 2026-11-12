@@ -295,7 +295,9 @@ public class PostService {
         PostEntity current = postMapper.selectById(postId);
         boolean permanent = current != null && current.getExpireAt() == null;
         UpdateWrapper<PostEntity> update = new UpdateWrapper<>();
-        update.eq("id", postId).eq("user_id", userId).eq("version", req.version());
+        // 已删除帖（deleted_at 非空）不可再变更状态：否则 republish 会把已删除帖复活。
+        update.eq("id", postId).eq("user_id", userId).eq("version", req.version())
+                .isNull("deleted_at");
         switch (req.action()) {
             case PostStatus.ACTION_OFFLINE -> update
                     .set("status", PostStatus.DB_ARCHIVED)
@@ -308,6 +310,49 @@ public class PostService {
         }
         update.set("status_changed_at", now);
         update.setSql("version = version + 1");
+
+        int affected = postMapper.update(null, update);
+        if (affected == 0) {
+            throw BizException.of(ErrorCode.VERSION_CONFLICT);
+        }
+        // 重查返回权威值（version 由 SQL 自增，实体侧不猜）
+        PostEntity updated = postMapper.selectById(postId);
+        return new PostStatusResult(
+                updated.getId(),
+                PostStatus.toApi(updated.getStatus(), updated.getStatusReason()),
+                updated.getExpireAt() == null
+                        ? null
+                        : updated.getExpireAt().toInstant(ZoneOffset.UTC),
+                updated.getVersion());
+    }
+
+    /**
+     * 删除帖子（软删；2026-11-10 新增，openapi {@code DELETE /posts/{post_id}}）。
+     *
+     * <p><b>只置 {@code deleted_at}</b>：不写 {@code status}/{@code status_reason}、不新增枚举值、
+     * 不新增错误码 —— 删除行保留供举报与会话取证。删除后原状态不变，读路径另行过滤。</p>
+     *
+     * <p><b>仅非在架可删</b>：{@code WHERE status <> 'active'}，在架帖须先下架。归属、版本、
+     * 在架、已删除、行不存在<b>一律 0 行 → {@code 40903}</b>（同 {@link #updateStatus} 口径，
+     * 不按 id 探测存在性）。</p>
+     *
+     * @param userId  当前登录用户 ID（归属约束）
+     * @param postId  帖子 ID
+     * @param version 当前乐观锁版本号（必带，缺失由 controller 参数校验回 {@code 40001}）
+     * @return {@link PostStatusResult} 删除后状态/到期时间/自增后的新版本号
+     * @throws BizException {@code 40903}（0 行：在架/版本不符/非本人/已删除/不存在）
+     */
+    @Transactional
+    public PostStatusResult deletePost(Long userId, Long postId, Long version) {
+        LocalDateTime now = LocalDateTime.now();
+        UpdateWrapper<PostEntity> update = new UpdateWrapper<>();
+        update.eq("id", postId)
+                .eq("user_id", userId)
+                .eq("version", version)
+                .ne("status", PostStatus.DB_ACTIVE)
+                .isNull("deleted_at")
+                .set("deleted_at", now)
+                .setSql("version = version + 1");
 
         int affected = postMapper.update(null, update);
         if (affected == 0) {
@@ -444,7 +489,8 @@ public class PostService {
      */
     public RepostDraft repost(Long userId, Long postId) {
         PostEntity post = postMapper.selectById(postId);
-        if (post == null || !post.getUserId().equals(userId)) {
+        if (post == null || !post.getUserId().equals(userId) || post.getDeletedAt() != null) {
+            // 已软删帖等同不存在：重发取草稿一律 41001（OpenAPI DELETE 描述）
             throw BizException.of(ErrorCode.POST_GONE);
         }
         String apiStatus = PostStatus.toApi(post.getStatus(), post.getStatusReason());
@@ -635,7 +681,7 @@ public class PostService {
     @Transactional
     public List<PostCredential> attachCert(Long userId, Long postId, List<Long> certIds) {
         PostEntity post = postMapper.selectById(postId);
-        if (post == null || !post.getUserId().equals(userId)) {
+        if (post == null || !post.getUserId().equals(userId) || post.getDeletedAt() != null) {
             throw BizException.of(ErrorCode.PARAM_INVALID);
         }
         credentialAssembler.replaceAll(postId, requireSnapshots(userId, certIds));

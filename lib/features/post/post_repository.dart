@@ -256,6 +256,35 @@ class PostRepository {
     return PostStatusResultDto.fromJson(response.data);
   }
 
+  /// 删除帖子（`DELETE /posts/{post_id}?version=`，2026-11-10 新增）。
+  ///
+  /// **软删 + 仅非在架**：服务端只置 `deleted_at`、原状态不变；在架帖须先下架，
+  /// 在架 / 版本不符 / 非本人 / 已删除 / 行不存在一律回 `40903`（0 行不区分成因）。
+  /// 删除后详情回 `41001`、列表与计数不再出现；草稿删除走本地存储，不调本接口。
+  ///
+  /// 幂等：契约挂 `Idempotency-Key`，HeaderInterceptor 按写接口（POST/PATCH/DELETE）
+  /// 纪律缺失即注入，本层不碰该头。
+  ///
+  /// 参数：
+  ///   [postId] 帖子 ID（契约路径参数 int64）；
+  ///   [version] 当前乐观锁版本号（取自列表项，必带）；
+  ///   [interactionId] 交互起点生成的 X-Interaction-Id；null 由拦截器兜底。
+  /// 返回：[PostStatusResultDto] 删除后的状态与新版本号。
+  /// 抛出：[ApiException] 信封业务错误（40903 版本冲突/在架、40101 未登录）与
+  ///   传输错误归一后的异常。
+  Future<PostStatusResultDto> deletePost(
+    int postId, {
+    required int version,
+    String? interactionId,
+  }) async {
+    final response = await _dio.delete<Object?>(
+      '/posts/$postId',
+      queryParameters: <String, Object?>{'version': version},
+      options: _interactionOptions(interactionId),
+    );
+    return PostStatusResultDto.fromJson(response.data);
+  }
+
   /// 组装携带 X-Interaction-Id 的按请求选项。
   ///
   /// 参数：[interactionId] 交互 ID，null 表示无透传值。

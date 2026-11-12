@@ -144,6 +144,13 @@ public class PostEntity {
     /** 更新时间。 */
     private LocalDateTime updatedAt;
 
+    /**
+     * 软删时间（V37，2026-11-10）：非空即已删除，对所有读路径不可见。
+     *
+     * <p>删除为软删，不改变 {@link #status} / {@link #statusReason}；行保留供举报与会话取证。</p>
+     */
+    private LocalDateTime deletedAt;
+
     public Long getId() {
         return id;
     }
@@ -429,5 +436,23 @@ public class PostEntity {
 
     public void setUpdatedAt(LocalDateTime updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    /**
+     * 取软删时间。
+     *
+     * @return {@link LocalDateTime}；{@code null} 表示未删除
+     */
+    public LocalDateTime getDeletedAt() {
+        return deletedAt;
+    }
+
+    /**
+     * 设置软删时间（删除动作只允许写这一个字段，不碰 status）。
+     *
+     * @param deletedAt 软删时间；{@code null} = 未删除
+     */
+    public void setDeletedAt(LocalDateTime deletedAt) {
+        this.deletedAt = deletedAt;
     }
 }

@@ -121,6 +121,11 @@ public class PostQueryService {
         if (row == null) {
             throw BizException.of(ErrorCode.POST_GONE);
         }
+        // 软删帖对所有人（含本人）一律不可见：与「行不存在」同码 41001，不区分成因
+        // （V37 / 2026-11-10；按 id 探测不出「曾存在过」）。
+        if (row.get("deleted_at") != null) {
+            throw BizException.of(ErrorCode.POST_GONE);
+        }
         Long ownerId = toLong(row.get("user_id"));
         boolean isOwner = viewerId != null && viewerId.equals(ownerId);
         String dbStatus = (String) row.get("status");

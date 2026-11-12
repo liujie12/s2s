@@ -20,6 +20,7 @@ import com.s2s.server.post.dto.RepostDraft;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.List;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -35,6 +36,7 @@ import org.springframework.web.bind.annotation.RestController;
  * <p>职责：承载 post 域 HTTP 入口——{@code POST /posts/precheck}（发布预检）、
  * {@code POST /posts}（发布帖子）、{@code GET /posts/{post_id}}（详情，游客可读）、
  * {@code PATCH /posts/{post_id}/status}（下架/重新上架/延期）、
+ * {@code DELETE /posts/{post_id}}（软删，仅非在架）、
  * {@code GET /posts/mine}（我的发布）。返回 DTO 由 {@code ResponseBodyWrapper} 统一套壳。</p>
  *
  * <p><b>路径优先级</b>：{@code GET /posts/mine} 与 {@code GET /posts/{post_id}} 前缀重合，
@@ -127,6 +129,35 @@ public class PostController {
             HttpServletRequest httpRequest) {
         Long userId = requireUserId(httpRequest);
         return postService.updateStatus(userId, postId, request);
+    }
+
+    /**
+     * 删除帖子（软删；2026-11-10 新增；openapi {@code DELETE /posts/{post_id}}）。
+     *
+     * <p><b>仅非在架可删</b>：在架帖须先 {@code PATCH /posts/{id}/status} 下架。
+     * {@code version} 必带（乐观锁）；归属、版本、在架、已删除、行不存在一律
+     * {@code 40903}（0 行不区分成因，不按 id 探测存在性）。删除只置 {@code deleted_at}，
+     * 行保留供举报与会话取证。</p>
+     *
+     * <p>{@code version} 声明为 {@code required=false} 再手动判空：Spring 的
+     * {@code MissingServletRequestParameterException} 会落到全局兜底的 {@code 50001}
+     * （客户端按可重试处理），而缺参应回 {@code 40001}。</p>
+     *
+     * @param postId      帖子 ID
+     * @param version     当前乐观锁版本号（必带）
+     * @param httpRequest 当前请求（取登录用户 ID）
+     * @return {@link PostStatusResult} 删除后状态/到期时间/新版本号
+     */
+    @DeleteMapping("/posts/{post_id}")
+    @Idempotent
+    public PostStatusResult deletePost(@PathVariable("post_id") Long postId,
+            @RequestParam(value = "version", required = false) Long version,
+            HttpServletRequest httpRequest) {
+        if (version == null) {
+            throw BizException.of(ErrorCode.PARAM_INVALID);
+        }
+        Long userId = requireUserId(httpRequest);
+        return postService.deletePost(userId, postId, version);
     }
 
     /**

@@ -3,11 +3,12 @@
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.s2s.server.contact.mapper.FavoriteMapper">
 
-    <!-- 帖子存在性（收藏前置校验）。只查主键，不 JOIN。 -->
+    <!-- 帖子存在性（收藏前置校验）。只查主键，不 JOIN；软删帖等同不存在（V37）。 -->
     <select id="countPostById" resultType="int">
         SELECT COUNT(*)
         FROM post
         WHERE id = #{postId}
+          AND deleted_at IS NULL
     </select>
 
     <!-- 详情页 favorited：命中唯一键 uk_user_post(user_id, post_id)，再过滤软删。 -->
@@ -44,7 +45,7 @@
 
     <!--
       总数（与 selectPage 同筛选条件）。JOIN post 仅为按供需态筛选——JOIN 用主键，
-      代价可忽略；不加 p.deleted_at 条件（post 无软删列，下架帖仍在库里可被收藏）。
+      代价可忽略；下架帖仍可收藏（按状态展示），但**软删帖（V37）对收藏者不可见**。
     -->
     <select id="countByUser" resultType="long">
         SELECT COUNT(*)
@@ -52,6 +53,7 @@
         JOIN post p ON f.post_id = p.id
         WHERE f.user_id = #{userId}
           AND f.deleted_at IS NULL
+          AND p.deleted_at IS NULL
         <if test="type != null">
           AND p.type = #{type}
         </if>
@@ -80,6 +82,7 @@
         JOIN post p ON f.post_id = p.id
         WHERE f.user_id = #{userId}
           AND f.deleted_at IS NULL
+          AND p.deleted_at IS NULL
         <if test="type != null">
           AND p.type = #{type}
         </if>

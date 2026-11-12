@@ -87,11 +87,11 @@ enum MyPostCardAction {
   /// 克隆重发（[B2-8] 已接通：`POST /posts/{id}/repost` 取草稿 → 进发布页编辑态 →
   /// 用户确认后走 `POST /posts` 新建）。
   ///
-  /// 它不走 `PATCH /posts/{id}/status`，故 [apiAction] 为 null；「是否已接通」由
-  /// [isWired] 显式表达，不能再靠 `apiAction != null` 推断。
+  /// 它不走 `PATCH /posts/{id}/status`，故 [apiAction] 为 null —— 判断「走哪条通道」
+  /// 不能用 `apiAction != null` 推断，要按动作枚举显式分派（见页面 `_onAction`）。
   repost(null),
 
-  /// 删除（openapi 无 `DELETE /posts/{post_id}`；[B2-8] 裁定本轮不做，继续降级）。
+  /// 删除（2026-11-10 起接通：`DELETE /posts/{id}?version=`，软删且仅非在架可删）。
   remove(null),
 
   /// 继续编辑（[B2-8] 已接通：从本地草稿恢复表单进发布页）。
@@ -101,14 +101,6 @@ enum MyPostCardAction {
 
   /// 契约 `action` 值；null = 本动作不走 `PATCH /posts/{id}/status`。
   final String? apiAction;
-
-  /// 是否为已接通真接口的动作。
-  ///
-  /// **不可用 `apiAction != null` 判定**：[B2-8] 起 [repost] 与 [continueEdit] 均已
-  /// 接通，但都走各自通道（`POST /posts/{id}/repost` / 本地草稿）而非 PATCH status，
-  /// 其 [apiAction] 天然为 null。改为显式列举「唯一仍降级的动作」，新增动作时
-  /// 必须显式决定其接通状态，避免默认被误当成已接通而静默暴露一个必然失败的动作。
-  bool get isWired => this != MyPostCardAction.remove;
 }
 
 /// 按 API 状态给出卡片操作组（PRD §8.3.1 / §8.6 状态机 + 设计稿 my-publish）。

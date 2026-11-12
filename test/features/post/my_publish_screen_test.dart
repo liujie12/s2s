@@ -1,8 +1,7 @@
 /// 我的发布页 widget 测试（[127] 前端段 + [B2-8] 依赖项转真）。
 ///
 /// 覆盖：四页签与卡片要件（标题/价格/状态标/操作组/分页终态）、已接通动作调真接口、
-/// **编辑 / 克隆重发 / 页内搜索 / 本地草稿**（[B2-8] 转真）、仍降级的删除动作
-/// （不留点了没反应的死按钮）、空态。
+/// **编辑 / 克隆重发 / 删除 / 页内搜索 / 本地草稿**（[B2-8] 转真 + 2026-11-10 删除）、空态。
 library;
 
 import 'package:flutter/material.dart';
@@ -283,14 +282,38 @@ void main() {
     expect(RepostDraftDto.fromJson(payload).contactApplyRequired, isFalse);
   });
 
-  testWidgets('点「删除」：仍为降级提示（[B2-8] 裁定本轮不做删除端点）',
-      (tester) async {
+  testWidgets('点「删除」：二次确认后调 DELETE 并带列表项的乐观锁版本号', (tester) async {
     await pumpScreen(tester);
+    final before = repo.mineFetchCount;
 
     await tester.tap(find.text('删除'));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('删除功能本期内测版暂未开放'), findsOneWidget);
+    // 破坏性动作必须二次确认（稿外新增的确认层，口径见《决策登记表》2026-11-10）
+    expect(find.text('删除发布'), findsOneWidget);
+    await tester.tap(
+      find.descendant(of: find.byType(AlertDialog), matching: find.text('删除')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(repo.lastDeletePostId, 1002, reason: '删的是已下架那条（1001 在架不可删）');
+    expect(repo.lastDeleteVersion, 4, reason: '版本号须取自列表项，不得本地推算');
+    expect(repo.mineFetchCount, greaterThan(before), reason: '删除成功后须重拉权威列表');
+    expect(find.text('已删除'), findsOneWidget);
+    expect(find.textContaining('暂未开放'), findsNothing);
+  });
+
+  testWidgets('删除弹窗点「取消」：不调接口', (tester) async {
+    await pumpScreen(tester);
+
+    await tester.tap(find.text('删除'));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.descendant(of: find.byType(AlertDialog), matching: find.text('取消')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(repo.lastDeletePostId, isNull, reason: '取消不得产生任何删除请求');
   });
 
   testWidgets('切「草稿」页签：无本地草稿时显示空态且不发请求', (tester) async {

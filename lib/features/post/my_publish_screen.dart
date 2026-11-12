@@ -6,8 +6,8 @@
 ///
 /// **本轮接通的动作**（[B2-8] 转真后）：下架（`offline`）、编辑（`PATCH /posts/{id}`）、
 /// 克隆重发（`POST /posts/{id}/repost`）、继续编辑（本地草稿恢复）。
-/// **仍降级的一类**：删除（openapi 无 `DELETE /posts/{post_id}`，[B2-8] 裁定本轮不做，
-/// 登记见说明文档 §2.9）。
+/// **删除**：2026-11-10 起接通（`DELETE /posts/{id}?version=`，软删且仅非在架可删），
+/// 原「本期内测版暂未开放」降级已移除；裁定见《决策登记表》2026-11-10 批。
 ///
 /// **[B2-8] 转真要点**（裁定见《决策登记表》2026-10-13 B2-8 批）：
 ///   - **编辑**：先 `GET /posts/{id}` 预填表单，再以 `PublishScreenArgs.editPostId`
@@ -19,8 +19,8 @@
 ///   - **草稿页签**：数据源改为**本地草稿**（PRD §8.7 纯客户端，`draft_store.dart`），
 ///     卡片动作 `[继续编辑, 删除]`（此处「删除」删的是本地草稿，真实生效）。
 ///
-/// **降级按钮按设计稿原样呈现**（稿是 UI 冻结对象），点击给出「本期内测版暂未开放」
-/// 的明确说明 —— 不留一个点了没反应的死按钮（说明文档 [74] 教训）。
+/// **本页已无降级按钮**：删除接通后，稿面四个动作（编辑 / 下架 / 刷新重发 / 删除）
+/// 全部走真通道；本地草稿的「删除」删的是客户端存储，同样真实生效。
 ///
 /// **契约缺口一并未做**：PRD §5.11「一键刷新续 7 天」对应契约 `action=renew`，
 /// 但设计稿本页操作组无此按钮，按「不新增稿外按钮」本轮不呈现，缺口登记 §2.9。
@@ -115,9 +115,9 @@ class _MyPublishScreenState extends ConsumerState<MyPublishScreen> {
   Future<void> _onAction(MyPostCardAction action, MyPostItemDto item) async {
     switch (action) {
       case MyPostCardAction.remove:
-        // 唯一仍降级的动作：不承诺版本号，只说本期状态
-        //（说「后续版本」等于替未排期的事打包票）。
-        _showMessage('${_actionLabel(action)}功能本期内测版暂未开放');
+        // 2026-11-10 起接通：软删（仅非在架可删），二次确认后走
+        // `DELETE /posts/{id}?version=`；草稿卡不走本方法（见 _removeDraft）。
+        await _confirmRemove(item);
       case MyPostCardAction.offline:
         await _changeStatus(action, item);
       case MyPostCardAction.edit:
@@ -150,6 +150,51 @@ class _MyPublishScreenState extends ConsumerState<MyPublishScreen> {
       if (apiError.code == ApiErrorCode.versionConflict) {
         // 契约 description：0 行统一回 40903，客户端必须**重取**后由用户重试。
         // 这里立刻重取，让卡片显示权威状态与新版本号（用户不会再点一次旧版本）。
+        await ref.read(myPostsProvider.notifier).refresh();
+      }
+      if (mounted) _showMessage(apiError.uiMessage);
+    }
+  }
+
+  /// 删除既有帖（软删；2026-11-10 新增）：二次确认后走 `DELETE /posts/{id}?version=`。
+  ///
+  /// **仅非在架可删**：在架卡片的操作组里没有删除按钮（[cardActionsFor]），故此处
+  /// 无需再判状态；若并发下帖被重新上架，服务端回 `40903`，与版本冲突同路径处理
+  /// （重取列表拿回权威状态，由用户决定）。
+  ///
+  /// 参数：[item] 目标列表项（提供帖 ID 与乐观锁版本）。
+  /// 返回：[Future<void>]。
+  Future<void> _confirmRemove(MyPostItemDto item) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('删除发布'),
+        content: const Text('确定删除这条发布吗？删除后不可恢复。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(
+              '删除',
+              style: TextStyle(color: Color(AppColors.error)),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await ref
+          .read(myPostsProvider.notifier)
+          .delete(postId: item.id, version: item.version);
+      if (mounted) _showMessage('已删除');
+    } catch (e) {
+      final apiError = asApiException(e);
+      if (apiError.code == ApiErrorCode.versionConflict) {
+        // 0 行不区分成因（在架 / 版本不符 / 非本人 / 已删除）：重取权威列表。
         await ref.read(myPostsProvider.notifier).refresh();
       }
       if (mounted) _showMessage(apiError.uiMessage);

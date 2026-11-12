@@ -157,6 +157,28 @@ class FakePostRepository extends PostRepository {
     return PostStatusResultDto.fromJson(postStatusResultPayload());
   }
 
+  /// deletePost 抛出的异常（40903 在架/版本冲突等）；null 走正常返回。
+  Object? deleteErrorToThrow;
+
+  /// deletePost 收到的帖子 ID。
+  int? lastDeletePostId;
+
+  /// deletePost 收到的乐观锁版本号（断言取自列表项）。
+  int? lastDeleteVersion;
+
+  @override
+  Future<PostStatusResultDto> deletePost(
+    int postId, {
+    required int version,
+    String? interactionId,
+  }) async {
+    lastDeletePostId = postId;
+    lastDeleteVersion = version;
+    final error = deleteErrorToThrow;
+    if (error != null) throw error;
+    return PostStatusResultDto.fromJson(postStatusResultPayload());
+  }
+
   // ---------------------------------------------------------------------
   // [B2-8] 编辑 / 克隆重发 / 详情（编辑态预填用）
   // ---------------------------------------------------------------------

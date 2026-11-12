@@ -31,6 +31,7 @@
                p.created_at,
                p.expire_at,
                p.version,
+               p.deleted_at,
                u.id             AS author_id,
                u.nickname       AS author_nickname,
                u.avatar_url     AS author_avatar_url,
@@ -48,6 +49,8 @@
       dbStatuses 恒非空（无筛选时 service 传 filter=null，走 <if> 跳过整段）。
     -->
     <sql id="mineFilter">
+        <!-- 软删帖对本人也不可见（V37，2026-11-10）：删除后不再出现在任何页签与计数里。 -->
+        AND p.deleted_at IS NULL
         <if test="dbStatuses != null and dbStatuses.size() > 0">
             AND p.status IN
             <foreach collection="dbStatuses" item="s" open="(" separator="," close=")">#{s}</foreach>
@@ -136,6 +139,7 @@
         SELECT COUNT(*)
         FROM post p
         WHERE p.leaf_category_id = #{leafCategoryId}
+          AND p.deleted_at IS NULL
           AND p.created_at &gt;= #{from}
           AND p.created_at &lt; #{to}
     </select>

@@ -247,6 +247,52 @@ class PostServiceTest {
     }
 
     /**
+     * 删除：0 行（在架 / 版本不符 / 非本人 / 已删除 / 不存在）统一回 {@code 40903}。
+     *
+     * @return void；若按成因分别报错，会按 id 泄露「该帖存在且属他人」
+     */
+    @Test
+    void deletePost影响0行回40903() {
+        when(postMapper.update(isNull(), any())).thenReturn(0);
+
+        assertThatThrownBy(() -> postService.deletePost(1L, 100L, 3L))
+                .isInstanceOf(BizException.class)
+                .extracting(e -> ((BizException) e).getErrorCode())
+                .isEqualTo(ErrorCode.VERSION_CONFLICT);
+    }
+
+    /**
+     * 删除：软删成功返回删除后状态与自增版本号，且 UPDATE 条件含「非在架 + 未删除」。
+     *
+     * @return void；若漏掉 status 条件，在架帖会被直接删除；漏 deleted_at 条件则会重复删
+     */
+    @Test
+    void deletePost软删成功返回新版本号() {
+        when(postMapper.update(isNull(), any())).thenReturn(1);
+        PostEntity updated = new PostEntity();
+        updated.setId(100L);
+        updated.setStatus("archived");
+        updated.setStatusReason(0);
+        updated.setVersion(4L);
+        updated.setDeletedAt(java.time.LocalDateTime.now());
+        when(postMapper.selectById(100L)).thenReturn(updated);
+
+        PostStatusResult result = postService.deletePost(1L, 100L, 3L);
+
+        assertThat(result.id()).isEqualTo(100L);
+        assertThat(result.status()).isEqualTo("offline");
+        assertThat(result.version()).isEqualTo(4L);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<UpdateWrapper<PostEntity>> captor =
+                ArgumentCaptor.forClass(UpdateWrapper.class);
+        verify(postMapper).update(isNull(), captor.capture());
+        assertThat(captor.getValue().getSqlSegment()).contains("deleted_at IS NULL");
+        assertThat(captor.getValue().getParamNameValuePairs().values())
+                .contains(PostStatus.DB_ACTIVE);
+    }
+
+    /**
      * 发布：{@code validity=permanent} → {@code expire_at} 落 NULL（常驻）。
      *
      * @return void；若仍写入到期时刻，常驻帖会被到期任务自动下架

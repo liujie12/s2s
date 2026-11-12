@@ -1109,6 +1109,48 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
         '500': { $ref: '#/components/responses/InternalError' }
+    delete:
+      tags: [post]
+      summary: 删除帖子（软删）
+      operationId: deletePost
+      x-batch: Batch2
+      x-domain: post
+      description: |
+        [B2-8 续]「我的发布」卡片「删除」（2026-11-10 用户裁定新增；覆盖旧「本期不做删除」裁定）。
+
+        - **软删**：只置 `post.deleted_at`，原 `status` 不变，行保留供举报/会话取证；
+          删除后对所有人（含本人）不可见，`GET /posts/{id}` 回 `41001`；
+        - **仅非在架可删**：在架帖须先 `PATCH /posts/{id}/status` 下架；在架、版本不符、
+          非本人、行不存在**一律 0 行 → `40903`**（不按 id 探测存在性）；
+        - **幂等**：挂 `Idempotency-Key`，同键重放返回首次结果；
+        - 草稿删除不走本接口（草稿是纯客户端存储，PRD §8.7）。
+      parameters:
+        - $ref: '#/components/parameters/XInteractionId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/PostIdPath'
+        - name: version
+          in: query
+          required: true
+          description: 当前乐观锁版本号（取自 `GET /posts/mine` 或 `GET /posts/{id}`）。
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+      responses:
+        '200':
+          description: 删除成功（返回删除后状态与自增后的版本号）
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/PostStatusResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/InternalError' }
 
   /posts/{post_id}/repost:
     post:

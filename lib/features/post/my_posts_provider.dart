@@ -194,6 +194,21 @@ class MyPostsNotifier extends Notifier<AsyncValue<MyPostsData>> {
         .changeStatus(postId, action: action, version: version);
     await refresh();
   }
+
+  /// 删除帖子（软删，仅非在架），成功后重拉当前页签。
+  ///
+  /// 与 [changeStatus] 同理**不本地移除**：删除后版本号自增、且「全部」页签的
+  /// 条数口径由服务端决定，重拉拿回权威结果，避免本地推算出现「删了但还能翻到」。
+  ///
+  /// 参数：[postId] 帖子 ID；[version] 当前乐观锁版本号（取自列表项）。
+  /// 返回：[Future<void>]。
+  /// 抛出：[ApiException]（40903 版本冲突 / 在架不可删等）由页面按 §12.2 行为表提示。
+  Future<void> delete({required int postId, required int version}) async {
+    await ref
+        .read(postRepositoryProvider)
+        .deletePost(postId, version: version);
+    await refresh();
+  }
 }
 
 /// 「我的发布」列表 Provider（页面经 `ref.watch` 取 `AsyncValue` 三态）。
