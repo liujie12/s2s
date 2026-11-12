@@ -48,12 +48,20 @@ class ClusterPoint {
   /// 此时该点仍参与聚合，只是渲染层用中性配色。
   final ListingCategory? topCategory;
 
+  /// 二级类目 ID（服务端口径，如 `101`），由 [leafCategoryId] 经 `midCategoryIdOf` 换算。
+  ///
+  /// 只在中景档参与分桶（见 [clusterByGrid] 的 `bucketByMidCategory`）：
+  /// 5 km 视野下按一级大类聚出的簇里混着多个二级，簇名无法落到唯一一个二级上。
+  /// 可空：叶子未登记 / 分类树落后时为 null，此时自成一桶。
+  final int? midCategoryId;
+
   const ClusterPoint({
     required this.id,
     required this.x,
     required this.y,
     required this.leafCategoryId,
     required this.topCategory,
+    this.midCategoryId,
   });
 }
 
@@ -87,12 +95,19 @@ class Cluster {
   /// 代价是内存随点数线性增长，5 万点档位需在 POC-A 中观察内存峰值。
   final List<String> memberIds;
 
+  /// 二级类目 ID —— **仅当中景档按二级分桶时非空**。
+  ///
+  /// 非空即保证「簇内类目同质」：名称可以直接挂到簇上而不说谎（R3）。
+  /// 默认（按一级大类分桶）恒为 null：那种簇里可能混着多个二级，不能代表任一。
+  final int? midCategoryId;
+
   const Cluster({
     required this.x,
     required this.y,
     required this.count,
     required this.topCategory,
     required this.memberIds,
+    this.midCategoryId,
   });
 
   /// 是否为单点（未与他人聚合）。调用方据此决定渲染分类 Pin 还是聚合圈。
@@ -113,17 +128,21 @@ class Cluster {
 /// 参数：
 /// - [points]：待聚合点集，允许为空。
 /// - [gridSize]：网格边长（逻辑像素），必须 > 0。越大聚合越狠、簇越少。
+/// - [bucketByMidCategory]：分桶维度。`false`（默认）按一级大类，`true` 改按二级类目。
+///   中景档用后者：同一格里的「整租 / 合租」必须分开，否则簇名无法落到一个二级上（R3）。
+///   维度由调用方按视野档位切换，**默认路径的行为一字不变**。
 ///
 /// 返回：簇列表，顺序不保证稳定（取决于哈希遍历顺序），调用方若需稳定顺序须自行排序。
 List<Cluster> clusterByGrid(
   List<ClusterPoint> points, {
   required double gridSize,
+  bool bucketByMidCategory = false,
 }) {
   assert(gridSize > 0, 'gridSize 必须为正数，收到 $gridSize');
 
   if (points.isEmpty) return const [];
 
-  // 分桶键用 "格号X:格号Y:大类" 拼成字符串。
+  // 分桶键用 "格号X:格号Y:类目" 拼成字符串。
   // 为什么不用 Point 对象做 key：Dart 的 Map 对自定义类型要求正确实现
   // hashCode/== ，字符串键在 5 万量级下实测足够快且不易写错。
   // 若 POC-A 显示字符串拼接成为瓶颈，再换成位运算打包的 int 键。
@@ -135,11 +154,17 @@ List<Cluster> clusterByGrid(
     final int gy = (p.y / gridSize).floor();
     // 大类可空，用 name 而非 index 拼键：index 变动不会有编译错，name 变动会。
     // null 拼成字面量 'unknown'，让「树查不到」的点自成一桶，不与任何真实大类混聚。
-    final String key = '$gx:$gy:${p.topCategory?.name ?? 'unknown'}';
+    // 二级档同法：`m` 前缀把两套键空间分开，避免 id 与 name 意外撞键。
+    final String key = bucketByMidCategory
+        ? '$gx:$gy:m${p.midCategoryId ?? 'unknown'}'
+        : '$gx:$gy:${p.topCategory?.name ?? 'unknown'}';
 
     final bucket = buckets[key];
     if (bucket == null) {
-      buckets[key] = _Bucket(topCategory: p.topCategory)..add(p);
+      buckets[key] = _Bucket(
+        topCategory: p.topCategory,
+        midCategoryId: bucketByMidCategory ? p.midCategoryId : null,
+      )..add(p);
     } else {
       bucket.add(p);
     }
@@ -226,13 +251,16 @@ List<List<ClusterPoint>> groupOverlappingPoints(
 class _Bucket {
   final ListingCategory? topCategory;
 
+  /// 二级类目 ID；按一级大类分桶时恒为 null（见 [Cluster.midCategoryId]）。
+  final int? midCategoryId;
+
   /// 坐标累加和，最后除以 count 得平均值。
   /// 边累加边求平均会引入浮点误差累积，故存和。
   double _sumX = 0;
   double _sumY = 0;
   final List<String> _ids = [];
 
-  _Bucket({required this.topCategory});
+  _Bucket({required this.topCategory, this.midCategoryId});
 
   void add(ClusterPoint p) {
     _sumX += p.x;
@@ -248,6 +276,7 @@ class _Bucket {
       count: n,
       topCategory: topCategory,
       memberIds: List.unmodifiable(_ids),
+      midCategoryId: midCategoryId,
     );
   }
 }

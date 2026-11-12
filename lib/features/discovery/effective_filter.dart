@@ -411,6 +411,23 @@ EffectiveFilter effectiveFilterOf(
 bool _isCleared(SearchIntent? intent, ConditionSlot slot) =>
     intent?.clearedSlots.contains(slot) ?? false;
 
+/// 用户是否**逐个点选了叶子类目**（不含「整类选中」展开出来的叶子）。
+///
+/// 地图中景档据此决定是否按二级聚合（计划 KD5）：用户刚把几个叶子区分开，
+/// 按二级合并会把这份区分抹掉。整类选中没有区分可抹，不该因此把地图散成一片点。
+///
+/// 参数：
+/// - [filter]：持久筛选；
+/// - [intent]：本次搜索槽位（null 表示无搜索态）。
+/// 返回：意图或持久筛选里存在显式叶子时为真。
+bool hasExplicitLeafSelection(DiscoveryFilter filter, SearchIntent? intent) {
+  final bool intentLeaves =
+      intent != null &&
+      !_isCleared(intent, ConditionSlot.category) &&
+      intent.leafCategoryIds.isNotEmpty;
+  return intentLeaves || filter.leafCategoryIds.isNotEmpty;
+}
+
 /// 供需 chip 文案。
 String _supplyLabel(Set<SupplyDemand> selected) => switch (selected.length) {
   0 => '未选',

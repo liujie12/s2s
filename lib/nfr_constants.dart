@@ -110,6 +110,23 @@ class NfrPerf {
   /// docs/poc/2026-09-10-cluster-poc-conclusion.md；终值真机校准见 [126]。
   static const double clusterModeSwitchMetersPerPixel = 30;
 
+  /// 类目名称披露的「近景」上界（米/像素）。
+  ///
+  /// 口径（2026-11-11 计划 KTD1）：`m/px ≤ 本值` 为近景，单点保留并标**三级**类目名；
+  /// `本值 < m/px ≤ clusterModeSwitchMetersPerPixel` 为中景，保留单点并在二级簇上标名；
+  /// 超过 [clusterModeSwitchMetersPerPixel] 为远景，沿用服务端预聚合簇。
+  ///
+  /// **为什么用分辨率而不是半径档**：半径只筛数据、不控相机，用户一捏缩放就脱钩
+  /// （计划 KD4）。取值 15 的依据：默认 5 km 视野适配后约 27.8 m/px 落在中景，
+  /// 而初始 12 m/px（`_kInitialMetersPerPixel`）与近景一致，视觉档位不随首屏跳变。
+  static const double labelDetailMetersPerPixel = 15;
+
+  /// 中景档按二级类目聚簇的最小条数。
+  ///
+  /// 中景档的簇代表「这一片同属一个二级类目」，与一级大类的
+  /// `clusterThreshold`（3/5/8）不同：二级桶天然更小，仍按 3 条起聚会让绝大多数
+  /// 二级永远成不了簇，名称也就无从挂载。取 2 即「两条以上才值得合并成一个单元」。
+  static const int labelMidTierClusterMinPoints = 2;
 
   /// 聚合网格边长（逻辑像素）。
   ///

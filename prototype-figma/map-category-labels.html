@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>地图类目名称披露 · 三档设计稿</title>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,1,0&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --primary:#0B7C8C; --primary-light:#E6F6F8;
+    --text-1:#1F2937; --text-2:#6B7280; --border:#E5E7EB;
+    --bg:#F8FAFC; --surface:#FFFFFF;
+    --work:#3B82F6; --work-deep:#326FD1;
+    --house:#8B5CF6; --house-deep:#8055E2;
+    --vehicle:#F97316; --vehicle-deep:#B85510;
+    --life:#10B981; --life-deep:#0B825A;
+    --service:#EC4899; --service-deep:#C63C81;
+    --map-bg:#EFEDE6; --road:#FFFFFF; --road-2:#E4E0D5; --water:#CFE3EA; --park:#DDE8D3;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    background:#EEF1F4; color:var(--text-1); padding:36px 28px 48px;
+  }
+  .head{max-width:1780px;margin:0 auto 26px}
+  .head h1{font-size:22px;font-weight:700;letter-spacing:.2px}
+  .head p{margin-top:8px;color:var(--text-2);font-size:13px;line-height:1.7}
+  .head .tag{display:inline-block;margin-right:8px;padding:2px 8px;border-radius:999px;font-size:11px;
+    background:var(--primary-light);color:var(--primary);border:1px solid #CBE9EE}
+  .row{display:flex;gap:30px;justify-content:center;align-items:flex-start;flex-wrap:wrap;max-width:1780px;margin:0 auto}
+  .col{width:390px}
+  .col h2{font-size:14px;font-weight:600;margin-bottom:4px}
+  .col .sub{font-size:12px;color:var(--text-2);margin-bottom:12px;line-height:1.6;min-height:34px}
+  .phone{
+    position:relative;width:390px;height:844px;border-radius:38px;overflow:hidden;
+    background:var(--map-bg);border:1px solid #D8DDE3;
+    box-shadow:0 18px 48px rgba(15,23,42,.14),0 2px 6px rgba(15,23,42,.06);
+  }
+  .notes{margin-top:12px;font-size:12px;color:var(--text-2);line-height:1.75}
+  .notes b{color:var(--text-1);font-weight:600}
+
+  /* ---------- 底图 ---------- */
+  .map{position:absolute;inset:0}
+  .water{position:absolute;left:-40px;bottom:-30px;width:300px;height:220px;background:var(--water);
+    border-radius:48% 52% 40% 60%/60% 40% 60% 40%;opacity:.85}
+  .park{position:absolute;right:-30px;top:120px;width:170px;height:150px;background:var(--park);
+    border-radius:42% 58% 55% 45%/48% 42% 58% 52%;opacity:.9}
+  .road{position:absolute;background:var(--road)}
+  .road.thin{background:var(--road-2)}
+  .r1{left:0;top:150px;width:100%;height:16px}
+  .r2{left:0;top:430px;width:100%;height:22px}
+  .r3{left:0;top:660px;width:100%;height:14px}
+  .r4{left:96px;top:0;width:14px;height:100%}
+  .r5{left:268px;top:0;width:20px;height:100%}
+  .r6{left:0;top:300px;width:100%;height:8px}
+  .r7{left:0;top:560px;width:100%;height:8px}
+  .poi{position:absolute;font-size:10px;color:#9AA3AE;letter-spacing:.5px}
+  .poi.small{font-size:9px;color:#B4BAC2}
+
+  /* ---------- 顶部 UI ---------- */
+  .statusbar{position:absolute;left:0;right:0;top:0;height:44px;display:flex;align-items:center;
+    justify-content:space-between;padding:0 22px;font-size:12px;color:#4B5563}
+  .searchbar{position:absolute;left:14px;right:14px;top:52px;height:42px;border-radius:21px;
+    background:var(--surface);box-shadow:0 4px 14px rgba(15,23,42,.10);display:flex;align-items:center;
+    padding:0 6px 0 14px;gap:8px}
+  .searchbar .hint{flex:1;font-size:13px;color:#9CA3AF}
+  .ic{font-family:"Material Symbols Rounded";font-size:20px;color:var(--text-2);line-height:1}
+  .ic.teal{color:var(--primary)}
+  .fab{position:absolute;right:16px;bottom:98px;width:44px;height:44px;border-radius:50%;background:var(--surface);
+    box-shadow:0 6px 16px rgba(15,23,42,.14);display:flex;align-items:center;justify-content:center}
+  .fab .ic{color:var(--primary);font-size:22px}
+
+  /* ---------- Pin ---------- */
+  .pin{position:absolute;transform:translate(-50%,-50%);border-radius:50%;display:flex;align-items:center;
+    justify-content:center;color:#fff;box-shadow:0 2px 6px rgba(15,23,42,.22)}
+  .pin .ic{font-size:20px;color:#fff}
+  .pin.d40{width:40px;height:40px}
+  .pin.d48{width:48px;height:48px}
+  .pin.d48 .ic{font-size:24px}
+  .pin.ghost{background:var(--surface)!important;border:2px solid currentColor}
+  .pin .q{position:absolute;right:-2px;top:-2px;width:15px;height:15px;border-radius:50%;background:currentColor;
+    color:#fff;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;
+    border:1.5px solid #fff}
+  .work{background:var(--work);color:var(--work)}
+  .house{background:var(--house);color:var(--house)}
+  .vehicle{background:var(--vehicle);color:var(--vehicle)}
+  .life{background:var(--life);color:var(--life)}
+  .service{background:var(--service);color:var(--service)}
+
+  /* ---------- 聚合簇 ---------- */
+  .cluster{position:absolute;transform:translate(-50%,-50%);border-radius:50%;display:flex;align-items:center;
+    justify-content:center;color:#fff;font-weight:700;border:2px solid #fff;
+    box-shadow:0 3px 10px rgba(15,23,42,.20)}
+  .cluster.c32{width:32px;height:32px;font-size:12px}
+  .cluster.c40{width:40px;height:40px;font-size:13px}
+  .cluster.c48{width:48px;height:48px;font-size:16px}
+
+  /* ---------- 类目名标签（本次新增） ---------- */
+  .label{
+    position:absolute;transform:translate(-50%,-50%);display:flex;align-items:center;gap:4px;
+    padding:4px 7px;border-radius:9px;background:rgba(255,255,255,.94);border:1px solid var(--border);
+    font-size:12px;font-weight:500;color:var(--text-1);white-space:nowrap;
+    box-shadow:0 2px 6px rgba(15,23,42,.10);
+  }
+  .label .dot{width:6px;height:6px;border-radius:50%;flex:none}
+  .label.dim{opacity:.55}
+
+  /* ---------- 条件带 ---------- */
+  .band{position:absolute;left:14px;right:14px;top:104px;display:flex;gap:8px;flex-wrap:wrap}
+  .chip{height:32px;border-radius:999px;background:var(--surface);border:1px solid var(--border);
+    display:flex;align-items:center;gap:6px;padding:0 12px;font-size:12px;color:var(--text-1);
+    box-shadow:0 2px 6px rgba(15,23,42,.06)}
+  .chip .dot{width:6px;height:6px;border-radius:50%;background:#9CA3AF}
+  .chip .badge{width:18px;height:18px;border-radius:50%;background:var(--primary-light);
+    display:flex;align-items:center;justify-content:center;color:var(--primary)}
+  .chip .badge .ic{font-size:13px}
+  .chip .x{font-family:"Material Symbols Rounded";font-size:14px;color:#9CA3AF}
+
+  /* ---------- 说明浮层 ---------- */
+  .callout{position:absolute;background:rgba(31,41,55,.88);color:#fff;font-size:11px;line-height:1.55;
+    padding:7px 10px;border-radius:10px;max-width:180px}
+  .callout::after{content:"";position:absolute;width:0;height:0;border:6px solid transparent}
+  .callout.down::after{left:16px;bottom:-12px;border-top-color:rgba(31,41,55,.88)}
+  .callout.up::after{left:16px;top:-12px;border-bottom-color:rgba(31,41,55,.88)}
+  .legend{position:absolute;left:14px;right:14px;bottom:16px;background:rgba(255,255,255,.94);
+    border:1px solid var(--border);border-radius:14px;padding:10px 12px;font-size:11px;color:var(--text-2);
+    line-height:1.7}
+  .legend b{color:var(--text-1)}
+  .legend .line{display:flex;align-items:center;gap:6px;margin-top:4px}
+  .swatch{width:10px;height:10px;border-radius:50%}
+</style>
+</head>
+<body>
+
+<div class="head">
+  <h1>地图类目名称披露 · 三档设计稿</h1>
+  <p>
+    <span class="tag">PRD §6.4.2 判定记录</span>
+    <span class="tag">实现：marker_label_layout / marker_disclosure</span>
+    <span class="tag">2026-11-11</span>
+  </p>
+  <p>名称是类目维度的换通道表达：近景标三级名，中景保留单点并把二级名挂到二级簇上，远景沿用服务端簇（无类目 ID 不标）。同名一屏只标一处，放不下就不标；标签不遮 Pin、不出屏、不参与命中。</p>
+</div>
+
+<div class="row">
+
+  <!-- ============ 帧 1：近景 ============ -->
+  <div class="col">
+    <h2>① 近景 · 12 m/px</h2>
+    <div class="sub">默认进入时的尺度（约 4.7km 宽）。单点保留，标<b>三级类目名</b>；同名只标一处。</div>
+    <div class="phone">
+      <div class="map">
+        <div class="water"></div><div class="park"></div>
+        <div class="road r1"></div><div class="road r2"></div><div class="road r3"></div>
+        <div class="road r4"></div><div class="road r5"></div>
+        <div class="road thin r6"></div><div class="road thin r7"></div>
+        <div class="poi" style="left:180px;top:126px">滨湖路</div>
+        <div class="poi small" style="left:32px;top:452px">望江东路</div>
+        <div class="poi small" style="left:286px;top:602px">地铁 3 号线</div>
+        <div class="poi" style="left:40px;top:756px">天鹅湖</div>
+      </div>
+
+      <div class="statusbar"><span>9:41</span><span>5G &nbsp; 100%</span></div>
+      <div class="searchbar">
+        <span class="ic">search</span><span class="hint">搜索附近的工作、房子、顺风车…</span>
+        <span class="ic teal">tune</span>
+      </div>
+
+      <!-- 单点 + 三级名 -->
+      <div class="pin d40 house" style="left:150px;top:250px"><span class="ic">home</span></div>
+      <div class="label" style="left:150px;top:284px"><span class="dot" style="background:var(--house-deep)"></span>主卧</div>
+
+      <div class="pin d40 house" style="left:245px;top:352px"><span class="ic">home</span></div>
+      <div class="label" style="left:245px;top:386px"><span class="dot" style="background:var(--house-deep)"></span>次卧</div>
+
+      <div class="pin d40 work" style="left:320px;top:236px"><span class="ic">work</span></div>
+      <div class="label" style="left:320px;top:270px"><span class="dot" style="background:var(--work-deep)"></span>兼职促销</div>
+
+      <div class="pin d40 work" style="left:86px;top:360px"><span class="ic">work</span></div>
+      <div class="label" style="left:86px;top:394px"><span class="dot" style="background:var(--work-deep)"></span>日结兼职</div>
+
+      <div class="pin d40 vehicle" style="left:214px;top:474px"><span class="ic">directions_car</span></div>
+      <div class="label" style="left:214px;top:508px"><span class="dot" style="background:var(--vehicle-deep)"></span>顺风车</div>
+
+      <div class="pin d40 service" style="left:330px;top:500px"><span class="ic">cleaning_services</span></div>
+      <div class="label" style="left:330px;top:534px"><span class="dot" style="background:var(--service-deep)"></span>家电清洗</div>
+
+      <div class="pin d40 life" style="left:104px;top:600px"><span class="ic">inventory_2</span></div>
+      <div class="label" style="left:104px;top:634px"><span class="dot" style="background:var(--life-deep)"></span>二手童车</div>
+
+      <div class="pin d40 house" style="left:262px;top:640px"><span class="ic">home</span></div>
+      <div class="label" style="left:262px;top:674px"><span class="dot" style="background:var(--house-deep)"></span>整租一居</div>
+
+      <!-- 同名第二条：只画 Pin，不再出标签 -->
+      <div class="pin d40 house" style="left:186px;top:700px"><span class="ic">home</span></div>
+
+      <div class="callout down" style="left:196px;top:566px">两条「主卧」只标一处<br>另一条仍有 Pin、可点中</div>
+
+      <div class="fab"><span class="ic">my_location</span></div>
+    </div>
+    <div class="notes">
+      <b>规则：</b>标签挂在 Pin 正下方 5px；白底胶囊 + 类别色点；同名去重（选中优先 → 离中心近优先）。
+    </div>
+  </div>
+
+  <!-- ============ 帧 2：中景（5km 主战场） ============ -->
+  <div class="col">
+    <h2>② 中景 · 约 28 m/px（默认 5km 视野）</h2>
+    <div class="sub">保留单点层；未显式选叶子时按「网格 + 二级」聚簇，<b>每个二级只在其最大的单元上标一次名</b>。</div>
+    <div class="phone">
+      <div class="map">
+        <div class="water"></div><div class="park"></div>
+        <div class="road r1"></div><div class="road r2"></div><div class="road r3"></div>
+        <div class="road r4"></div><div class="road r5"></div>
+        <div class="road thin r6"></div><div class="road thin r7"></div>
+        <div class="poi" style="left:180px;top:126px">滨湖路</div>
+        <div class="poi small" style="left:32px;top:452px">望江东路</div>
+        <div class="poi small" style="left:286px;top:602px">地铁 3 号线</div>
+      </div>
+
+      <div class="statusbar"><span>9:41</span><span>5G &nbsp; 100%</span></div>
+      <div class="searchbar">
+        <span class="ic">search</span><span class="hint">搜索附近的工作、房子、顺风车…</span>
+        <span class="ic teal">tune</span>
+      </div>
+
+      <!-- 二级簇 + 名称 -->
+      <div class="cluster c40 house" style="left:146px;top:300px">12</div>
+      <div class="label" style="left:146px;top:335px"><span class="dot" style="background:var(--house-deep)"></span>整租</div>
+
+      <div class="cluster c32 house" style="left:252px;top:470px">5</div>
+      <div class="label" style="left:252px;top:502px"><span class="dot" style="background:var(--house-deep)"></span>合租</div>
+
+      <div class="cluster c40 work" style="left:316px;top:212px">9</div>
+      <div class="label" style="left:316px;top:247px"><span class="dot" style="background:var(--work-deep)"></span>全职招聘</div>
+
+      <div class="cluster c32 service" style="left:82px;top:566px">6</div>
+      <div class="label" style="left:82px;top:598px"><span class="dot" style="background:var(--service-deep)"></span>家政保洁</div>
+
+      <!-- 未聚合的单点：仍保留、可点中 -->
+      <div class="pin d40 work" style="left:168px;top:196px"><span class="ic">work_history</span></div>
+      <div class="label" style="left:168px;top:230px"><span class="dot" style="background:var(--work-deep)"></span>兼职</div>
+
+      <div class="pin d40 house" style="left:322px;top:356px"><span class="ic">real_estate_agent</span></div>
+      <div class="label" style="left:322px;top:390px"><span class="dot" style="background:var(--house-deep)"></span>二手房</div>
+
+      <div class="pin d40 vehicle" style="left:336px;top:596px"><span class="ic">hail</span></div>
+      <div class="label" style="left:336px;top:630px"><span class="dot" style="background:var(--vehicle-deep)"></span>顺风车</div>
+
+      <div class="pin d40 life" style="left:70px;top:404px"><span class="ic">inventory_2</span></div>
+      <div class="label" style="left:70px;top:438px"><span class="dot" style="background:var(--life-deep)"></span>二手闲置</div>
+
+      <div class="pin d40 service" style="left:230px;top:664px"><span class="ic">home_repair_service</span></div>
+      <div class="label" style="left:230px;top:698px"><span class="dot" style="background:var(--service-deep)"></span>维修安装</div>
+
+      <div class="pin d40 life" style="left:112px;top:706px"><span class="ic">pets</span></div>
+      <div class="label" style="left:112px;top:740px"><span class="dot" style="background:var(--life-deep)"></span>宠物</div>
+
+      <div class="callout down" style="left:186px;top:566px">彩色圆＝二级簇<br>白芯 Pin＝未聚合单点</div>
+
+      <div class="fab"><span class="ic">my_location</span></div>
+    </div>
+    <div class="notes">
+      <b>与帧 1 的差别：</b>密集的同类合并成簇并带条数；簇名是<b>二级名</b>（整租 / 合租），不再展开到三级；未达 2 条的单点保持原样。
+    </div>
+  </div>
+
+  <!-- ============ 帧 3：单一叶子筛选 ============ -->
+  <div class="col">
+    <h2>③ 中景 + 单一叶子筛选</h2>
+    <div class="sub">Pin 与簇都不标名（同屏同名只会变噪声）；类目名由条件带 chip 承担，chip 同时显示二级图标。</div>
+    <div class="phone">
+      <div class="map">
+        <div class="water"></div><div class="park"></div>
+        <div class="road r1"></div><div class="road r2"></div><div class="road r3"></div>
+        <div class="road r4"></div><div class="road r5"></div>
+        <div class="road thin r6"></div><div class="road thin r7"></div>
+        <div class="poi" style="left:180px;top:126px">滨湖路</div>
+        <div class="poi small" style="left:32px;top:452px">望江东路</div>
+      </div>
+
+      <div class="statusbar"><span>9:41</span><span>5G &nbsp; 100%</span></div>
+      <div class="searchbar">
+        <span class="ic">search</span><span class="hint">搜索附近的工作、房子、顺风车…</span>
+        <span class="ic teal">tune</span>
+      </div>
+
+      <div class="band">
+        <div class="chip">
+          <span class="badge"><span class="ic">home</span></span>
+          整租
+          <span class="x">close</span>
+        </div>
+        <div class="chip"><span class="dot"></span>5km<span class="x">close</span></div>
+      </div>
+
+      <div class="cluster c40 house" style="left:146px;top:300px">12</div>
+      <div class="pin d40 house" style="left:252px;top:470px"><span class="ic">home</span></div>
+      <div class="pin d40 house" style="left:316px;top:212px"><span class="ic">home</span></div>
+      <div class="pin d40 house" style="left:82px;top:566px"><span class="ic">home</span></div>
+      <div class="pin d40 house" style="left:168px;top:196px"><span class="ic">home</span></div>
+      <div class="pin d40 house" style="left:322px;top:356px"><span class="ic">home</span></div>
+      <div class="pin d40 house" style="left:70px;top:404px"><span class="ic">home</span></div>
+
+      <div class="callout down" style="left:176px;top:612px">Pin / 簇上<b>不再出现</b>类目名<br>类目由上方 chip 声明</div>
+
+      <div class="fab"><span class="ic">my_location</span></div>
+    </div>
+    <div class="notes">
+      <b>为什么：</b>只剩一个叶子时，满屏「整租」只是重复；chip 已是唯一权威表述，且与筛选面板的二级图标同一真源。
+    </div>
+  </div>
+
+  <!-- ============ 帧 4：远景 ============ -->
+  <div class="col">
+    <h2>④ 远景 · 60 m/px</h2>
+    <div class="sub">服务端预聚合簇，本次<b>不标名称</b>：簇未携带类目 ID，标任何名字都会说错。</div>
+    <div class="phone">
+      <div class="map">
+        <div class="water"></div><div class="park"></div>
+        <div class="road r1"></div><div class="road r2"></div><div class="road r3"></div>
+        <div class="road r4"></div><div class="road r5"></div>
+        <div class="road thin r6"></div><div class="road thin r7"></div>
+        <div class="poi" style="left:180px;top:126px">滨湖路</div>
+        <div class="poi small" style="left:32px;top:452px">望江东路</div>
+      </div>
+
+      <div class="statusbar"><span>9:41</span><span>5G &nbsp; 100%</span></div>
+      <div class="searchbar">
+        <span class="ic">search</span><span class="hint">搜索附近的工作、房子、顺风车…</span>
+        <span class="ic teal">tune</span>
+      </div>
+
+      <div class="cluster c48" style="left:150px;top:300px;background:var(--primary)">120</div>
+      <div class="cluster c40" style="left:286px;top:224px;background:var(--primary)">86</div>
+      <div class="cluster c40" style="left:78px;top:470px;background:var(--primary)">54</div>
+      <div class="cluster c32" style="left:250px;top:520px;background:var(--primary)">32</div>
+      <div class="cluster c32" style="left:170px;top:640px;background:var(--primary)">18</div>
+      <div class="cluster c32" style="left:326px;top:680px;background:var(--primary)">9</div>
+
+      <div class="callout down" style="left:186px;top:566px">品牌主色簇＝类目未知<br>数量仍表达密度</div>
+
+      <div class="fab"><span class="ic">my_location</span></div>
+    </div>
+    <div class="notes">
+      <b>已知降级：</b>后端补簇 <code>category_id</code> 后，这一档会自动出现二级名，前端无需再改。
+    </div>
+  </div>
+
+</div>
+
+<div class="head" style="margin-top:30px">
+  <p>
+    <b>统一细则：</b>标签字号 12px（`AppTypeScale.small`）· 胶囊内边距 7/4 · 圆角 9 · 色点 6 · 与 Pin 间距 5 · 与屏幕边缘留白 2。
+    优先级＝选中记录 → 单元条数降序 → 离屏幕中心升序；碰撞即跳过，不缩字号、不裁切、不做边缘吸附。
+  </p>
+</div>
+
+</body>
+</html>

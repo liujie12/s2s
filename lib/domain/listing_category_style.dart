@@ -95,19 +95,55 @@ IconData? l2CategoryIconOfMid(int? midCategoryId) =>
 IconData? categoryIconByName(String? name) =>
     name == null ? null : _categoryIconByName[name];
 
-/// 分类节点字形：服务端名 → 本地二级映射 → 一级枚举 → 中性图标。
+/// 节点图标名：叶子以本地定稿为准，服务端名仅兜底。
+///
+/// 为什么叶子反过来：`category.icon` 早期迁移把叶子的 icon 填成了父级字形
+/// （2026-11-12 真机：车辆下五个叶子全是「巴士」），服务端值不可信；
+/// 本地树是随包发布的图标定稿，叶子层级以它为准。
+/// 服务端在叶子上仍保留兜底位：本地查不到的**新叶子**仍可用服务端下发的名字。
+/// 二级/一级不受影响，依旧服务端优先。
+///
+/// 参数：`node` 分类节点。
+/// 返回：图标名（可能为 null，表示只能用二级/一级字形）。
+String? nodeIconName(CategoryNode node) {
+  final serverName = node.icon;
+  final hasServer = serverName != null && serverName.isNotEmpty;
+  if (!node.isLeaf) return hasServer ? serverName : null;
+  return localLeafIconNameOf(node.id) ?? (hasServer ? serverName : null);
+}
+
+/// 本地树里按叶子 ID 查图标名。
+///
+/// 为什么需要这层兜底：`/categories/tree` 的 `icon` 来自 `category.icon` 列，
+/// 历史迁移（V35）只灌了 ID/名称、没写 icon，服务端对叶子返回 null；
+/// 若直接退回二级图标，一屏三级类目会共用同一个字形
+/// （2026-11-12 真机可见：车辆下五个叶子全是「巴士」）。
+/// 本地树随包发布且与叶子 ID 一一对应，用它兜底可立即恢复区分度。
+/// 参数：`leafId` 叶子 ID。返回：图标名；本地无此叶子时为 null。
+String? localLeafIconNameOf(int leafId) {
+  for (final top in categoryTree) {
+    for (final mid in top.children) {
+      for (final leaf in mid.children) {
+        if (leaf.id == leafId) return leaf.icon;
+      }
+    }
+  }
+  return null;
+}
+
+/// 节点字形：服务端名 → 本地叶子名 → 二级映射 → 一级枚举 → 中性图标。
 ///
 /// 这个顺序就是数据链路的优先级：服务端下发是**可运营的真源**（改 DB 即生效，
 /// 不必发版）；本地映射是离线 / 树版本落后时的兜底；一级枚举只在两者都查不到时用。
 ///
 /// **本地兜底要按层级选入口**：叶子 ID（`10101`）要经 `~/100` 折到二级，
 /// 而二级节点自己的 ID（`101`）再除一次会掉到 `1`（一级），查表必然落空 ——
-/// 用 [CategoryNode.isLeaf] 分流，不写死层级阈值。
+/// 故用 [CategoryNode.isLeaf] 分流，不写死层级阈值。
 ///
-/// 参数：[node] 任意层级分类节点（一级 / 二级 / 叶子）。
+/// 参数：`node` 任意层级分类节点（一级 / 二级 / 叶子）。
 /// 返回：绘制用字形（恒非 null）。
 IconData nodeIconOf(CategoryNode node) =>
-    categoryIconByName(node.icon) ??
+    categoryIconByName(nodeIconName(node)) ??
     (node.isLeaf ? l2CategoryIcon(node.id) : l2CategoryIconOfMid(node.id)) ??
     node.topCategory?.icon ??
     neutralCategoryIcon;
@@ -181,10 +217,98 @@ const Map<String, IconData> _categoryIconByName = {
   'spa': Icons.spa,
   'directions_run': Icons.directions_run,
   'search': Icons.search,
+  'restaurant': Icons.restaurant,
+  'storefront': Icons.storefront,
+  'security': Icons.security,
+  'precision_manufacturing': Icons.precision_manufacturing,
+  'today': Icons.today,
+  'calendar_view_week': Icons.calendar_view_week,
+  'schedule': Icons.schedule,
+  'local_activity': Icons.local_activity,
+  'inventory': Icons.inventory,
+  'newspaper': Icons.newspaper,
+  'assignment_ind': Icons.assignment_ind,
+  'badge': Icons.badge,
+  'more_time': Icons.more_time,
+  'moving': Icons.moving,
+  'local_taxi': Icons.local_taxi,
+  'delivery_dining': Icons.delivery_dining,
+  'forklift': Icons.forklift,
+  'local_police': Icons.local_police,
+  'trending_up': Icons.trending_up,
+  'call': Icons.call,
+  'chat': Icons.chat,
+  'headset_mic': Icons.headset_mic,
+  'reviews': Icons.reviews,
+  'bedroom_parent': Icons.bedroom_parent,
+  'single_bed': Icons.single_bed,
+  'villa': Icons.villa,
+  'door_front_door': Icons.door_front_door,
+  'bed': Icons.bed,
+  'groups': Icons.groups,
+  'travel_explore': Icons.travel_explore,
+  'person_add': Icons.person_add,
+  'holiday_village': Icons.holiday_village,
+  'cottage': Icons.cottage,
+  'calendar_view_day': Icons.calendar_view_day,
+  'night_shelter': Icons.night_shelter,
+  'location_city': Icons.location_city,
+  'gavel': Icons.gavel,
+  'fact_check': Icons.fact_check,
+  'home_work': Icons.home_work,
+  'request_quote': Icons.request_quote,
+  'store': Icons.store,
+  'business': Icons.business,
+  'warehouse': Icons.warehouse,
+  'local_parking': Icons.local_parking,
+  'two_wheeler': Icons.two_wheeler,
+  'handyman': Icons.handyman,
+  'local_car_wash': Icons.local_car_wash,
+  'tire_repair': Icons.tire_repair,
+  'format_paint': Icons.format_paint,
+  'settings_suggest': Icons.settings_suggest,
+  'health_and_safety': Icons.health_and_safety,
+  'child_care': Icons.child_care,
+  'devices': Icons.devices,
+  'checkroom': Icons.checkroom,
+  'hiking': Icons.hiking,
+  'pan_tool': Icons.pan_tool,
+  'diversity_3': Icons.diversity_3,
+  'swap_horiz': Icons.swap_horiz,
+  'hardware': Icons.hardware,
+  'manage_search': Icons.manage_search,
+  'record_voice_over': Icons.record_voice_over,
+  'shopping_cart': Icons.shopping_cart,
+  'help': Icons.help,
+  'thumb_up': Icons.thumb_up,
+  'soap': Icons.soap,
+  'sanitizer': Icons.sanitizer,
+  'local_laundry_service': Icons.local_laundry_service,
+  'escalator_warning': Icons.escalator_warning,
+  'pregnant_woman': Icons.pregnant_woman,
+  'av_timer': Icons.av_timer,
+  'carpenter': Icons.carpenter,
+  'plumbing': Icons.plumbing,
+  'lock_open': Icons.lock_open,
+  'water_damage': Icons.water_damage,
+  'menu_book': Icons.menu_book,
+  'cast_for_education': Icons.cast_for_education,
+  'translate': Icons.translate,
+  'workspace_premium': Icons.workspace_premium,
+  'fitness_center': Icons.fitness_center,
+  'face_retouching_natural': Icons.face_retouching_natural,
+  'brush': Icons.brush,
+  'back_hand': Icons.back_hand,
+  'content_cut': Icons.content_cut,
+  'healing': Icons.healing,
+  'markunread_mailbox': Icons.markunread_mailbox,
+  'directions_walk': Icons.directions_walk,
+  'shopping_bag': Icons.shopping_bag,
+  'assignment': Icons.assignment,
+  'elderly': Icons.elderly,
 };
 
 /// 分类树查表失败时的中性配色（详细设计 §10.4.1 第 3 步的降级取向）。
-///
 /// 用途：`topCategoryOf` 返回 `null`（本地分类树版本落后于服务端数据，
 /// §16.4 明确规定这是**预期内状态**、不报错）时，Pin 仍要画出来。
 ///

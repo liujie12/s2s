@@ -3152,8 +3152,8 @@ function allText(root) {
        'privacy-gate⟨受限态⟩'],
       // 2026-09-27 条目 [127] 前端段：「我的发布」页落地后纳入本表。页面的
       // 五个操作文案（编辑/下架/刷新重发/删除/继续编辑）在码侧 `_actionLabel`
-      // 的穷尽 switch 中逐个出现，其中编辑/删除/继续编辑是 Batch1 降级动作
-      // （点击给「本期内测版暂未开放」说明），文案仍与稿一致故不需备案。
+      // 的穷尽 switch 中逐个出现；2026-11-10 起五个动作全部走真通道
+      // （删除改调 `DELETE /posts/{id}?version=`），文案仍与稿一致故不需备案。
       ['buildMyPublish', 'features/post/my_publish_screen.dart',
        'my-publish-screen'],
       // 2026-10-11 条目 [B2-11]：「我的」模块四页实装后纳入本表。

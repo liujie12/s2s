@@ -110,6 +110,7 @@ class ClusterMarker extends MapMarker {
     required super.topCategory,
     required this.count,
     required this.memberIds,
+    this.midCategoryId,
   });
 
   /// 簇内条数。
@@ -117,6 +118,12 @@ class ClusterMarker extends MapMarker {
 
   /// 簇内成员 ID，点击展开列表时用（PRD §6.9）。
   final List<String> memberIds;
+
+  /// 二级类目 ID —— 中景档每簇类目同质时非空，名称据此挂载（R3）。
+  ///
+  /// 默认按一级大类聚合时为 null：那种簇里混着多个二级，不挂名。
+  /// 远景服务端簇由调用方从 `category_id` 换算出二级后填入；缺失即为 null。
+  final int? midCategoryId;
 
   /// 尺寸三档（PRD §6.4.2）。
   ///
@@ -168,6 +175,7 @@ List<MapMarker> buildMarkers(
           topCategory: cluster.topCategory,
           count: cluster.count,
           memberIds: cluster.memberIds,
+          midCategoryId: cluster.midCategoryId,
         ),
       );
       continue;
@@ -212,7 +220,9 @@ List<MapMarker> buildMarkers(
 /// - [thresholdOf]：某大类的聚合阈值（口径同 [buildMarkers]）；
 /// - [gridSize]：网格聚合边长（逻辑像素），转引调用方的常量真源；
 /// - [stackTolerance]：叠点判定距离（逻辑像素），见 `NfrOverlap.stackTolerancePx`；
-/// - [completenessOf]：信息 ID → 完整度档（0/1/2，越大越完整），用于排主层。
+/// - [completenessOf]：信息 ID → 完整度档（0/1/2，越大越完整），用于排主层；
+/// - [bucketByMidCategory]：网格分桶维度，`false` 按一级大类（默认）、`true` 按二级类目
+///   （中景档，见 [clusterByGrid]）。
 ///
 /// 返回：[MapMarker] 列表，顺序为「聚合圈 / 单点 / 叠点堆」—— 与绘制顺序一致，
 ///   这样 [MarkerLayer.hitTestMarker] 的倒序命中才能先命中压在最后画的叠点堆。
@@ -222,6 +232,7 @@ List<MapMarker> buildMarkersWithOverlap(
   required double gridSize,
   required double stackTolerance,
   required int Function(String id) completenessOf,
+  bool bucketByMidCategory = false,
 }) {
   final List<List<ClusterPoint>> groups = groupOverlappingPoints(
     points,
@@ -261,7 +272,11 @@ List<MapMarker> buildMarkersWithOverlap(
     );
   }
 
-  final List<Cluster> clusters = clusterByGrid(rest, gridSize: gridSize);
+  final List<Cluster> clusters = clusterByGrid(
+    rest,
+    gridSize: gridSize,
+    bucketByMidCategory: bucketByMidCategory,
+  );
   return [
     ...buildMarkers(rest, clusters, thresholdOf: thresholdOf),
     ...stacks,

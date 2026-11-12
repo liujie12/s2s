@@ -13,6 +13,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../design_tokens.dart';
+import '../../domain/listing_category_style.dart';
+import 'condition_slots.dart';
 import 'effective_filter.dart';
 import 'effective_filter_provider.dart';
 import 'search_conditions.dart';
@@ -389,6 +391,13 @@ class _FilterChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool fromIntent = chip.source == ConditionSource.intent;
+    // 持久叶子 chip 补二级图标（R9）：此类 chip 独自承担「当前只筛了这个类目」的
+    // 声明 —— 此时地图 Pin 不标名（R8），图标与名字必须同时在场。
+    // 意图来源的 chip 没有叶子 ID，保持纯文字（它的文本已是用户原话）。
+    final IconData? categoryIcon =
+        chip.slot == ConditionSlot.category && chip.leafCategoryId != null
+        ? l2CategoryIcon(chip.leafCategoryId)
+        : null;
     return Padding(
       padding: const EdgeInsets.only(right: AppSpacing.sm),
       child: Tooltip(
@@ -421,16 +430,32 @@ class _FilterChip extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Container(
-                  width: 6,
-                  height: 6,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: fromIntent
-                        ? Color(AppColors.primary)
-                        : Color(AppColors.textPlaceholder),
+                if (categoryIcon != null)
+                  Container(
+                    width: 18,
+                    height: 18,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Color(AppColors.primaryLight),
+                    ),
+                    child: Icon(
+                      categoryIcon,
+                      // 与筛选面板的二级图标同尺寸（13），两处看起来是同一套图形。
+                      size: 13,
+                      color: Color(AppColors.primary),
+                    ),
+                  )
+                else
+                  Container(
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: fromIntent
+                          ? Color(AppColors.primary)
+                          : Color(AppColors.textPlaceholder),
+                    ),
                   ),
-                ),
                 const SizedBox(width: 6),
                 ConstrainedBox(
                   // 长地点名只占 8 个字宽，给同一行的其它 chip 留出空间。

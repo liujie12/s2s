@@ -59,6 +59,8 @@ import 'clustering/grid_cluster.dart';
 import 'clustering/marker_builder.dart';
 import 'fallback_map_canvas.dart';
 import 'map_projection.dart';
+import 'marker_disclosure.dart';
+import 'marker_label_layout.dart';
 import 'marker_layer.dart';
 import 'overlap_list_sheet.dart';
 
@@ -251,6 +253,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     // 五要素随筛选态与视口变化；`PinsQuery` 实现值相等，故同一组合只发一次。
     // 当前生效条件：唯一来源是投影，页面不再自己逐槽位回落。
     final effective = ref.watch(effectiveFilterProvider);
+    // 用户是否逐个点选了叶子：决定中景档是否关闭二级聚合（计划 KD5）。
+    final explicitCategory = ref.watch(explicitCategorySelectionProvider);
     final double queryLat = effective.anchorLat ?? _fetchLat;
     final double queryLng = effective.anchorLng ?? _fetchLng;
     final pinsQuery = PinsQuery(
@@ -329,14 +333,20 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           // pins/簇派生量按**引用**记忆化，避免随每一帧重算（见 [_PinsDerived]）。
           final derived = _derivedFor(pinList, clusterList);
           // Marker 走「拖动中降级渲染」：能复用就只平移，超出余量才精算。
+          // 名称披露口径随装配一起算：档位看渲染视野，抑制看生效筛选（R1 / R8）。
           final frame = _markerLayerFrame(
             pinList,
             clusterList,
             clusterMode,
             projection,
             derived,
+            explicitLeafSelection: explicitCategory.explicitLeaf,
+            suppressLabels: suppressMarkerLabelsFor(
+              effective.leafCategoryIds.length,
+            ),
           );
           final markers = frame.markers;
+          final labels = frame.labels;
           // 图层切换耗时（[140]）：必须在 markers 算好之后调用 —— 渲染段的起点
           // 是「新分类的 Pin 已排好、这一帧即将绘制」。
           _measureLayerSwitchRender(pinsAsync);
@@ -393,6 +403,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 useRealMap,
                 projection,
                 markers,
+                labels,
                 supplyDemandById,
                 frame.offset,
                 frame.layerSize,
@@ -657,6 +668,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   /// - [useRealMap]：是否渲染真地图（由 build 层的同一判据给出，避免两处漂移）；
   /// - [projection]：屏幕视口投影（底图用）；
   /// - [markers]：本帧要画的 Marker（坐标属于精算视口，见 [_markerLayerFrame]）；
+  /// - [labels]：本帧的类目名标签（装配期布局结果，坐标同 [markers]）；
   /// - [supplyDemandById]：Marker 供需查表；
   /// - [markerOffset]：Marker 坐标 → 屏幕坐标的平移量；
   /// - [markerLayerSize]：Marker 坐标系画布尺寸（= 精算视口尺寸）。
@@ -668,6 +680,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     bool useRealMap,
     MapProjection projection,
     List<MapMarker> markers,
+    List<MarkerLabelPlacement> labels,
     Map<String, SupplyDemand> supplyDemandById,
     Offset markerOffset,
     Size markerLayerSize,
@@ -741,6 +754,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             child: RepaintBoundary(
               child: MarkerLayer(
                 markers: markers,
+                labels: labels,
                 supplyDemandById: supplyDemandById,
                 selectedListingId: _selectedListingId,
                 onTapMarker: _onTapMarker,
@@ -1170,9 +1184,20 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   /// 上一帧**精算**出的 Marker 及其配套信息（拖动降级渲染的复用依据）。
   MapProjection? _renderedProjection;
   List<MapMarker>? _renderedMarkers;
+
+  /// 上一帧的标签布局（与 [_renderedMarkers] 同时产出，拖动时整层平移复用）。
+  List<MarkerLabelPlacement>? _renderedLabels;
   List<MapPinDto>? _renderedPins;
   List<MapClusterDto>? _renderedClusters;
   bool? _renderedClusterMode;
+
+  /// 上一帧的披露口径：聚合维度 / 是否抑制名称 / 选中 ID。
+  ///
+  /// 三者任一变化都必须重算 —— 它们分别改变 Marker 集合、标签集合与标签优先级，
+  /// 只平移会把已经不该存在的标签留在屏上。
+  bool? _renderedBucketByMid;
+  bool? _renderedSuppressLabels;
+  String? _renderedLabelSelection;
 
   /// 每边预精算余量（像素）。
   ///
@@ -1212,7 +1237,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   /// - [clusters]：服务端预聚合簇（cluster 模式下与 pins 二选一）；
   /// - [clusterMode]：当前响应是否为 `mode=cluster`；
   /// - [screen]：屏幕视口投影；
-  /// - [derived]：pins/簇派生量（见 [_PinsDerived]）。
+  /// - [derived]：pins/簇派生量（见 [_PinsDerived]）；
+  /// - [explicitLeafSelection]：用户是否逐个点选了叶子（中景档关闭二级聚合，KD5）；
+  /// - [suppressLabels]：是否抑制 Pin 名称（单一叶子筛选，R8）。
   ///
   /// 返回：[_MarkerFrame]。
   _MarkerFrame _markerLayerFrame(
@@ -1220,18 +1247,32 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     List<MapClusterDto> clusters,
     bool clusterMode,
     MapProjection screen,
-    _PinsDerived derived,
-  ) {
+    _PinsDerived derived, {
+    required bool explicitLeafSelection,
+    required bool suppressLabels,
+  }) {
     final Offset margin = _dragMargin(screen);
     final MapProjection? rendered = _renderedProjection;
     final Size expanded = _expandedSize(screen);
+    // 档位跟随**渲染**视野而不是请求视口：用户捏合缩放后取数可能还没回来，
+    // 但名称该按眼前看到的尺度变化（KD4）。
+    final MarkerDisclosureTier tier = markerTierOf(screen.metersPerPixel);
+    final bool bucketByMid = midTierAggregationFor(
+      tier: tier,
+      explicitLeafSelection: explicitLeafSelection,
+    );
 
     // 复用条件：同一批 pins/簇 + 同一模式 + 同一缩放 + 同一视口尺寸 + 位移仍在余量内。
     // 缩放必须排除：像素尺度变了，平移表达不了（[MapProjection.panDeltaTo] 有 assert）。
+    // 披露口径（聚合维度 / 抑制 / 选中）任何一项变化都必须重算：前两者改变 Marker 与
+    // 标签集合，选中改变标签优先级 —— 只平移会把旧标签原样留在屏上。
     if (rendered != null &&
         identical(_renderedPins, pins) &&
         identical(_renderedClusters, clusters) &&
         _renderedClusterMode == clusterMode &&
+        _renderedBucketByMid == bucketByMid &&
+        _renderedSuppressLabels == suppressLabels &&
+        _renderedLabelSelection == _selectedListingId &&
         rendered.metersPerPixel == screen.metersPerPixel &&
         rendered.viewportSize.width == expanded.width &&
         rendered.viewportSize.height == expanded.height) {
@@ -1239,6 +1280,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       if (delta.dx.abs() <= margin.dx && delta.dy.abs() <= margin.dy) {
         return (
           markers: _renderedMarkers!,
+          labels: _renderedLabels!,
           // 精算层的坐标原点在「屏左上角 − margin」，故先补回 margin，再叠拖动位移。
           offset: Offset(delta.dx - margin.dx, delta.dy - margin.dy),
           layerSize: expanded,
@@ -1260,17 +1302,96 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     recorder.beginAgg();
     final List<MapMarker> markers = clusterMode
         ? _buildClusterMarkersFor(clusters, expandedProjection, derived)
-        : _buildMarkersFor(pins, expandedProjection, derived);
+        : _buildMarkersFor(
+            pins,
+            expandedProjection,
+            derived,
+            bucketByMid: bucketByMid,
+          );
+    // 标签布局计入装配段（KTD8）：它随 Marker 一起在相机停稳后算一次，
+    // 拖动期间整层平移复用，不重排（R10）。
+    final List<MarkerLabelPlacement> labels = suppressLabels
+        ? const <MarkerLabelPlacement>[]
+        : _layoutLabels(
+            markers,
+            tier,
+            derived,
+            // 可见区域是精算层里「屏幕所占的那一块」，不是整张画布。
+            Rect.fromLTWH(
+              margin.dx,
+              margin.dy,
+              screen.viewportSize.width,
+              screen.viewportSize.height,
+            ),
+          );
     recorder.endAgg();
     _renderedProjection = expandedProjection;
     _renderedMarkers = markers;
+    _renderedLabels = labels;
     _renderedPins = pins;
     _renderedClusters = clusters;
     _renderedClusterMode = clusterMode;
+    _renderedBucketByMid = bucketByMid;
+    _renderedSuppressLabels = suppressLabels;
+    _renderedLabelSelection = _selectedListingId;
     return (
       markers: markers,
+      labels: labels,
       offset: Offset(-margin.dx, -margin.dy),
       layerSize: expanded,
+    );
+  }
+
+  /// 把 Marker 转成标签候选并做贪心布局（R5 / R6）。
+  ///
+  /// 名称在这里解析（KTD3）：渲染层只吃布局结果，不再回查分类树。
+  ///
+  /// 参数：
+  /// - [markers]：本帧全部 Marker（标签不得压住任何一枚 Pin）；
+  /// - [tier]：当前档位（决定标三级名 / 二级名 / 不标）；
+  /// - [derived]：名称查表（按叶子 / 二级 ID 预查）；
+  /// - [visibleRect]：屏幕可见区域（图层坐标系）。
+  /// 返回：布局成功的标签列表。
+  List<MarkerLabelPlacement> _layoutLabels(
+    List<MapMarker> markers,
+    MarkerDisclosureTier tier,
+    _PinsDerived derived,
+    Rect visibleRect,
+  ) {
+    final List<MarkerLabelCandidate> candidates = [];
+    for (final m in markers) {
+      final String? text = switch (m) {
+        // 近景标三级名；中景标二级名（簇已按二级聚合，名不会说错类目）。
+        SinglePointMarker() => switch (tier) {
+          MarkerDisclosureTier.detail => derived.leafNameById[m.leafCategoryId],
+          MarkerDisclosureTier.mid =>
+            derived.midNameById[midCategoryIdOf(m.leafCategoryId ?? -1)],
+          // 远景只回服务端簇，不会出现客户端单点；真出现也不标名（KD6）。
+          MarkerDisclosureTier.far => null,
+        },
+        // 只有按二级聚合出的簇才有同质类目，才能挂名（R3）。
+        ClusterMarker() =>
+          tier == MarkerDisclosureTier.detail
+              ? null
+              : derived.midNameById[m.midCategoryId],
+        // 叠点堆里混着多条（可能跨类目），主层的名字不能代表整组。
+        StackMarker() => null,
+      };
+      if (text == null || text.isEmpty) continue;
+      candidates.add(
+        MarkerLabelCandidate(
+          marker: m,
+          text: text,
+          dotColor: m.topCategory?.deepColor ?? neutralCategoryColor,
+        ),
+      );
+    }
+    return layoutMarkerLabels(
+      candidates: candidates,
+      markers: markers,
+      visibleRect: visibleRect,
+      measureText: measureMarkerLabelText,
+      selectedListingId: _selectedListingId,
     );
   }
 
@@ -1350,6 +1471,18 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       }
     }
 
+    // 名称查表（R7）：只依赖数据、不依赖相机，故与「叶子→大类」同处派生缓存。
+    // 叶子未登记时值为 null（不是「未知」占位），装配期据此不标名。
+    final leafNameById = <int, String?>{};
+    final midNameById = <int, String?>{};
+    for (final int leafId in topCategoryByLeafId.keys) {
+      leafNameById[leafId] = leafCategoryNameOf(leafId);
+      final int midId = midCategoryIdOf(leafId);
+      if (!midNameById.containsKey(midId)) {
+        midNameById[midId] = midCategoryNameOf(midId);
+      }
+    }
+
     final derived = _PinsDerived(
       ids: List<String>.generate(pins.length, (i) => pins[i].id.toString()),
       // 键用 id 字符串而非 int：Marker 层的标识是 String（§10.4.3），键类型必须与
@@ -1364,6 +1497,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       completenessById: {
         for (final p in pins) p.id.toString(): p.completenessLevel,
       },
+      leafNameById: leafNameById,
+      midNameById: midNameById,
     );
     _derivedPins = pins;
     _derivedClusters = clusters;
@@ -1376,11 +1511,18 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   /// **几何部分每帧重算，派生常量走缓存**：投影一变（拖动/缩放）像素坐标全变，
   /// 缓存命中率接近零，故 [ClusterPoint] 表与聚合必须每帧重算；而「叶子→大类」
   /// 查表与 id 转串**只依赖数据、不依赖相机**，已收进 [_PinsDerived] 按引用缓存。
+  ///
+  /// 参数：
+  /// - [pins]：当前图钉；
+  /// - [projection]：精算视口投影；
+  /// - [derived]：派生查表；
+  /// - [bucketByMid]：是否按二级类目分桶（中景档，R3）。
   List<MapMarker> _buildMarkersFor(
     List<MapPinDto> pins,
     MapProjection projection,
-    _PinsDerived derived,
-  ) {
+    _PinsDerived derived, {
+    bool bucketByMid = false,
+  }) {
     final points = List<ClusterPoint>.generate(pins.length, (i) {
       final p = pins[i];
       final pixel = projection.toPixel(p.lat, p.lng);
@@ -1395,6 +1537,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         // 一级大类由叶子 ID 经分类树查表得出，**不做算术推导**；
         // 查表结果按叶子 ID 去重缓存（见 [_derivedFor]）。
         topCategory: derived.topCategoryByLeafId[p.leafCategoryId],
+        // 二级 ID 由编号规则换算（`midCategoryIdOf`，全项目唯一入口）。
+        midCategoryId: midCategoryIdOf(p.leafCategoryId),
       );
     }, growable: false);
 
@@ -1402,13 +1546,16 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     // 带数量的 Pin，否则重合时只有最上面那条能被点中（见 buildMarkersWithOverlap）。
     return buildMarkersWithOverlap(
       points,
+      // 中景档按二级分桶后桶更小，用专门的起聚条数；其余档位仍按一级大类阈值。
       // 大类为 null（分类树查不到）时取最保守的阈值 3：宁可多聚也不要在
       // 密集区散成一片点。阈值该取几由产品决定，故留在调用方而非算法层。
-      thresholdOf: (topCategory) =>
-          topCategory?.clusterThreshold ??
-          ListingCategory.work.clusterThreshold,
+      thresholdOf: (topCategory) => bucketByMid
+          ? NfrPerf.labelMidTierClusterMinPoints
+          : (topCategory?.clusterThreshold ??
+                ListingCategory.work.clusterThreshold),
       gridSize: _kClusterGridSize,
       stackTolerance: NfrOverlap.stackTolerancePx,
+      bucketByMidCategory: bucketByMid,
       // 主层＝完整度最高的那条；查不到按最低档（0）处理，
       // 让「有数据的那条」优先当门面。
       completenessOf: (id) => derived.completenessById[id] ?? 0,
@@ -1446,6 +1593,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               : derived.topCategoryByLeafId[leafId],
           count: c.count,
           memberIds: const [],
+          // 契约允许簇带叶子类目时，换算成二级 ID 供远景档标名（R4；当前恒 null）。
+          midCategoryId: leafId == null ? null : midCategoryIdOf(leafId),
         ),
       );
     }
@@ -1864,10 +2013,12 @@ class _PinsCountBadge extends StatelessWidget {
 /// 一帧的 Marker 层装配结果（见 [_MapScreenState._markerLayerFrame]）。
 ///
 /// - [markers]：要画的 Marker；
+/// - [labels]：要画的类目名标签（与 [markers] 同坐标系，同一次装配产出）；
 /// - [offset]：Marker 坐标 → 屏幕坐标的平移量（含余量偏移与拖动位移）；
 /// - [layerSize]：Marker 坐标系的画布尺寸（即精算视口尺寸）。
 typedef _MarkerFrame = ({
   List<MapMarker> markers,
+  List<MarkerLabelPlacement> labels,
   Offset offset,
   Size layerSize,
 });
@@ -1884,6 +2035,8 @@ class _PinsDerived {
     required this.supplyDemandById,
     required this.topCategoryByLeafId,
     required this.completenessById,
+    required this.leafNameById,
+    required this.midNameById,
   });
 
   /// 与 pins 同序的 id 字符串（省掉每帧数万次 `int.toString()` 分配）。
@@ -1902,6 +2055,14 @@ class _PinsDerived {
   ///
   /// 叠点堆用它决定「谁当主层」与清单首行；缺失时调用方按最低档处理。
   final Map<String, int> completenessById;
+
+  /// 叶子类目 ID → 三级类目名（近景档标签，R2）。
+  ///
+  /// 值可空：分类树查不到时置 null，装配期据此不标名（R7，「未知」不是名字）。
+  final Map<int, String?> leafNameById;
+
+  /// 二级类目 ID → 二级类目名（中景/远景档标签，R3 / R4）。
+  final Map<int, String?> midNameById;
 }
 
 /// 定位前骨架屏（PRD §6.7 `:1305`）。

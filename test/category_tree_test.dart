@@ -40,12 +40,14 @@ void main() {
       }
     });
 
-    test('叶子总数不超过 120（§2.3 上限）', () {
+    test('叶子总数恰为 122（§2.3 上限，2026-11-11 拆分后）', () {
       // 上限是产品定的运营约束：类目越多，发布时选择成本越高。
+      // 2026-11-11 把 50106「保姆/月嫂/钟点工」拆成 50107/50108/50109，
+      // 上限随 PRD §2.3 由 120 调整为 122（V38 迁移）。
       // 这条断言会在有人「顺手多加几个类目」时失败，而这正是它存在的目的。
-      expect(leafCategories.length, lessThanOrEqualTo(120));
+      expect(leafCategories.length, lessThanOrEqualTo(122));
       // 同时守下界：树被误删一半时长度会骤降，而页面只表现为「少了些选项」。
-      expect(leafCategories.length, 120);
+      expect(leafCategories.length, 122);
     });
   });
 
@@ -320,8 +322,18 @@ void main() {
         ),
         Icons.work,
       );
-      // 3) 叶子按所属二级取字形（10101 → 101）。
-      expect(nodeIconOf(const CategoryNode(id: 10101, name: '餐饮服务')), Icons.work);
+      // 3) 叶子按**本地定稿**取字形（10101 → 自己的 `restaurant`，不再退回二级 work）。
+      //    2026-11-12 反转：服务端 `category.icon` 对叶子大量缺失/与父级同形
+      //    （真机：车辆下五个叶子全是「巴士」），叶子以随包发布的本地树为准。
+      expect(
+        nodeIconOf(const CategoryNode(id: 10101, name: '餐饮服务')),
+        categoryIconByName(localLeafIconNameOf(10101)),
+      );
+      // 3b) 叶子即便带服务端名，本地定稿仍优先（新叶子查不到才用服务端名兜底）。
+      expect(
+        nodeIconOf(const CategoryNode(id: 10101, name: '餐饮服务', icon: 'pets')),
+        categoryIconByName(localLeafIconNameOf(10101)),
+      );
       // 4) 一级查不到二级（id=1 → 0），落一级枚举。
       expect(nodeIconOf(const CategoryNode(id: 2, name: '房屋')), Icons.home);
       // 5) 全查不到 → 中性图标（分类树落后是预期内状态，不崩）。

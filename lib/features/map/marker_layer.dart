@@ -19,6 +19,7 @@ import '../../domain/listing_category.dart';
 import '../../domain/listing_category_style.dart';
 import '../../nfr_constants.dart';
 import 'clustering/marker_builder.dart';
+import 'marker_label_layout.dart';
 
 /// Marker 图层。
 ///
@@ -39,12 +40,19 @@ class MarkerLayer extends StatefulWidget {
     super.key,
     required this.markers,
     required this.supplyDemandById,
+    this.labels = const <MarkerLabelPlacement>[],
     this.selectedListingId,
     this.onTapMarker,
   });
 
   /// 待渲染的 Marker（已含聚合判定，见 [buildMarkers]）。
   final List<MapMarker> markers;
+
+  /// 本帧要画的类目名标签（装配期布局结果，见 `marker_label_layout.dart`）。
+  ///
+  /// 布局**不在本层计算**：它依赖可见区域与相机停稳时机，属装配段职责
+  /// （KTD4 / KTD8）；本层只负责画与读屏播报。
+  final List<MarkerLabelPlacement> labels;
 
   /// 信息 ID → 供需 —— 决定画实心圆还是空心圆 + ? 角标。
   ///
@@ -134,14 +142,31 @@ class _MarkerLayerState extends State<MarkerLayer> {
       // Listener 随之返回 true，`RenderStack` 照样停止下探 —— 只换成 translucent
       // 是修不好的（2026-10-07 实测：带 painter 的 CustomPaint 使底层指针计数归零）。
       child: IgnorePointer(
-        child: CustomPaint(
-          painter: _MarkerPainter(
-            markers: widget.markers,
-            supplyDemandById: widget.supplyDemandById,
-            selectedListingId: widget.selectedListingId,
-          ),
-          // 铺满父级：CustomPaint 无 child 时默认尺寸为零，画不出任何东西。
-          size: Size.infinite,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            CustomPaint(
+              painter: _MarkerPainter(
+                markers: widget.markers,
+                labels: widget.labels,
+                supplyDemandById: widget.supplyDemandById,
+                selectedListingId: widget.selectedListingId,
+              ),
+              // 铺满父级：CustomPaint 无 child 时默认尺寸为零，画不出任何东西。
+              size: Size.infinite,
+            ),
+            // 读屏语义节点：画布上的文字对无障碍不可见，逐个标签补一个语义节点，
+            // 播报「类目名」。图层整体在 IgnorePointer 内，不影响命中与手势。
+            for (final label in widget.labels)
+              Positioned.fromRect(
+                rect: label.rect,
+                child: Semantics(
+                  label: label.text,
+                  container: true,
+                  child: const SizedBox.expand(),
+                ),
+              ),
+          ],
         ),
       ),
     );
@@ -256,14 +281,33 @@ TextPainter _cachedPainter({
   return painter;
 }
 
+/// 测量类目名标签的单行文字尺寸。
+///
+/// 复用 [_cachedPainter]：标签字号与字重固定，同一批类目名的测量结果在整段
+/// 相机停留期间完全可复用，新建 `TextPainter` 只是白付一次文字整形成本。
+///
+/// 参数：[text] 标签文案。
+/// 返回：单行文字尺寸（逻辑像素）。
+Size measureMarkerLabelText(String text) {
+  final painter = _cachedPainter(
+    text: text,
+    color: Color(AppColors.textPrimary),
+    fontSize: markerLabelFontSize(),
+    fontWeight: FontWeight.w500,
+  );
+  return Size(painter.width, painter.height);
+}
+
 class _MarkerPainter extends CustomPainter {
   _MarkerPainter({
     required this.markers,
+    required this.labels,
     required this.supplyDemandById,
     required this.selectedListingId,
   });
 
   final List<MapMarker> markers;
+  final List<MarkerLabelPlacement> labels;
   final Map<String, SupplyDemand> supplyDemandById;
   final String? selectedListingId;
 
@@ -282,6 +326,52 @@ class _MarkerPainter extends CustomPainter {
     for (final m in markers) {
       if (m is StackMarker) _paintStack(canvas, m);
     }
+    // 标签最后画：它带实底胶囊，必须压住底图 POI 名称与任何 Pin（R6）。
+    for (final label in labels) {
+      _paintLabel(canvas, label);
+    }
+  }
+
+  /// 画一枚类目名标签：实底胶囊 → 色点 → 文字。
+  ///
+  /// 顺序有意如此：先铺底再画内容，底色才能压住底图文字；色点先于文字，
+  /// 避免圆形盖住首字。
+  ///
+  /// 参数：[canvas] 画布；[label] 已定位的标签。
+  void _paintLabel(Canvas canvas, MarkerLabelPlacement label) {
+    final RRect rrect = RRect.fromRectAndRadius(
+      label.rect,
+      Radius.circular(markerLabelCornerRadius()),
+    );
+    canvas.drawRRect(
+      rrect,
+      Paint()..color = Color(AppColors.surface).withValues(alpha: 0.94),
+    );
+    canvas.drawRRect(
+      rrect,
+      Paint()
+        ..color = Color(AppColors.border)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1,
+    );
+    canvas.drawCircle(
+      label.dotCenter,
+      markerLabelDotRadius(),
+      Paint()..color = label.dotColor,
+    );
+    final painter = _cachedPainter(
+      text: label.text,
+      color: Color(AppColors.textPrimary),
+      fontSize: markerLabelFontSize(),
+      fontWeight: FontWeight.w500,
+    );
+    painter.paint(
+      canvas,
+      Offset(
+        label.rect.left + markerLabelTextInset(),
+        label.rect.center.dy - painter.height / 2,
+      ),
+    );
   }
 
   /// 聚合 Marker：实心分类色圆 + 白色描边 + 轻投影（2026-11-01 定稿方案 A）。
@@ -602,7 +692,8 @@ class _MarkerPainter extends CustomPainter {
   @override
   bool shouldRepaint(_MarkerPainter oldDelegate) =>
       // 列表按引用比较：Marker 列表每次重算都是新实例，逐项深比 5 万条
-      // 反而比重绘更贵。
+      // 反而比重绘更贵。标签布局同理由引用比较 —— 布局只在装配段重算。
       !identical(oldDelegate.markers, markers) ||
+      !identical(oldDelegate.labels, labels) ||
       oldDelegate.selectedListingId != selectedListingId;
 }

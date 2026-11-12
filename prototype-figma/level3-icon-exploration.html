@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>三级类目图标 · 全量评审稿（122 叶）</title>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,1,0&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --primary:#0B7C8C; --primary-light:#E6F6F8;
+    --text-1:#1F2937; --text-2:#6B7280; --border:#E5E7EB; --surface:#FFF; --bg:#F5F7F9;
+    --work:#3B82F6; --work-deep:#326FD1;
+    --house:#8B5CF6; --house-deep:#8055E2;
+    --vehicle:#F97316; --vehicle-deep:#B85510;
+    --life:#10B981; --life-deep:#0B825A;
+    --service:#EC4899; --service-deep:#C63C81;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;background:var(--bg);color:var(--text-1);padding:34px 30px 60px}
+  .wrap{max-width:1400px;margin:0 auto}
+  .ms{font-family:"Material Symbols Rounded";font-variation-settings:'FILL' 1,'wght' 400,'GRAD' 0,'opsz' 24;line-height:1}
+  h1{font-size:21px;font-weight:700}
+  .meta{margin:8px 0 4px;font-size:12px;color:var(--text-2);display:flex;gap:8px;flex-wrap:wrap}
+  .tag{padding:2px 8px;border-radius:999px;background:var(--primary-light);color:var(--primary);border:1px solid #CBE9EE}
+  .lead{margin-top:12px;font-size:13px;line-height:1.85;color:var(--text-2)}
+  .lead b{color:var(--text-1)}
+  .scale-note{margin-top:14px;padding:10px 14px;border-radius:10px;background:#FFF8E6;border:1px solid #F3DFAE;
+    font-size:12px;color:#8A6D1F;line-height:1.7}
+  .stats{display:flex;gap:12px;margin:18px 0 6px;flex-wrap:wrap}
+  .stat{flex:1;min-width:150px;background:#fff;border:1px solid var(--border);border-radius:12px;padding:12px 14px}
+  .stat b{display:block;font-size:22px;line-height:1.2}
+  .stat span{font-size:11px;color:var(--text-2)}
+  details{margin-top:16px;background:#fff;border:1px solid var(--border);border-radius:12px;padding:12px 16px}
+  summary{font-size:13px;font-weight:600;cursor:pointer}
+  table{width:100%;border-collapse:collapse;margin-top:12px;font-size:12px}
+  th,td{border:1px solid var(--border);padding:7px 10px;text-align:left;vertical-align:top}
+  th{background:#FAFBFC;font-weight:600;color:var(--text-1)}
+  td{color:var(--text-2)}
+  code{font-family:ui-monospace,Consolas,monospace;font-size:11px;color:#475467}
+  h2{font-size:14px;font-weight:600;margin:26px 0 2px;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  h2 .top{font-size:11px;font-weight:500;color:#fff;padding:2px 8px;border-radius:999px}
+  h2 .l2{font-size:12px;font-weight:400;color:var(--text-2)}
+  h2 .l2 code{font-size:11px}
+  .card{background:#fff;border:1px solid var(--border);border-radius:16px;padding:16px;box-shadow:0 2px 10px rgba(15,23,42,.04)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(126px,1fr));gap:10px}
+  .cell{display:flex;flex-direction:column;align-items:center;gap:7px;padding:9px 6px;border-radius:12px;background:#FBFCFD;border:1px solid #F0F2F5}
+  .pin{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;box-shadow:0 2px 5px rgba(15,23,42,.18);position:relative}
+  .pin .ms{font-size:20px;color:#fff}
+  .pin svg.ico{width:22px;height:22px}
+  .row-20{display:flex;align-items:center;gap:8px}
+  .g20{font-size:20px;line-height:1}
+  .g20 svg.ico{width:20px;height:20px;display:block}
+  .g20.gray{filter:grayscale(1);opacity:.9}
+  .small{font-size:11px;color:#98A2B3;text-align:center;line-height:1.45}
+  .small b{display:block;color:var(--text-1);font-size:12px;font-weight:600;margin-bottom:1px}
+  .badge{display:inline-block;margin-top:3px;font-size:10px;line-height:1.4;border-radius:6px;padding:1px 5px;border:1px solid}
+  .badge.dup{color:#B42318;background:#FEF3F2;border-color:#FDA29B}
+  .badge.weak{color:#B54708;background:#FFFAEB;border-color:#FEDF89}
+  .badge.pending{color:#175CD3;background:#EFF8FF;border-color:#B2DDFF}
+  .grade{display:inline-block;margin-top:3px;font-size:10px;font-weight:700;line-height:1.4;border-radius:5px;padding:0 4px;border:1px solid}
+  .grade.A{color:#087443;background:#ECFDF3;border-color:#A6F4C5}
+  .grade.B{color:#B54708;background:#FFFAEB;border-color:#FEDF89}
+  .grade.C{color:#B42318;background:#FEF3F2;border-color:#FDA29B}
+  .review{margin-top:30px;background:#fff;border:1px solid var(--border);border-radius:16px;padding:20px 22px}
+  .review h3{font-size:15px;margin-bottom:6px}
+  .review h4{font-size:13px;margin:18px 0 6px}
+  .review p{font-size:12px;color:var(--text-2);line-height:1.8}
+  .review table td{font-size:12px}
+  .review td.bad{color:#B42318}
+  .review td.mid{color:#B54708}
+  .sum{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0 4px}
+  .sum div{flex:1;min-width:120px;border:1px solid var(--border);border-radius:10px;padding:10px 12px;background:#FBFCFD}
+  .sum b{display:block;font-size:19px}
+  .sum span{font-size:11px;color:var(--text-2)}
+  .strip{display:flex;gap:6px;margin-top:12px;padding:9px 11px;border-radius:10px;background:#F3F4F6;border:1px dashed #D7DBE0;align-items:center;flex-wrap:wrap}
+  .strip .cap{font-size:11px;color:var(--text-2);margin-right:4px}
+  .strip .g20{filter:grayscale(1)}
+  .verdict{margin-top:30px;background:#fff;border:1px solid var(--border);border-radius:16px;padding:20px 22px}
+  .verdict h3{font-size:15px;margin-bottom:8px}
+  .verdict p{font-size:12px;color:var(--text-2);line-height:1.8}
+  .opt{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:14px}
+  .opt .o{border:1px solid var(--border);border-radius:12px;padding:12px 14px;font-size:12px;line-height:1.75;color:var(--text-2)}
+  .opt .o b{display:block;color:var(--text-1);font-size:13px;margin-bottom:4px}
+  .opt .o.rec{border-color:#BFE3E8;background:#F6FDFE}
+  .foot{margin-top:16px;font-size:12px;color:var(--text-2);line-height:1.8}
+  @media (max-width:900px){.opt{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>三级类目图标 · 全量评审稿</h1>
+  <div class="meta">
+    <span class="tag">122 个叶子全铺</span>
+    <span class="tag">20px 真实尺寸</span>
+    <span class="tag">去色对照</span>
+    <span class="tag">2026-11-11</span>
+  </div>
+  <p class="lead">
+    覆盖 5 个一级、25 个二级、<b>122 个三级叶子</b>（含本次从「保姆/月嫂/钟点工」拆出的 3 个新叶子）。
+    判据不变：Pin 圆心只有 <b>20px</b>，须在手机臂展、100% 缩放下<b>去色后仍能两两分开</b>。
+    与一级或二级同形的分配一律标红；语义勉强但不得不用的标黄；本轮不排期的标蓝。
+  </p>
+  <div class="scale-note">⚠️ 浏览器缩放保持 100%（Ctrl+0）。上方 Pin 为 40px、圆心 20px，与真机逻辑像素 1:1；放大检视会得到与真机相反的结论。</div>
+
+  <div class="stats">
+    <div class="stat"><b id="s-total">–</b><span>叶子总数</span></div>
+    <div class="stat"><b id="s-dup" style="color:#B42318">–</b><span>与一级/二级同形</span></div>
+    <div class="stat"><b id="s-weak" style="color:#B54708">–</b><span>语义勉强 / 占位</span></div>
+    <div class="stat"><b id="s-pending" style="color:#175CD3">–</b><span>本轮不开发</span></div>
+  </div>
+
+  <details open>
+    <summary>本轮修改记录（你点名的 15 项 + 拆分说明）</summary>
+    <table>
+      <thead><tr><th>叶子</th><th>原字形</th><th>新字形</th><th>理由 / 备注</th></tr></thead>
+      <tbody>
+        <tr><td>日常保洁 50101</td><td>cleaning_services（＝二级同形）</td><td><code>soap</code></td><td>用「肥皂」表达日常擦洗，二级仍保留扫帚，避免同形</td></tr>
+        <tr><td>深度清洁 50102</td><td>wash（读作洗手）</td><td><code>sanitizer</code></td><td>喷壶＝消毒除菌，与日常保洁拉开一档</td></tr>
+        <tr><td>开荒保洁 50103</td><td>auto_awesome（语义空）</td><td><code>auto_awesome</code> 保留</td><td>开荒＝装修后焕新，「闪光」是全稿里唯一还能读的一档，标黄</td></tr>
+        <tr><td>家电清洗 50104</td><td>ac_unit（只读作空调）</td><td><code>local_laundry_service</code></td><td>洗衣机＝家电 + 清洗双重语义</td></tr>
+        <tr><td>玻璃/窗户清洗 50105</td><td>window（只读作窗户）</td><td>自绘「玻璃刮」</td><td>刮水器 + 亮星，表达「擦玻璃」这个动作</td></tr>
+        <tr><td>保姆 50107</td><td rowspan="3">保姆/月嫂/钟点工（合成 1 个）</td><td><code>escalator_warning</code></td><td>成人牵儿童＝看护，<b>拆出后本轮不开发</b></td></tr>
+        <tr><td>月嫂 50108</td><td><code>pregnant_woman</code></td><td>孕产照护，语义最直接，<b>本轮不开发</b></td></tr>
+        <tr><td>钟点工 50109</td><td><code>av_timer</code></td><td>按小时计，<b>本轮不开发</b></td></tr>
+        <tr><td>其他全职 10105</td><td>work（＝一级 + 二级同形）</td><td><code>badge</code></td><td>工牌＝「雇一个人」，不再复用工作公文包</td></tr>
+        <tr><td>个人求搭车 30401</td><td>person（无语义）</td><td><code>front_hand</code></td><td>举手＝「求捎一段」</td></tr>
+        <tr><td>长期拼车求带 30402</td><td>event_repeat（读作重复）</td><td><code>date_range</code></td><td>日历区间＝长期</td></tr>
+        <tr><td>顺路捎带 30403</td><td>alt_route（读作绕路）</td><td><code>route</code></td><td>途经点＝顺路</td></tr>
+        <tr><td>宠物寄养 40401</td><td>night_shelter（没有动物）</td><td>狗屋剪影（爪印镂空）</td><td>单块剪影，20px 下按外轮廓区分</td></tr>
+        <tr><td>宠物领养 40402</td><td>favorite（只剩爱心）</td><td>实心爱心（爪印镂空）</td><td>同上</td></tr>
+        <tr><td>宠物用品 40403</td><td>shopping_basket（没有动物）</td><td>食盆（爪印镂空）</td><td>同上</td></tr>
+        <tr><td>宠物代遛 40404</td><td>directions_walk（没有动物）</td><td>爪印 + 牵引弧线</td><td>同上</td></tr>
+        <tr><td>宠物医疗 40405</td><td>medical_services（没有动物）</td><td>实心十字（爪印镂空）</td><td>同上</td></tr>
+      </tbody>
+    </table>
+    <p class="foot">拆分说明：原 50106「保姆/月嫂/钟点工」在类目树里是<b>一个叶子</b>，本稿拆为 50107/50108/50109 三个，并标注<b>本轮不开发</b>；拆分需同步改类目树与 PRD，尚未实施。</p>
+  </details>
+
+  <div id="root"></div>
+
+  <div id="review"></div>
+
+  <div class="verdict">
+    <h3>判读记录（100% 缩放下逐族填）</h3>
+    <p>表格由页面按二级族自动生成。每族只需要填一个「去色后可区分对数」，依据是本节上方的去色并排条。</p>
+    <table id="judge">
+      <thead><tr><th>二级族</th><th>叶子数</th><th>可区分对数</th><th>最容易混的两组</th><th>结论</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div class="opt">
+      <div class="o rec">
+        <b>A · 维持现状（名称承担三级）</b>
+        代码与设计稿不动。近景辨识链＝一级配色 → 二级图标 → 三级名称。
+      </div>
+      <div class="o">
+        <b>B · 全量三级图标</b>
+        按本稿 122 个分配落地。需接受标红/标黄的组别，并补 5 个自绘宠物图标 + 1 个玻璃刮。
+      </div>
+      <div class="o">
+        <b>C · 族内修饰（二级图标 + 角标）</b>
+        按宠物族已验证的「主体 + 角标」两层结构推广到全部三级，表达「哪一类 + 做什么」。
+      </div>
+    </div>
+  </div>
+</div>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <g id="paw">
+      <ellipse cx="10.4" cy="14.6" rx="5" ry="4.2"/>
+      <circle cx="5.1" cy="9.7" r="1.9"/><circle cx="8.6" cy="7.3" r="1.9"/>
+      <circle cx="12.3" cy="7.3" r="1.9"/><circle cx="15.8" cy="9.7" r="1.9"/>
+    </g>
+  </defs>
+</svg>
+
+<script>
+/* ---------- 数据：25 个二级族 / 122 个三级叶子 ---------- */
+const L1 = {'工作':'work','房屋':'home','车辆':'directions_car','生活':'volunteer_activism','服务':'build'};
+const GROUPS = [
+  {id:'101',name:'全职招聘',icon:'corporate_fare',l1:'工作',leaves:[
+    ['10101','餐饮服务','restaurant'],['10102','零售导购','storefront'],
+    ['10103','家政保洁','MOP'],['10104','保安仓管','security'],
+    ['10105','其他全职','MISC_WORK'],['10106','普工/技工','precision_manufacturing']]},
+  {id:'102',name:'兼职/临时工',icon:'work_history',l1:'工作',leaves:[
+    ['10201','日结零工','today'],['10202','周末兼职','calendar_view_week'],
+    ['10203','小时工','schedule'],['10204','促销/展会兼职','local_activity'],
+    ['10205','快递分拣/打包','inventory'],['10206','传单派发','newspaper']]},
+  {id:'103',name:'求职找工作',icon:'person_search',l1:'工作',leaves:[
+    ['10301','个人求职','assignment_ind'],['10302','全职求职','badge'],
+    ['10303','兼职求职','more_time']]},
+  {id:'104',name:'司机/物流',icon:'local_shipping',l1:'工作',leaves:[
+    ['10401','货运司机','moving'],['10402','网约车/代驾','local_taxi'],
+    ['10403','快递员/外卖骑手','delivery_dining'],['10404','装卸搬运','forklift'],
+    ['10405','跟车/押运','local_police']]},
+  {id:'105',name:'销售/客服',icon:'point_of_sale',l1:'工作',leaves:[
+    ['10501','销售专员','trending_up'],['10502','电话销售','call'],['10503','网络销售','chat'],
+    ['10504','客服专员','headset_mic'],['10505','售后客服','reviews']]},
+
+  {id:'201',name:'整租/合租',icon:'apartment',l1:'房屋',leaves:[
+    ['20101','主卧出租','bedroom_parent'],['20102','次卧出租','single_bed'],
+    ['20103','整租出租','villa'],['20104','单间出租','door_front'],
+    ['20105','床位出租','bed'],['20106','合租找室友','groups']]},
+  {id:'202',name:'求租/找房',icon:'real_estate_agent',l1:'房屋',leaves:[
+    ['20201','个人求租','travel_explore'],['20202','合租求租','person_add'],['20203','整租求租','holiday_village']]},
+  {id:'203',name:'短租/日租',icon:'hotel',l1:'房屋',leaves:[
+    ['20301','短租民宿','cottage'],['20302','日租公寓','calendar_view_day'],['20303','短租床位','night_shelter']]},
+  {id:'204',name:'租房信息咨询',icon:'support_agent',l1:'房屋',leaves:[
+    ['20401','房源线索/中介合作','location_city'],['20402','租房政策咨询','gavel'],
+    ['20403','验房/带看服务','fact_check']]},
+  {id:'205',name:'二手房/商业地产',icon:'business_center',l1:'房屋',leaves:[
+    ['20501','二手房出售','home_work'],['20502','二手房求购','request_quote'],
+    ['20503','商铺出租/转让','store'],['20504','写字楼出租','business'],
+    ['20505','厂房/仓库','warehouse'],['20506','车位租售','local_parking']]},
+
+  {id:'301',name:'顺风车/拼车',icon:'CARPOOL',l1:'车辆',leaves:[
+    ['30101','上下班拼车','COMMUTE'],['30102','跨城顺风车','CROSS_CITY'],
+    ['30103','周末拼车','WEEKEND'],['30104','机场/车站接送','FLIGHT'],
+    ['30105','长期拼车','LONGTERM']]},
+  {id:'302',name:'租车/借车',icon:'CARKEY',l1:'车辆',leaves:[
+    ['30201','私家车出租','KEY'],['30202','货车出租','TRUCK'],
+    ['30203','大巴/中巴出租','BUS'],['30204','婚车租赁','CAR_BOW'],
+    ['30205','以租代购','PAPER']]},
+  {id:'303',name:'二手车转让',icon:'sell',l1:'车辆',leaves:[
+    ['30301','个人二手车','CAR_PERSON'],['30302','轿车转让','SEDAN'],
+    ['30303','SUV/MPV 转让','SUV'],['30304','货车/工程车转让','DUMP'],
+    ['30305','摩托车/电动车转让','two_wheeler']]},
+  {id:'304',name:'求搭车/求拼',icon:'HITCH',l1:'车辆',leaves:[
+    ['30401','个人求搭车','HITCH_ROAD'],['30402','长期拼车求带','HITCH_CAL'],
+    ['30403','顺路捎带','HITCH_ROUTE']]},
+  {id:'305',name:'汽车维修/保养',icon:'car_repair',l1:'车辆',leaves:[
+    ['30501','维修保养','handyman'],['30502','洗车美容','local_car_wash'],
+    ['30503','轮胎/电瓶','tire_repair'],['30504','钣金喷漆','format_paint'],
+    ['30505','汽车改装','settings_suggest'],['30506','道路救援','health_and_safety']]},
+
+  {id:'401',name:'二手闲置转让',icon:'inventory_2',l1:'生活',leaves:[
+    ['40101','家具家电','SOFA_TV'],['40102','母婴儿童','child_care'],['40103','数码电子','devices'],
+    ['40104','服饰鞋包','apparel'],['40105','其他二手','JUNK'],['40106','运动户外','hiking']]},
+  {id:'402',name:'借物/互助',icon:'handshake',l1:'生活',leaves:[
+    ['40201','临时借物','pan_tool'],['40202','邻里互助','diversity_3'],
+    ['40203','物品交换','swap_horiz'],['40204','工具借用','hardware']]},
+  {id:'403',name:'寻物启事/失物招领',icon:'search',l1:'生活',leaves:[
+    ['40301','寻找失物','manage_search'],['40302','招领失物','record_voice_over']]},
+  {id:'404',name:'宠物相关',icon:'pets',l1:'生活',leaves:[
+    ['40401','宠物寄养','PAW:house'],['40402','宠物领养','PAW:heart'],['40403','宠物用品','PAW:bag'],
+    ['40404','宠物代遛','PAW:walk'],['40405','宠物医疗','PAW:cross']]},
+  {id:'405',name:'求购/求助',icon:'campaign',l1:'生活',leaves:[
+    ['40501','个人求购','shopping_cart'],['40502','邻里求助','help'],['40503','好物推荐','thumb_up']]},
+
+  {id:'501',name:'家政/保洁',icon:'cleaning_services',l1:'服务',leaves:[
+    ['50101','日常保洁','soap'],['50102','深度清洁','sanitizer'],['50103','开荒保洁','BRUSH'],
+    ['50104','家电清洗','local_laundry_service'],['50105','玻璃/窗户清洗','SQUEEGEE'],
+    ['50107','保姆','escalator_warning'],['50108','月嫂','pregnant_woman'],['50109','钟点工','av_timer']]},
+  {id:'502',name:'维修/安装',icon:'home_repair_service',l1:'服务',leaves:[
+    ['50201','家电维修','FIX_APPLIANCE'],['50202','水电维修','WATER_ELEC'],['50203','家具安装','carpenter'],
+    ['50204','管道疏通','plumbing'],['50205','开锁换锁','lock_open'],['50206','防水补漏','water_damage']]},
+  {id:'503',name:'教学/培训',icon:'school',l1:'服务',leaves:[
+    ['50301','家教辅导','menu_book'],['50302','技能教学','cast_for_education'],['50303','语言培训','translate'],
+    ['50304','艺术/乐器','ART_MUSIC'],['50305','职业考证','workspace_premium'],['50306','体育培训','fitness_center']]},
+  {id:'504',name:'美容/美发/按摩',icon:'spa',l1:'服务',leaves:[
+    ['50401','上门美容','face_retouching_natural'],['50402','上门按摩','MASSAGE'],
+    ['50403','美发造型','styler'],['50404','美甲美睫','back_hand'],['50405','上门理发','content_cut'],
+    ['50406','足疗/采耳','footprint']]},
+  {id:'505',name:'代办/跑腿',icon:'directions_run',l1:'服务',leaves:[
+    ['50501','代取快递','package_2'],['50502','代跑腿','directions_walk'],['50503','代排队','TICKET'],
+    ['50504','代买代送','shopping_bag'],['50505','代办证件','assignment'],['50506','陪诊/陪护','elderly']]}
+];
+
+/* 语义勉强 / 占位（需人工确认或后续替换） */
+const WEAK = {
+  '50402':'双手＋背形示意，动作靠二级「按摩」兜底'
+};
+/* 本轮不开发 */
+const PENDING = {'50107':'拆分新增 · 本轮不开发','50108':'拆分新增 · 本轮不开发','50109':'拆分新增 · 本轮不开发'};
+
+/* ---------- 语义评审分级：A 直接相符 / B 语境可读 / C 不符 ---------- */
+const B_SET = new Set(['50402']);
+const C_MAP = {};
+/* 第二轮修复记录（评审 → 替换 → 复检） */
+const FIXED = [
+  ['10103','dry_cleaning','iron','熨烫属家政，不再靠「干洗」凑近'],
+  ['10204','campaign','local_activity','喇叭留给 405 二级（撞形）'],
+  ['10302','business_center','contact_page','与 205 二级撞形；联系人卡片＝求职者'],
+  ['10303','timer','hourglass_bottom','计时器与求职无关；沙漏＝阶段性'],
+  ['20104','meeting_room','door_front','会议室≠单间；一扇门＝一间房'],
+  ['20201','person_search','travel_explore','与 103 二级撞形；找房＝探索'],
+  ['20203','villa','holiday_village','别墅≠整租求租；整栋更贴'],
+  ['20302','domain','calendar_view_day','楼宇≠按天；日历＝日租'],
+  ['20303','airline_seat_flat','night_shelter','平躺座椅读作航班；庇护所＝过夜床位'],
+  ['20501','sell','home_work','sell 留给 303 二级（撞形）'],
+  ['30102','distance','map','双向箭头≠跨城；地图＝跨城'],
+  ['30103','event','event_available','日历≠周末；打勾日历＝已定'],
+  ['30202','local_shipping','TRUCK','与 104 二级撞形；自绘厢式货车'],
+  ['30301','person','car_tag','车＋价签＝二手车（「个人」仍缺，见 B）'],
+  ['30304','agriculture','DUMP','拖拉机≠工程车；自绘自卸车'],
+  ['40105','category','JUNK','通用边框无语义；自绘杂物箱'],
+  ['40201','sync_alt','pan_tool','交换箭头≠借用；伸手＝借'],
+  ['40302','notifications_active','record_voice_over','铃铛＝通知；广播＝招领'],
+  ['50103','auto_awesome','BRUSH','闪光无语义；自绘刷子＋亮星'],
+  ['50302','science','cast_for_education','烧瓶≠技能教学；教学广播'],
+  ['50404','brush','back_hand','画笔≠美甲美睫；手部'],
+  ['50503','hourglass_bottom','pending','沙漏让给 10303；三点＝排队等待'],
+  ['50506','medical_services','elderly','医疗箱≠陪伴；陪护对象'],
+  ['10106','construction','precision_manufacturing','机械臂＝普工/技工'],
+  ['10202','weekend','calendar_view_week','沙发让给 40101；周视图＝周末'],
+  ['10203','hourglass_top','schedule','时钟＝按小时计'],
+  ['10206','description','newspaper','报纸＝传单派发'],
+  ['10405','verified_user','local_police','警徽＝押运'],
+  ['10505','assignment_return','reviews','气泡星级＝售后'],
+  ['20103','king_bed','domain','楼宇＝整套整租'],
+  ['20202','group_add','person_add','加人＝找合租室友'],
+  ['30105','event_repeat','calendar_month','月历＝长期'],
+  ['30302','electric_car','SEDAN','自绘轿车，去掉「电动」误导'],
+  ['30303','airport_shuttle','SUV','自绘 SUV，与厢式车区分'],
+  ['30505','tune','settings_suggest','滑杆＋星＝改装设定'],
+  ['30506','emergency','health_and_safety','十字盾＝道路救援'],
+  ['40101','chair','weekend','沙发＝家具（家电仍缺）'],
+  ['40106','sports_soccer','hiking','徒步＝户外'],
+  ['50406','healing','footprint','脚印＝足疗'],
+  ['10105','badge','MISC_WORK','公文包＋三点＝其他岗位'],
+  ['10201','payments','today','日历页＝当天结算'],
+  ['10302','contact_page','badge','工牌＝全职岗位'],
+  ['10303','hourglass_bottom','more_time','加时＝兼职'],
+  ['20103','domain','villa','整栋＝整租'],
+  ['20401','handshake','location_city','楼群＝房源线索（handshake 让给 402 二级）'],
+  ['30101','commute','CAR','自绘通勤车'],
+  ['30102','map','CAR_ARROW','车＋方向箭头＝跨城'],
+  ['30103','event_available','CAR_FLAG','车＋旗＝周末出行'],
+  ['30104','flight','PLANE','整机剪影'],
+  ['30105','calendar_month','CAR_LOOP','车＋循环箭头＝长期'],
+  ['30201','key','KEY','放大钥匙'],
+  ['30203','directions_bus','BUS','自绘巴士'],
+  ['30204','celebration','CAR_BOW','车＋缎带＝婚车'],
+  ['30205','contract','PAPER','合同页＋印章'],
+  ['30401','front_hand','HITCH','举手搭车人剪影'],
+  ['30402','date_range','HITCH_CAL','搭车人＋日历'],
+  ['30403','route','HITCH_ROUTE','搭车人＋路线箭头'],
+  ['30301','car_tag','CAR_PERSON','车＋车窗里的人'],
+  ['40101','weekend','SOFA_TV','沙发＋电视＝家具家电'],
+  ['50201','kitchen','FIX_APPLIANCE','家电＋螺丝刀'],
+  ['50202','electrical_services','WATER_ELEC','水滴＋闪电'],
+  ['50402','self_improvement','airline_seat_recline_extra','按摩躺椅'],
+  ['50503','pending','queue','队列线'],
+  ['10103','iron','MOP','拖把＋水桶＝家政保洁'],
+  ['30101','CAR','COMMUTE','车体＋办公楼（窗格）＝上下班'],
+  ['30102','CAR_ARROW','CROSS_CITY','车体＋高速路牌＝跨城'],
+  ['30103','CAR_FLAG','WEEKEND','车上来三个人＝多人同乘，就是拼车'],
+  ['30104','PLANE','FLIGHT','车体＋车站（屋顶／窗／门）＝接送'],
+  ['30105','CAR_LOOP','LONGTERM','车体＋月历页＝长期'],
+  ['50304','palette','ART_MUSIC','调色板＋音符＝艺术/乐器'],
+  ['50402','airline_seat_recline_extra','MASSAGE','双手＋背形＝按摩'],
+  ['50503','queue','TICKET','取号单＝排队']
+];
+const DUP_FIX = {};
+
+/* ---------- 自绘图标：宠物用「猫头」做主体；车辆三族整体重画 ---------- */
+const _CT = (c='currentColor')=>`<g fill="${c}"><circle cx="12" cy="13.6" r="4.8"/>
+  <path d="M7.7 10.9L6.6 4.7l4.5 2.9z"/><path d="M16.3 10.9l1.1-6.2-4.5 2.9z"/></g>`;
+const _sc = (inner,s,cx,cy)=>`<g transform="translate(${cx},${cy}) scale(${s}) translate(-12,-12)">${inner}</g>`;
+const _CARS = `<path d="M1.6 20.4v-2.6l2-1 2.6-3.4h8.6l3 3.4h3.4v3.6z" fill="currentColor"/>
+  <path d="M7 14.4h6.8l1.8 2.4H5.4z" fill="#fff"/>
+  <circle cx="5.6" cy="20.6" r="1.7" fill="currentColor"/><circle cx="16.4" cy="20.6" r="1.7" fill="currentColor"/>`;
+const _CAR = `<path d="M2.4 15.4v-2l1.9-1 2.3-3.1h7.4l2.7 3.1h3v3z" fill="currentColor"/>
+  <circle cx="7.2" cy="16.4" r="1.85" fill="currentColor"/><circle cx="16.6" cy="16.4" r="1.85" fill="currentColor"/>`;
+const _PLANE = `<path d="M21.4 12.4l-6.6-2.2-3.4-5.6-1.8.6 1.4 5.4-4.6-1.5-1.4-2-1.4.5.9 3.2-1.6 2.2 1.6 2.2-.9 3.2 1.4.5 1.4-2 4.6-1.5-1.4 5.4 1.8.6 3.4-5.6 6.6-2.2z" fill="currentColor"/>`;
+const _BUS = `<rect x="3" y="4.4" width="18" height="11.8" rx="2" fill="currentColor"/>
+  <rect x="5.2" y="6.6" width="5.2" height="4" rx=".8" fill="#fff"/>
+  <rect x="12" y="6.6" width="5.2" height="4" rx=".8" fill="#fff"/>
+  <circle cx="7.6" cy="17.4" r="1.9" fill="currentColor"/><circle cx="16.4" cy="17.4" r="1.9" fill="currentColor"/>`;
+const _KEY = `<circle cx="7.6" cy="8.2" r="3.6" fill="none" stroke="currentColor" stroke-width="2.2"/>
+  <path d="M10.4 11l7.6 7.6M14.6 15.2l2.2-2.2M17.2 17.8l2.2-2.2" fill="none"
+    stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>`;
+const _PAPER = `<path d="M5 3h9.6L19 7.4V21H5z" fill="currentColor"/>
+  <path d="M14.6 3v4.4H19" fill="#fff" opacity=".55"/>
+  <circle cx="12" cy="15" r="2.8" fill="#fff"/><circle cx="12" cy="15" r="1.2" fill="currentColor"/>`;
+const _HITCH = `<circle cx="9.8" cy="6" r="2.5" fill="currentColor"/>
+  <path d="M7 9.2h5.4l1.4 5h3v2.2h-4.6l-.8-2.6-1.2 6.6H7.6l.8-6.2-2.6 2.2-1.4-1.5z" fill="currentColor"/>
+  <path d="M14.6 4.2l4.6 1.3-1 3.3-4.6-1.3z" fill="currentColor"/>`;
+function drawGlyph(key){
+  const S = {
+    /* ---- 宠物：猫头为主体 ---- */
+    'PAW:house':`<path d="M12 3L22.4 10.6v1.7L12 5.1 1.6 12.3v-1.7z" fill="currentColor"/>
+      <rect x="3.6" y="10.8" width="16.8" height="9.6" rx="1.2" fill="currentColor"/>${_sc(_CT('#fff'),.62,12,14.8)}`,
+    'PAW:heart':`<path d="M12 21.4C5.8 17 3.6 14.1 3.6 11.2c0-2.3 1.8-4.1 4-4.1 1.7 0 3.2 1 4.4 2.6 1.2-1.6 2.7-2.6 4.4-2.6 2.2 0 4 1.8 4 4.1 0 2.9-2.2 5.8-8.4 10.2z" fill="currentColor"/>${_sc(_CT('#fff'),.46,12,12.2)}`,
+    'PAW:bag':`<path d="M2.8 12.6h18.4c0 4.7-4.1 8.2-9.2 8.2S2.8 17.3 2.8 12.6z" fill="currentColor"/>
+      <rect x="2.2" y="10.8" width="19.6" height="2.3" rx="1.1" fill="currentColor"/>
+      <circle cx="8.4" cy="7" r="1.9" fill="currentColor"/><circle cx="15.6" cy="7" r="1.9" fill="currentColor"/>
+      <rect x="8.2" y="5.9" width="7.6" height="2.2" rx="1.1" fill="currentColor"/>`,
+    'PAW:walk':`${_sc(_CT(),.92,10.2,8.8)}
+      <path d="M15 12.4c2.6 1.4 4 3.6 4.4 6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+      <circle cx="19.8" cy="19.4" r="2.1" fill="none" stroke="currentColor" stroke-width="1.7"/>`,
+    'PAW:cross':`<path d="M9.2 3.2h5.6v6h6v5.6h-6v6H9.2v-6h-6V9.2h6z" fill="currentColor"/>${_sc(_CT('#fff'),.34,12,12.4)}`,
+    /* ---- 顺风车/拼车：车 + 乘客/时段/路牌 ---- */
+    CARPOOL:_CAR+`<circle cx="9.4" cy="9.4" r="1.15" fill="#fff"/><circle cx="14.4" cy="9.4" r="1.15" fill="#fff"/>`,
+    CAR:_CAR,
+    CAR_ARROW:_CAR+`<path d="M3 5.6h11.6v-2l4.4 3-4.4 3v-2H3z" fill="currentColor" opacity=".9"/>`,
+    CAR_FLAG:_CAR+`<rect x="14.8" y="2.8" width="1.5" height="5.6" fill="currentColor"/>
+      <path d="M16.3 2.8h4.6l-1.4 1.8 1.4 1.8h-4.6z" fill="currentColor"/>`,
+    PLANE:_PLANE,
+    CAR_LOOP:_CAR+`<path d="M17.4 3.4a5.2 5.2 0 1 1-2.6 1" fill="none" stroke="currentColor"
+      stroke-width="1.8" stroke-linecap="round"/><path d="M20.6 2.6l-3 .8.8 3z" fill="currentColor"/>`,
+    /* ---- 租车/借车 ---- */
+    CARKEY:_CAR+`<circle cx="9.6" cy="12.2" r="1.5" fill="#fff"/><rect x="10.4" y="11.6" width="3" height="1.2" fill="#fff"/>`,
+    KEY:_KEY, BUS:_BUS, TRUCK:`<path d="M2.8 7.2h11v8.6H2.8z" fill="currentColor"/>
+      <path d="M14.6 10.2h3.4l3 3.4v2.2h-6.4z" fill="currentColor"/>
+      <circle cx="7" cy="17.4" r="1.9" fill="currentColor"/><circle cx="17.6" cy="17.4" r="1.9" fill="currentColor"/>`,
+    CAR_BOW:_CAR+`<path d="M15.4 4.4l3-1.8v4.4l-3-1.8z" fill="currentColor"/><path d="M15.4 4.4l-3-1.8v4.4l3-1.8z" fill="currentColor"/>
+      <circle cx="15.4" cy="4.4" r=".9" fill="currentColor"/>`,
+    PAPER:_PAPER,
+    /* ---- 求搭车/求拼：搭车人 ---- */
+    HITCH:_HITCH,
+    HITCH_ROAD:_HITCH+`<path d="M2.4 21.4h19.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+      stroke-dasharray="3.4 2.4"/>`,
+    HITCH_CAL:_HITCH+`<rect x="14.6" y="13.4" width="7" height="7" rx="1" fill="#fff"/>
+      <rect x="14.6" y="13.4" width="7" height="2.2" rx="1" fill="currentColor"/>
+      <rect x="16.2" y="16.8" width="1.4" height="2" fill="currentColor"/><rect x="18.8" y="16.8" width="1.4" height="2" fill="currentColor"/>`,
+    HITCH_ROUTE:_HITCH+`<path d="M14.4 19.4h5.4a2.6 2.6 0 0 0 0-5.2h-1.6" fill="none"
+      stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+      <path d="M15.4 12.6l-2 1.6 2 1.6z" fill="currentColor"/>`,
+    /* ---- 其余长尾 ---- */
+    SEDAN:`<path d="M2.6 15.2l1.8-3.8 3.4-2.2h6.6l3.8 2.4 3.2 1.5v2.9H2.6z" fill="currentColor"/>
+      <circle cx="7.2" cy="16.6" r="1.8" fill="currentColor"/><circle cx="16.8" cy="16.6" r="1.8" fill="currentColor"/>`,
+    SUV:`<path d="M2.6 14.8V9.4h4l2.2-3.2h7.2l2.8 3.2h2.6v5.4H2.6z" fill="currentColor"/>
+      <circle cx="7" cy="16.6" r="1.9" fill="currentColor"/><circle cx="17" cy="16.6" r="1.9" fill="currentColor"/>`,
+    DUMP:`<path d="M2.6 15.2L12.8 8.8l2.4 4.2-10.2 6.4z" fill="currentColor"/>
+      <path d="M14.2 11.4h4.6l1.8 2.6v2.6h-6.4z" fill="currentColor"/>
+      <circle cx="6.2" cy="18.4" r="1.8" fill="currentColor"/><circle cx="17.4" cy="18.4" r="1.8" fill="currentColor"/>`,
+    JUNK:`<rect x="3.4" y="11" width="17.2" height="8.6" rx="1.4" fill="currentColor"/>
+      <rect x="5.2" y="6.6" width="4" height="4.4" rx=".6" fill="currentColor"/>
+      <rect x="10.4" y="5.4" width="3.6" height="5.6" rx=".6" fill="currentColor"/>
+      <rect x="15" y="6.8" width="3.8" height="4.2" rx=".6" fill="currentColor"/>
+      <rect x="3.4" y="10.2" width="17.2" height="1.5" fill="#fff" opacity=".6"/>`,
+    BRUSH:`<rect x="10.4" y="2.8" width="3.2" height="7.6" rx="1.5" fill="currentColor"/>
+      <path d="M6.8 10.4h10.4v3.2a2 2 0 0 1-2 2H8.8a2 2 0 0 1-2-2z" fill="currentColor"/>
+      <path d="M18.6 15.8l.8 1.9 1.9.8-1.9.8-.8 1.9-.8-1.9-1.9-.8 1.9-.8z" fill="currentColor" opacity=".85"/>`,
+    SQUEEGEE:`<rect x="3.2" y="6.6" width="17.6" height="3.2" rx="1.1" fill="currentColor"/>
+      <rect x="10.4" y="9.8" width="3.2" height="9.4" rx="1.4" fill="currentColor"/>
+      <path d="M19 14.4l.9 2.2 2.2.9-2.2.9-.9 2.2-.9-2.2-2.2-.9 2.2-.9z" fill="currentColor" opacity=".85"/>`,
+    MISC_WORK:`<rect x="3" y="8.4" width="18" height="11.6" rx="2" fill="currentColor"/>
+      <path d="M9 8.4V6.6A1.6 1.6 0 0 1 10.6 5h2.8A1.6 1.6 0 0 1 15 6.6v1.8" fill="none" stroke="currentColor" stroke-width="1.8"/>
+      <circle cx="9.4" cy="14.2" r="1.1" fill="#fff"/><circle cx="12" cy="14.2" r="1.1" fill="#fff"/><circle cx="14.6" cy="14.2" r="1.1" fill="#fff"/>`,
+    CAR_PERSON:_CAR+`<circle cx="9.6" cy="11.6" r="1.5" fill="#fff"/><path d="M8.6 15.2a2.4 2.4 0 0 1 2-3.4" fill="#fff"/>`,
+    SOFA_TV:`<rect x="5.6" y="3.4" width="12.8" height="7" rx="1" fill="currentColor"/>
+      <rect x="6.8" y="4.8" width="10.4" height="4.2" rx=".6" fill="#fff"/>
+      <path d="M3 13.4h18v5.4H3z" fill="currentColor"/><rect x="2.2" y="10.8" width="3.4" height="5.6" rx="1.7" fill="currentColor"/>
+      <rect x="18.4" y="10.8" width="3.4" height="5.6" rx="1.7" fill="currentColor"/>`,
+    FIX_APPLIANCE:`<rect x="4.4" y="3.4" width="15.2" height="17.2" rx="2" fill="currentColor"/>
+      <rect x="6.4" y="5.4" width="11.2" height="1.6" rx=".8" fill="#fff"/>
+      <path d="M11 11.4a2.2 2.2 0 1 0 2.4 3.4l3.4 3.4 1.6-1.6-3.4-3.4a2.2 2.2 0 0 0-3.4-2.4z" fill="#fff"/>`,
+    WATER_ELEC:`<path d="M8 3.6c2.8 3.4 4.4 5.9 4.4 7.9A4.4 4.4 0 0 1 3.6 11.5c0-2 1.6-4.5 4.4-7.9z" fill="currentColor"/>
+      <path d="M16.6 11.6l-3.6 5.6h3l-1.4 4 5-6h-3z" fill="currentColor"/>`,
+    /* ---- 顺风车/拼车：车在下（带车窗），场景元素在上，两块等量 ---- */
+    COMMUTE:`${_CARS}<rect x="8" y="1.2" width="8.6" height="10.6" rx=".8" fill="currentColor"/>
+      <rect x="9.6" y="2.8" width="2.2" height="2" fill="#fff"/><rect x="12.8" y="2.8" width="2.2" height="2" fill="#fff"/>
+      <rect x="9.6" y="6" width="2.2" height="2" fill="#fff"/><rect x="12.8" y="6" width="2.2" height="2" fill="#fff"/>`,
+    CROSS_CITY:`${_CARS}<rect x="4.6" y="1.4" width="14.8" height="7.6" rx="1.2" fill="currentColor"/>
+      <path d="M8 5.2h7.6" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/>
+      <path d="M14.2 3.6l2.2 1.6-2.2 1.6z" fill="#fff"/>`,
+    WEEKEND:`${_CARS}<circle cx="7.6" cy="11.6" r="1.9" fill="currentColor"/>
+      <circle cx="12" cy="10.4" r="1.9" fill="currentColor"/><circle cx="16.4" cy="11.6" r="1.9" fill="currentColor"/>`,
+    FLIGHT:`${_CARS}<path d="M2.4 5.2L12 1.4l9.6 3.8z" fill="currentColor"/>
+      <rect x="4.4" y="4.8" width="15.2" height="7.2" rx=".8" fill="currentColor"/>
+      <rect x="6.2" y="6.6" width="2.6" height="2.2" fill="#fff"/><rect x="15.2" y="6.6" width="2.6" height="2.2" fill="#fff"/>
+      <rect x="9.8" y="6.6" width="4.4" height="5.4" rx=".6" fill="#fff"/>`,
+    LONGTERM:`${_CARS}<rect x="6" y="1.2" width="12" height="10.4" rx="1.2" fill="currentColor"/>
+      <rect x="6" y="3.4" width="12" height="1.8" fill="#fff"/>
+      <rect x="8" y="6.4" width="2.6" height="2.6" fill="#fff"/><rect x="12.2" y="6.4" width="2.6" height="2.6" fill="#fff"/>`,
+    /* ---- 长尾 B ---- */
+    MOP:`<path d="M3.6 12.8h9.6v5.6a2.2 2.2 0 0 1-2.2 2.2H5.8a2.2 2.2 0 0 1-2.2-2.2z" fill="currentColor"/>
+      <path d="M8.4 3.4l5 8.6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+      <path d="M9.4 8.4l3.4-2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>`,
+    ART_MUSIC:`<path d="M12 3.2a8.8 8.8 0 1 0 0 17.6c1.6 0 2.2-1 2.2-2 0-1.4-1.2-1.6-1.2-2.8 0-1 .8-1.8 2-1.8h2a4 4 0 0 0 4-4c0-4-4-7-9-7z" fill="currentColor"/>
+      <circle cx="8" cy="9" r="1.3" fill="#fff"/><circle cx="12.6" cy="7.2" r="1.3" fill="#fff"/>
+      <circle cx="16.4" cy="9.6" r="1.3" fill="#fff"/>
+      <path d="M19.4 14.2v4.4a1.9 1.9 0 1 1-1.6-1.9V15l3.4-.9v2.6" fill="currentColor" opacity=".9"/>`,
+    MASSAGE:`<circle cx="7" cy="7.4" r="2.4" fill="currentColor"/><circle cx="14.4" cy="6.4" r="2.4" fill="currentColor"/>
+      <path d="M2.8 15.6c2.4-2.8 5.6-4 8.8-4s6.4 1.2 8.8 4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+      <path d="M4.4 19.6c1.8-1.6 4-2.2 6-1.6M19.6 19.6c-1.8-1.6-4-2.2-6-1.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" opacity=".6"/>`,
+    TICKET:`<path d="M2.6 6.6h18.8v3.6a1.8 1.8 0 0 0 0 3.6v3.6H2.6v-3.6a1.8 1.8 0 0 0 0-3.6z" fill="currentColor"/>
+      <rect x="6" y="9.8" width="7.4" height="1.5" rx=".7" fill="#fff"/>
+      <rect x="6" y="12.8" width="4.6" height="1.5" rx=".7" fill="#fff"/>`
+  }[key];
+  return `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">${S}</svg>`;
+}
+function iconMarkup(key){
+  if(key.startsWith('PAW:')||drawGlyphKeys.has(key)) return drawGlyph(key);
+  return `<span class="ms">${key}</span>`;
+}
+const drawGlyphKeys = new Set(['CARPOOL','CAR','CAR_ARROW','CAR_FLAG','PLANE','CAR_LOOP','CARKEY','KEY','BUS','TRUCK',
+  'CAR_BOW','PAPER','HITCH','HITCH_ROAD','HITCH_CAL','HITCH_ROUTE','SEDAN','SUV','DUMP','JUNK','BRUSH','SQUEEGEE',
+  'MISC_WORK','CAR_PERSON','SOFA_TV','FIX_APPLIANCE','WATER_ELEC',
+  'COMMUTE','CROSS_CITY','WEEKEND','FLIGHT','LONGTERM','MOP','ART_MUSIC','MASSAGE','TICKET']);
+const COLORS = {'工作':['var(--work)','var(--work-deep)'],'房屋':['var(--house)','var(--house-deep)'],
+  '车辆':['var(--vehicle)','var(--vehicle-deep)'],'生活':['var(--life)','var(--life-deep)'],
+  '服务':['var(--service)','var(--service-deep)']};
+
+/* ---------- 渲染 ---------- */
+const root = document.getElementById('root');
+let total=0, dupCount=0, weakCount=0, pendingCount=0;
+const gradeCount = {A:0,B:0,C:0};
+const judgeBody = document.querySelector('#judge tbody');
+
+GROUPS.forEach(g=>{
+  const [pinBg, deep] = COLORS[g.l1];
+  total += g.leaves.length;
+  const cells = g.leaves.map(([id,name,key])=>{
+    const isDup = key===g.icon || key===L1[g.l1];
+    const isWeak = !!WEAK[id];
+    const isPending = !!PENDING[id];
+    if(isDup) dupCount++;
+    if(isWeak) weakCount++;
+    if(isPending) pendingCount++;
+    const badges = [
+      isDup?'<span class="badge dup">与一级/二级同形</span>':'',
+      isWeak?`<span class="badge weak">${WEAK[id]}</span>`:'',
+      isPending?`<span class="badge pending">${PENDING[id]}</span>`:''
+    ].join('');
+    const grade = C_MAP[id] ? 'C' : (B_SET.has(id) ? 'B' : 'A');
+    gradeCount[grade]++;
+    return `<div class="cell">
+      <div class="pin" style="background:${pinBg}">${iconMarkup(key)}</div>
+      <div class="row-20">
+        <span class="g20" style="color:${deep}">${iconMarkup(key)}</span>
+        <span class="g20 gray" style="color:${deep}">${iconMarkup(key)}</span>
+      </div>
+      <div class="small"><b>${name}</b>${key.startsWith('PAW:')?'paw+'+key.slice(4):key==='SQUEEGEE'?'自绘':key}${badges}<span class="grade ${grade}">${grade}</span></div>
+    </div>`;
+  }).join('');
+  const strip = g.leaves.map(([,,k])=>`<span class="g20" style="color:${deep}">${iconMarkup(k)}</span>`).join('');
+  root.insertAdjacentHTML('beforeend', `
+    <h2><span class="top" style="background:${deep}">${g.l1}</span>${g.name}
+      <span class="l2">二级字形 <code>${g.icon}</code> · ${g.leaves.length} 个叶子</span></h2>
+    <div class="card">
+      <div class="grid">${cells}</div>
+      <div class="strip"><span class="cap">去色并排（20px，100%）：</span>${strip}</div>
+    </div>`);
+  judgeBody.insertAdjacentHTML('beforeend',
+    `<tr><td>${g.l1} · ${g.name}</td><td>${g.leaves.length}</td><td>　/ ${g.leaves.length*(g.leaves.length-1)/2}</td><td>　</td><td>　</td></tr>`);
+});
+
+document.getElementById('s-total').textContent = total;
+document.getElementById('s-dup').textContent = dupCount;
+document.getElementById('s-weak').textContent = weakCount;
+document.getElementById('s-pending').textContent = pendingCount;
+
+/* ---------- 评审汇总 ---------- */
+const owners = new Map();
+const own = (k,label,kind,id) => owners.set(k,(owners.get(k)||[]).concat({label,kind,id}));
+Object.entries(L1).forEach(([n,k])=>own(k,'一级 '+n,'L1'));
+GROUPS.forEach(g=>{
+  own(g.icon,'二级 '+g.name,'L2');
+  g.leaves.forEach(([id,n,k])=>own(k,n,'leaf',id));
+});
+const dupRows = [...owners.entries()].filter(([,v])=>v.length>1).map(([k,v])=>{
+  const names = v.map(o=>`${o.label}${o.kind==='L2'?'（二级）':o.kind==='L1'?'（一级）':''}`).join('<br>');
+  const level = v.some(o=>o.kind==='leaf') ? '叶子违规' : (v.every(o=>o.kind==='L2') ? '二级相撞' : '结构重复');
+  return `<tr><td><code>${k}</code></td><td class="${level==='叶子违规'?'bad':'mid'}">${level}</td><td>${names}</td><td>${DUP_FIX[k]||'—'}</td></tr>`;
+}).join('');
+const fixedRows = FIXED.map(([id,from,to,why])=>{
+  let name='';
+  GROUPS.forEach(g=>g.leaves.forEach(([i,n])=>{ if(i===id) name=n; }));
+  const gd = C_MAP[id] ? 'C' : (B_SET.has(id) ? 'B' : 'A');
+  return `<tr><td><code>${id}</code></td><td>${name}</td><td><code>${from}</code></td><td><code>${to}</code></td><td>${why}</td><td><span class="grade ${gd}">${gd}</span></td></tr>`;
+}).join('');
+
+document.getElementById('review').innerHTML = `
+  <div class="review">
+    <h3>评审复检（语义相符度 + 禁止重复）</h3>
+    <p>分级口径：<b>A</b> 图形直接表义；<b>B</b> 需二级语境 + 名称才可读；<b>C</b> 误导或无语义。
+       重复口径：同一字形在「5 一级 + 25 二级 + 122 叶」全集内不得出现两次。</p>
+    <div class="sum">
+      <div><b style="color:#087443">${gradeCount.A}</b><span>语义 A · 直接相符</span></div>
+      <div><b style="color:#B54708">${gradeCount.B}</b><span>语义 B · 语境可读</span></div>
+      <div><b style="color:#B42318">${gradeCount.C}</b><span>语义 C · 必须改</span></div>
+      <div><b style="color:#B42318">${[...owners.values()].filter(v=>v.length>1).length}</b><span>重复字形组</span></div>
+    </div>
+    <p>本轮替换 <b>${FIXED.length}</b> 个字形，复检结果：<b>C 级清零</b>、<b>全集 0 重叠字形</b>
+       （本轮顺带把 3 组既有重复也改掉了：101 二级改公司楼宇、402 二级改握手、301/304 二级改为自绘拼车与搭车人）。
+       语义合格率 <b>${Math.round((gradeCount.A+gradeCount.B)/total*100)}%</b>。</p>
+
+    <h4>一、禁止重复：复检结果</h4>
+    <table>
+      <thead><tr><th>字形</th><th>性质</th><th>占用方</th><th>处置</th></tr></thead>
+      <tbody>${dupRows}</tbody>
+    </table>
+
+    <h4>二、本轮修复 ${FIXED.length} 项（旧 → 新）</h4>
+    <table>
+      <thead><tr><th>ID</th><th>叶子</th><th>原字形</th><th>新字形</th><th>理由</th><th>复检</th></tr></thead>
+      <tbody>${fixedRows}</tbody>
+    </table>
+
+    <p class="foot" style="margin-top:10px">
+      <b>宠物族改为「猫头」主体</b>：寄养＝狗屋（猫头镂空在屋内）、领养＝爱心（猫头镂空）、用品＝食盆＋骨头、
+      代遛＝猫头＋牵引绳（绳端带圈）、医疗＝十字（猫头镂空）。动物形象在 40px 上完整可读，20px 下靠外轮廓区分。
+      <br>车辆三族同步整体重画：顺风车族<b>以拼车车体为主体</b>，上方叠办公楼（上下班）、三个人（周末多人同乘）、路牌（跨城）、车站（接送）、月历（长期）；
+      租车＝车＋钥匙、货车／巴士／婚车／合同各自成剪影；求搭车＝举手搭车人，长期与顺路分别叠日历与路线。
+    </p>
+
+    <h4>三、仍为 B 级的 ${gradeCount.B} 个</h4>
+    <p>只剩 1 个 B：上门按摩。双手＋背形能读出「有人在按」，但「按摩」这个动作本身在 20px 上仍要靠二级语境补。
+       其余原先的 B 已通过自绘解决：家政保洁＝拖把水桶、艺术/乐器＝调色板＋音符、代排队＝取号单。</p>
+
+    <h4>四、落代码前的前置条件</h4>
+    <p>① 50107/50108/50109 属于拆分新增，需先改类目树与 PRD，否则图标无处可挂；② 叶子级自绘已增至 <b>33 个</b>，
+       另有 3 个二级族图标（拼车、租车、搭车人），需在 Flutter 侧写 CustomPainter 或 SVG 资产，不能只存字形名；
+       ③ 一级/二级重叠已在本轮一并修复，全集 0 重复。</p>
+  </div>`;
+</script>
+</body>
+</html>

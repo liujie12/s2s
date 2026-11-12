@@ -11,6 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:zhaoyazhao/domain/listing_category.dart';
 import 'package:zhaoyazhao/features/map/clustering/grid_cluster.dart';
 import 'package:zhaoyazhao/features/map/clustering/marker_builder.dart';
+import 'package:zhaoyazhao/nfr_constants.dart';
 
 /// 造 [count] 个落在同一网格内的点。
 ///
@@ -148,5 +149,75 @@ void main() {
 
   test('空输入返回空列表', () {
     expect(_build(const []), isEmpty);
+  });
+
+  test('中景档按二级分桶：簇携带二级 ID，名称可挂到簇上', () {
+    // 同格、同二级、不同三级 → 聚成一簇（R3「每簇类目同质」）。
+    // x 间隔 40 > 叠点容差 18，确保走网格聚合而不是叠点分组。
+    final points = [
+      const ClusterPoint(
+        id: 'a',
+        x: 0,
+        y: 0,
+        leafCategoryId: 20101,
+        topCategory: ListingCategory.house,
+        midCategoryId: 201,
+      ),
+      const ClusterPoint(
+        id: 'b',
+        x: 40,
+        y: 0,
+        leafCategoryId: 20103,
+        topCategory: ListingCategory.house,
+        midCategoryId: 201,
+      ),
+    ];
+    final markers = buildMarkersWithOverlap(
+      points,
+      thresholdOf: (_) => NfrPerf.labelMidTierClusterMinPoints,
+      gridSize: 100,
+      stackTolerance: NfrOverlap.stackTolerancePx,
+      completenessOf: (_) => 0,
+      bucketByMidCategory: true,
+    );
+
+    expect(markers, hasLength(1));
+    final cluster = markers.single as ClusterMarker;
+    expect(cluster.count, 2);
+    expect(cluster.midCategoryId, 201);
+  });
+
+  test('先叠点后网格：同坐标同二级的两条记录成叠点堆，不被网格拆散', () {
+    final points = [
+      const ClusterPoint(
+        id: 'a',
+        x: 10,
+        y: 10,
+        leafCategoryId: 20101,
+        topCategory: ListingCategory.house,
+        midCategoryId: 201,
+      ),
+      const ClusterPoint(
+        id: 'b',
+        x: 10,
+        y: 10,
+        leafCategoryId: 20101,
+        topCategory: ListingCategory.house,
+        midCategoryId: 201,
+      ),
+    ];
+    final markers = buildMarkersWithOverlap(
+      points,
+      thresholdOf: (_) => NfrPerf.labelMidTierClusterMinPoints,
+      gridSize: 100,
+      stackTolerance: NfrOverlap.stackTolerancePx,
+      completenessOf: (_) => 0,
+      bucketByMidCategory: true,
+    );
+
+    // 叠点堆优先于网格聚合（否则重合的两条里只有最上面那条点得到）。
+    expect(markers, hasLength(1));
+    expect(markers.single, isA<StackMarker>());
+    expect((markers.single as StackMarker).count, 2);
   });
 }

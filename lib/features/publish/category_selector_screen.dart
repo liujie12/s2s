@@ -20,6 +20,7 @@ import '../../design_tokens.dart';
 import '../../domain/category_tree.dart';
 // 只用到色与图标，故只 import style 扩展（详细设计 §10.4.1）。
 import '../../domain/listing_category_style.dart';
+import '../../widgets/category_glyph.dart';
 import '../category/category_tree_provider.dart';
 
 /// 级联选择结果。
@@ -434,9 +435,11 @@ class _MidColumn extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                   // 二级图标与文字并排（PRD §6.4.2 验收口径）：
-                  // 服务端 `icon` 名优先，本地二级映射兜底（nodeIconOf）。
-                  Icon(
-                    nodeIconOf(node),
+                  // 服务端 `icon` 名优先，本地二级映射兜底（nodeIconOf）；
+                  // 宠物族等无贴切字形的走自绘（CategoryGlyph）。
+                  CategoryGlyph(
+                    name: nodeIconName(node),
+                    icon: nodeIconOf(node),
                     size: 18,
                     color: active
                         ? Color(AppColors.primary)
@@ -506,6 +509,17 @@ class _LeafColumn extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               child: Row(
                 children: [
+                  // 叶子图标：三级是图标定稿的主战场（宠物/车辆等族的自绘都在这一层），
+                  // 不给图标会出现「名称列表 + 一级图标」的断层。
+                  CategoryGlyph(
+                    name: nodeIconName(node),
+                    icon: nodeIconOf(node),
+                    size: 18,
+                    color: active
+                        ? Color(AppColors.primary)
+                        : Color(AppColors.textSecondary),
+                  ),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: Text(
                       node.name,

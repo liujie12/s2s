@@ -36,6 +36,7 @@ class ExplicitCategorySelection {
   const ExplicitCategorySelection({
     this.leafIds = const {},
     this.wholeTopCategory,
+    this.explicitLeaf = false,
   });
 
   /// 显式选中的叶子 ID 集合（选中整类时为其全部叶子）。
@@ -45,6 +46,13 @@ class ExplicitCategorySelection {
   ///
   /// 二级面板的「全部服务」用它判断「已经整类选中」，避免重复写入同一状态。
   final ListingCategory? wholeTopCategory;
+
+  /// 用户是否**逐个点选了叶子**（不含「整类选中」展开出来的叶子）。
+  ///
+  /// 与 [leafIds] 分开：`leafIds` 会把「工作」整类展开成 5 个叶子，而地图中景档
+  /// 是否关闭二级聚合（计划 KD5）要看的是「用户有没有把叶子区分开」——
+  /// 整类选中并无区分可抹掉，不该因此关掉聚合并把地图散成一片点。
+  final bool explicitLeaf;
 
   /// 是否没有显式选中任何分类。
   bool get isEmpty => leafIds.isEmpty;
@@ -62,19 +70,28 @@ final explicitCategorySelectionProvider = Provider<ExplicitCategorySelection>((
       filter.categories.length == 1 && filter.leafCategoryIds.isEmpty
       ? filter.categories.first
       : null;
+  // 「逐个点选叶子」的口径集中在纯函数里，地图聚合开关与本投影共用一份（KD5）。
+  final bool explicitLeaf = hasExplicitLeafSelection(filter, intent);
 
   if (intent != null &&
       !intent.isCleared(ConditionSlot.category) &&
       intent.leafCategoryIds.isNotEmpty) {
-    return ExplicitCategorySelection(leafIds: intent.leafCategoryIds.toSet());
+    return ExplicitCategorySelection(
+      leafIds: intent.leafCategoryIds.toSet(),
+      explicitLeaf: explicitLeaf,
+    );
   }
   if (filter.leafCategoryIds.isNotEmpty) {
-    return ExplicitCategorySelection(leafIds: filter.leafCategoryIds.toSet());
+    return ExplicitCategorySelection(
+      leafIds: filter.leafCategoryIds.toSet(),
+      explicitLeaf: explicitLeaf,
+    );
   }
   if (filter.categories.isNotEmpty) {
     return ExplicitCategorySelection(
       leafIds: leafCategoryIdsFor(filter.categories).toSet(),
       wholeTopCategory: wholeTop,
+      explicitLeaf: explicitLeaf,
     );
   }
   return const ExplicitCategorySelection();

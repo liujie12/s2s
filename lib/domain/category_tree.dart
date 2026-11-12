@@ -26,7 +26,7 @@ import 'listing_category.dart';
 /// 现为编译期常量，接后端后改为「本地缓存值 + 服务端下发值比对」：
 /// 版本未变则服务端返回 `code=0,data=null`（§12.3），客户端继续用缓存。
 /// TODO(M5)：改为可持久化字段，接 `GET /categories/tree`。
-const String categoryTreeVersion = '2026-11-08.1';
+const String categoryTreeVersion = '2026-11-11.1';
 
 /// 发布该叶子类目所需的认证类型（§4.3 认证类型表 / §2.9 末条高敏标记）。
 ///
@@ -200,31 +200,37 @@ const List<CategoryNode> categoryTree = [
           CategoryNode(
             id: 10101,
             name: '餐饮服务',
+            icon: 'restaurant',
             requiredCert: RequiredCert.enterprise,
           ),
           CategoryNode(
             id: 10102,
             name: '零售导购',
+            icon: 'storefront',
             requiredCert: RequiredCert.enterprise,
           ),
           CategoryNode(
             id: 10103,
             name: '家政保洁',
+            icon: 'MOP',
             requiredCert: RequiredCert.enterprise,
           ),
           CategoryNode(
             id: 10104,
             name: '保安仓管',
+            icon: 'security',
             requiredCert: RequiredCert.enterprise,
           ),
           CategoryNode(
             id: 10105,
             name: '其他全职',
+            icon: 'MISC_WORK',
             requiredCert: RequiredCert.enterprise,
           ),
           CategoryNode(
             id: 10106,
             name: '普工/技工',
+            icon: 'precision_manufacturing',
             requiredCert: RequiredCert.enterprise,
           ),
         ],
@@ -236,31 +242,37 @@ const List<CategoryNode> categoryTree = [
           CategoryNode(
             id: 10201,
             name: '日结零工',
+            icon: 'today',
             requiredCert: RequiredCert.enterprise,
           ),
           CategoryNode(
             id: 10202,
             name: '周末兼职',
+            icon: 'calendar_view_week',
             requiredCert: RequiredCert.enterprise,
           ),
           CategoryNode(
             id: 10203,
             name: '小时工',
+            icon: 'schedule',
             requiredCert: RequiredCert.enterprise,
           ),
           CategoryNode(
             id: 10204,
             name: '促销/展会兼职',
+            icon: 'local_activity',
             requiredCert: RequiredCert.enterprise,
           ),
           CategoryNode(
             id: 10205,
             name: '快递分拣/打包',
+            icon: 'inventory',
             requiredCert: RequiredCert.enterprise,
           ),
           CategoryNode(
             id: 10206,
             name: '传单派发',
+            icon: 'newspaper',
             requiredCert: RequiredCert.enterprise,
           ),
         ],
@@ -272,9 +284,9 @@ const List<CategoryNode> categoryTree = [
           // 求职方是个人、发布的是自己的劳动力，不是招聘岗位 ——
           // 对他要求企业认证等于把找工作的人挡在门外，与 §3.7
           // 「不做成必须认证才能用」的取向相反，故不打标。
-          CategoryNode(id: 10301, name: '个人求职'),
-          CategoryNode(id: 10302, name: '全职求职'),
-          CategoryNode(id: 10303, name: '兼职求职'),
+          CategoryNode(id: 10301, name: '个人求职', icon: 'assignment_ind'),
+          CategoryNode(id: 10302, name: '全职求职', icon: 'badge'),
+          CategoryNode(id: 10303, name: '兼职求职', icon: 'more_time'),
         ],
       ),
       CategoryNode(
@@ -285,26 +297,31 @@ const List<CategoryNode> categoryTree = [
           CategoryNode(
             id: 10401,
             name: '货运司机',
+            icon: 'moving',
             requiredCert: RequiredCert.enterprise,
           ),
           CategoryNode(
             id: 10402,
             name: '网约车/代驾',
+            icon: 'local_taxi',
             requiredCert: RequiredCert.enterprise,
           ),
           CategoryNode(
             id: 10403,
             name: '快递员/外卖骑手',
+            icon: 'delivery_dining',
             requiredCert: RequiredCert.enterprise,
           ),
           CategoryNode(
             id: 10404,
             name: '装卸搬运',
+            icon: 'forklift',
             requiredCert: RequiredCert.enterprise,
           ),
           CategoryNode(
             id: 10405,
             name: '跟车/押运',
+            icon: 'local_police',
             requiredCert: RequiredCert.enterprise,
           ),
         ],
@@ -316,26 +333,31 @@ const List<CategoryNode> categoryTree = [
           CategoryNode(
             id: 10501,
             name: '销售专员',
+            icon: 'trending_up',
             requiredCert: RequiredCert.enterprise,
           ),
           CategoryNode(
             id: 10502,
             name: '电话销售',
+            icon: 'call',
             requiredCert: RequiredCert.enterprise,
           ),
           CategoryNode(
             id: 10503,
             name: '网络销售',
+            icon: 'chat',
             requiredCert: RequiredCert.enterprise,
           ),
           CategoryNode(
             id: 10504,
             name: '客服专员',
+            icon: 'headset_mic',
             requiredCert: RequiredCert.enterprise,
           ),
           CategoryNode(
             id: 10505,
             name: '售后客服',
+            icon: 'reviews',
             requiredCert: RequiredCert.enterprise,
           ),
         ],
@@ -357,31 +379,37 @@ const List<CategoryNode> categoryTree = [
           CategoryNode(
             id: 20101,
             name: '主卧出租',
+            icon: 'bedroom_parent',
             requiredCert: RequiredCert.enterprise,
           ),
           CategoryNode(
             id: 20102,
             name: '次卧出租',
+            icon: 'single_bed',
             requiredCert: RequiredCert.enterprise,
           ),
           CategoryNode(
             id: 20103,
             name: '整租出租',
+            icon: 'villa',
             requiredCert: RequiredCert.enterprise,
           ),
           CategoryNode(
             id: 20104,
             name: '单间出租',
+            icon: 'door_front_door',
             requiredCert: RequiredCert.enterprise,
           ),
           CategoryNode(
             id: 20105,
             name: '床位出租',
+            icon: 'bed',
             requiredCert: RequiredCert.enterprise,
           ),
           CategoryNode(
             id: 20106,
             name: '合租找室友',
+            icon: 'groups',
             requiredCert: RequiredCert.enterprise,
           ),
         ],
@@ -391,9 +419,9 @@ const List<CategoryNode> categoryTree = [
         name: '求租/找房',
         // 求租方不发布房源，不适用房源认证。
         children: [
-          CategoryNode(id: 20201, name: '个人求租'),
-          CategoryNode(id: 20202, name: '合租求租'),
-          CategoryNode(id: 20203, name: '整租求租'),
+          CategoryNode(id: 20201, name: '个人求租', icon: 'travel_explore'),
+          CategoryNode(id: 20202, name: '合租求租', icon: 'person_add'),
+          CategoryNode(id: 20203, name: '整租求租', icon: 'holiday_village'),
         ],
       ),
       CategoryNode(
@@ -403,16 +431,19 @@ const List<CategoryNode> categoryTree = [
           CategoryNode(
             id: 20301,
             name: '短租民宿',
+            icon: 'cottage',
             requiredCert: RequiredCert.enterprise,
           ),
           CategoryNode(
             id: 20302,
             name: '日租公寓',
+            icon: 'calendar_view_day',
             requiredCert: RequiredCert.enterprise,
           ),
           CategoryNode(
             id: 20303,
             name: '短租床位',
+            icon: 'night_shelter',
             requiredCert: RequiredCert.enterprise,
           ),
         ],
@@ -424,16 +455,19 @@ const List<CategoryNode> categoryTree = [
           CategoryNode(
             id: 20401,
             name: '房源线索/中介合作',
+            icon: 'location_city',
             requiredCert: RequiredCert.enterprise,
           ),
           CategoryNode(
             id: 20402,
             name: '租房政策咨询',
+            icon: 'gavel',
             requiredCert: RequiredCert.enterprise,
           ),
           CategoryNode(
             id: 20403,
             name: '验房/带看服务',
+            icon: 'fact_check',
             requiredCert: RequiredCert.enterprise,
           ),
         ],
@@ -446,27 +480,32 @@ const List<CategoryNode> categoryTree = [
           CategoryNode(
             id: 20501,
             name: '二手房出售',
+            icon: 'home_work',
             requiredCert: RequiredCert.enterprise,
           ),
-          CategoryNode(id: 20502, name: '二手房求购'),
+          CategoryNode(id: 20502, name: '二手房求购', icon: 'request_quote'),
           CategoryNode(
             id: 20503,
             name: '商铺出租/转让',
+            icon: 'store',
             requiredCert: RequiredCert.enterprise,
           ),
           CategoryNode(
             id: 20504,
             name: '写字楼出租',
+            icon: 'business',
             requiredCert: RequiredCert.enterprise,
           ),
           CategoryNode(
             id: 20505,
             name: '厂房/仓库',
+            icon: 'warehouse',
             requiredCert: RequiredCert.enterprise,
           ),
           CategoryNode(
             id: 20506,
             name: '车位租售',
+            icon: 'local_parking',
             requiredCert: RequiredCert.enterprise,
           ),
         ],
@@ -487,26 +526,31 @@ const List<CategoryNode> categoryTree = [
           CategoryNode(
             id: 30101,
             name: '上下班拼车',
+            icon: 'COMMUTE',
             requiredCert: RequiredCert.vehicle,
           ),
           CategoryNode(
             id: 30102,
             name: '跨城顺风车',
+            icon: 'CROSS_CITY',
             requiredCert: RequiredCert.vehicle,
           ),
           CategoryNode(
             id: 30103,
             name: '周末拼车',
+            icon: 'WEEKEND',
             requiredCert: RequiredCert.vehicle,
           ),
           CategoryNode(
             id: 30104,
             name: '机场/车站接送',
+            icon: 'FLIGHT',
             requiredCert: RequiredCert.vehicle,
           ),
           CategoryNode(
             id: 30105,
             name: '长期拼车',
+            icon: 'LONGTERM',
             requiredCert: RequiredCert.vehicle,
           ),
         ],
@@ -518,26 +562,31 @@ const List<CategoryNode> categoryTree = [
           CategoryNode(
             id: 30201,
             name: '私家车出租',
+            icon: 'KEY',
             requiredCert: RequiredCert.vehicle,
           ),
           CategoryNode(
             id: 30202,
             name: '货车出租',
+            icon: 'TRUCK',
             requiredCert: RequiredCert.vehicle,
           ),
           CategoryNode(
             id: 30203,
             name: '大巴/中巴出租',
+            icon: 'BUS',
             requiredCert: RequiredCert.vehicle,
           ),
           CategoryNode(
             id: 30204,
             name: '婚车租赁',
+            icon: 'CAR_BOW',
             requiredCert: RequiredCert.vehicle,
           ),
           CategoryNode(
             id: 30205,
             name: '以租代购',
+            icon: 'PAPER',
             requiredCert: RequiredCert.vehicle,
           ),
         ],
@@ -548,11 +597,11 @@ const List<CategoryNode> categoryTree = [
         // 转让是一次性买卖，§4.3 只对「拼车/租车」强制车辆认证，
         // 不擅自扩大到转让 —— 扩大范围等于我替产品改了准入门槛。
         children: [
-          CategoryNode(id: 30301, name: '个人二手车'),
-          CategoryNode(id: 30302, name: '轿车转让'),
-          CategoryNode(id: 30303, name: 'SUV/MPV 转让'),
-          CategoryNode(id: 30304, name: '货车/工程车转让'),
-          CategoryNode(id: 30305, name: '摩托车/电动车转让'),
+          CategoryNode(id: 30301, name: '个人二手车', icon: 'CAR_PERSON'),
+          CategoryNode(id: 30302, name: '轿车转让', icon: 'SEDAN'),
+          CategoryNode(id: 30303, name: 'SUV/MPV 转让', icon: 'SUV'),
+          CategoryNode(id: 30304, name: '货车/工程车转让', icon: 'DUMP'),
+          CategoryNode(id: 30305, name: '摩托车/电动车转让', icon: 'two_wheeler'),
         ],
       ),
       CategoryNode(
@@ -560,9 +609,9 @@ const List<CategoryNode> categoryTree = [
         name: '求搭车/求拼',
         // 求搭车方没有车，要求行驶证会是一道无法满足的门。
         children: [
-          CategoryNode(id: 30401, name: '个人求搭车'),
-          CategoryNode(id: 30402, name: '长期拼车求带'),
-          CategoryNode(id: 30403, name: '顺路捎带'),
+          CategoryNode(id: 30401, name: '个人求搭车', icon: 'HITCH_ROAD'),
+          CategoryNode(id: 30402, name: '长期拼车求带', icon: 'HITCH_CAL'),
+          CategoryNode(id: 30403, name: '顺路捎带', icon: 'HITCH_ROUTE'),
         ],
       ),
       CategoryNode(
@@ -571,12 +620,12 @@ const List<CategoryNode> categoryTree = [
         // §4.3 只对「拼车/租车」强制车辆认证；维修保养属普通服务，
         // 不擅自把行驶证要求扩大到修车方（否则等于替产品加门槛）。
         children: [
-          CategoryNode(id: 30501, name: '维修保养'),
-          CategoryNode(id: 30502, name: '洗车美容'),
-          CategoryNode(id: 30503, name: '轮胎/电瓶'),
-          CategoryNode(id: 30504, name: '钣金喷漆'),
-          CategoryNode(id: 30505, name: '汽车改装'),
-          CategoryNode(id: 30506, name: '道路救援'),
+          CategoryNode(id: 30501, name: '维修保养', icon: 'handyman'),
+          CategoryNode(id: 30502, name: '洗车美容', icon: 'local_car_wash'),
+          CategoryNode(id: 30503, name: '轮胎/电瓶', icon: 'tire_repair'),
+          CategoryNode(id: 30504, name: '钣金喷漆', icon: 'format_paint'),
+          CategoryNode(id: 30505, name: '汽车改装', icon: 'settings_suggest'),
+          CategoryNode(id: 30506, name: '道路救援', icon: 'health_and_safety'),
         ],
       ),
     ],
@@ -591,50 +640,50 @@ const List<CategoryNode> categoryTree = [
         id: 401,
         name: '二手闲置转让',
         children: [
-          CategoryNode(id: 40101, name: '家具家电'),
-          CategoryNode(id: 40102, name: '母婴儿童'),
-          CategoryNode(id: 40103, name: '数码电子'),
-          CategoryNode(id: 40104, name: '服饰鞋包'),
-          CategoryNode(id: 40105, name: '其他二手'),
-          CategoryNode(id: 40106, name: '运动户外'),
+          CategoryNode(id: 40101, name: '家具家电', icon: 'SOFA_TV'),
+          CategoryNode(id: 40102, name: '母婴儿童', icon: 'child_care'),
+          CategoryNode(id: 40103, name: '数码电子', icon: 'devices'),
+          CategoryNode(id: 40104, name: '服饰鞋包', icon: 'checkroom'),
+          CategoryNode(id: 40105, name: '其他二手', icon: 'JUNK'),
+          CategoryNode(id: 40106, name: '运动户外', icon: 'hiking'),
         ],
       ),
       CategoryNode(
         id: 402,
         name: '借物/互助',
         children: [
-          CategoryNode(id: 40201, name: '临时借物'),
-          CategoryNode(id: 40202, name: '邻里互助'),
-          CategoryNode(id: 40203, name: '物品交换'),
-          CategoryNode(id: 40204, name: '工具借用'),
+          CategoryNode(id: 40201, name: '临时借物', icon: 'pan_tool'),
+          CategoryNode(id: 40202, name: '邻里互助', icon: 'diversity_3'),
+          CategoryNode(id: 40203, name: '物品交换', icon: 'swap_horiz'),
+          CategoryNode(id: 40204, name: '工具借用', icon: 'hardware'),
         ],
       ),
       CategoryNode(
         id: 403,
         name: '寻物启事/失物招领',
         children: [
-          CategoryNode(id: 40301, name: '寻找失物'),
-          CategoryNode(id: 40302, name: '招领失物'),
+          CategoryNode(id: 40301, name: '寻找失物', icon: 'manage_search'),
+          CategoryNode(id: 40302, name: '招领失物', icon: 'record_voice_over'),
         ],
       ),
       CategoryNode(
         id: 404,
         name: '宠物相关',
         children: [
-          CategoryNode(id: 40401, name: '宠物寄养'),
-          CategoryNode(id: 40402, name: '宠物领养'),
-          CategoryNode(id: 40403, name: '宠物用品'),
-          CategoryNode(id: 40404, name: '宠物代遛'),
-          CategoryNode(id: 40405, name: '宠物医疗'),
+          CategoryNode(id: 40401, name: '宠物寄养', icon: 'PAW:house'),
+          CategoryNode(id: 40402, name: '宠物领养', icon: 'PAW:heart'),
+          CategoryNode(id: 40403, name: '宠物用品', icon: 'PAW:bag'),
+          CategoryNode(id: 40404, name: '宠物代遛', icon: 'PAW:walk'),
+          CategoryNode(id: 40405, name: '宠物医疗', icon: 'PAW:cross'),
         ],
       ),
       CategoryNode(
         id: 405,
         name: '求购/求助',
         children: [
-          CategoryNode(id: 40501, name: '个人求购'),
-          CategoryNode(id: 40502, name: '邻里求助'),
-          CategoryNode(id: 40503, name: '好物推荐'),
+          CategoryNode(id: 40501, name: '个人求购', icon: 'shopping_cart'),
+          CategoryNode(id: 40502, name: '邻里求助', icon: 'help'),
+          CategoryNode(id: 40503, name: '好物推荐', icon: 'thumb_up'),
         ],
       ),
     ],
@@ -653,31 +702,49 @@ const List<CategoryNode> categoryTree = [
           CategoryNode(
             id: 50101,
             name: '日常保洁',
+            icon: 'soap',
             requiredCert: RequiredCert.personalQualification,
           ),
           CategoryNode(
             id: 50102,
             name: '深度清洁',
+            icon: 'sanitizer',
             requiredCert: RequiredCert.personalQualification,
           ),
           CategoryNode(
             id: 50103,
             name: '开荒保洁',
+            icon: 'BRUSH',
             requiredCert: RequiredCert.personalQualification,
           ),
           CategoryNode(
             id: 50104,
             name: '家电清洗',
+            icon: 'local_laundry_service',
             requiredCert: RequiredCert.personalQualification,
           ),
           CategoryNode(
             id: 50105,
             name: '玻璃/窗户清洗',
+            icon: 'SQUEEGEE',
             requiredCert: RequiredCert.personalQualification,
           ),
           CategoryNode(
-            id: 50106,
-            name: '保姆/月嫂/钟点工',
+            id: 50107,
+            name: '保姆',
+            icon: 'escalator_warning',
+            requiredCert: RequiredCert.personalQualification,
+          ),
+          CategoryNode(
+            id: 50108,
+            name: '月嫂',
+            icon: 'pregnant_woman',
+            requiredCert: RequiredCert.personalQualification,
+          ),
+          CategoryNode(
+            id: 50109,
+            name: '钟点工',
+            icon: 'av_timer',
             requiredCert: RequiredCert.personalQualification,
           ),
         ],
@@ -689,31 +756,37 @@ const List<CategoryNode> categoryTree = [
           CategoryNode(
             id: 50201,
             name: '家电维修',
+            icon: 'FIX_APPLIANCE',
             requiredCert: RequiredCert.personalQualification,
           ),
           CategoryNode(
             id: 50202,
             name: '水电维修',
+            icon: 'WATER_ELEC',
             requiredCert: RequiredCert.personalQualification,
           ),
           CategoryNode(
             id: 50203,
             name: '家具安装',
+            icon: 'carpenter',
             requiredCert: RequiredCert.personalQualification,
           ),
           CategoryNode(
             id: 50204,
             name: '管道疏通',
+            icon: 'plumbing',
             requiredCert: RequiredCert.personalQualification,
           ),
           CategoryNode(
             id: 50205,
             name: '开锁换锁',
+            icon: 'lock_open',
             requiredCert: RequiredCert.personalQualification,
           ),
           CategoryNode(
             id: 50206,
             name: '防水补漏',
+            icon: 'water_damage',
             requiredCert: RequiredCert.personalQualification,
           ),
         ],
@@ -725,31 +798,37 @@ const List<CategoryNode> categoryTree = [
           CategoryNode(
             id: 50301,
             name: '家教辅导',
+            icon: 'menu_book',
             requiredCert: RequiredCert.personalQualification,
           ),
           CategoryNode(
             id: 50302,
             name: '技能教学',
+            icon: 'cast_for_education',
             requiredCert: RequiredCert.personalQualification,
           ),
           CategoryNode(
             id: 50303,
             name: '语言培训',
+            icon: 'translate',
             requiredCert: RequiredCert.personalQualification,
           ),
           CategoryNode(
             id: 50304,
             name: '艺术/乐器',
+            icon: 'ART_MUSIC',
             requiredCert: RequiredCert.personalQualification,
           ),
           CategoryNode(
             id: 50305,
             name: '职业考证',
+            icon: 'workspace_premium',
             requiredCert: RequiredCert.personalQualification,
           ),
           CategoryNode(
             id: 50306,
             name: '体育培训',
+            icon: 'fitness_center',
             requiredCert: RequiredCert.personalQualification,
           ),
         ],
@@ -761,31 +840,37 @@ const List<CategoryNode> categoryTree = [
           CategoryNode(
             id: 50401,
             name: '上门美容',
+            icon: 'face_retouching_natural',
             requiredCert: RequiredCert.personalQualification,
           ),
           CategoryNode(
             id: 50402,
             name: '上门按摩',
+            icon: 'MASSAGE',
             requiredCert: RequiredCert.personalQualification,
           ),
           CategoryNode(
             id: 50403,
             name: '美发造型',
+            icon: 'brush',
             requiredCert: RequiredCert.personalQualification,
           ),
           CategoryNode(
             id: 50404,
             name: '美甲美睫',
+            icon: 'back_hand',
             requiredCert: RequiredCert.personalQualification,
           ),
           CategoryNode(
             id: 50405,
             name: '上门理发',
+            icon: 'content_cut',
             requiredCert: RequiredCert.personalQualification,
           ),
           CategoryNode(
             id: 50406,
             name: '足疗/采耳',
+            icon: 'healing',
             requiredCert: RequiredCert.personalQualification,
           ),
         ],
@@ -797,31 +882,37 @@ const List<CategoryNode> categoryTree = [
           CategoryNode(
             id: 50501,
             name: '代取快递',
+            icon: 'markunread_mailbox',
             requiredCert: RequiredCert.personalQualification,
           ),
           CategoryNode(
             id: 50502,
             name: '代跑腿',
+            icon: 'directions_walk',
             requiredCert: RequiredCert.personalQualification,
           ),
           CategoryNode(
             id: 50503,
             name: '代排队',
+            icon: 'TICKET',
             requiredCert: RequiredCert.personalQualification,
           ),
           CategoryNode(
             id: 50504,
             name: '代买代送',
+            icon: 'shopping_bag',
             requiredCert: RequiredCert.personalQualification,
           ),
           CategoryNode(
             id: 50505,
             name: '代办证件',
+            icon: 'assignment',
             requiredCert: RequiredCert.personalQualification,
           ),
           CategoryNode(
             id: 50506,
             name: '陪诊/陪护',
+            icon: 'elderly',
             requiredCert: RequiredCert.personalQualification,
           ),
         ],

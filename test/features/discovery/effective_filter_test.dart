@@ -199,4 +199,63 @@ void main() {
           reason: '压缩只影响展示，投影里的锚点名保持完整');
     });
   });
+
+  group('显式叶子选择（地图中景档聚合开关，KD5）', () {
+    test('持久叶子算显式；整类选中不算', () {
+      expect(hasExplicitLeafSelection(const DiscoveryFilter(), null), isFalse);
+      expect(
+        hasExplicitLeafSelection(
+          const DiscoveryFilter(leafCategoryIds: {20101}),
+          null,
+        ),
+        isTrue,
+      );
+      expect(
+        hasExplicitLeafSelection(
+          const DiscoveryFilter(categories: {ListingCategory.house}),
+          null,
+        ),
+        isFalse,
+        reason: '整类选中没有把叶子区分开，不该因此关闭二级聚合',
+      );
+    });
+
+    test('意图叶子算显式；意图显式清空类目后不算', () {
+      expect(
+        hasExplicitLeafSelection(
+          const DiscoveryFilter(),
+          intentOf(leafCategoryIds: const [20101]),
+        ),
+        isTrue,
+      );
+      expect(
+        hasExplicitLeafSelection(
+          const DiscoveryFilter(),
+          intentOf(
+            leafCategoryIds: const [20101],
+            cleared: const {ConditionSlot.category},
+          ),
+        ),
+        isFalse,
+      );
+    });
+
+    test('持久叶子 chip 携带叶子 ID（条件带据此补二级图标，R9）', () {
+      final result = effectiveFilterOf(
+        const DiscoveryFilter(leafCategoryIds: {20101}),
+        null,
+      );
+      final ConditionChip leafChip = result.chips.firstWhere(
+        (c) => c.slot == ConditionSlot.category,
+      );
+      expect(leafChip.leafCategoryId, 20101);
+
+      // 一级大类 chip 不带叶子 ID —— 条件带保持「只画分类色点」的现状。
+      final ConditionChip topChip = effectiveFilterOf(
+        persistent,
+        null,
+      ).chips.firstWhere((c) => c.slot == ConditionSlot.category);
+      expect(topChip.leafCategoryId, isNull);
+    });
+  });
 }

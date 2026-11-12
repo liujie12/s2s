@@ -206,4 +206,130 @@ void main() {
       expect(total, 100);
     });
   });
+
+  group('clusterByGrid（中景档：按二级分桶）', () {
+    test('同格同二级、不同三级的点聚成一簇，簇携带该二级 ID', () {
+      // 中景档的核心命题：簇内类目必须同质，名称才能挂到簇上不说谎（R3）。
+      final clusters = clusterByGrid([
+        const ClusterPoint(
+          id: 'a',
+          x: 10,
+          y: 10,
+          leafCategoryId: 20101,
+          topCategory: ListingCategory.house,
+          midCategoryId: 201,
+        ),
+        const ClusterPoint(
+          id: 'b',
+          x: 20,
+          y: 20,
+          leafCategoryId: 20103,
+          topCategory: ListingCategory.house,
+          midCategoryId: 201,
+        ),
+      ], gridSize: 80, bucketByMidCategory: true);
+
+      expect(clusters, hasLength(1));
+      expect(clusters.single.count, 2);
+      expect(clusters.single.midCategoryId, 201);
+    });
+
+    test('同格但二级不同的点不聚合', () {
+      // 同一「房屋」大类下的整租与合租必须分开，否则簇名只能二选一。
+      final clusters = clusterByGrid([
+        const ClusterPoint(
+          id: 'a',
+          x: 10,
+          y: 10,
+          leafCategoryId: 20101,
+          topCategory: ListingCategory.house,
+          midCategoryId: 201,
+        ),
+        const ClusterPoint(
+          id: 'b',
+          x: 10,
+          y: 10,
+          leafCategoryId: 20201,
+          topCategory: ListingCategory.house,
+          midCategoryId: 202,
+        ),
+      ], gridSize: 80, bucketByMidCategory: true);
+
+      expect(clusters, hasLength(2));
+      expect(clusters.map((c) => c.midCategoryId), containsAll([201, 202]));
+    });
+
+    test('二级 ID 为 null 的点自成一桶，不与已登记二级混聚', () {
+      final clusters = clusterByGrid([
+        const ClusterPoint(
+          id: 'a',
+          x: 10,
+          y: 10,
+          leafCategoryId: 99999,
+          topCategory: null,
+        ),
+        const ClusterPoint(
+          id: 'b',
+          x: 10,
+          y: 10,
+          leafCategoryId: 20101,
+          topCategory: ListingCategory.house,
+          midCategoryId: 201,
+        ),
+      ], gridSize: 80, bucketByMidCategory: true);
+
+      expect(clusters, hasLength(2));
+      final unknown = clusters.firstWhere(
+        (c) => c.midCategoryId == null,
+      );
+      expect(unknown.count, 1);
+    });
+
+    test('默认分桶路径不产出二级 ID —— 保持既有语义不变', () {
+      final clusters = clusterByGrid([
+        const ClusterPoint(
+          id: 'a',
+          x: 10,
+          y: 10,
+          leafCategoryId: 20101,
+          topCategory: ListingCategory.house,
+          midCategoryId: 201,
+        ),
+        const ClusterPoint(
+          id: 'b',
+          x: 20,
+          y: 20,
+          leafCategoryId: 20201,
+          topCategory: ListingCategory.house,
+          midCategoryId: 202,
+        ),
+      ], gridSize: 80);
+
+      // 按一级大类聚合时，簇里可能混着多个二级，故不能携带任一二级 ID。
+      expect(clusters, hasLength(1));
+      expect(clusters.single.midCategoryId, isNull);
+    });
+
+    test('按二级分桶后总数仍守恒', () {
+      final points = List.generate(
+        60,
+        (i) => ClusterPoint(
+          id: 'p$i',
+          x: i * 5.0,
+          y: i * 7.0,
+          leafCategoryId: 20101,
+          topCategory: ListingCategory.house,
+          midCategoryId: 201 + (i % 2),
+        ),
+      );
+      final clusters = clusterByGrid(
+        points,
+        gridSize: 80,
+        bucketByMidCategory: true,
+      );
+      final total = clusters.fold<int>(0, (sum, c) => sum + c.count);
+
+      expect(total, 60);
+    });
+  });
 }
