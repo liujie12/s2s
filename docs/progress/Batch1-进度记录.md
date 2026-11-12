@@ -7584,6 +7584,148 @@ printf '\nMYSQL_SSL_MODE=VERIFY_CA\nMYSQL_TLS_TRUSTSTORE_PASSWORD=%s\n' \
 **④ 文档回写**
 - `Batch2-启动清单` 新增 B2-14 行（编号 [154]）；`说明文档.md` §三 新增立项条 + 更新 B2-6a 行政待办；《决策登记表》新增 2026-10-21 裁定块；任务书 `2026-10-15-b2-6a-wechat-login-plan.md` §零状态表与 §1.6 决策点同步。
 
+---
+
+### 2026-11-09（T1-05 只读接口低并发基线：15 窗全绿，T1 批次收口）
+
+**批准口径**：用户显式批准「1–3 并发 × 1 分钟起步」，仅打正式环境只读端点；不重启、不建库、不写业务数据。
+
+**工具**：新增 `tool/perf_readonly_baseline.mjs`（Node 内置 fetch，无 k6 依赖；Node v24.15.0），支持 `PERF_ONLY / PERF_CONCURRENCY / PERF_DURATION_SEC / PERF_CONVERSATION_ID / PERF_TEST_PHONE`，token 仅驻内存不落盘，登录失败即中止不降级为匿名。
+
+**命令**：
+- 匿名端点：`PERF_CONCURRENCY=1,2,3 PERF_DURATION_SEC=60 node tool/perf_readonly_baseline.mjs`
+- 登录态端点：`PERF_ONLY=PT-04,PT-05 PERF_CONVERSATION_ID=16 PERF_TEST_PHONE=<白名单测试号> node tool/perf_readonly_baseline.mjs`
+
+**结果（客户端 TTFB，非服务端 `rt_ms`；每档 60s）**：
+
+| 端点 | 口径 | c=1 P95 | c=2 P95 | c=3 P95 | 成功率 |
+| --- | --- | --- | --- | --- | --- |
+| PT-03 `/categories/tree` | 匿名 | 48.8 | 60.5 | 56.5 | 100% ×3 |
+| PT-01 `/map/pins` | 匿名 | 73.1 | 91.2 | 75.7 | 100% ×3 |
+| PT-02 `/posts/search` | 匿名 | 63.7 | 67.0 | 62.2 | 100% ×3 |
+| PT-04 `/posts/{post_id}` | 登录态 | 91.4 | 87.4 | 77.8 | 100% ×3 |
+| PT-05 `/conversations/{id}/messages` | 登录态 | 84.9 | 117.2 | 61.4 | 100% ×3 |
+
+**结论与边界**：
+1. 15 个采样窗 **0 失败 / 0 超时**；客户端 P95 最高 117.2ms（PT-05 c=2），各端点各档均在 150ms 参考线内。
+2. **不得据此判 PT-01~PT-05 达标**：判据是服务端访问日志的 `rt_ms`，本轮无日志访问；账本 `perf_baseline.measurement` 已写明「客户端 TTFB ≠ rt_ms」。
+3. PT-04 匿名读取有日配额，第 28 条起返回 `42907 今日浏览次数较多，登录后可继续查看`；匿名数据作废，改登录态取数。属产品既定行为，**不记缺陷**。
+4. 测试残留：未产生业务数据；登录只写设备行；消耗测试号短信发送计数（1 分钟轨 1 / 1 小时轨 5 / 1 日轨 10 / 同 IP 20）。
+5. 证据：`build/perf/readonly-baseline-2026-11-09T13-14-20-141Z.json`（PT-01/02/03）、`build/perf/readonly-baseline-2026-11-09T13-40-46-249Z.json`（PT-04/05）。
+
+**回写**：`docs/progress/test-baseline.json` 新增 `perf_baseline` 段（15 窗明细 + 边界说明）；`2026-11-03-整体测试方案.md` T1-05 置 `[x]`，**T1 批次 10/10 完成**。
+
+---
+
+### 2026-11-09（T2-07 / MC-13 后台回收恢复：三轮 PASS）
+
+**设备**：Redmi 21091116C / Android 13 / MIUI V816.0.24.0.TKTCNXM / 1080×2400；release 1.0.0，登录账号 189****9201。
+
+**方法**（adb 编舞，发布页填标题与价格但不选分类、不发布）：
+
+| 轮次 | 操作 | 结果 |
+| --- | --- | --- |
+| 1 | Home 切后台 5 分钟 → 回前台 | 进程未回收（PID 27075 不变），草稿 `MC13-draft-round1` 与价格 100 完整 |
+| 2 | 追加 `-r2` → Home → `am kill`（PID 清空）→ 重启（新 PID 28524）→ 进发布页 | 草稿恢复为 `MC13-draft-round1-r2`，出现「已恢复上次未发布的草稿」 |
+| 3 | 再追加 `-r3` → 重复回收（新 PID 28865）→ 进发布页 | 草稿恢复为 `-r2-r3`，行为与第 2 轮一致 |
+| 4 | 进「我的」检查登录态 | 仍为 189****9201，无需重新登录；全程无崩溃、无白屏 |
+
+**观察项（不登缺陷）**：进程被回收后重启，App 落在「丫圈」发现页而非发布页；草稿数据未丢，但需用户手动进发布页才触发恢复，回首页时无任何「草稿已恢复」提示。按用例「恢复草稿或给出明确提示」的字面口径属半个缺口；如产品要求回收后直达发布页，需补路由状态恢复。
+
+**残留**：草稿仅存本机 SharedPreferences（`MC13-draft-*`），未产生服务端数据；后续 FT-21 或清 App 数据时一并清除。
+
+**证据**：`build/manual-evidence/2026-11-09/t2-07/`（6 张截图 + 4 份 UI 树）；logcat 进程重建证据为前台 pid 28865。
+
+**回写**：`test-baseline.json` `manual_cases.results` 新增 MC-13；方案 T2-07 置 `[x]`。
+
+---
+
+### 2026-11-09（T2-01 部分：真机冷启动 / 帧率 / 内存 / APK 基线）
+
+**设备**：Redmi 21091116C / Android 13 / MIUI V816.0.24.0.TKTCNXM / 1080×2400；release 1.0.0。
+
+| 项 | 命令/方法 | 结果 | 判定 |
+| --- | --- | --- | --- |
+| PT-11 冷启动 | `am force-stop` → `am start -W`，5 次 | TotalTime 386/396/383/383/374ms，中位 **383ms** | 无 SLA，建基线 |
+| PT-10 帧率 | `dumpsys gfxinfo reset` → 连续滑动地图 30 次（每次 300ms）→ 读 gfxinfo | 1321 帧，janky **1 帧（0.08%）**，P50/P90/P95 **5ms**、P99 10ms，GPU P95 2ms，missed vsync 0 | 低于 16ms 预算（**gfxinfo 口径**） |
+| PT-12 内存 | 拖动后单次 `dumpsys meminfo` | TOTAL PSS **223.5MB**、RSS 366MB、Native 81.7MB、Graphics 27.6MB | 单点基线，不满足 10 分钟长稳口径 |
+| PT-15 APK | `build/app/outputs/flutter-apk/` | release **123.78MB**、debug 216.18MB | 建基线 |
+
+**边界**：gfxinfo 统计的是 HWUI 管线，与 Flutter 引擎内 `frame_metrics` 不完全等价，本轮数字只作回归基线；PT-09 见下节；A-20 证据包（含 manifest）与 PT-16（30 分钟长稳）未做，T2-01 保持未完成。
+
+**回写**：`test-baseline.json` 新增 `device_perf_baseline`；方案 T2-01 记「部分完成」。
+
+#### PT-09 图层切换 P95（2026-11-09 补测，判据 A）
+
+**方法**：地图页打开筛选面板，交替点选两个一级分类（工作 / 房屋），`adb shell input tap` 98 次、间隔 1.2s；指标读应用内性能面板的 `LayerSwitchRecorder`（进 P95 分母的只有 `success`，`cancelled` / `failed` 不计）。
+
+**结果**：
+
+| 指标 | 读数 | 判定 |
+| --- | --- | --- |
+| 切换样本 | **104 成 / 0 取 / 0 败**（98 次正式 + 6 次预热） | 无取消、无失败 |
+| 切换 P95 | **61.0ms** | ≤ `NfrPerf.layerSwitchP95Ms`（300ms）**PASS** |
+| 轴② 单次占比 | 96%（100/104） | 4 次超 300ms |
+| 缓存命中 | 99/104 | 绝大多数切换走本地 Pin 缓存 |
+| 四段 P95（缓/网/聚/绘） | 0 / 0 / 0 / 10 ms | 暖缓存下网络段为 0 |
+
+**关键边界**：前 6 次冷缓存切换单次 **385–520ms**，明显超 300ms；轴② 只有 96% 即由此产生。本轮是「暖缓存下连续切换」口径，不能代表首次进入某分类的真实时延。冷缓存复测需要清本地 Pin 缓存的手段，当前 UI 无入口（已在账本 `not_covered` 登记）。
+
+**踩坑记录**：筛选面板是页面内 `Positioned` 组件、不是路由，`KEYCODE_BACK` 会直接退出 App；收起面板必须点地图空白区。首次 98 次循环因用 BACK 收面板导致进程退到后台、且未按正确路径读面板，样本未归档，已重跑。
+
+**证据**：`build/manual-evidence/2026-11-09/t2-01/ui-perf-98-final.xml`、`PT09-98-final.png`；筛选态已用「重置」恢复（当前 1 条结果）。
+
+---
+
+### 2026-11-09（PT-06 写接口基线：收藏完成，发布/举报被门禁挡住）
+
+**工具**：新增 `tool/perf_write_baseline.mjs`（真实写入；仅白名单测试号、`[测试]` 前缀、收藏成对往返、帖子上 [测试] 并下架）。
+
+**结果**：
+
+| 写接口 | 样本 | 成功率 | P50 | P95 | 备注 |
+| --- | --- | --- | --- | --- | --- |
+| 收藏 `POST /posts/{id}/favorite` | 30 | 100% | 37.3ms | **56.3ms** | 幂等，无残留 |
+| 取消 `DELETE /posts/{id}/favorite` | 30 | 100% | 37.0ms | **43.4ms** | 结束回到未收藏 |
+| 发布 `POST /posts` | 1 | 0% | — | — | `40302` 需资质；换 10105 后又遇短信 429 无法换 token |
+| 举报 `POST /posts/{id}/report` | 1 | 0% | — | — | `40305` 要求举报人已实名 |
+
+**门禁结论（非缺陷）**：
+1. `40302` 来自 `PostValidator` 的 `leaf.need_cert && !hasQualification(userId)`；10101「餐饮服务」需资质，测试号无认证。
+2. `40305` 来自 `ContactService.reportInConversation` 的 `isRealnamePassed`；举报要求实名，测试号未实名。
+3. 两次补跑（账号 B、账号 A）均卡在短信验证码 1 小时/1 日轨，未拿到新 token；未产生任何新帖或举报工单。
+
+**残留**：收藏 30 收 + 30 取消已归零；无新帖、无举报工单；仅消耗短信计数。
+
+**回写**：`test-baseline.json` 新增 `pt06_write_baseline`（含解锁条件）；方案 §13 T1 表下补记一条。
+
+---
+
+### 2026-11-09（A-16 敏感字段全量扫描：0 命中，附两处契约缺口）
+
+**工具**：新增 `tool/scan_sensitive_fields.mjs`（只读；解析 openapi 的 `security: []` GET，再补实际匿名可用的搜索/地图变体）。
+
+**覆盖与结果**：
+
+| 端点 | 状态 | 响应体 |
+| --- | --- | --- |
+| `GET /categories/tree` | 200 code=0 | 12.9KB |
+| `GET /cities` | 200 code=0 | 881B |
+| `GET /posts/9001` | 200 code=0 | 851B |
+| `GET /map/pins`（10101 / 10105） | 200 code=0 | 274B / 241B |
+| `GET /posts/search`（10101 / 10105 / 关键词） | 200 code=0 | 643B / 167B / 167B |
+| `GET /legal/documents` | **404** | 104B |
+
+扫描模式：未脱敏手机号、18 位身份证、JWT、`Authorization` 回显、token 字段、联系方式字段、`Set-Cookie`。**9 个响应体 + 响应头全部 0 命中 → PASS**。
+
+**同时发现（记缺口，未登缺陷）**：
+1. `/posts/search`、`/map/pins` 无 token 时返回 `40001`（参数错）而不是 `40101`，说明实际匿名开放，但契约未声明 `security: []`。
+2. `/legal/documents` 契约存在、线上 404。**复核契约后改判为 Batch2 占位**（`openapi.yaml` 自述「占位。Batch2 交付。Batch1 协议文本内置在客户端」，客户端 `lib/` 无调用），已登记为缺口 **GAP-01**，不计缺陷、不进缺陷率，触发条件 = Batch2 启动或官网协议页上线前。
+
+**边界**：试点期数据稀疏（10101 仅 1 条在架帖），样本面窄；联系方式主路径 `/posts/{id}/contact` 需登录，本轮未覆盖，仍依赖 IT-07 的脱敏断言。
+
+**回写**：`test-baseline.json` 新增 `a16_sensitive_scan`；方案 §13 T1 表下补记一条。
+
 
 
 
