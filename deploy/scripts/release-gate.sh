@@ -55,11 +55,12 @@ readonly RELEASE_ENV="prod"
 
 # release 构建注入的编译期常量（全工程唯一真源见 api_client.dart / amap_init_guard.dart）
 #
-# 域名口径（2026-10-27 核实）：
-#   `zhaoyazhaoapp.com` 尚未备案下号，阿里云拦截（80 返回 `Non-compliance ICP Filing`、
-#   443 直接 reset），内测包指向它会全量接口失败；`s2s.build110.com` 是当前实际在服务的
-#   prod 域名（存量备案 皖ICP备18025259号-3）。备案下号并切换 `SITE_DOMAIN` 后再改回。
-readonly DEFINE_BASE_URL="S2S_API_BASE_URL=https://s2s.build110.com"
+# 域名口径（2026-11-13 切换）：
+#   `zhaoyazhaoapp.com` 已于 2026-11-12 备案下号（皖ICP备2026040599号-1），API 随新机
+#   47.92.238.177 首发布一并切到子域 `api.zhaoyazhaoapp.com`（由官网 Caddy 实例反代，
+#   站点块见 /opt/s2s/caddy/Caddyfile）。旧 `s2s.build110.com`（存量备案
+#   皖ICP备18025259号-3）不再对外提供 API，仅作历史归档。
+readonly DEFINE_BASE_URL="S2S_API_BASE_URL=https://api.zhaoyazhaoapp.com"
 readonly DEFINE_IS_RELEASE="S2S_IS_RELEASE=true"
 readonly DEFINE_AMAP_KEY_NAME="AMAP_ANDROID_KEY"
 readonly DEFINE_AMAP_WEB_KEY_NAME="AMAP_WEBSERVICE_KEY"
