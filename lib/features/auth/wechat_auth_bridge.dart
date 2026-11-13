@@ -52,11 +52,11 @@ class WechatAuthCanceledException implements Exception {
   String toString() => 'WechatAuthCanceledException';
 }
 
-/// 默认实现：通道未配置（资质审批中，AppID/SDK 尚未接入）。
+/// 默认实现：通道未配置（未注入 AppID 或真实 SDK 未接）。
 ///
 /// 行为：`isAvailable=false`，`requestCode` 抛 [WechatAuthUnavailableException]。
-/// 接通真实 SDK 时在组装根 override [wechatAuthBridgeProvider]，本类保留为
-/// 无原生能力环境（如桌面/测试）的安全兜底。
+/// 真实实现见 `fluwx_wechat_auth_bridge.dart`，由组装根 override
+/// [wechatAuthBridgeProvider] 换入；本类保留为无原生能力环境（如桌面/测试）的安全兜底。
 class UnavailableWechatAuthBridge implements WechatAuthBridge {
   /// 构造未配置桥（无状态，可 const）。
   const UnavailableWechatAuthBridge();

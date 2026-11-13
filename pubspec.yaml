@@ -139,6 +139,7 @@ dependencies:
   # 发布前单次高精度定位（§5.3）。直接取系统定位（GPS/Fused），
   # 精度与耗时优于高德定位插件，且不受其 5.x 原生链路在 Android 13 的缺陷影响。
   geolocator: ^14.0.1
+  fluwx: ^6.0.6
 
 dev_dependencies:
   flutter_test:

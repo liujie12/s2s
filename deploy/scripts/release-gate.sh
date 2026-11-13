@@ -64,6 +64,7 @@ readonly DEFINE_BASE_URL="S2S_API_BASE_URL=https://api.zhaoyazhaoapp.com"
 readonly DEFINE_IS_RELEASE="S2S_IS_RELEASE=true"
 readonly DEFINE_AMAP_KEY_NAME="AMAP_ANDROID_KEY"
 readonly DEFINE_AMAP_WEB_KEY_NAME="AMAP_WEBSERVICE_KEY"
+readonly DEFINE_WECHAT_APP_ID_NAME="WECHAT_APP_ID"
 
 readonly DEFAULT_APK_REL="build/app/outputs/flutter-apk/app-release.apk"
 readonly LOG_REL="build/release-gate.log"
@@ -460,9 +461,15 @@ $(tail -n 25 "${REPO}/build/release-gate.contract.log" | sed 's/^/        /')"
     if ! grep -qE '^mipush\.(appId|appKey)=.+' "${REPO}/android/local.properties" 2>/dev/null; then
       echo "  [提示] android/local.properties 缺 mipush.appId/mipush.appKey ⇒ 本包不注册小米推送（见手册 §11.1-5）"
     fi
+    # 微信登录客户端 AppID（2026-11-13）：公开标识，走 --dart-define 注入；缺省时包内
+    # 微信登录保持「暂未开放」提示（不崩溃）。仅提示、不计入 PASS/FAIL/SKIP。
+    if [[ -z "${WECHAT_APP_ID:-}" ]]; then
+      echo "  [提示] 未提供 WECHAT_APP_ID ⇒ 本包微信登录保持「暂未开放」（可加环境变量 WECHAT_APP_ID=wx3f1a206f75cd0e1e）"
+    fi
     DEFINES="--dart-define=${DEFINE_BASE_URL} --dart-define=${DEFINE_IS_RELEASE}"
     [[ -n "${AMAP_ANDROID_KEY:-}" ]] && DEFINES="${DEFINES} --dart-define=${DEFINE_AMAP_KEY_NAME}=${AMAP_ANDROID_KEY}"
     [[ -n "${AMAP_WEBSERVICE_KEY:-}" ]] && DEFINES="${DEFINES} --dart-define=${DEFINE_AMAP_WEB_KEY_NAME}=${AMAP_WEBSERVICE_KEY}"
+    [[ -n "${WECHAT_APP_ID:-}" ]] && DEFINES="${DEFINES} --dart-define=${DEFINE_WECHAT_APP_ID_NAME}=${WECHAT_APP_ID}"
     if run_win "${FLUTTER_WIN}" build apk --release ${DEFINES} > "${REPO}/build/release-gate.build.log" 2>&1; then
       pass "S6 flutter build apk --release 成功（输出见 build/release-gate.build.log）"
     else

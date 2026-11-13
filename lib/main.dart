@@ -18,9 +18,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/network/api_client.dart';
 import 'design_tokens.dart';
 import 'features/auth/auth_network_wiring.dart';
+import 'features/auth/fluwx_wechat_auth_bridge.dart';
+import 'features/auth/wechat_auth_bridge.dart';
 import 'features/message/realtime_wiring.dart';
 import 'features/track/track_wiring.dart';
 import 'router/app_router.dart';
+
+/// 微信开放平台移动应用 AppID（编译期注入）。
+///
+/// 只经 `--dart-define=WECHAT_APP_ID=...` 提供，不写死在源码里；AppSecret 仅存服务端。
+/// 缺省为空串时 [FluwxWechatAuthBridge.isAvailable] 为 false，微信登录按
+/// 「暂未开放」提示处理，与接入前的行为一致。
+const String _wechatAppId = String.fromEnvironment('WECHAT_APP_ID');
 
 void main() {
   runApp(
@@ -32,6 +41,13 @@ void main() {
         networkHooksProvider.overrideWith(
           (ref) => ref.watch(wiredNetworkHooksProvider),
         ),
+        // 微信授权桥：默认实现是「通道未配置」桩，此处换成 fluwx 真实实现。
+        // 注入空 AppID 时桥自身判定不可用，登录页仍给出「暂未开放」。
+        wechatAuthBridgeProvider.overrideWith((ref) {
+          final bridge = FluwxWechatAuthBridge(appId: _wechatAppId);
+          ref.onDispose(bridge.dispose);
+          return bridge;
+        }),
       ],
       child: const ZhaoYaZhaoApp(),
     ),

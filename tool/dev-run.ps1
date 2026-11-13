@@ -34,7 +34,15 @@ if ([string]::IsNullOrWhiteSpace($env:AMAP_ANDROID_KEY)) {
     throw 'AMAP_ANDROID_KEY 未设置：这样启动的包地图会退化成示意底图。请先 setx AMAP_ANDROID_KEY <key> 并重开终端（见部署操作手册 §11.1-4）。'
 }
 
-$flutterArgs = @('run', "--dart-define=AMAP_ANDROID_KEY=$($env:AMAP_ANDROID_KEY)") + $args
+$flutterArgs = @('run', "--dart-define=AMAP_ANDROID_KEY=$($env:AMAP_ANDROID_KEY)")
+# 微信登录 AppID（2026-11-13）：公开标识，可选注入；缺省时登录页微信入口
+# 保持「暂未开放」提示（fluwx 桥判定 isAvailable=false），不是构建错误。
+if (-not [string]::IsNullOrWhiteSpace($env:WECHAT_APP_ID)) {
+    $flutterArgs += "--dart-define=WECHAT_APP_ID=$($env:WECHAT_APP_ID)"
+} else {
+    Write-Host '[dev-run] 未设置 WECHAT_APP_ID：本次运行的微信登录保持「暂未开放」'
+}
+$flutterArgs += $args
 # 回显命令时把 Key 打成占位符：终端日志里也不留明文。
 $maskedArgs = ($flutterArgs | ForEach-Object {
     $_ -replace [regex]::Escape($env:AMAP_ANDROID_KEY), '<AMAP_ANDROID_KEY>'
