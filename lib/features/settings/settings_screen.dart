@@ -30,6 +30,12 @@ import 'settings_provider.dart';
 /// TODO(B2-11 收口)：接入 `package_info_plus` 读真实版本，替换本常量。
 const String _appVersionLabel = 'V1.0.0';
 
+/// 官网 ICP 备案号（网站备案，域名 `zhaoyazhaoapp.com`）。
+const String _icpLicenseNo = '皖ICP备2026040599号-1';
+
+/// APP 备案核准号（工信部 APP 备案，安卓平台；2026-11-20 管局通过）。
+const String _appFilingNo = '皖ICP备2026040599号-2A';
+
 /// 默认检索半径档位（openapi `RadiusEnum`；`city`＝全城）。
 const List<String> _radiusValues = ['1', '3', '5', '10', 'city'];
 
@@ -42,7 +48,11 @@ class SettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final settingsAsync = ref.watch(settingsProvider);
     final profile = ref.watch(myProfileProvider).asData?.value;
-    final phoneMask = profile?.phoneMask;
+    // 未绑手机号时不展示 phone_mask 占位串：微信用户的占位是「微信用户xxxxxx」，
+    // 直接显示会被误认成手机号（2026-11-13 裁定）。
+    final phoneMask = profile == null
+        ? null
+        : (profile.phoneBound ? profile.phoneMask : '未绑定');
     final wechatBound = profile?.wechatBound;
 
     return Scaffold(
@@ -80,7 +90,8 @@ class SettingsScreen extends ConsumerWidget {
   /// 设置正文（四组）。
   ///
   /// 参数：[context] 构建上下文；[ref] Riverpod 句柄；[settings] 设置数据；
-  ///   [phoneMask] 脱敏手机号（可空）；[wechatBound] 微信绑定态（可空）。
+  ///   [phoneMask] 手机号展示（已绑定=脱敏号，未绑定=「未绑定」，可空）；
+  ///   [wechatBound] 微信绑定态（可空）。
   /// 返回：Widget。
   Widget _buildBody(
     BuildContext context,
@@ -152,6 +163,12 @@ class SettingsScreen extends ConsumerWidget {
         _SettingRow(label: '版本号', value: _appVersionLabel, onTap: () => _notOpen(context)),
         _SettingRow(label: '用户协议', value: null, onTap: () => _notOpen(context)),
         _SettingRow(label: '隐私政策', value: null, onTap: () => _notOpen(context)),
+        // 工信部要求 APP 备案号在应用内展示（P7 于 2026-11-20 通过）。
+        _SettingRow(
+          label: '备案信息',
+          value: null,
+          onTap: () => _showFilingInfo(context),
+        ),
         // B2-4 合规公示位（PRD §5.9 裁定：挂「设置-关于」，与备案编号公示合并）。
         _SettingRow(
           label: 'AI 生成式服务公示',
@@ -160,6 +177,30 @@ class SettingsScreen extends ConsumerWidget {
         ),
         const SizedBox(height: AppSpacing.xl),
       ],
+    );
+  }
+
+  /// 展示「备案信息」（ICP 网站备案号 + 工信部 APP 备案核准号）。
+  ///
+  /// 参数：[context] 构建上下文。
+  /// 返回：[void]。
+  void _showFilingInfo(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('备案信息'),
+        content: const Text(
+          '运营主体：合肥嘉联企业管理咨询有限公司\n'
+          'ICP 备案号：$_icpLicenseNo\n'
+          'APP 备案号：$_appFilingNo',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('知道了'),
+          ),
+        ],
+      ),
     );
   }
 
