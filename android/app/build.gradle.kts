@@ -32,6 +32,11 @@ if (localPropertiesFile.exists()) {
 val miPushAppId = localProperties.getProperty("mipush.appId") ?: ""
 val miPushAppKey = localProperties.getProperty("mipush.appKey") ?: ""
 
+// 华为推送客户端 AppID（P11：企业账号正式应用 119702145，项目 101653523865600516）。
+// AppID 不是密钥 —— 它随 APK 与 agconnect-services.json 一起下发，可入库；
+// local.properties 的 huawei.push.appId 可覆盖（切测试应用时用）。
+val huaweiPushAppId = localProperties.getProperty("huawei.push.appId") ?: "119702145"
+
 // 小米推送 SDK 为纯 AAR（官方下载包，无 Maven 坐标），直接用文件依赖引入本地 libs。
 // 不用 flatDir：空 group 的 flatDir 坐标会让 AGP 的 lint（lintVitalAnalyzeRelease）崩溃
 // （Illegal char <"> at index 8: group = ""），导致 release 出包失败。
@@ -69,6 +74,10 @@ android {
         // 小米推送客户端凭据（空串 = 未配置，原生侧跳过注册）。
         buildConfigField("String", "MIPUSH_APP_ID", "\"$miPushAppId\"")
         buildConfigField("String", "MIPUSH_APP_KEY", "\"$miPushAppKey\"")
+
+        // 华为推送 AppID（空串 = 不注册华为通道），并注入清单的 appid 元数据。
+        buildConfigField("String", "HUAWEI_PUSH_APP_ID", "\"$huaweiPushAppId\"")
+        manifestPlaceholders["huaweiPushAppId"] = huaweiPushAppId
     }
 
     signingConfigs {
@@ -164,4 +173,7 @@ flutter {
 dependencies {
     // 小米推送 7.12.4（官方 AAR，文件依赖无 group，规避 lint 崩溃）。
     implementation(files("libs/MiPush_SDK_Client_7_12_4-C_3rd.aar"))
+    // 华为 Push Kit（Maven 坐标，仓库见根 build.gradle.kts 的 developer.huawei.com/repo）。
+    // 取 token 用 com.huawei.hms.aaid.HmsInstanceId，token 回调在 HmsPushService。
+    implementation("com.huawei.hms:push:6.13.0.300")
 }

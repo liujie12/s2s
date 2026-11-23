@@ -29,12 +29,18 @@
              不在可见区（底栏/地图/确认页等版式均按竖屏设计）。锁定竖屏是最小且彻底的修法。
              screenOrientation 与下方 configChanges 中的 orientation 不冲突：
              前者禁止旋转，后者让已发生的配置变更不重建 Activity。 -->
+        <!-- launchMode="singleTask"（2026-11-13 真机发现「最近任务出现两张找丫找卡片」）：
+             原为 singleTop + taskAffinity=""，任何入口只要带 FLAG_ACTIVITY_MULTIPLE_TASK
+             （推送点击、桌面/系统小窗、部分 OEM 入口会带）就会再建一个以 MainActivity 为根的
+             任务栈；实测 1 个任务栈 → 2 个，最近任务即出现两张卡片。singleTask 保证全局只有
+             一个实例/任务栈，重复拉起只会把已有任务 bring to front（走 onNewIntent）。
+             taskAffinity 同时删掉空值覆盖：singleTask 的复用匹配依赖活动亲和性，空值会让每次
+             拉起都新建任务栈；缺省值即包名，与 fluwx 的 WXEntryActivity 别名保持一致。 -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:screenOrientation="portrait"
-            android:launchMode="singleTop"
-            android:taskAffinity=""
+            android:launchMode="singleTask"
             android:theme="@style/LaunchTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
@@ -75,6 +81,20 @@
                 <action android:name="com.xiaomi.mipush.ERROR" />
             </intent-filter>
         </receiver>
+
+        <!-- 华为 Push Kit（P11 华为通道客户端接入）。
+             appid 由 build.gradle.kts 的 manifestPlaceholders 注入（默认 AGC 正式应用 119702145）；
+             MESSAGING_EVENT 意图过滤器是收 token 与数据消息的硬要求，不可删。 -->
+        <meta-data
+            android:name="com.huawei.hms.client.appid"
+            android:value="appid=${huaweiPushAppId}" />
+        <service
+            android:name=".push.HmsPushService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.huawei.push.action.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
@@ -85,6 +105,12 @@
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- Android 11+ 包可见性：登录页《用户协议》《隐私政策》用外部浏览器打开，
+             不声明这条时 canLaunchUrl/startActivity 会被系统拦掉（点链接无反应）。 -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
         </intent>
     </queries>
 </manifest>

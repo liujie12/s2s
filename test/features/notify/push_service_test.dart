@@ -33,24 +33,31 @@ void main() {
 
   /// 打桩原生通道。
   ///
-  /// 参数：[register] 注册返回值；[token] getToken 返回值。
-  void stubNative({required Object? register, String? token}) {
+  /// 参数：[register] 注册返回值；[tokens] 各通道 getToken 返回值（键为通道线值）。
+  void stubNative({required Object? register, Map<String, String>? tokens}) {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
       return switch (call.method) {
         PushService.methodRegister => register,
-        PushService.methodGetToken => token,
+        PushService.methodGetToken =>
+          tokens?[(call.arguments as Map?)?['channel'] as String?],
         _ => null,
       };
     });
   }
 
-  test('注册成功：取 token 并上报 mi 通道', () async {
-    stubNative(register: PushService.statusOk, token: 'reg-id-1');
+  test('注册成功：逐通道取 token 并上报', () async {
+    stubNative(
+      register: PushService.statusOk,
+      tokens: {'hw': 'hw-token-1', 'mi': 'mi-token-1'},
+    );
 
     await service.registerIfAvailable();
 
-    expect(reported, [(PushChannel.mi, 'reg-id-1')]);
+    expect(reported, [
+      (PushChannel.hw, 'hw-token-1'),
+      (PushChannel.mi, 'mi-token-1'),
+    ]);
   });
 
   test('未配置凭据：不读 token、不上报', () async {
@@ -114,15 +121,31 @@ void main() {
     });
   });
 
-  test('原生 onToken 事件：补报新 token', () async {
+  test('原生 onToken 事件：按通道补报新 token', () async {
+    await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .handlePlatformMessage(
+      PushService.channelName,
+      const StandardMethodCodec().encodeMethodCall(
+        const MethodCall(PushService.eventToken, {
+          'channel': 'hw',
+          'token': 'hw-token-2',
+        }),
+      ),
+      (_) {},
+    );
+
+    expect(reported, [(PushChannel.hw, 'hw-token-2')]);
+  });
+
+  test('原生 onToken 回传旧格式纯字符串：按小米通道兼容上报', () async {
     await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .handlePlatformMessage(
       PushService.channelName,
       const StandardMethodCodec()
-          .encodeMethodCall(const MethodCall(PushService.eventToken, 'reg-id-2')),
+          .encodeMethodCall(const MethodCall(PushService.eventToken, 'mi-token-3')),
       (_) {},
     );
 
-    expect(reported, [(PushChannel.mi, 'reg-id-2')]);
+    expect(reported, [(PushChannel.mi, 'mi-token-3')]);
   });
 }

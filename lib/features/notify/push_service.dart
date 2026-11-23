@@ -61,6 +61,12 @@ class PushService {
   /// 原生返回：注册已发起。
   static const String statusOk = 'ok';
 
+  /// 需要补报 token 的通道（原生侧已实现小米 + 华为）。
+  static const List<PushChannel> _probeChannels = [
+    PushChannel.hw,
+    PushChannel.mi,
+  ];
+
   final PushTokenReporter _reporter;
   final MethodChannel _channel;
   final StreamController<Map<String, Object?>> _clicks =
@@ -87,10 +93,10 @@ class PushService {
     }
   }
 
-  /// 是否 Android（当前仅小米通道有原生实现；iOS APNs 待接入）。
+  /// 是否 Android（当前小米、华为通道有原生实现；iOS APNs 待接入）。
   bool get _isAndroid => !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
-  /// 登录成功后调用：发起注册并补报一次 token。
+  /// 登录成功后调用：发起注册并补报各通道已缓存的 token。
   ///
   /// 参数：无。
   /// 返回：[Future<void>]；未配置/非 Android/失败均静默返回。
@@ -102,7 +108,7 @@ class PushService {
         if (kDebugMode) debugPrint('push: 未配置厂商凭据，跳过注册（$status）');
         return;
       }
-      await _report(await _channel.invokeMethod<String>(methodGetToken));
+      await _reportCachedTokens();
     } on MissingPluginException {
       // iOS / 未注册通道：静默降级。
     } on PlatformException catch (e) {
@@ -126,18 +132,36 @@ class PushService {
     }
   }
 
-  /// 补报一次已缓存 token（token 刷新后由前端主导重报的场景）。
+  /// 补报一次各通道已缓存的 token（token 刷新后由前端主导重报的场景）。
   ///
   /// 参数：无。
   /// 返回：[Future<void>]。
   Future<void> reportTokenIfAny() async {
     if (!_isAndroid) return;
     try {
-      await _report(await _channel.invokeMethod<String>(methodGetToken));
+      await _reportCachedTokens();
     } on MissingPluginException {
       // 未接入该通道：静默降级。
     } on PlatformException catch (e) {
       if (kDebugMode) debugPrint('push: 读取 token 失败 ${e.code}');
+    }
+  }
+
+  /// 逐通道读取原生缓存的 token 并上报。
+  ///
+  /// 参数：无。
+  /// 返回：[Future<void>]；某通道读取失败不影响其它通道。
+  Future<void> _reportCachedTokens() async {
+    for (final channel in _probeChannels) {
+      try {
+        final token = await _channel.invokeMethod<String>(
+          methodGetToken,
+          {'channel': channel.wire},
+        );
+        await _report(channel, token);
+      } on PlatformException catch (e) {
+        if (kDebugMode) debugPrint('push: ${channel.wire} 读取 token 失败 ${e.code}');
+      }
     }
   }
 
@@ -148,7 +172,7 @@ class PushService {
   Future<void> _onNativeCall(MethodCall call) async {
     switch (call.method) {
       case eventToken:
-        await _report(call.arguments as String?);
+        await _reportNativeToken(call.arguments);
       case eventClick:
         final args = call.arguments;
         if (args is Map) {
@@ -159,15 +183,43 @@ class PushService {
     }
   }
 
+  /// 解析并上报原生 `onToken` 事件。
+  ///
+  /// 新契约参数为 `{channel, token}`；兼容旧版原生直接回传纯字符串（视为小米）。
+  ///
+  /// 参数：[args] 原生事件参数。
+  /// 返回：[Future<void>]。
+  Future<void> _reportNativeToken(Object? args) async {
+    if (args is Map) {
+      final channel = _parseChannel(args['channel']?.toString());
+      if (channel == null) return;
+      await _report(channel, args['token']?.toString());
+      return;
+    }
+    if (args is String) await _report(PushChannel.mi, args);
+  }
+
+  /// 通道线值转枚举；未知线值返回 null（不猜通道）。
+  ///
+  /// 参数：[wire] 原生或服务端使用的通道线值。
+  /// 返回：[PushChannel?]。
+  PushChannel? _parseChannel(String? wire) {
+    if (wire == null || wire.isEmpty) return null;
+    for (final channel in PushChannel.values) {
+      if (channel.wire == wire) return channel;
+    }
+    return null;
+  }
+
   /// 上报 token（空/空白视为无 token，不上报）。
   ///
-  /// 参数：[token] 厂商下发的推送 token。
+  /// 参数：[channel] 厂商通道；[token] 厂商下发的推送 token。
   /// 返回：[Future<void>]；失败只记 debug 日志。
-  Future<void> _report(String? token) async {
+  Future<void> _report(PushChannel channel, String? token) async {
     final value = token?.trim() ?? '';
     if (value.isEmpty) return;
     try {
-      await _reporter(PushChannel.mi, value);
+      await _reporter(channel, value);
     } catch (e) {
       if (kDebugMode) debugPrint('push: token 上报失败 $e');
     }

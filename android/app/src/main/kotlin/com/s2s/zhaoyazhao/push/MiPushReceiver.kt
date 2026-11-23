@@ -28,7 +28,7 @@ class MiPushReceiver : PushMessageReceiver() {
         if (message.resultCode.toInt() != ErrorCode.SUCCESS) return
         val regId = message.commandArguments?.firstOrNull() ?: return
         if (regId.isBlank()) return
-        PushMethodHandler.saveToken(context, regId)
+        PushMethodHandler.saveToken(context, PushMethodHandler.CHANNEL_MI, regId)
     }
 
     /**
