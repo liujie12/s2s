@@ -162,14 +162,15 @@ Future<_FakeConversations> _pumpScreen(
 }
 
 void main() {
-  testWidgets('无会话时显示空态，不渲染服务号行', (tester) async {
+  testWidgets('无会话时显示空态，且服务号行仍固定首位', (tester) async {
     await _pumpScreen(
       tester,
       conversations: const AsyncValue.data(ConversationsData.empty),
     );
 
     expect(find.text('还没有会话'), findsOneWidget);
-    expect(find.text('服务号'), findsNothing);
+    // PRD §8.3.4：列表首行固定为服务号，空态不得替代该入口。
+    expect(find.text('服务号'), findsOneWidget);
   });
 
   testWidgets('首屏加载显示骨架', (tester) async {

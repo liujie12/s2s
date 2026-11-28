@@ -221,19 +221,45 @@ class _MessageListScreenState extends ConsumerState<MessageListScreen> {
     if (!granted) await notifier.markDenied();
   }
 
+  /// 下拉刷新：会话列表与未读汇总一起刷新（角标与列表同源，不能只刷一个）。
+  ///
+  /// 参数：无。
+  /// 返回：[Future<void>]。
+  Future<void> _refreshAll() async {
+    await ref.read(conversationsProvider.notifier).refresh();
+    await ref.read(unreadSummaryProvider.notifier).refresh();
+  }
+
   /// 列表（服务号置顶 + 会话行 + 收尾条）。
   ///
   /// 参数：[data] 会话累积快照；[notificationUnread] 通知未读条数。
   /// 返回：Widget。
   Widget _buildList(ConversationsData data, int notificationUnread) {
+    // 无会话时仍保留服务号行（PRD §8.3.4「列表首行固定为服务号」）。
+    // 2026-11-28 真机验收发现：通知未读 3 条时角标显示 3，但整页被空态接管，
+    // 服务号入口消失 → 未读有数字却点不到，故空态改为「服务号行 + 空态」。
     if (data.items.isEmpty) {
-      return const _EmptyView();
+      return RefreshIndicator(
+        onRefresh: _refreshAll,
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            SliverToBoxAdapter(
+              child: _ServiceRow(
+                unreadCount: notificationUnread,
+                onTap: () => context.push(AppRoutes.notifications),
+              ),
+            ),
+            const SliverFillRemaining(
+              hasScrollBody: false,
+              child: _EmptyView(),
+            ),
+          ],
+        ),
+      );
     }
     return RefreshIndicator(
-      onRefresh: () async {
-        await ref.read(conversationsProvider.notifier).refresh();
-        await ref.read(unreadSummaryProvider.notifier).refresh();
-      },
+      onRefresh: _refreshAll,
       child: ListView.separated(
         controller: _controller,
         padding: EdgeInsets.zero,

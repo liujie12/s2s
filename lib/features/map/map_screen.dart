@@ -18,6 +18,7 @@ library;
 import 'dart:math' as math;
 
 import 'package:amap_map/amap_map.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -571,7 +572,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               // POC-B 性能面板（PRD §6.10.1）。放右下而非顶部：顶部已被筛选
               // 入口占据，且压测时要频繁点它，靠近拇指自然位置。
               // 筛选面板展开时隐藏：它固定在右下，会盖住面板底部的「查看结果」。
-              if (!panelExpanded)
+              // release 包不渲染：这是调试观测入口，不应暴露给用户（2026-11-28
+              // 真机验收发现正式包右下角出现「P95 xx ms」胶囊）。
+              if (!panelExpanded && !kReleaseMode)
                 const Positioned(
                   right: AppSpacing.md,
                   bottom: AppSpacing.md,
