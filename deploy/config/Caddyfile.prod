@@ -98,6 +98,18 @@
             root /srv/www
         }
     }
+    # 运营治理后台静态控制台（PRD §9.10.1 七页）。
+    # 必须走 /ops/ 而不是 /admin/：/admin/* 是后端 RBAC 接口前缀，同前缀会与反代冲突。
+    handle /ops {
+        redir /ops/ permanent
+    }
+    handle /ops/* {
+        header Cache-Control "no-store"
+        file_server {
+            root /srv/www
+        }
+    }
+
     handle / {
         file_server {
             root /srv/www

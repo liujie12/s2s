@@ -211,15 +211,15 @@ class _HeaderCard extends StatelessWidget {
     );
   }
 
-  /// 昵称 + 脱敏手机号（契约 `phone_mask` 为空时只显昵称，不补空串）。
+  /// 头部展示名：**只显昵称**（2026-11-13 裁定）。
+  ///
+  /// 原来拼的是「昵称 + phone_mask」，微信用户未绑手机时 phone_mask 是一串
+  /// 占位（`微信用户R_Jpc8`），拼出来像账号 ID，用户看不懂。手机号属账号
+  /// 信息，放「设置 → 账号与安全」展示即可。
   ///
   /// 参数：[profile] 本人资料。
   /// 返回：String 展示名。
-  static String _displayName(MyProfileDto profile) {
-    final mask = profile.phoneMask;
-    if (mask == null || mask.isEmpty) return profile.nickname;
-    return '${profile.nickname} $mask';
-  }
+  static String _displayName(MyProfileDto profile) => profile.nickname;
 }
 
 /// 未登录头部（退出登录后的默认形态）。

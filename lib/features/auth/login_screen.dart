@@ -13,6 +13,11 @@
 ///    比暂时不做更糟。
 /// 两项均已在说明文档的本轮「不做」清单中写明。
 ///
+/// **2026-11-13 裁定（第一阶段登录方式）**：微信为**唯一**登录/注册入口，
+/// 手机号 / QQ / Apple 三种方式从登录页隐藏。手机号表单并未删除 —— 它仅保留在
+/// `bindMode`（懒绑定：发布/联系被 40302 拦截后绑定手机号）中使用；
+/// QQ / Apple 从未实现，随本次一并不再出现在界面上。
+///
 /// **协议勾选为什么不预勾**：§3.4.1 明写「默认不勾，必须手动勾」，§3.8 边界表
 /// 「协议未勾选 → 登录按钮 Disabled」。这是《个人信息保护法》的单独同意要求，
 /// 不是交互偏好 —— 预勾在合规检查中属可判定的违规项。
@@ -26,6 +31,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/ui/footprint_geometry.dart';
 import '../../design_tokens.dart';
@@ -33,6 +39,12 @@ import '../../router/app_router.dart';
 import '../notify/push_service.dart';
 import 'auth_repository.dart';
 import 'wechat_auth_bridge.dart';
+
+/// 用户协议线上地址（官网静态页，随官网一起部署）。
+const String _termsUrl = 'https://zhaoyazhaoapp.com/terms.html';
+
+/// 隐私政策线上地址（同上）。
+const String _privacyUrl = 'https://zhaoyazhaoapp.com/privacy.html';
 
 /// 登录 / 注册合并页；`bindMode=true` 时复用为「绑定手机号」页（B2-6a）。
 class LoginScreen extends ConsumerStatefulWidget {
@@ -236,6 +248,53 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
+  /// 主按钮点击：未勾协议先弹确认框，勾了直接发起授权。
+  ///
+  /// 2026-11-13 口径（参照闲鱼）：按钮不置灰，未勾协议时**必须**经过一次
+  /// 明确的弹窗选择才能继续——点「不同意」即中止，点「同意并继续」才发起登录。
+  /// 这样既保留了《个人信息保护法》要求的单独同意，又不会让用户对着灰按钮
+  /// 猜原因。
+  Future<void> _handleWechatTap() async {
+    if (_wechatBusy) return;
+    if (!_agreed) {
+      final accepted = await _confirmAgreement();
+      if (!mounted || !accepted) return;
+      setState(() => _agreed = true);
+    }
+    await _wechatLogin();
+  }
+
+  /// 未勾协议时的确认弹窗。
+  ///
+  /// 返回：true = 用户点「同意并继续」；false = 点「不同意」或点遮罩关闭。
+  Future<bool> _confirmAgreement() async {
+    final accepted = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('阅读并同意'),
+        content: Text(
+          '请阅读并同意《用户协议》与《隐私政策》后继续使用。',
+          style: TextStyle(
+            fontSize: AppTypeScale.body.size,
+            height: AppTypeScale.body.lineHeight,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('不同意'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('同意并继续'),
+          ),
+        ],
+      ),
+    );
+    return accepted ?? false;
+  }
+
   /// 登录成功收尾：写入会话并返回来源页（无上一页时回首页）。
   ///
   /// 参数：[session] 登录成功返回的会话。
@@ -311,73 +370,72 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               const SizedBox(height: AppSpacing.lg),
               widget.bindMode ? const _BindHeader() : const _BrandHeader(),
               const SizedBox(height: AppSpacing.xxl),
-              _PhoneField(
-                controller: _phoneCtrl,
-                onChanged: (_) => setState(() {}),
-              ),
-              const SizedBox(height: AppSpacing.md),
-              _CodeField(
-                controller: _codeCtrl,
-                enabled: _codeSent,
-                sending: _sending,
-                cooldown: _cooldown,
-                canSend:
-                    !_sending &&
-                    _cooldown == 0 &&
-                    AuthRepository.isValidPhone(_phoneCtrl.text.trim()),
-                onSend: _sendCode,
-                onChanged: (_) => setState(() {}),
-              ),
-              // kDebugMode 编译期包裹（规范 §5.9 第①层）：release 下整块
-              // 死代码消除，提示条与 debugCode 引用均不进产物（L3 双零兜底）。
-              if (kDebugMode && _codeSent) ...[
-                const SizedBox(height: AppSpacing.sm),
-                // 联调提示条：没有短信通道时，不给出这条提示就无法自测登录。
-                // 文案里写明「联调」，避免被误认为正式功能。
-                Text(
-                  '联调阶段验证码固定为 ${AuthRepository.debugCode}（接短信服务后移除）',
-                  style: TextStyle(
-                    fontSize: AppTypeScale.caption.size,
-                    height: AppTypeScale.caption.lineHeight,
-                    color: const Color(AppColors.textPlaceholder),
-                  ),
+              // 2026-11-13 裁定：第一阶段**只留微信**，手机号 / QQ / Apple 三种
+              // 登录注册方式从入口隐藏。手机号表单并未删除 —— 它仅在
+              // `bindMode`（懒绑定：发布/联系被 40302 拦截）下继续使用，
+              // 因此下面按模式二选一渲染，而不是复制一份页面。
+              if (widget.bindMode) ...[
+                _PhoneField(
+                  controller: _phoneCtrl,
+                  onChanged: (_) => setState(() {}),
                 ),
-              ],
-              if (_error != null) ...[
                 const SizedBox(height: AppSpacing.md),
-                _ErrorBanner(message: _error!),
-              ],
-              if (!widget.bindMode) ...[
+                _CodeField(
+                  controller: _codeCtrl,
+                  enabled: _codeSent,
+                  sending: _sending,
+                  cooldown: _cooldown,
+                  canSend:
+                      !_sending &&
+                      _cooldown == 0 &&
+                      AuthRepository.isValidPhone(_phoneCtrl.text.trim()),
+                  onSend: _sendCode,
+                  onChanged: (_) => setState(() {}),
+                ),
+                // kDebugMode 编译期包裹（规范 §5.9 第①层）：release 下整块
+                // 死代码消除，提示条与 debugCode 引用均不进产物（L3 双零兜底）。
+                if (kDebugMode && _codeSent) ...[
+                  const SizedBox(height: AppSpacing.sm),
+                  // 联调提示条：没有短信通道时，不给出这条提示就无法自测登录。
+                  // 文案里写明「联调」，避免被误认为正式功能。
+                  Text(
+                    '联调阶段验证码固定为 ${AuthRepository.debugCode}（接短信服务后移除）',
+                    style: TextStyle(
+                      fontSize: AppTypeScale.caption.size,
+                      height: AppTypeScale.caption.lineHeight,
+                      color: const Color(AppColors.textPlaceholder),
+                    ),
+                  ),
+                ],
+                if (_error != null) ...[
+                  const SizedBox(height: AppSpacing.md),
+                  _ErrorBanner(message: _error!),
+                ],
                 const SizedBox(height: AppSpacing.lg),
+                _SubmitButton(
+                  enabled: _canSubmit,
+                  busy: _submitting,
+                  onPressed: _submit,
+                  label: '确认绑定',
+                ),
+              ] else ...[
+                if (_error != null) ...[
+                  _ErrorBanner(message: _error!),
+                  const SizedBox(height: AppSpacing.lg),
+                ],
+                // 按钮常开：未勾协议时点它弹确认框（2026-11-13 口径，参照闲鱼），
+                // 而不是灰掉——灰按钮不说明原因，用户只会以为登录坏了。
+                _SubmitButton(
+                  enabled: !_wechatBusy,
+                  busy: _wechatBusy,
+                  onPressed: _handleWechatTap,
+                  label: '微信登录 / 注册',
+                ),
+                const SizedBox(height: AppSpacing.lg),
+                // 协议行放在登录按钮**下方**（2026-11-13 口径）。
                 _AgreementRow(
                   agreed: _agreed,
                   onChanged: (v) => setState(() => _agreed = v),
-                ),
-              ],
-              const SizedBox(height: AppSpacing.lg),
-              _SubmitButton(
-                enabled: _canSubmit,
-                busy: _submitting,
-                onPressed: _submit,
-                label: widget.bindMode ? '确认绑定' : null,
-              ),
-              if (!widget.bindMode) ...[
-                const SizedBox(height: AppSpacing.md),
-                Text(
-                  // §3.4.1 底部文案，逐字照抄。
-                  '未注册手机号验证后自动注册',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: AppTypeScale.small.size,
-                    height: AppTypeScale.small.lineHeight,
-                    color: const Color(AppColors.textSecondary),
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.xxl),
-                _ThirdPartyRow(
-                  wechatEnabled: _agreed,
-                  wechatBusy: _wechatBusy,
-                  onWechatPressed: _wechatLogin,
                 ),
               ],
               const SizedBox(height: AppSpacing.xl),
@@ -652,12 +710,63 @@ class _ErrorBanner extends StatelessWidget {
   }
 }
 
-/// 协议勾选行（§3.4.1「默认不勾，必须手动勾」）。
+/// 协议勾选行（2026-11-13 口径：放在登录按钮下方，两处链接必须可见可点）。
 class _AgreementRow extends StatelessWidget {
   const _AgreementRow({required this.agreed, required this.onChanged});
 
+  /// 是否已勾选。
   final bool agreed;
+
+  /// 勾选态变更回调。
   final ValueChanged<bool> onChanged;
+
+  /// 协议正文样式（次要色，与链接形成对比）。
+  TextStyle get _bodyStyle => TextStyle(
+    fontSize: AppTypeScale.small.size,
+    height: AppTypeScale.small.lineHeight,
+    color: const Color(AppColors.textSecondary),
+  );
+
+  /// 链接样式：主色 + 下划线。不加下划线时用户看不出这是可点的链接
+  /// （2026-11-13 缺陷：协议名与正文同色同重，被判为「不可见」）。
+  TextStyle get _linkStyle => TextStyle(
+    fontSize: AppTypeScale.small.size,
+    height: AppTypeScale.small.lineHeight,
+    color: const Color(AppColors.primary),
+    decoration: TextDecoration.underline,
+    decorationColor: const Color(AppColors.primary),
+  );
+
+  /// 打开协议网页（官网静态页，随官网一起部署）。
+  ///
+  /// 参数 [url] 目标地址。返回 void；无浏览器等异常一律吞掉——协议打不开
+  /// 不能把登录流程卡死，用户仍可勾选继续。
+  Future<void> _open(String url) async {
+    try {
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    } catch (_) {
+      // 忽略：外部浏览器不可用时不应阻断登录。
+    }
+  }
+
+  /// 给一段文字套上可点区域。
+  ///
+  /// 参数 [text] 文字；[style] 样式；[onTap] 点击回调。
+  /// 返回：[Widget] 带上下内边距的可点文本。小号字体单行只有约 18dp 高，
+  /// 直接让文字本身可点会低于 44dp 触达下限（实测点偏 5px 就没反应）。
+  Widget _tapZone(String text, TextStyle style, VoidCallback onTap) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          vertical: AppSpacing.sm,
+          horizontal: 2,
+        ),
+        child: Text(text, style: style),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -675,20 +784,18 @@ class _AgreementRow extends StatelessWidget {
           ),
         ),
         const SizedBox(width: AppSpacing.sm),
+        // 用 Wrap + 独立可点文本，而不是 RichText + TapGestureRecognizer：
+        // 后者需要手动 dispose 识别器，这里没有必要引入这份生命周期负担。
         Expanded(
-          // 整行文字可点切换：24px 的勾选框低于 44px 触达下限，
-          // 只让方框可点会让手指偏一点就点不中。
-          child: GestureDetector(
-            onTap: () => onChanged(!agreed),
-            child: Text(
-              // §3.4.1 文案，逐字照抄。
-              '我同意用户协议与隐私政策',
-              style: TextStyle(
-                fontSize: AppTypeScale.small.size,
-                height: AppTypeScale.small.lineHeight,
-                color: const Color(AppColors.textSecondary),
-              ),
-            ),
+          child: Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              // 空白处点击等价于勾选（24px 勾选框低于 44px 触达下限）。
+              _tapZone('我已阅读并同意', _bodyStyle, () => onChanged(!agreed)),
+              _tapZone('《用户协议》', _linkStyle, () => _open(_termsUrl)),
+              _tapZone('与', _bodyStyle, () => onChanged(!agreed)),
+              _tapZone('《隐私政策》', _linkStyle, () => _open(_privacyUrl)),
+            ],
           ),
         ),
       ],
@@ -740,91 +847,6 @@ class _SubmitButton extends StatelessWidget {
                 )
               // §3.4.1 按钮文案「登录 / 注册」—— 两者合并正是这一页的产品意图。
               : Text(label ?? '登录 / 注册'),
-        ),
-      ),
-    );
-  }
-}
-
-/// 第三方入口（B2-6a：微信已解除灰禁；QQ / Apple 仍暂未开放）。
-///
-/// 微信按钮在协议勾选前禁用（与主按钮同口径：§3.8 协议未勾 → Disabled）；
-/// QQ / Apple 保持灰禁用而非隐藏 —— 隐藏会让「本期不实现」这个决定在验收时
-/// 无从确认，看不见的东西无法判断是漏做还是刻意不做。
-class _ThirdPartyRow extends StatelessWidget {
-  const _ThirdPartyRow({
-    required this.wechatEnabled,
-    required this.wechatBusy,
-    required this.onWechatPressed,
-  });
-
-  /// 微信按钮是否可点（协议已勾且无进行中的授权）。
-  final bool wechatEnabled;
-
-  /// 微信授权是否进行中。
-  final bool wechatBusy;
-
-  /// 微信按钮点击回调。
-  final VoidCallback onWechatPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Text(
-          '其他登录方式',
-          style: TextStyle(
-            fontSize: AppTypeScale.caption.size,
-            color: const Color(AppColors.textPlaceholder),
-          ),
-        ),
-        const SizedBox(height: AppSpacing.md),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            _thirdPartyButton(
-              '微信',
-              onPressed: wechatEnabled ? onWechatPressed : null,
-              busy: wechatBusy,
-            ),
-            for (final label in ['QQ', 'Apple'])
-              _thirdPartyButton(label, onPressed: null),
-          ],
-        ),
-        const SizedBox(height: AppSpacing.sm),
-        Text(
-          'QQ / Apple 暂未开放',
-          style: TextStyle(
-            fontSize: AppTypeScale.caption.size,
-            color: const Color(AppColors.textPlaceholder),
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// 构造单个第三方登录按钮（统一间距与禁用态样式）。
-  ///
-  /// 参数：[label] 按钮文案；[onPressed] 点击回调（null = 禁用）；
-  ///   [busy] 是否展示「授权中」占位文案。
-  /// 返回：[Widget] 胶囊按钮。
-  Widget _thirdPartyButton(
-    String label, {
-    required VoidCallback? onPressed,
-    bool busy = false,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
-      child: OutlinedButton(
-        // onPressed: null 即禁用态，由框架给出灰化与不可点。
-        onPressed: busy ? null : onPressed,
-        style: OutlinedButton.styleFrom(
-          side: const BorderSide(color: Color(AppColors.border)),
-          shape: const StadiumBorder(),
-        ),
-        child: Text(
-          busy ? '授权中' : label,
-          style: TextStyle(fontSize: AppTypeScale.small.size),
         ),
       ),
     );

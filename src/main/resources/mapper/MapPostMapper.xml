@@ -30,6 +30,10 @@
           候选上限 500 条，代价可接受。
         · 表为空时优化器会因基数统计偏差选 idx_status_completeness；上面的结论用
           FORCE INDEX 验证索引本身的覆盖能力，不代表线上一定选该索引。
+        · V39（2026-11-15，DEF-12）起三条 pins 查询的 WHERE 增加 deleted_at IS NULL：
+          post 软删只置 deleted_at、原 status 不变（V37 口径），只按 status 过滤会漏掉
+          「active + 已删除」组合。为维持 index-only，deleted_at 已追加进
+          idx_pins_cover / idx_pins_community（紧随 price 之后），见数据库设计 §4.4。
     -->
     <select id="selectPins" resultType="map">
         SELECT id, lng, lat, leaf_category_id, type, completeness_level
@@ -37,6 +41,7 @@
         <!-- 常驻（expire_at IS NULL）也必须进池：SQL 三值逻辑下 NULL > NOW() 为 unknown，
              只用 expire_at &gt; NOW() 会把常驻帖整批漏掉（PRD §5.11 2026-11-08 口径）。 -->
         WHERE status = 'active' AND (expire_at IS NULL OR expire_at &gt; NOW())
+        AND deleted_at IS NULL
         <if test="gridIds != null and communityId == null">
             AND grid_id IN
             <foreach collection="gridIds" item="g" open="(" separator="," close=")">#{g}</foreach>
@@ -60,6 +65,7 @@
         SELECT COUNT(*)
         FROM post
         WHERE status = 'active' AND (expire_at IS NULL OR expire_at &gt; NOW())
+        AND deleted_at IS NULL
         <if test="gridIds != null and communityId == null">
             AND grid_id IN
             <foreach collection="gridIds" item="g" open="(" separator="," close=")">#{g}</foreach>
@@ -83,6 +89,7 @@
         SELECT ROUND(AVG(lng), 5) AS lng, ROUND(AVG(lat), 5) AS lat, COUNT(*) AS count
         FROM post
         WHERE status = 'active' AND (expire_at IS NULL OR expire_at &gt; NOW())
+        AND deleted_at IS NULL
         <if test="gridIds != null and communityId == null">
             AND grid_id IN
             <foreach collection="gridIds" item="g" open="(" separator="," close=")">#{g}</foreach>
@@ -124,6 +131,7 @@
         FROM post p
         JOIN user u ON p.user_id = u.id
         WHERE p.status = 'active' AND (p.expire_at IS NULL OR p.expire_at &gt; NOW())
+        AND p.deleted_at IS NULL
         <if test="gridIds != null">
             AND p.grid_id IN
             <foreach collection="gridIds" item="g" open="(" separator="," close=")">#{g}</foreach>

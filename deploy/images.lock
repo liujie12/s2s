@@ -52,10 +52,10 @@
 caddy:2.8-alpine sha256:af32e97399febea808609119bb21544d0265c58a02836576e32a2d082c262c17
 
 # 关系库。8.4 是 LTS；8.0 已进入 EOL 倒计时，不选
-mysql:8.4 sha256:6ea90827b1100f8f2ae306a539f86d2c264a26ed435a2a9f75551dd5c3aeb242
+mysql:8.4 sha256:a81d043930e51745522bd5c430961cf8286f0a23f0a9a2a6e0108f7ea71b0902
 
 # 缓存与会话。7.4 稳定版，alpine 变体减体积
-redis:7.4-alpine sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
+redis:7.4-alpine sha256:7f7d30b7fdd09467bac58198a1f166dd69789d348d4fe859cccb20e0cf287fbe
 
 # ---------------------------------------------------------------------------
 # 构建期镜像（不进运行镜像，但同样锁定 —— 构建工具链变更会改变产物）
@@ -63,4 +63,4 @@ redis:7.4-alpine sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c
 # ---------------------------------------------------------------------------
 
 maven:3.9-eclipse-temurin-21 sha256:99e61abcff91a9b1333463bd8451fb18495d6eba9250ac66a338b518f8278320
-eclipse-temurin:21-jre-alpine sha256:51ab5e3302e7141ce665ca3ea85e8b5cd648eafbc3c0c90dd79d6537684e4555
+eclipse-temurin:21-jre-alpine sha256:ac05c3c42b7c2f1a52c9bd52f01041fa1958231b15ebeae7420429cbc5baf474

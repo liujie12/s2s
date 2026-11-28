@@ -375,4 +375,23 @@ class CertServiceTest {
                 .isEqualTo(ErrorCode.PARAM_INVALID);
         verify(certMapper, never()).deleteById(anyLong());
     }
+
+    @Test
+    void 审核通过仅更新pending认证() {
+        when(certMapper.update(any(CertEntity.class), any())).thenReturn(1);
+
+        service.markReviewed(9L, true, null);
+
+        verify(certMapper).update(any(CertEntity.class), any());
+    }
+
+    @Test
+    void 重复审核非pending认证回40001() {
+        when(certMapper.update(any(CertEntity.class), any())).thenReturn(0);
+
+        assertThatThrownBy(() -> service.markReviewed(9L, true, null))
+                .isInstanceOf(BizException.class)
+                .extracting(e -> ((BizException) e).getErrorCode())
+                .isEqualTo(ErrorCode.PARAM_INVALID);
+    }
 }

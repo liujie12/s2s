@@ -44,6 +44,9 @@ let TOKEN = process.env.PERF_TOKEN || '';
 /** 会话 ID（仅 PT-05；已知 ID 时 90 天隐藏也可读历史，见契约 listMessages）。 */
 const CONVERSATION_ID = process.env.PERF_CONVERSATION_ID || '';
 
+/** 强制指定的详情样本 post_id（仅 PT-04）；缺省由 /posts/search 首条推导。 */
+const FORCED_POST_ID = Number(process.env.PERF_POST_ID || 0);
+
 /** 可选：未注入 PERF_TOKEN 时，用白名单测试号走 dev 桩验证码登录换 token（仅在内存中，不落盘）。 */
 const TEST_PHONE = process.env.PERF_TEST_PHONE || '';
 
@@ -308,7 +311,7 @@ async function main() {
     lng: '120.15',
     lat: '30.28',
   };
-  const postId = await bootstrapPostId({ ...commonQuery, page: '1', page_size: '20' });
+  const postId = FORCED_POST_ID || await bootstrapPostId({ ...commonQuery, page: '1', page_size: '20' });
   console.log(`引导完成：leaf=${leafCategoryId} version=${version} postId=${postId || 'N/A'}`);
 
   // 登录态端点：未注入 token 且给了测试号时，内存内登录换取（不落盘）。

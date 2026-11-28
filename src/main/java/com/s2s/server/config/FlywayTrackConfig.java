@@ -61,13 +61,24 @@ public class FlywayTrackConfig {
     }
 
     /**
+     * 埋点库连接必须开启「受影响行数」语义的 JDBC 参数。
+     *
+     * <p>为什么只给埋点库加（DEF-06）：{@code TrackEventMapper.batchInsert} 以
+     * {@code ON DUPLICATE KEY UPDATE id = id} 落库，契约把返回的 {@code accepted} 定义为
+     * 「去重后净新增数」。Connector/J 默认 {@code useAffectedRows=false}（即 CLIENT_FOUND_ROWS），
+     * 重复行会返回 1 而不是 0，导致 {@code accepted} 虚高。业务库不能加：乐观锁的
+     * {@code 0 行 → 40903} 依赖严格受影响行数，两库口径必须分开。</p>
+     */
+    private static final String JDBC_USE_AFFECTED_ROWS = "useAffectedRows=true";
+
+    /**
      * 埋点库数据源：三个环境变量名与 deploy/docker-compose.yml app 服务 environment 逐字一致；
      * 用户名/口令与业务库同一应用账号（KTD-7：仅 URL 独立）。
      *
      * @param url      埋点库 JDBC URL（TRACK_DATASOURCE_URL，库名须与 MYSQL_TRACK_DATABASE 一致）
      * @param username 应用账号（SPRING_DATASOURCE_USERNAME）
      * @param password 应用账号口令（SPRING_DATASOURCE_PASSWORD）
-     * @return 埋点库 DataSource，仅供 {@link #trackFlyway(DataSource)} 消费
+     * @return 埋点库 DataSource，仅供 {@link #trackFlyway(DataSource)} 与埋点会话消费
      */
     @Bean
     public DataSource trackDataSource(
@@ -75,10 +86,24 @@ public class FlywayTrackConfig {
             @Value("${SPRING_DATASOURCE_USERNAME}") String username,
             @Value("${SPRING_DATASOURCE_PASSWORD}") String password) {
         return DataSourceBuilder.create()
-                .url(url)
+                .url(withUseAffectedRows(url))
                 .username(username)
                 .password(password)
                 .build();
+    }
+
+    /**
+     * 给埋点库 JDBC URL 补齐 {@code useAffectedRows=true}（已显式配置时保持原值）。
+     *
+     * @param url 原始 JDBC URL（非空）
+     * @return {@link String} 追加参数后的 URL；原 URL 已含该参数时原样返回
+     */
+    static String withUseAffectedRows(String url) {
+        if (url.contains("useAffectedRows=")) {
+            return url;
+        }
+        String separator = url.contains("?") ? "&" : "?";
+        return url + separator + JDBC_USE_AFFECTED_ROWS;
     }
 
     /**

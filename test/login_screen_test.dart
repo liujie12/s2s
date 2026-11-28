@@ -109,11 +109,15 @@ class _FakeWechatBridge implements WechatAuthBridge {
   /// 非 null 时 `requestCode` 抛出该异常。
   final Object? error;
 
+  /// `requestCode` 被调用的次数（用于断言「未经同意不得拉起授权」）。
+  int calls = 0;
+
   @override
   bool get isAvailable => error is! WechatAuthUnavailableException;
 
   @override
   Future<String> requestCode() async {
+    calls++;
     final failure = error;
     if (failure != null) throw failure;
     return 'wx-code';
@@ -165,12 +169,12 @@ void main() {
     await tester.pump();
   }
 
-  /// 取出主按钮当前是否可点。
+  /// 取出主按钮（微信登录 / 注册）当前是否可点。
   ///
   /// 参数 [tester] 测试驱动器。返回 true 表示可点。
   bool submitEnabled(WidgetTester tester) {
     final button = tester.widget<ElevatedButton>(
-      find.widgetWithText(ElevatedButton, '登录 / 注册'),
+      find.widgetWithText(ElevatedButton, '微信登录 / 注册'),
     );
     return button.onPressed != null;
   }
@@ -207,20 +211,29 @@ void main() {
       await unmount(tester);
     });
 
-    testWidgets('主按钮初始禁用', (tester) async {
+    testWidgets('主按钮常开：未勾协议也可点（点击后弹确认框）', (tester) async {
       await pumpLogin(tester);
-      expect(submitEnabled(tester), isFalse);
+      // 2026-11-13 口径：灰按钮不说明原因，改为点击后弹窗强制选择。
+      expect(submitEnabled(tester), isTrue);
       await unmount(tester);
     });
 
-    testWidgets('手机号为空时不能获取验证码', (tester) async {
+    testWidgets('登录态不出现手机号 / 验证码入口（2026-11-13 裁定：仅微信）', (tester) async {
       await pumpLogin(tester);
+      expect(find.text('请输入手机号'), findsNothing);
+      expect(find.text('获取验证码'), findsNothing);
+      expect(find.byType(TextField), findsNothing, reason: '登录态不应有手机号/验证码输入框');
+      await unmount(tester);
+    });
+
+    testWidgets('绑定模式：手机号为空时不能获取验证码', (tester) async {
+      await pumpLogin(tester, bindMode: true);
       expect(sendEnabled(tester), isFalse, reason: '空号码发码只会白费一条短信');
       await unmount(tester);
     });
 
-    testWidgets('验证码框在发码前禁用，且提示语说明原因', (tester) async {
-      await pumpLogin(tester);
+    testWidgets('绑定模式：验证码框在发码前禁用，且提示语说明原因', (tester) async {
+      await pumpLogin(tester, bindMode: true);
       final codeField = tester.widget<TextField>(find.byType(TextField).last);
       expect(codeField.enabled, isFalse);
       // 只把框灰掉却不解释，用户会以为是故障。
@@ -228,30 +241,31 @@ void main() {
       await unmount(tester);
     });
 
-    testWidgets('第三方入口呈现但未勾协议时禁用（§3.4.1 / §3.8）', (tester) async {
+    testWidgets('登录态只呈现微信一种方式：QQ / Apple 不再出现', (tester) async {
       await pumpLogin(tester);
-      for (final label in ['微信', 'QQ', 'Apple']) {
-        final button = tester.widget<OutlinedButton>(
-          find.widgetWithText(OutlinedButton, label),
-        );
-        // 隐藏掉会让「本期不实现」这个决定在验收时无从确认。
-        expect(button.onPressed, isNull, reason: '未勾协议时 $label 应为禁用');
-      }
+      expect(find.text('QQ'), findsNothing);
+      expect(find.text('Apple'), findsNothing);
+      expect(find.text('其他登录方式'), findsNothing);
+      expect(find.text('微信登录 / 注册'), findsOneWidget);
       await unmount(tester);
     });
 
-    testWidgets('§3.4.1 固定文案逐字呈现', (tester) async {
+    testWidgets('固定文案与两处协议链接逐字呈现', (tester) async {
       await pumpLogin(tester);
       expect(find.text('用就近的资源解决本地的需求'), findsOneWidget);
-      expect(find.text('我同意用户协议与隐私政策'), findsOneWidget);
-      expect(find.text('未注册手机号验证后自动注册'), findsOneWidget);
+      // 协议名必须单独成文本且带下划线主色，否则会被判为「协议不可见」。
+      expect(find.text('我已阅读并同意'), findsOneWidget);
+      expect(find.text('《用户协议》'), findsOneWidget);
+      expect(find.text('《隐私政策》'), findsOneWidget);
+      // 2026-11-13 起去掉「未注册微信账号授权后自动注册」这句无信息量文案。
+      expect(find.text('未注册微信账号授权后自动注册'), findsNothing);
       await unmount(tester);
     });
   });
 
-  group('手机号校验驱动发码按钮', () {
+  group('手机号校验驱动发码按钮（仅绑定模式）', () {
     testWidgets('位数不足时仍禁用，满 11 位才放开', (tester) async {
-      await pumpLogin(tester);
+      await pumpLogin(tester, bindMode: true);
       await tester.enterText(find.byType(TextField).first, '1380013');
       await tester.pump();
       expect(sendEnabled(tester), isFalse);
@@ -263,9 +277,9 @@ void main() {
     });
   });
 
-  group('发码后（§3.5 步骤 2 的 60s 倒计时）', () {
+  group('发码后（§3.5 步骤 2 的 60s 倒计时，仅绑定模式）', () {
     testWidgets('倒计时接管按钮文案，期间不可重发', (tester) async {
-      await pumpLogin(tester);
+      await pumpLogin(tester, bindMode: true);
       await tester.enterText(find.byType(TextField).first, '13800138000');
       await tester.pump();
       await tester.tap(find.text('获取验证码'));
@@ -277,7 +291,7 @@ void main() {
     });
 
     testWidgets('给出联调验证码提示条，否则无短信通道时无法自测', (tester) async {
-      await pumpLogin(tester);
+      await pumpLogin(tester, bindMode: true);
       await tester.enterText(find.byType(TextField).first, '13800138000');
       await tester.pump();
       await tester.tap(find.text('获取验证码'));
@@ -292,7 +306,7 @@ void main() {
     });
 
     testWidgets('验证码框发码后启用', (tester) async {
-      await pumpLogin(tester);
+      await pumpLogin(tester, bindMode: true);
       await tester.enterText(find.byType(TextField).first, '13800138000');
       await tester.pump();
       await tester.tap(find.text('获取验证码'));
@@ -304,36 +318,66 @@ void main() {
     });
   });
 
-  group('提交条件（§3.8 协议未勾 → Disabled）', () {
-    testWidgets('手机号与验证码都填好，但协议未勾 → 主按钮仍禁用', (tester) async {
-      await pumpLogin(tester);
-      await fillPhoneAndCode(tester, code: AuthRepository.debugCode);
-      // 这是本文件最重要的一条：其余条件全部满足，唯独协议未勾。
-      expect(submitEnabled(tester), isFalse);
+  group('协议门（2026-11-13 口径：未勾 → 弹窗强制选择，不可跳过）', () {
+    testWidgets('未勾协议点登录 → 弹出确认框，且不拉起微信授权', (tester) async {
+      final bridge = _FakeWechatBridge();
+      await pumpLogin(tester, bridge: bridge);
+      await tester.tap(find.text('微信登录 / 注册'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('阅读并同意'), findsOneWidget);
+      expect(bridge.calls, 0, reason: '未经同意不得拉起微信授权');
       await unmount(tester);
     });
 
-    testWidgets('勾上协议后主按钮放开', (tester) async {
-      await pumpLogin(tester);
-      await fillPhoneAndCode(tester, code: AuthRepository.debugCode);
+    testWidgets('弹窗点「不同意」→ 关闭弹窗、协议仍未勾、不发起授权', (tester) async {
+      final bridge = _FakeWechatBridge();
+      await pumpLogin(tester, bridge: bridge);
+      await tester.tap(find.text('微信登录 / 注册'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('不同意'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('阅读并同意'), findsNothing);
+      expect(bridge.calls, 0);
+      final checkbox = tester.widget<Checkbox>(find.byType(Checkbox));
+      expect(checkbox.value, isFalse, reason: '拒绝后不得自动勾选');
+      await unmount(tester);
+    });
+
+    testWidgets('弹窗点「同意并继续」→ 自动勾选并继续登录', (tester) async {
+      final bridge = _FakeWechatBridge();
+      await pumpLogin(tester, bridge: bridge);
+      await tester.tap(find.text('微信登录 / 注册'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('同意并继续'));
+      await settleAsync(tester);
+
+      final checkbox = tester.widget<Checkbox>(find.byType(Checkbox));
+      expect(checkbox.value, isTrue, reason: '同意后勾选框应同步为已勾');
+      expect(bridge.calls, 1, reason: '同意后应立即发起微信授权');
+      // 假仓库固定回「暂未开放」，用它证明确实走完了登录调用。
+      expect(find.text(AuthFailure.wechatUnavailable.message), findsOneWidget);
+      await unmount(tester);
+    });
+
+    testWidgets('已勾选时点登录 → 不弹窗，直接发起授权', (tester) async {
+      final bridge = _FakeWechatBridge();
+      await pumpLogin(tester, bridge: bridge);
       await tester.tap(find.byType(Checkbox));
       await tester.pump();
-      expect(submitEnabled(tester), isTrue);
-      await unmount(tester);
-    });
-
-    testWidgets('协议已勾但只填了手机号（未发码）→ 主按钮禁用', (tester) async {
-      await pumpLogin(tester);
-      await tester.enterText(find.byType(TextField).first, '13800138000');
-      await tester.tap(find.byType(Checkbox));
+      await tester.tap(find.text('微信登录 / 注册'));
       await tester.pump();
-      expect(submitEnabled(tester), isFalse, reason: '未发码就提交必然失败，不该放行');
+      await tester.pump();
+
+      expect(find.text('阅读并同意'), findsNothing);
+      expect(bridge.calls, 1);
       await unmount(tester);
     });
 
-    testWidgets('协议行整行文字可点切换（24px 勾选框低于 44px 触达下限）', (tester) async {
+    testWidgets('协议行文字可点切换（24px 勾选框低于 44px 触达下限）', (tester) async {
       await pumpLogin(tester);
-      await tester.tap(find.text('我同意用户协议与隐私政策'));
+      await tester.tap(find.text('我已阅读并同意'));
       await tester.pump();
       final checkbox = tester.widget<Checkbox>(find.byType(Checkbox));
       expect(checkbox.value, isTrue);
@@ -341,13 +385,12 @@ void main() {
     });
   });
 
-  group('错误提示（常驻横条而非 Toast）', () {
-    testWidgets('验证码输错后横条显示原因，且不会自动消失', (tester) async {
-      await pumpLogin(tester);
+  group('错误提示（常驻横条而非 Toast；手机号提交只在绑定模式）', () {
+    testWidgets('绑定失败后横条显示原因，且不会自动消失', (tester) async {
+      final repo = _FakeAuthRepository()..bindPhoneFailure = AuthFailure.wrongCode;
+      await pumpLogin(tester, repo: repo, bindMode: true);
       await fillPhoneAndCode(tester, code: '000000');
-      await tester.tap(find.byType(Checkbox));
-      await tester.pump();
-      await tester.tap(find.text('登录 / 注册'));
+      await tester.tap(find.text('确认绑定'));
       await settleAsync(tester);
 
       expect(find.text(AuthFailure.wrongCode.message), findsOneWidget);
@@ -358,29 +401,15 @@ void main() {
     });
   });
 
-  group('微信登录（B2-6a）', () {
-    /// 取微信按钮当前是否可点。
-    ///
-    /// 参数 [tester] 测试驱动器。返回 true 表示可点。
-    bool wechatEnabled(WidgetTester tester) {
-      final button = tester.widget<OutlinedButton>(
-        find.widgetWithText(OutlinedButton, '微信'),
-      );
-      return button.onPressed != null;
-    }
-
-    testWidgets('勾协议后微信可点，QQ / Apple 仍禁用', (tester) async {
+  group('微信登录（B2-6a；2026-11-13 起为唯一入口）', () {
+    testWidgets('勾协议后微信按钮可点，且页面无其它登录方式', (tester) async {
       await pumpLogin(tester);
       await tester.tap(find.byType(Checkbox));
       await tester.pump();
 
-      expect(wechatEnabled(tester), isTrue, reason: 'B2-6a 已解除微信灰禁');
-      for (final label in ['QQ', 'Apple']) {
-        final button = tester.widget<OutlinedButton>(
-          find.widgetWithText(OutlinedButton, label),
-        );
-        expect(button.onPressed, isNull, reason: '$label 仍暂未开放');
-      }
+      expect(submitEnabled(tester), isTrue, reason: '协议已勾 → 微信入口放开');
+      expect(find.text('QQ'), findsNothing);
+      expect(find.text('Apple'), findsNothing);
       await unmount(tester);
     });
 
@@ -388,7 +417,7 @@ void main() {
       await pumpLogin(tester);
       await tester.tap(find.byType(Checkbox));
       await tester.pump();
-      await tester.tap(find.text('微信'));
+      await tester.tap(find.text('微信登录 / 注册'));
       await tester.pump();
       await tester.pump();
 
@@ -403,7 +432,7 @@ void main() {
       );
       await tester.tap(find.byType(Checkbox));
       await tester.pump();
-      await tester.tap(find.text('微信'));
+      await tester.tap(find.text('微信登录 / 注册'));
       await tester.pump();
       await tester.pump();
 

@@ -45,8 +45,19 @@ class TrackSqlFormGuardTest {
     private static final Path TRACK_MAPPER_XML =
             Path.of("src", "main", "resources", "mapper", "TrackEventMapper.xml");
 
+    /** 兜底搬运 SQL 所在（相对仓库根）。 */
+    private static final Path FALLBACK_MAPPER_XML =
+            Path.of("src", "main", "resources", "mapper", "TrackFallbackMapper.xml");
+
     /** 去重子句的归一化形态（去掉全部空白后比对，兼容 {@code id = id} / {@code id=id}）。 */
     private static final String DEDUP_CLAUSE_COMPACT = "onduplicatekeyupdateid=id";
+
+    /**
+     * 兜底搬运的去重子句形态：{@code INSERT ... SELECT} 下目标表与源表都有 {@code id}，
+     * 必须限定目标表名，否则 MySQL 报「Column 'id' in field list is ambiguous」（2026-11-13 实测）。
+     */
+    private static final String RELAY_DEDUP_CLAUSE_COMPACT =
+            "onduplicatekeyupdate${tablename}.id=${tablename}.id";
 
     /** 客户端 {@code ts} 的绑定形态。 */
     private static final String CLIENT_TS_BINDING = "#{e.ts}";
@@ -72,6 +83,31 @@ class TrackSqlFormGuardTest {
         assertThat(verdict)
                 .as("详设 §5.8 第 [7] 步：埋点落库形态被改动即视为缺陷（该形态是客户端换新幂等键的唯一对价）")
                 .isNull();
+    }
+
+    /**
+     * 兜底搬运 SQL 形态：写月表必须去重收尾、表名走占位符、严禁 {@code INSERT IGNORE}。
+     *
+     * <p>兜底表刻意无唯一索引（数据库设计 §3.17），去重只在搬运的终点发生；
+     * 若搬运语句丢了 {@code ON DUPLICATE KEY UPDATE id = id}，兜底期间积累的重复会永久留在月表。</p>
+     *
+     * @throws IOException XML 不可读时抛出（扫描面缺失属环境缺陷，不得静默当成通过）
+     */
+    @Test
+    @DisplayName("兜底搬运 SQL：去重收尾 + 表名占位符 + 严禁 INSERT IGNORE")
+    void fallbackRelaySqlKeepsFrozenForm() throws IOException {
+        assertThat(Files.isRegularFile(FALLBACK_MAPPER_XML))
+                .as("兜底搬运 Mapper XML 必须存在（%s）——不存在即搬运能力被摘除", FALLBACK_MAPPER_XML)
+                .isTrue();
+        String compact = Files.readString(FALLBACK_MAPPER_XML, StandardCharsets.UTF_8)
+                .replaceAll("(?s)<!--.*?-->", "")
+                .replaceAll("\\s+", "")
+                .toLowerCase();
+
+        assertThat(compact).doesNotContain("insertignore");
+        assertThat(compact).contains("insertinto${tablename}(");
+        assertThat(compact).contains("fromtrack_event_fallback");
+        assertThat(compact).contains(RELAY_DEDUP_CLAUSE_COMPACT);
     }
 
     /**

@@ -703,14 +703,20 @@ public class CertService {
      * @param certId       认证 ID
      * @param approved     true = 通过，false = 驳回
      * @param rejectReason 驳回原因（approved=true 时忽略）
+     * @throws BizException {@code 40001} 认证不是 pending（已审结，重复审核）
      */
     public void markReviewed(long certId, boolean approved, String rejectReason) {
         CertEntity patch = new CertEntity();
-        patch.setId(certId);
         patch.setStatus(approved ? CERT_STATUS_APPROVED : CERT_STATUS_REJECTED);
         patch.setRejectReason(approved ? null : rejectReason);
         patch.setApprovedAt(approved ? LocalDateTime.now() : null);
-        certMapper.updateById(patch);
+        // 守卫：仅 pending 可审结。非 pending（已 approved/rejected）时 0 行即拒，
+        // 与举报「已处理再处理回 40001」同口径（DEF-14）；调用方因此不会重复写审计/推通知。
+        UpdateWrapper<CertEntity> pendingOnly = new UpdateWrapper<>();
+        pendingOnly.eq("id", certId).eq("status", CERT_STATUS_PENDING);
+        if (certMapper.update(patch, pendingOnly) == 0) {
+            throw BizException.of(ErrorCode.PARAM_INVALID);
+        }
     }
 
 }

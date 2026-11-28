@@ -338,24 +338,30 @@ else
   echo "      -f ${DEPLOY_DIR}/docker-compose.yml \\"
   echo "      -f ${OVERRIDE_FILE} \\"
   echo "      --env-file ${ENV_FILE} run --rm -e HMAC_PEPPERS_JSON= app"
-  echo "    预期：容器退出，日志显示 'Missing required env var'"
+  # 实际报文（2026-11-14 prod 实测）：APPLICATION FAILED TO START +
+  # 「凭证未注入或占位未解析，启动快速失败（编码规范 §3.3）：请检查环境变量 HMAC_PEPPERS_JSON」，
+  # 退出码 1。原提示写英文 'Missing required env var'，与本工程实现不一致，已订正。
+  echo "    预期：容器退出（非 0），日志含「启动快速失败」与缺少的变量名 HMAC_PEPPERS_JSON"
   echo "    验证通过后重跑本脚本并带上声明："
   echo "      GATE_MANUAL_CONFIRMED=\"G5\" bash $0 ${ENV_NAME}"
   skip "G5" "未声明人工验证，密钥缺失时的快速失败行为未判定"
 fi
 
-# --- G6: HTTP 301 跳转 -------------------------------------------------------
+# --- G6: HTTP → HTTPS 永久重定向 ---------------------------------------------
 echo ""
-echo "[G6] HTTP 301 跳转"
+echo "[G6] HTTP 永久重定向（301/308）"
 if [[ "${ENV_NAME}" == "dev" ]]; then
   # dev 默认不启动 Caddy（profiles: tls），没有 HTTP 入口 —— 无对象可判，是 N/A 而非 SKIP
   not_applicable "G6" "dev 环境默认不启动 Caddy（profiles: tls），无 HTTP 入口"
 elif [[ -n "${SITE_DOMAIN:-}" ]]; then
   HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://${SITE_DOMAIN}/" 2>/dev/null || echo "000")
-  if [[ "${HTTP_CODE}" == "301" ]]; then
-    pass "HTTP 返回 301 Moved Permanently"
+  # 301 与 308 同为永久重定向：Caddy 2.x 自动 HTTPS 跳转默认 308（保留方法与请求体），
+  # 语义比 301 更严格。原判据只认 301，2026-11-14 在 prod 实测 308 被判 FAIL（DEF-09），
+  # 属判据与实现不匹配 —— 故两者都接受，其余 3xx/2xx 仍判 FAIL。
+  if [[ "${HTTP_CODE}" == "301" || "${HTTP_CODE}" == "308" ]]; then
+    pass "HTTP 返回 ${HTTP_CODE}（永久重定向，跳转 HTTPS）"
   else
-    fail "HTTP 返回 ${HTTP_CODE}，期望 301"
+    fail "HTTP 返回 ${HTTP_CODE}，期望 301 或 308"
   fi
 else
   skip "G6" "SITE_DOMAIN 未设置，HTTP 跳转未判定（可 export SITE_DOMAIN=... 后重跑）"

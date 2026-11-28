@@ -11,8 +11,12 @@
  * <p><b>[129] 落地状态（2026-09-29）</b>：</p>
  * <ul>
  *   <li>#1 到期帖自动下架 —— {@code PostExpireTask}</li>
- *   <li>#2 埋点月表预建 —— {@code TrackMonthTableTask#prebuildNextMonthTable}</li>
+ *   <li>#2 埋点月表预建 —— {@code TrackMonthTableTask#prebuildNextMonthTable}
+ *       （另有启动与每日兜底 {@code ensureMonthTablesOnStartup}/{@code ensureMonthTablesDaily}，
+ *       确保「当月 + 下月」存在，防新部署跨月缺表）</li>
  *   <li>#3 埋点月表清理 —— {@code TrackMonthTableTask#dropExpiredMonthTables}</li>
+ *   <li>#2/#3 配套：埋点兜底搬运 —— {@code TrackMonthTableTask#relayFallbackRows}
+ *       （月表缺失期间 fallback 行每分钟搬入正确月表并删除，去重由月表唯一索引完成）</li>
  *   <li>#4 审计日志清理 —— {@code AuditLogCleanupTask}</li>
  *   <li>#5 中转脱敏日志清理 —— <b>未实现</b>：清理对象（日志载体）在设计文档中查无定义，
  *       已在保留策略注册表登记 key，缺口与裁定见说明文档 §2.9</li>

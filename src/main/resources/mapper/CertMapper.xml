@@ -15,7 +15,7 @@
     </select>
 
     <select id="selectPageByStatus" resultType="com.s2s.server.cert.entity.CertEntity">
-        SELECT id, user_id, cert_type, status, submitted_at, approved_at, expire_at,
+        SELECT id, user_id, cert_type, status, submitted_at, approved_at,
                reject_reason, ocr_image_ref, fail_count, lock_until
         FROM cert
         WHERE status = #{status}

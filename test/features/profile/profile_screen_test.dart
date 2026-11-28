@@ -1,4 +1,4 @@
-/// 个人中心登录态测试（2026-11-02 真机缺陷回归）。
+﻿/// 个人中心登录态测试（2026-11-02 真机缺陷回归）。
 ///
 /// 缺陷现象：退出登录后再次进入「我的」，仍显示上一个账号的昵称/角标/退出登录。
 /// 根因：本页不读登录态，且资料与角标 Provider 不随会话变化失效。
@@ -207,7 +207,7 @@ void main() {
       profileRepository: _FakeProfileRepository(_profile('用户0845')),
     );
 
-    expect(find.text('用户0845 186****0845'), findsOneWidget);
+    expect(find.text('用户0845'), findsOneWidget);
     expect(find.text('3 在架'), findsOneWidget);
     expect(find.text('2'), findsOneWidget);
     expect(find.text('0 未读'), findsOneWidget);
@@ -222,7 +222,7 @@ void main() {
       profileRepository: _FakeProfileRepository(_profile('用户0845')),
     );
 
-    await tester.tap(find.text('用户0845 186****0845'));
+    await tester.tap(find.text('用户0845'));
     await tester.pumpAndSettle();
 
     expect(find.text('edit'), findsOneWidget);
@@ -236,20 +236,20 @@ void main() {
       sessionNotifier: sessionNotifier,
       profileRepository: repository,
     );
-    expect(find.text('用户0845 186****0845'), findsOneWidget);
+    expect(find.text('用户0845'), findsOneWidget);
 
     // 模拟退出登录：会话置空后本页必须立刻回到未登录形态，旧资料不得残留。
     sessionNotifier.switchTo(null);
     await tester.pumpAndSettle();
     expect(find.text('未登录'), findsOneWidget);
-    expect(find.text('用户0845 186****0845'), findsNothing);
+    expect(find.text('用户0845'), findsNothing);
     expect(find.text('退出登录'), findsNothing);
 
     // 换另一个账号登录：必须重新拉取并展示新账号资料。
     repository.profile = _profile('用户9999', phoneMask: '139****9999');
     sessionNotifier.switchTo(_session('u-2'));
     await tester.pumpAndSettle();
-    expect(find.text('用户9999 139****9999'), findsOneWidget);
-    expect(find.text('用户0845 186****0845'), findsNothing);
+    expect(find.text('用户9999'), findsOneWidget);
+    expect(find.text('用户0845'), findsNothing);
   });
 }

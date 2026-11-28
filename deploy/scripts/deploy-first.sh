@@ -167,6 +167,16 @@ else
     warn "  OSS 相关（OSS_ENDPOINT / OSS_ACCESS_KEY_ID / OSS_ACCESS_KEY_SECRET / OSS_BUCKET_NAME）"
     warn "  LLM 相关（LLM_API_KEY，Batch3 再用，可以先不管）"
   fi
+
+  # 2026-11-14 守卫：模板默认桶名/地域不是生产真实值，媒体直传会 NoSuchBucket 或 bucket acl 拒绝
+  oss_bucket="$(grep -oP '^OSS_BUCKET_NAME=\K.*' "${ENV_FILE}" 2>/dev/null || true)"
+  oss_endpoint="$(grep -oP '^OSS_ENDPOINT=\K.*' "${ENV_FILE}" 2>/dev/null || true)"
+  if [[ "${ENV_FILE}" == *".env.prod" && ( "${oss_bucket}" == "s2s-media" || "${oss_endpoint}" == *hangzhou* ) ]]; then
+    warn "OSS 仍是模板默认值（bucket=${oss_bucket}, endpoint=${oss_endpoint}）——媒体直传必然失败"
+    warn "  生产真实值：OSS_BUCKET_NAME=s2s-prod-bucket"
+    warn "              OSS_ENDPOINT=https://oss-cn-beijing.aliyuncs.com"
+    warn "  依据：部署操作手册 §4.3.1（2026-11-14 事故复盘）"
+  fi
 fi
 
 # ---- 未备案/无 HTTPS 模式 ---------------------------------------------------

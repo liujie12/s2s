@@ -1657,7 +1657,13 @@ paths:
       operationId: getMapPins
       x-batch: Batch1
       x-domain: map
+      security: []
       description: |
+        ### 游客可访问
+
+        本接口游客可访问（`security: []`），无 `Authorization` 头即游客态。
+        登录态仅用于读取「个性化排序」开关（`GET /settings`），游客按默认开启处理。
+
         ### 缓存键五要素（任一缺失回 `40001`）
 
         1. 分类 ID（`category_ids`）
@@ -1811,7 +1817,11 @@ paths:
       operationId: searchPosts
       x-batch: Batch1
       x-domain: map
+      security: []
       description: |
+        本接口游客可访问（`security: []`），无 `Authorization` 头即游客态；
+        与 `/map/pins` 同口径，登录态仅影响个性化排序。
+
         与 `/map/pins` 共用同一套筛选参数与 `category_version` 协商机制，
         差异仅在于返回**带完整卡片字段的分页列表**而非紧凑坐标数组。
 
@@ -3078,9 +3088,60 @@ paths:
       x-batch: Batch2
       x-domain: common
       security: []
-      description: 占位。Batch2 交付。Batch1 协议文本内置在客户端。
+      description: |
+        返回用户协议与隐私政策的**元信息（在线地址 + 版本号）**，不内嵌正文。
+
+        - 正文以自有域名 HTML 页面为准（上架手册 P6：备案与商店审核均要求独立 URL）：
+          `https://zhaoyazhaoapp.com/terms`、`https://zhaoyazhaoapp.com/privacy`
+        - `version` / `effective_at` 与官网页面 `doc-meta` 逐字一致；协议改版须同步
+        - 游客可访问（`security: []`），无 `Authorization` 头即游客态
       responses:
-        '200': { description: 占位，Batch2 交付 }
+        '200':
+          description: 协议与政策文本清单
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/LegalDocumentsResponse'
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /legal/{doc}:
+    get:
+      tags: [auth]
+      summary: 单份协议/政策文本（PRD §9 路径）
+      operationId: getLegalDocument
+      x-batch: Batch2
+      x-domain: common
+      security: []
+      description: |
+        PRD §9 口径的单文档路径，返回与 `/legal/documents` 中对应项一致的元信息。
+        正文仍以 `url` 指向的官网页面为准，接口不内嵌。
+      parameters:
+        - name: doc
+          in: path
+          required: true
+          description: agreement=用户协议；privacy=隐私政策
+          schema:
+            type: string
+            enum: [agreement, privacy]
+      responses:
+        '200':
+          description: 单份协议/政策元信息
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/LegalDocument'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '500': { $ref: '#/components/responses/InternalError' }
 
   /feedback:
     post:
@@ -5452,6 +5513,33 @@ components:
         cities:
           type: array
           items: { $ref: '#/components/schemas/CityItem' }
+
+    LegalDocumentsResponse:
+      type: object
+      description: 协议与政策文本清单（正文以在线 URL 为准，接口不内嵌）
+      required: [documents]
+      properties:
+        documents:
+          type: array
+          description: 固定顺序：用户协议、隐私政策
+          items: { $ref: '#/components/schemas/LegalDocument' }
+
+    LegalDocument:
+      type: object
+      required: [type, title, version, effective_at, url]
+      properties:
+        type:
+          type: string
+          enum: [agreement, privacy]
+          description: agreement=用户协议；privacy=隐私政策
+        title: { type: string, example: 用户协议 }
+        version: { type: string, example: v1.1.0 }
+        effective_at: { type: string, format: date, example: 2026-11-05 }
+        url:
+          type: string
+          format: uri
+          description: 自有域名 HTTPS 在线文本地址
+          example: https://zhaoyazhaoapp.com/terms
 
     Template:
       type: object

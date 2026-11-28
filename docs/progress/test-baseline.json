@@ -3,27 +3,30 @@
   "generated_at": "2026-11-09",
   "note": "整体测试证据账本：数字唯一来源。人工执行后由执行人追加，禁止手抄到其他文档。",
   "environment": {
-    "backend": "https://s2s.build110.com",
+    "backend": "https://api.zhaoyazhaoapp.com",
+    "legacy_backend": "https://s2s.build110.com（换机前旧部署，2026-11-14 仍可访问且与新域名不是同一套；待裁定是否下线，见 a16_sensitive_scan.reverify_20261114.observation）",
     "mode": "prod",
     "readonly_only": true,
     "docker_required": false
   },
   "frontend": {
     "command": "flutter test",
-    "passed": 1178,
+    "passed": 1219,
     "failed": 0,
     "skipped": 13,
-    "measured_at": "2026-11-09",
-    "skipped_reason": "两组真模式套件未注入 define 时整组跳过：只读契约 7 条 + 登录态契约 6 条"
+    "measured_at": "2026-11-14",
+    "skipped_reason": "两组真模式套件未注入 define 时整组跳过：只读契约 7 条 + 登录态契约 6 条",
+    "analyze": "flutter analyze → No issues found (2026-11-14 复跑)",
+    "evidence": "build/flutter-test-20261114b.log / build/flutter-analyze-20261114b.log"
   },
   "backend": {
     "command": "mvn test",
-    "tests": 754,
+    "tests": 779,
     "failures": 0,
     "errors": 0,
     "skipped": 0,
-    "measured_at": "2026-11-09",
-    "source": "target/surefire-reports/*.txt 汇总（107 个报告文件）"
+    "measured_at": "2026-11-15",
+    "source": "2026-11-15 08:32 全量复跑 BUILD SUCCESS（777 + DEF-12 新增 MapPostSqlGuardTest 2 例）；上一轮 775 见 build/mvn-test-20261114b.log"
   },
   "contract_real": {
     "command": "flutter test test/contract/readonly_contract_test.dart --dart-define=S2S_API_BASE_URL=https://s2s.build110.com",
@@ -129,6 +132,74 @@
       "本轮消耗了测试号短信发送计数（1 分钟轨 1 条 / 1 小时轨 5 条 / 1 日轨 10 条 / 同 IP 20 条），未产生业务数据；登录只写设备行。"
     ]
   },
+  "perf_baseline_server_rt": {
+    "executed_at": "2026-11-14 10:39–10:48 +08:00",
+    "environment": "prod / api.zhaoyazhaoapp.com；s2s-app 容器访问日志（JSON 行，含 path/code/rt_ms/ts）",
+    "command": "node tool/perf_readonly_baseline.mjs（PERF_ONLY=PT-01,PT-02,PT-03；PERF_CONCURRENCY=1,2,3；PERF_DURATION_SEC=60）→ 同窗口 docker logs --since 30m 落盘后解析服务端 rt_ms",
+    "judgement_rule": "PT-01~PT-03 判据 P95 ≤ NfrPerf.readApiRtP95Ms（150ms），取服务端 rt_ms（编码规范 §7），与客户端 TTFB 分开记",
+    "results": [
+      {
+        "id": "PT-01",
+        "endpoint": "GET /map/pins",
+        "server_rt_ms": { "count": 8051, "p50": 5, "p95": 9, "p99": 11, "max": 124 },
+        "client_ttfb_p95_ms": { "c1": 61.8, "c2": 59.4, "c3": 61.6 },
+        "verdict": "PASS（服务端 P95 9ms ≤ 150ms）"
+      },
+      {
+        "id": "PT-02",
+        "endpoint": "GET /posts/search",
+        "server_rt_ms": { "count": 8518, "p50": 2, "p95": 4, "p99": 6, "max": 47 },
+        "client_ttfb_p95_ms": { "c1": 58.3, "c2": 59.4, "c3": 57.6 },
+        "verdict": "PASS（服务端 P95 4ms ≤ 150ms）"
+      },
+      {
+        "id": "PT-03",
+        "endpoint": "GET /categories/tree",
+        "server_rt_ms": { "count": 8642, "p50": 0, "p95": 1, "p99": 2, "max": 8 },
+        "client_ttfb_p95_ms": { "c1": 63.6, "c2": 56.3, "c3": 55.7 },
+        "verdict": "PASS（服务端 P95 1ms ≤ 150ms；本地 Caffeine 缓存命中）"
+      }
+    ],
+    "evidence_files": [
+      "build/perf/readonly-baseline-2026-11-14T02-48-40-591Z.json（客户端 9 窗，全部 100% 成功、0 失败 0 超时）",
+      "build/it11/access-20261114.jsonl（docker logs --since 30m 副本，25335 行 JSON）",
+      "build/it11/rt_p95.py（分位脚本，按 path + ts 窗口过滤，最近秩法）"
+    ],
+    "boundary": "库内在架帖为 0（11-13 换机空库），未做 PT-01/PT-02 要求的 15 万行造数，故本轮为「空库轻载」口径；PT-04 需在架帖 post_id、PT-05 需 token + 会话，本轮未采样——两者正式判定仍缺数据前提",
+    "note": "本次补齐了 2026-11-09 基线留下的「正式 P95 判定仍待访问日志」缺口（仅 PT-01~03）；服务端 rt_ms 与客户端 TTFB 相差约 50ms，主要是公网 RTT 与出网链路开销"
+  },
+  "perf_baseline_server_rt_pt45": {
+    "executed_at": "2026-11-14 15:57–16:03 +08:00",
+    "environment": "prod / api.zhaoyazhaoapp.com；s2s-app 容器访问日志（JSON 行，含 path/code/rt_ms/ts）",
+    "command": "PERF_ONLY=PT-04,PT-05 PERF_POST_ID=7 PERF_CONVERSATION_ID=1 PERF_TEST_PHONE=<白名单测试号A> node tool/perf_readonly_baseline.mjs（c=1,2,3 × 60s）→ docker logs --since 45m 落盘后解析服务端 rt_ms",
+    "fixture": "测试号 A 发 [测试] 帖（post 7，类目 10302，active）；测试号 B 开会话（conversation 1）并回 1 条 [测试] 消息；采样后帖已下架（公开访问 410/41001）",
+    "judgement_rule": "P95 ≤ NfrPerf.readApiRtP95Ms（150ms），取服务端 rt_ms（编码规范 §7），与客户端 TTFB 分开记",
+    "results": [
+      {
+        "id": "PT-04",
+        "endpoint": "GET /posts/{post_id}",
+        "server_rt_ms": { "count": 9196, "p50": 1, "p95": 2, "p99": 4, "max": 11 },
+        "client_ttfb_p95_ms": { "c1": 65.6, "c2": 58.9, "c3": 56.0 },
+        "success_rate": 100,
+        "verdict": "PASS（服务端 P95 2ms ≤ 150ms）"
+      },
+      {
+        "id": "PT-05",
+        "endpoint": "GET /conversations/{id}/messages",
+        "server_rt_ms": { "count": 9183, "p50": 0, "p95": 0, "p99": 1, "max": 8 },
+        "client_ttfb_p95_ms": { "c1": 53.5, "c2": 62.3, "c3": 57.1 },
+        "success_rate": 100,
+        "verdict": "PASS（服务端 P95 0ms ≤ 150ms）"
+      }
+    ],
+    "caveat": "单实例口径：库内仅 1 个在架帖、1 个会话（1 条消息），未做 15 万行造数；消息列表取 page_size=30，样本量级远低于生产峰值",
+    "evidence": [
+      "build/perf/readonly-baseline-2026-11-14T08-03-03-504Z.json（客户端 6 窗，全部 100% 成功）",
+      "build/it11/access-pt45.jsonl（docker logs --since 45m，18583 行）"
+    ],
+    "residue": "post 7 已下架（status=archived / reason=用户下架），匿名详情 410/41001；软删（deleted_at）因测试号 A 短信 1 小时轨耗尽（5/5）暂未完成，待 17:00 后重试；conversation 1 双方 DELETE 已隐藏，消息行按设计保留用于取证",
+    "tool_change": "perf 工具新增 PERF_POST_ID 覆盖：详情样本原先只能由分类树首叶（10101 餐饮服务）推导，该类目需资质无法造帖，PT-04 因此长期缺样本"
+  },
   "device_perf_baseline": {
     "executed_at": "2026-11-09",
     "device": {
@@ -189,9 +260,33 @@
       "debug_apk_mb": 216.18,
       "note": "记录基线；增量告警口径未定"
     },
+    "pt12_pt16_longrun_20261114": {
+      "executed_at": "2026-11-14 16:27:30–16:58:21 +08:00（30 分钟；脚本原定 40 分钟，第 30 分钟后后台终端被回收，已覆盖 PT-16 的 30 分钟口径与 PT-12 的 10 分钟口径）",
+      "device": "Redmi 21091116C / Android 13 / 1080x2400",
+      "build": "release 1.0.0，APK SHA-256 ED88ACCF16A37766FC86BDA0DDE9BFB92166E3224FDCEBE3DA65A32A177BD9D0（16:20:47 重建，注入 S2S_API_BASE_URL=https://api.zhaoyazhaoapp.com + S2S_IS_RELEASE=true）",
+      "method": "build/it11/longrun_pt12_pt16.ps1：force-stop → logcat -c → 冷启动 → 连续随机拖动地图（约 0.65s 一次），每分钟采样 dumpsys meminfo 与前台焦点",
+      "samples": 30,
+      "pid": { "start": 30236, "distinct": 1, "note": "全程未变，无进程重启" },
+      "pss_kb": { "min": 174198, "max": 243855, "first10_avg": 232727, "last10_avg": 177032, "trend": "下降，无单调增长" },
+      "crash_anr": { "fatal_exception": 0, "anr": 0 },
+      "foreground": "30 个采样点 mCurrentFocus 全为 com.s2s.zhaoyazhao/MainActivity",
+      "verdict": "PT-12 PASS（10 分钟无内存增长；PSS 峰值 243.9MB 出现在冷启动后前 10 分钟）/ PT-16 PASS（30 分钟无崩溃、无 ANR、无前台漂移）",
+      "evidence": [
+        "build/manual-evidence/2026-11-14/t2-01/mem.csv",
+        "build/manual-evidence/2026-11-14/t2-01/longrun.log",
+        "build/manual-evidence/2026-11-14/t2-01/crash-anr.txt",
+        "build/manual-evidence/2026-11-14/t2-01/longrun-00.png / longrun-05.png / longrun-10.png / longrun-30-end.png"
+      ]
+    },
+    "a20_evidence_20261114": {
+      "executed_at": "2026-11-14 16:21:51–16:26:52 +08:00",
+      "manifest": "build/manual-evidence/2026-11-14/a20/manifest.json",
+      "steps_covered": "冷启动地图 / 筛选弹层 / L1 分类选择 / 全城+供需组合 / 搜索关键字 / Tab 切换，共 8 步截图 + UI dump",
+      "verdict": "PASS（核心路径）/ 详情段 NOT_REACHED",
+      "boundary": "样本帖在视野外，图层弹层未暴露 L3 分类与结果列表展开手势，adb 无法稳定构造「点 Pin → 详情」；详情段由 2026-11-09 真机手工用例与 ft 自动化覆盖",
+      "incident": "执行前实机上的 2026-11-13 17:44 release 包未注入 --dart-define，包内无 API 基址 → 全部请求未出网、首页「加载失败」；按正确 define 重建（16:20:47）后恢复，服务端访问日志 200"
+    },
     "not_covered": [
-      "T2-01 A-20 主路径 adb 编舞证据包（含 manifest）：未产出",
-      "PT-12 10 分钟长稳、PT-16 30 分钟长稳：未执行",
       "PT-09 冷缓存复测：当前 UI 无清本地 Pin 缓存入口，本轮为暖缓存口径"
     ]
   },
@@ -244,7 +339,264 @@
       "/legal/documents 线上 404；已按 Batch2 缺口登记（GAP-01），不计缺陷"
     ],
     "limitation": "试点期数据稀疏：10101 仅 1 条在架帖，样本面窄；联系方式主路径 /posts/{id}/contact 需登录，未覆盖",
-    "evidence": ["build/security/sensitive-scan-2026-11-09T23-01-37-202Z.json"]
+    "evidence": ["build/security/sensitive-scan-2026-11-09T23-01-37-202Z.json"],
+    "reverify_20261114": {
+      "command": "node tool/scan_sensitive_fields.mjs（SCAN_BASE_URL=https://api.zhaoyazhaoapp.com）",
+      "context": "GAP-02 修复（/map/pins、/posts/search 补 security: []）后复扫；基址改为新域名",
+      "contract_public_gets": 6,
+      "scanned": 11,
+      "flagged": 0,
+      "results": [
+        "GET /categories/tree → 200 code=0",
+        "GET /cities → 200 code=0",
+        "GET /posts/9001 → 410/41001（该帖已删，匿名详情不可取，符合预期）",
+        "GET /map/pins（缺参）→ 400/40001",
+        "GET /posts/search（缺参）→ 400/40001",
+        "GET /legal/documents → 200 code=0（GAP-01 修复在新域名生效）",
+        "GET /map/pins 全要素×2 → 200 code=0",
+        "GET /posts/search 全要素×3（含 keyword）→ 200 code=0"
+      ],
+      "verdict": "PASS：0 命中；契约公开 GET 由 4 增至 6，与实现一致",
+      "evidence": "build/security/sensitive-scan-2026-11-14T07-44-36-476Z.json",
+      "observation": "工具默认基址仍是旧域名 s2s.build110.com，该域名在 2026-11-14 仍指向换机前旧部署（/legal/documents 404、/posts/9001 200 有数据），与新域名不是同一套；本轮已用 SCAN_BASE_URL 指向新域名。旧域名是否停用待裁定，未登记缺陷"
+    }
+  },
+  "db_readonly_access": {
+    "opened_at": "2026-11-13",
+    "scope": "生产 MySQL（容器 s2s-mysql，库 s2s / s2s_track）",
+    "account": "s2s_ro@localhost（USAGE + SELECT only）",
+    "credential_storage": "/root/.s2s_ro.pass（mode 600）；口令不入库、不入文档、不入日志",
+    "entrypoint": "ssh root@47.92.238.177 → /root/s2s-ro-query.sh（docker exec + mysql --batch）",
+    "network": "compose 未发布 3306 端口，只经 SSH + docker exec 访问，无公网 DB 入口",
+    "write_denied_evidence": "DELETE FROM audit_log WHERE 1=0 → ERROR 1142 (42000) DELETE command denied",
+    "constraints": [
+      "只读：仅 SELECT；DDL/DML 一律拒绝",
+      "仅用于测试取证；不替代运维备份/变更流程"
+    ]
+  },
+  "it06_contact_audit": {
+    "executed_at": "2026-11-13",
+    "assertion": "CryptoFacade.decrypt 调用点 == 基线；审计写入同事务；回滚时一并回滚",
+    "trigger": "白名单测试号 A 发布 [测试] 帖（id=5，类目 10302 全职求职），测试号 B 调 GET /posts/5/contact → 200 code=0（remaining_today=29）",
+    "db_evidence": {
+      "audit_log": {
+        "id": 1,
+        "operator_id": 6,
+        "operator_role": "user",
+        "action": "contact.view",
+        "target_type": "post",
+        "target_id": 5,
+        "created_at": "2026-11-13 23:00:01"
+      },
+      "contact_event": {
+        "id": 1,
+        "post_id": 5,
+        "from_user_id": 6,
+        "to_user_id": 5,
+        "channel_type": "phone",
+        "created_at": "2026-11-13 23:00:01"
+      },
+      "post_after_cleanup": {
+        "id": 5,
+        "user_id": 5,
+        "status": "archived",
+        "version": 2,
+        "deleted_at": "2026-11-13 23:00:01"
+      }
+    },
+    "negative_check": {
+      "deleted_post_contact": "410 / 41001",
+      "missing_post_contact": "410 / 41001",
+      "audit_rows_before": 1,
+      "audit_rows_after": 1,
+      "contact_event_rows_before": 1,
+      "contact_event_rows_after": 1,
+      "conclusion": "失败路径不落审计与联系事件（无假留痕）"
+    },
+    "transaction_boundary": "生产只读通道不能注入 commit 后失败，故「同事务回滚」仍以单测为判据：ContactServiceTest#auditWriteFailurePropagates（审计写失败向上抛）+ viewContactAndAuditWriterTransactionContract（viewContact 带 @Transactional、AuditLogWriter 不带）；DB 侧证明真实解密成功时两表同秒各落 1 行、失败路径 0 增行",
+    "residue": [
+      "测试账号 user 5（A）/ user 6（B）与 device 行保留：无账号删除接口，未做破坏性清理",
+      "post 5 已下架并软删（deleted_at 非空），无在架测试帖",
+      "短信限频计数已消耗：phone#2 3/10、phone#3 2/10（1 日轨），IP 5/20（1 小时轨）"
+    ]
+  },
+  "wechat_login_bind": {
+    "executed_at": "2026-11-13",
+    "environment": "prod / release 1.0.0 / Redmi 21091116C",
+    "cases": [
+      "登录态绑定：设置页「微信 未绑定」→ 微信授权 → POST /auth/wechat/bind 200（user_id=1，rt 518ms）→ 设置页显示「已绑定」",
+      "登录：pm clear → 微信登录 POST /auth/wechat/login 200（rt 375ms）→ 按 unionid 命中同一账号",
+      "库侧：user 仍 2 行；user 1 的 user_identity = phone + wechat 各 1 行；wechat 全库 1 行"
+    ],
+    "verdict": "PASS",
+    "evidence": "《说明文档》2026-11-13 微信开放平台条；build/verify-wx-*.png"
+  },
+  "it11_post_expire": {
+    "executed_at": "2026-11-14",
+    "environment": "prod / PostExpireTask（cron 0 */10 * * * *）",
+    "case": "到期帖自动下架",
+    "preconditions": "测试号 user 5 经 API 发帖 id 6（validity=7d，expire_at=2026-11-21T09:34:18Z）；用业务库 root 将 expire_at 改为 2026-11-14 09:33:41（已过期）",
+    "result": "09:40:00 cron 执行后：status active→archived、status_reason=1、status_changed_at=2026-11-14 09:40:00，与调度表达式对齐",
+    "verdict": "PASS",
+    "residue": "测试帖 id 6 已软删（deleted_at=2026-11-14 09:40:45），在架帖 0",
+    "note": "IT-11 其余任务未验：MediaOrphan 需 pending 超过 24h（当前 media 5/6 未到期）；日级清理需 TTL 数据；TempCategoryExpire 需管理端造数"
+  },
+  "it11_media_orphan": {
+    "executed_at": "2026-11-14",
+    "environment": "prod / MediaOrphanCleanupTask（cron 0 15 * * * *）",
+    "case": "超时未 commit 的孤儿媒体清理",
+    "preconditions": "post_media 中 5 条 pending（id 1/2/3/4/6，post_id=NULL、无 OSS 对象）的 created_at 调到 25 小时前；另留 1 条 pass（id 5）作对照",
+    "result": "10:15:00 cron 后：5 条 pending 全部删除；pass 的 id 5 保留（任务 SQL 只选 audit_status='pending' 且 post_id IS NULL）",
+    "verdict": "PASS",
+    "residue": "对照行 id 5（pass、无帖子引用）不属本任务口径，已手工清理：DB 行删除 + display 对象 OSS DELETE 204 / 复验 HEAD 404",
+    "note": "IT-11 剩余：日级清理（AuditLog/Favorite/PostView/ContactEvent/Deactivate）需 TTL 数据并等 03:xx；TempCategoryExpire 需管理端造数"
+  },
+  "it11_audit_log_ttl": {
+    "prepared_at": "2026-11-14 10:18 +08:00",
+    "environment": "prod / AuditLogCleanupTask（cron 0 30 4 * * *；保留 180 天）",
+    "data": "audit_log 插入 action='it11.audit.ttl.probe'：id 2/3/4 target_id 9001/9002/9003 的 created_at=181 天前（应删）；id 5 target_id 9004=179 天前（对照应留）；id 6 target_id 9005=当天（对照应留）；表内共 6 行",
+    "precheck": "SELECT COUNT(*) WHERE action='it11.audit.ttl.probe' AND created_at < NOW()-INTERVAL 180 DAY → 3（id 2/3/4），与预期一致",
+    "precheck_20261114_reverify": "2026-11-14 15:47 +08:00 只读复核（s2s_ro）：id 2/3/4 created_at=2026-05-17、id 5=2026-05-19、id 6=2026-11-14，6 行全在，无提前清理",
+    "status": "pending_window",
+    "expected": "2026-11-15 04:30 后：target_id 9001/9002/9003 被删除；9004/9005 保留（prod 日志档位为 WARN，任务 INFO 不落盘，不以日志缺失判失败）",
+    "verification_pending": "04:30 窗口后查询 action='it11.audit.ttl.probe'，剩余 target_id 应为 9004/9005；核对后清理对照行。**取证口径（2026-11-14 已核）**：prod 配置 `logging.level.root=WARN` + `com.s2s=WARN`、仅 `ACCESS=INFO` 放行（容器内 /opt/s2s/config/application-prod.yml:29-39），故任务 INFO 按设计不落盘；断言以库侧状态为判据，WARN/ERROR 路径仍可见"
+  },
+  "it11_temp_category_expire": {
+    "executed_at": "2026-11-14 10:34:45 +08:00",
+    "environment": "prod / TempCategoryExpireTask（fixedDelay 300s，扫描表达式取自 NfrTempCategory.EXPIRE_SCAN_INTERVAL_SECONDS）",
+    "case": "72h 临时类目到期结算",
+    "preconditions": "category 990001/990002（level=3, parent=501）+ temp_category 同 ID：990001 status=active、expire_at=NOW()-1h（到期）；990002 status=active、expire_at=NOW()+1d（对照）",
+    "result": "10:34:45 扫描（容器 09:59:36 启动 + 300s 周期）：990001 status active→expired、closed_at=2026-11-14 10:34:45、category.forbidden 0→1；对照 990002 保持 active、forbidden=0",
+    "verdict": "PASS",
+    "side_effect": "结算经 CategoryService.updateCategory → bumpTreeVersion：/categories/tree 版本 2026-11-11.1 → 2026-11-14.1（PRD §9.10.1 ① 口径，客户端下次协商即拉新树），无数据影响",
+    "residue": "探针 temp_category / category 行已删除（复查均 0 行）；/categories/tree 复验 990001/990002 均不再出现（probe_in_tree=False）",
+    "boundary": "仅验证「未达标 → expired + 禁发」分支；promoted 分支（窗口内发布 ≥3 且被联系 ≥5）需真实造帖与联系事件，未执行"
+  },
+  "it11_daily_cleanup_probes": {
+    "prepared_at": "2026-11-14 10:32 +08:00",
+    "environment": "prod / 五个日级任务（Track 月表清理 03:20、ContactEvent 03:40、Favorite 04:40、PostView 04:50、Deactivate 05:00）",
+    "data": "① contact_event post_id 990001 created_at=31 天前（应删）/ 990002=29 天前（对照应留）；② favorite user_id 990001 deleted_at=31 天前（应删）/ 990002 deleted_at=29 天前（应留）/ 990003 deleted_at=NULL（应留）；③ post_view post_id 990001 view_day=今日-31（应删）/ 990002 view_day=今日-29（应留）；④ user id 8 nickname=IT11注销探针 deactivate_at=8 天前（应清空 phone_mask 等）/ id 9 IT11注销对照 deactivate_at=6 天前（应不动）；⑤ s2s_track 建 track_event_202607（整月早于 cutoff，应 DROP）与 track_event_202608（对照应保留）",
+    "precheck": "temp_due=1、contact 2 行、favorite 软删超期 1 行、post_view 超期 1 行、user 到期 1 行（id 8）；track 库原只有 202609/202611/202612，探针两表为新建",
+    "precheck_20261114_reverify": "2026-11-14 15:47 +08:00 只读复核（s2s_ro）：contact 990001/990002、favorite 990001-990003、post_view 990001/990002、user 8/9（phone_mask 仍为 it11-probe / it11-probe-ctrl，未被清空）、track 库 202607/202608/202609/202611/202612 五表齐，探针无提前清理",
+    "status": "verified_pass",
+    "expected": "2026-11-15 窗口后：03:20 DROP track_event_202607、保留 202608；03:40 删 contact_event 990001、留 990002；04:40 物删 favorite 990001、留 990002/990003；04:50 删 post_view 990001、留 990002；05:00 用户 8 phone_mask 置空串、用户 9 不变",
+    "verification_pending": "已完成（2026-11-15 07:19 +08:00）；见 window_results",
+    "window_results": {
+      "checked_at": "2026-11-15 07:19 +08:00",
+      "environment": "prod / 47.92.238.177 / docker exec s2s-mysql（root 只执行核对 SELECT 与 probe_cleanup.sql）",
+      "evidence": "build/it11/it11-window-20261115.log",
+      "items": [
+        { "case": "① s2s_track 月表清理（03:20）", "expected": "仅剩 track_event_202608（202607 已 DROP）", "actual": "information_schema 仅返回 track_event_202608", "verdict": "PASS" },
+        { "case": "② contact_event（03:40）", "expected": "仅剩 990002", "actual": "仅 990002（created_at=2026-10-16 10:31:55）", "verdict": "PASS" },
+        { "case": "③ audit_log TTL（04:30）", "expected": "仅剩 target 9004/9005", "actual": "仅 9004（2026-05-19 10:18:38）、9005（2026-11-14 10:18:38）", "verdict": "PASS" },
+        { "case": "④ favorite（04:40）", "expected": "仅剩 990002/990003，990001 物删", "actual": "990002（deleted_at=2026-10-16 10:31:55）、990003（deleted_at=NULL），990001 无行", "verdict": "PASS" },
+        { "case": "⑤ post_view（04:50）", "expected": "仅剩 990002", "actual": "仅 990002（view_day=2026-10-16）", "verdict": "PASS" },
+        { "case": "⑥ 注销脱敏（05:00）", "expected": "user 8 phone_mask 清空、user 9 不变", "actual": "user 8 phone_mask 为空串（-B 模式 NULL 会显示为 NULL，故为任务写入的空串）；user 9 仍为 it11-probe-ctrl", "verdict": "PASS" }
+      ],
+      "cleanup": "6/6 PASS 后执行 build/it11/probe_cleanup.sql：contact_event -1、audit_log -2、favorite -2、post_view -1、temp_category/category 0（11-14 已清）、user(8,9) -2、DROP s2s_track.track_event_202608；复查 8 类残留均为 0",
+      "residue": "contact_event / audit_log(it11.audit.ttl.probe) / favorite / post_view / user(8,9) / category / temp_category / track 探针表 复查全部 0 行"
+    },
+    "recheck_20261116": "2026-11-16 06:12 +08:00 复跑 it11_verify_20261115.sql（只读）：6 组 SELECT 全 0 行 —— information_schema 无 track_event_202607/202608，contact_event / audit_log(it11.audit.ttl.probe) / favorite / post_view 探针及 user 8/9 均 0 行；探针已于 2026-11-15 判定 6/6 PASS 后清理，本轮无复验对象，未重复执行 probe_cleanup.sql。证据 build/it11/it11-window-20261116.log",
+    "recheck_20261117": "2026-11-17 06:29 +08:00 复跑 it11_verify_20261115.sql（只读）：6 组 SELECT 全 0 行 —— information_schema 无 track_event_202607/202608，contact_event / audit_log(it11.audit.ttl.probe) / favorite / post_view 探针及 user 8/9 均 0 行（补充只读取证：连接 2026-11-17 06:29:37 root@localhost、s2s_track 仅 flyway_schema_history/track_event_202609/202611/202612/fallback、五类探针计数 0）；探针已于 2026-11-15 判定 6/6 PASS 后清理，本轮同样无复验对象，未重复执行 probe_cleanup.sql，判定口径为 N/A（不伪造 PASS/FAIL）。证据 build/it11/it11-window-20261117.log",
+    "recheck_20261119": "2026-11-19 06:58 +08:00 复跑 it11_verify_20261115.sql（只读）：6 组 SELECT 全 0 行 —— information_schema 无 track_event_202607/202608（s2s_track 仅 flyway_schema_history / track_event_202609 / 202611 / 202612 / fallback），contact_event / audit_log(it11.audit.ttl.probe) / favorite / post_view / user 8-9 / category / temp_category 探针计数均为 0（连接 2026-11-19 06:58:23 root@localhost、库 s2s，已核连接有效）。探针已于 2026-11-15 判定 6/6 PASS 后清理，本轮无复验对象，未重复执行 probe_cleanup.sql，判定口径为 N/A（不伪造 PASS/FAIL）。证据 build/it11/it11-window-20261119.log",
+    "recheck_20261121": "2026-11-21 08:56 +08:00 复跑 it11_verify_20261115.sql（只读）：6 组 SELECT 全 0 行 —— information_schema 无 track_event_202607/202608（s2s_track 仅 flyway_schema_history / track_event_202609 / 202611 / 202612 / fallback），contact_event / audit_log(it11.audit.ttl.probe) / favorite / post_view / user 8-9 / category / temp_category 探针计数均为 0（连接 2026-11-21 08:56:39 root@localhost、库 s2s，已核连接有效）。探针已于 2026-11-15 判定 6/6 PASS 后清理，本轮无复验对象，未重复执行 probe_cleanup.sql，判定口径为 N/A（不伪造 PASS/FAIL）。证据 build/it11/it11-window-20261121.log",
+    "recheck_20261122": "2026-11-22 11:50 +08:00 复跑 it11_verify_20261115.sql（只读）：6 组 SELECT 全 0 行 —— information_schema 无 track_event_202607/202608（s2s_track 仅 flyway_schema_history / track_event_202609 / 202611 / 202612 / fallback），contact_event / audit_log(it11.audit.ttl.probe) / favorite / post_view / user 8-9 / category / temp_category 探针计数均为 0（连接 2026-11-22 11:50:52 root@localhost@e8c7426338ab、库 s2s，已核连接有效）。探针已于 2026-11-15 判定 6/6 PASS 后清理，本轮无复验对象，未重复执行 probe_cleanup.sql，判定口径为 N/A（不伪造 PASS/FAIL）。证据 build/it11/it11-window-20261122.log",
+    "recheck_20261123": "2026-11-23 06:29 +08:00 复跑 it11_verify_20261115.sql（只读）：6 组 SELECT 全 0 行 —— information_schema 无 track_event_202607/202608（s2s_track 仅 flyway_schema_history / track_event_202609 / 202611 / 202612 / fallback），contact_event / audit_log(it11.audit.ttl.probe) / favorite / post_view / user 8-9 / category / temp_category 探针计数均为 0（连接 2026-11-23 06:29:29 root@localhost@e8c7426338ab、库 s2s，已核连接有效）。六项判定均为 N/A（探针已于 2026-11-15 判定 6/6 PASS 后清理，本轮无复验对象），未重复执行 probe_cleanup.sql，不伪造 PASS/FAIL。证据 build/it11/it11-window-20261123.log",
+    "recheck_20261124": "2026-11-24 06:38 +08:00 复跑 it11_verify_20261115.sql（只读）：6 组 SELECT 全 0 行 —— information_schema 无 track_event_202607/202608（s2s_track 仅 flyway_schema_history / track_event_202609 / 202611 / 202612 / fallback），contact_event / audit_log(it11.audit.ttl.probe) / favorite / post_view / user 8-9 / category / temp_category 探针计数均为 0（连接 2026-11-24 06:38:46 root@localhost@e8c7426338ab、库 s2s，已核连接有效）。六项判定均为 N/A（探针已于 2026-11-15 判定 6/6 PASS 后清理，本轮无复验对象），未重复执行 probe_cleanup.sql（user 8/9 nickname 前置核对亦无对象），不伪造 PASS/FAIL。证据 build/it11/it11-window-20261124.log",
+    "recheck_20261125": "2026-11-25 06:35 +08:00 复跑 it11_verify_20261115.sql（只读）：6 组 SELECT 全 0 行 —— information_schema 无 track_event_202607/202608（s2s_track 仅 flyway_schema_history / track_event_202609 / 202611 / 202612 / fallback），contact_event / audit_log(it11.audit.ttl.probe) / favorite / post_view / user 8-9 / category / temp_category 探针计数均为 0（连接 2026-11-25 06:35:10 root@localhost@e8c7426338ab、库 s2s，已核连接有效）。六项判定均为 N/A（探针已于 2026-11-15 判定 6/6 PASS 后清理，本轮无复验对象），未重复执行 probe_cleanup.sql（user 8/9 nickname 前置核对亦无对象），不伪造 PASS/FAIL。证据 build/it11/it11-window-20261125.log",
+    "recheck_20261126": "2026-11-26 06:11 +08:00 复跑 it11_verify_20261115.sql（只读）：6 组 SELECT 全 0 行 —— information_schema 无 track_event_202607/202608（s2s_track 仅 flyway_schema_history / track_event_202609 / 202611 / 202612 / fallback），contact_event / audit_log(it11.audit.ttl.probe) / favorite / post_view / user 8-9 / category / temp_category 探针计数均为 0（连接 2026-11-26 06:11:48 root@localhost、库 s2s，已核连接有效）。六项判定均为 N/A（探针已于 2026-11-15 判定 6/6 PASS 后清理，本轮无复验对象），未重复执行 probe_cleanup.sql（user 8/9 nickname 前置核对亦无对象），不伪造 PASS/FAIL。证据 build/it11/it11-window-20261126.log",
+    "recheck_20261127": "2026-11-27 06:12 +08:00 复跑 it11_verify_20261115.sql（只读）：6 组 SELECT 全 0 行 —— information_schema 无 track_event_202607/202608（s2s_track 仅 flyway_schema_history / track_event_202609 / 202611 / 202612 / fallback），contact_event / audit_log(it11.audit.ttl.probe) / favorite / post_view / user 8-9 / category / temp_category 探针计数均为 0（连接 2026-11-27 06:12:46 root@localhost@e8c7426338ab、库 s2s，已核连接有效）。六项判定均为 N/A（探针已于 2026-11-15 判定 6/6 PASS 后清理，本轮无复验对象），未重复执行 probe_cleanup.sql（user 8/9 nickname 前置核对亦无对象），不伪造 PASS/FAIL。证据 build/it11/it11-window-20261127.log",
+    "recheck_20261128": "2026-11-28 07:22 +08:00 复跑 it11_verify_20261115.sql（只读）：6 组 SELECT 全 0 行 —— information_schema 无 track_event_202607/202608（s2s_track 仅 flyway_schema_history / track_event_202609 / 202611 / 202612 / fallback），contact_event / audit_log(it11.audit.ttl.probe) / favorite / post_view / user 8-9 / category / temp_category 探针计数均为 0（连接 2026-11-28 07:22:26 root@localhost@e8c7426338ab、库 s2s，已核连接有效）。六项判定均为 N/A（探针已于 2026-11-15 判定 6/6 PASS 后清理，本轮无复验对象），未重复执行 probe_cleanup.sql（user 8/9 nickname 前置核对亦无对象），不伪造 PASS/FAIL。证据 build/it11/it11-window-20261128.log",
+    "note": "**取证口径已核（2026-11-14）**：prod `logging.level.root=WARN` + `com.s2s=WARN`、仅 `ACCESS=INFO` 放行（容器内 /opt/s2s/config/application-prod.yml:29-39，`SPRING_PROFILES_ACTIVE=prod`）；实测 docker logs 共 25452 条 INFO（全部 logger=ACCESS）+ 2 条 Flyway WARN，文件日志同口径（27912 INFO 全 ACCESS / 13 WARN / 4 ERROR，logger 含 com.s2s 的行 0 条）⇒ 任务 INFO 按设计不落盘，属配置而非故障。另 `/actuator/loggers` 返回 404（`management.endpoints.web.exposure.include: health`），故 prod 注释里「用 Actuator 动态调级别」在现配置下不可直接使用，需临时改配置。探针均使用 99xxxx 编号与不存在的外键值，无 FK 约束、不影响线上列表"
+  },
+  "it13_track_ingest": {
+    "executed_at": "2026-11-13",
+    "environment": "prod / api.zhaoyazhaoapp.com / s2s_track",
+    "account": "白名单测试号（user 6，token 仅内存）",
+    "preconditions": "初始仅 track_event_202609 / track_event_fallback；track_event_202611 不存在",
+    "results": [
+      {
+        "case": "当月批次落库（热修前）",
+        "expected": "写入 track_event_202611",
+        "actual": "WARN 1146 table=track_event_202611，降级写 fallback；fallback 2 行",
+        "verdict": "FAIL → DEF-04"
+      },
+      {
+        "case": "重传去重（热修前/兜底表）",
+        "expected": "净新增 0",
+        "actual": "accepted=2，fallback 由 2 行变 4 行（重复 2 行）",
+        "verdict": "FAIL → DEF-05"
+      },
+      {
+        "case": "当月批次落库（热修后）",
+        "expected": "写入 track_event_202611",
+        "actual": "202611 共 3 行（首批 2 + dropped 批次 1），fallback 0 行",
+        "verdict": "PASS"
+      },
+      {
+        "case": "重传去重（热修后/月表）",
+        "expected": "净新增 0",
+        "actual": "accepted 仍报 2 / 1，但 202611 与 202609 行数均未增加（月表唯一索引生效）",
+        "verdict": "数据 PASS / 计数 FAIL → DEF-06"
+      },
+      {
+        "case": "月表归属",
+        "expected": "ts=2026-09-30T12:00:00.123Z → track_event_202609，ts 取客户端",
+        "actual": "202609 落 1 行，ts=2026-09-30 12:00:00.123（UTC）",
+        "verdict": "PASS"
+      },
+      {
+        "case": "dropped_count",
+        "expected": ">0 记结构化 WARN",
+        "actual": "WARN 埋点上报存在客户端丢弃：userId=6, droppedCount=2, batchSize=1",
+        "verdict": "PASS"
+      },
+      {
+        "case": "批次上限",
+        "expected": "51 条 → 42906 + Retry-After",
+        "actual": "429 / 42906 / Retry-After=60",
+        "verdict": "PASS"
+      }
+    ],
+    "hotfix": {
+      "at": "2026-11-13 23:08 +08:00",
+      "action": "CREATE TABLE track_event_202611 LIKE track_event_202609",
+      "index_check": "uk_event_dedup(interaction_id,event_name,user_id,ts) 与 idx_event_ts / idx_user_ts 均已复制",
+      "code_gap": "预建任务仅每月 25 日执行且以当月表为模板，新部署跨月时当月表缺失（见 DEF-04）"
+    },
+    "residue": "测试行已清理：track_event_202611 / track_event_202609 / track_event_fallback 均 0 行"
+  },
+  "t302_oss_real": {
+    "executed_at": "2026-11-14",
+    "environment": "prod / s2s-prod-bucket / oss-cn-beijing.aliyuncs.com",
+    "root_cause_of_initial_block": "换机重建的 .env.prod 写成模板默认 Hangzhou/s2s-media（桶不存在，NoSuchBucket）；先改为 Beijing/s2s-bucket，但该名被其他账号占用（bucket acl 拒绝）；最终按 OSS 控制台实际桶名改为 s2s-prod-bucket。RAM 用户 s2s 自 2026-10-29 已有 AliyunOSSFullAccess，权限范围不是瓶颈。",
+    "results": [
+      { "case": "上传", "expected": "ticket 200 → PUT 200", "actual": "media 5：ticket 200、PUT 200", "verdict": "PASS" },
+      { "case": "commit", "expected": "200 / audit=pass + 签名 URL", "actual": "200 / code=0 / audit_status=pass / has_url=true", "verdict": "PASS" },
+      { "case": "访问", "expected": "签名 GET 200", "actual": "200 / image/jpeg / 288 B（1x1 PNG 经 OSS 处理链转 JPG）", "verdict": "PASS" },
+      { "case": "删除原图", "expected": "原对象不可访问、display 对象可访问", "actual": "HEAD 原键 → 404；HEAD display/<key>.jpg → 200", "verdict": "PASS" },
+      { "case": "越权", "expected": "他人 media 不可 commit", "actual": "user 1 对 user 5 的 media 5 commit → 400 / 40001", "verdict": "PASS" },
+      { "case": "票据过期", "expected": "超过 15 分钟 PUT 拒绝", "actual": "ticket 过期时间 01:25:59Z，16 分钟后 PUT → 403 AccessDenied", "verdict": "PASS" }
+    ],
+    "bucket_facts": "s2s-prod-bucket 位于华北2（北京）、标准存储、同城冗余、已开启版本控制；删除原图会留下 delete marker（当前对象 HEAD 404，历史版本仍占少量空间）",
+    "residue": "post_media 5（pass，display 对象保留）与 6（pending，无对象）由 MediaOrphanCleanupTask 24h 清理",
+    "evidence": "临时探针脚本只输出状态码/错误码，不含 AK/SK 与手机号；HEAD 使用服务器本地 V1 签名，未外泄密钥"
+  },
+  "t3_04_skip_review": {
+    "executed_at": "2026-11-14",
+    "total_skipped": 13,
+    "readonly": {
+      "rerun_on": "https://api.zhaoyazhaoapp.com",
+      "passed": 6,
+      "env_skipped": 1,
+      "skip_case": "GET /posts/{post_id} 详情（正式环境该分类暂无在架帖子，契约无可取样对象）",
+      "exemption_until": "首条在架帖出现后复跑该条"
+    },
+    "authenticated": {
+      "evidence": "authenticated_flow 6/6（2026-11-09，见本账本 authenticated_flow）",
+      "note": "未在新域名重跑：IT-03 会创建测试帖、IT-04 会消耗短信配额；新域名鉴权与写路径已由 2026-11-13 真机四条路径覆盖"
+    },
+    "verdict": "13 SKIP 全部有结论：12 PASS + 1 环境豁免"
   },
   "reverse_checks": [
     {
@@ -410,6 +762,14 @@
           "build/manual-evidence/2026-11-09/t2-07/MC13-r3-profile.png"
         ],
         "observation": "进程被回收后重新启动，App 落在「丫圈」发现页而非发布页；草稿数据未丢，但需用户手动进发布页才触发恢复，回首页时无「草稿已恢复」提示。按用例「恢复草稿或给出明确提示」的字面口径属半个缺口，数据面无损失，暂记观察项不登记缺陷；若产品要求回收后直达发布页，需补路由恢复。"
+      },
+      {
+        "case": "MC-11",
+        "result": "PASS（回滚能力）/ 门禁 FAIL 1（G7：数据面端口对公网开放，DEF-11 P0）",
+        "detail": "2026-11-14 11:08–11:10 prod 演练：① 基线：镜像 s2s-app:20261114-095424、.env.prod APP_VERSION 同值、health healthy（启动 09:59:36）；② 快照替代见 deviation；③ 回滚到上一 tag 20261114-094608：compose 返回 0s、健康 13s、/legal/agreement 由 200 → 404（证明确实回退旧镜像）、/legal/documents 仍 200、/categories/tree code=0；④ 数据完整：flyway V38 success、category 152、user 6 / post 2 / favorite 3 / post_view 3 / contact_event 3（含 IT-11 探针，与演练前一致）；⑤ 恢复 095424：健康 13s、/legal/agreement 200、/legal/unknown 400；⑥ 演练窗口 5xx 0 条、手机号/Authorization 敏感正则 0 命中",
+        "deviation": "步骤 2「打系统盘快照」无云端 API 凭据，改为业务库 + 埋点库 mysqldump 逻辑快照（/root/backup/s2s-rollback-20261114-110840.sql 100728B、s2s_track-rollback-20261114-110840.sql 19254B，权限 600）；镜像级回滚不依赖系统盘快照",
+        "gate": "步骤 4 首次 `gate-check.sh prod`：PASS 8 / FAIL 2 / SKIP 3 / N/A 1（G11 台账 digest 过期 → DEF-08；G6 期望 301 实际 308 → DEF-09）。**同日闭环**：DEF-08/09 修复后复跑（带 SITE_DOMAIN + GATE_MANUAL_CONFIRMED=G5，并先实测 G5 快速失败、补跑 backup-mysql.sh 生成 G8 所需备份）→ **PASS 12 / FAIL 0 / SKIP 1（仅 G7 云安全组人工项）/ N/A 1，退出码 2**；G8 由 SKIP 转 PASS（/var/backups/s2s/prod 备份 600），同时发现 ossutil 未装、备份未上云（DEF-10）。**G7 补充实测（2026-11-14 11:25）→ 判 FAIL**：check-host.net 6 个外部节点 + 本机 Test-NetConnection 均显示 **3316/6389/7080/22 对公网开放**，安全组未做源 IP 白名单（DEF-11 P0），故门禁最终结论为 **FAIL 1（G7）**，与 G6/G11 的代码/台账修复无关",
+        "verdict_note": "回滚与恢复本身 PASS（13s ≪ 5 分钟）。门禁三项问题已分流：G11/G6 为判据与台账问题（DEF-08/09 已修复验证）；G7 经外部探活实测**不满足**（3316/6389/7080/22 对公网开放，DEF-11 P0，需在云控制台或改 compose 整改），rollback 演练结论不受其影响（演练全程经 443 域名访问）。**2026-11-15 放行**：用户裁定 DEF-11 暂不整改（后期自行处理安全组），G7 结论**不改判**为 PASS，仅按「已知偏离·风险接受」记档"
       }
     ]
   },
@@ -444,7 +804,71 @@
       "disposition": "Batch2 交付缺口，Batch1 不判缺陷（用户 2026-11-09 裁定）；不计入缺陷率",
       "impact": "不影响 App（协议文本内置）；仅影响官网协议页与后续 Batch2 动态协议能力",
       "trigger": "Batch2 启动或官网协议页上线前",
-      "owner": "backend"
+      "owner": "backend",
+      "status": "resolved",
+      "resolved_at": "2026-11-14",
+      "resolution": "新增 legal 域（LegalController / LegalService / LegalDocumentDto / LegalDocumentsResponse）：GET /legal/documents 返回两份文档元信息（type/title/version/effective_at/url），另按 PRD §9 提供 GET /legal/{doc}（agreement/privacy，未知类型 40001）；正文不下发、以自有域名在线页为准；openapi 占位改写为完整 schema（含两条路径）；新增 LegalServiceTest 6 例 + LegalControllerTest 2 例",
+      "verification": "2026-11-14 发版 s2s-app:20261114-095424 后：GET /legal/documents → 200/code=0（agreement v1.1.0 + privacy v1.0.0）；GET /legal/agreement 与 /legal/privacy → 200/code=0；GET /legal/unknown → 400/40001；两份在线 URL 均 200；后端全量 775/775、openapi 门禁 23/23",
+      "note": "PRD §9（/legal/{doc}）与 openapi（/legal/documents）两条路径均已提供，口径已统一"
+    },
+    {
+      "id": "GAP-02",
+      "title": "GET /map/pins 与 GET /posts/search 实际游客可访问，但契约未声明 security: []",
+      "opened_at": "2026-11-09",
+      "scope": "Batch1 契约（docs/api/openapi.yaml）",
+      "expected": "与 /categories/tree、/posts/{post_id} 同口径：匿名接口声明 security: []，并在 description 说明游客态",
+      "actual": "全局 security: bearerAuth 覆盖这两条 GET，未覆写为 security: []；后端 MapController 明示「两个接口均游客可访问」，线上无 token 返回 40001 参数错而非 40101",
+      "evidence": "build/security/sensitive-scan-2026-11-09T23-01-37-202Z.json；src/main/java/com/s2s/server/map/MapController.java#L17-L19",
+      "disposition": "契约缺声明，运行时行为正确；不计缺陷率",
+      "impact": "按契约生成的客户端/网关会误判这两条需鉴权；契约守门 23 项不覆盖 security 声明完整性，故长期未被发现",
+      "trigger": "契约变更或按契约生成客户端时",
+      "owner": "backend",
+      "status": "resolved",
+      "resolved_at": "2026-11-14",
+      "resolution": "openapi.yaml 两处 GET 增补 security: []，description 补「游客可访问、无 Authorization 头即游客态、登录态仅影响个性化排序」",
+      "verification": "flutter test test/gates/openapi_contract_gate_test.dart 23/23 通过；node tool/scan_sensitive_fields.mjs（新域名）契约公开 GET 4→6、11 个匿名响应体敏感命中 0；匿名缺参 /map/pins、/posts/search 均回 400/40001"
+    },
+    {
+      "id": "GAP-03",
+      "title": "/admin/certs 与 /admin/certs/{cert_id}/review 未写入 openapi",
+      "opened_at": "2026-11-14",
+      "scope": "契约（docs/api/openapi.yaml）",
+      "expected": "认证审核队列与审核接口应在契约中声明（PRD §9.10.1 第 ⑤ 页）",
+      "actual": "后端 AdminCertController 已实现 GET /admin/certs、POST /admin/certs/{cert_id}/review（实测 200/40001），openapi 23 条 /admin 路径中无这两条；控制台 UI 只能按 controller 接线",
+      "evidence": "src/main/java/com/s2s/server/admin/cert/AdminCertController.java；docs/api/openapi.yaml 无 /admin/certs 匹配；website/ops/app.js 顶部已注释 GAP-03",
+      "disposition": "契约缺口，运行时可用；不计缺陷率",
+      "impact": "按契约生成的客户端/网关看不到认证审核能力；接口变更缺少契约门禁保护",
+      "trigger": "契约变更或开放管理端对接时",
+      "owner": "backend",
+      "status": "open"
+    },
+    {
+      "id": "GAP-04",
+      "title": "举报处理接口无 reason 字段，PRD 要求下架/驳回强制填写理由",
+      "opened_at": "2026-11-14",
+      "scope": "后端（AdminReportHandleRequest）",
+      "expected": "PRD §9.10.1 审计留痕：『下架与驳回强制填写理由』；理由应随处理落库并写入 audit_log.reason",
+      "actual": "AdminReportHandleRequest 仅 {action}（false_report|offline），无 reason；控制台只能前端强制填写但请求不落库，属合规留痕缺口",
+      "evidence": "src/main/java/com/s2s/server/admin/report/dto/AdminReportHandleRequest.java；docs/PRD.md §9.10.1 审计留痕条",
+      "disposition": "功能/合规缺口，需后端补 reason 字段并在 audit_log 落 reason",
+      "impact": "举报下架缺少操作理由留痕，不满足 PRD 审计完整性验收项",
+      "trigger": "P10 安全评估/上架合规材料提交前",
+      "owner": "backend",
+      "status": "open"
+    },
+    {
+      "id": "GAP-05",
+      "title": "分类配置无 DELETE /admin/categories/{id}",
+      "opened_at": "2026-11-14",
+      "scope": "后端（AdminCategoryController）",
+      "expected": "PRD §9.10.1 第 ① 页要求分类配置 CRUD",
+      "actual": "只有 GET/POST/PUT；控制台以降级方案处理（PUT forbidden=1 禁用），界面已注明『后端未提供删除接口』",
+      "evidence": "src/main/java/com/s2s/server/admin/category/AdminCategoryController.java；website/ops/app.js [D1] 注释",
+      "disposition": "功能缺口，是否补删除需产品确认（分类删除会影响历史帖与模板引用）",
+      "impact": "无法真正删除错误分类，只能禁用",
+      "trigger": "运营商提出删除诉求或分类治理上线前",
+      "owner": "backend",
+      "status": "open"
     }
   ],
   "defects": [
@@ -493,19 +917,257 @@
       "fix": "暂缓根因核实：小米应用市场尚未上架，AppSecret 与包名/签名一致性无法在「未上架」状态下闭环（参见 P11 推送凭据清单：小米正式下发仍等上架）。2026-11-09 用户裁定：**暂不关闭通道**（接受 21301 WARN 噪声），先完成测试；测试完成后补小米上架。解封触发条件 = 小米应用市场上架完成 + 推送权限转正式；复核动作 = 重开/复核通道后发一条测试消息，确认无 21301 且通知栏到达",
       "status": "deferred",
       "defer_until": "小米应用市场上架后",
+      "recheck_20261115": "换机后（新 prod 47.92.238.177）现状已变：`.env.prod` 中 `XIAOMI_PUSH_ENABLED=false`、`XIAOMI_PUSH_APP_SECRET` 为空（len=0），`application.yml` 的 `${XIAOMI_PUSH_ENABLED:false}` 使发送器 bean 不装配 —— `docker logs s2s-app` 自 11-13 起 `XiaomiPushSender`/`21301` 命中均为 **0**，即「每次下发打 WARN」的噪声已消失，但**通知栏推送同时完全未启用**（仅站内兜底）。用空密钥直连 `POST https://api.xmpush.xiaomi.com/v3/message/regid` 复现 `code=21301 / Invalid application secret.`，证明只要 `enabled=true` 且密钥不对，缺陷行为会立即回归。**结论**：缺陷无法在本机闭环（根因在小米侧凭据/上架状态），保持 deferred 不改代码；`XIAOMI_PUSH_ENABLED=true` 与 AppSecret 必须同时注入，否则构造期即抛（已有 fail-fast 守卫）。**补充取证（同日）**：服务器 8 个 env 及备份中 `XIAOMI_PUSH_APP_SECRET` 全为空（含 `.bak-20261113*` / `.bak-def07*` / `.bak-def12`），旧机密钥未随换机迁移；客户端 `android/local.properties` 的 `mipush.appId`（19 位纯数字）与 `mipush.appKey`（13 位纯数字）均在且非占位 ⇒ **小米推送应用已创建**，仅缺服务端 AppSecret（可在小米开放平台同一应用下取回）。**口径更正（据 P11 §3.4 2026-10-22 实测）**：旧 ECS 曾注入 24 字符 AppSecret 且「密钥逐位核对与后台一致」，直连仍回 21301 ⇒ 当时判定根因是**推送服务未开通（小米硬性要求应用已上架）**，**不是密钥错误**；因此仅补回 AppSecret 不能消除 21301，必须先完成「应用上架 → 推送运营平台启用推送 + 通知类别审核（3–5 工作日）」",
+      "reopen_action": "① 应用在小米应用商店上架（硬性前置，当前未上架）→ 登录小米推送运营平台 http://admin.xmpush.xiaomi.com/（企业开发者账号，2026-10-21 已认证）→「启用推送」+ 申请通知类别（3–5 工作日）→「应用管理 → 应用信息」取 AppSecret（dev.mi.com/console/apps 是旧路径，2026-11-15 实测 404）；② 写入 `.env.prod`（600）并置 `XIAOMI_PUSH_ENABLED=true`；③ 先用 curl 直连 xmpush 预检鉴权码 ≠ 21301；④ 预检通过后重建 app 容器；⑤ 真机发一条测试消息，确认无 21301 且通知栏到达、点击可跳转；⑥ 账本改 fixed_verified",
       "owner": "backend + ops"
-    }
-  ],
-  "not_verified": [
-    {
-      "item": "IT-06 审计同事务 / IT-11 定时任务 / IT-13 埋点落库",
-      "reason": "正式环境无 DB 访问；只验接口可观察部分，DB 断言记 SKIP",
-      "exit_condition": "获得只读 DB 连接或运维提供查询结果后补跑"
     },
     {
-      "item": "IT-14 管理端接口",
-      "reason": "无管理员测试账号；/admin/login 走独立 RBAC，仓库与部署配置均无默认凭据",
-      "exit_condition": "提供 super_admin / auditor 测试账号后执行"
+      "id": "DEF-04",
+      "severity": "P1",
+      "title": "生产 track 当月月表缺失，当月埋点全部降级写兜底表",
+      "observed_at": "2026-11-13",
+      "environment": "prod / s2s_track",
+      "evidence": "SHOW TABLES 仅 track_event_202609 / track_event_fallback；POST /track/events 后 WARN「埋点月表不存在（1146），降级写兜底表：table=track_event_202611」；fallback 落 2 行",
+      "root_cause": "V1 只建固定首月 202609；TrackMonthTableTask 仅每月 25 日 03:00 预建下月，且以当月表为模板。新机 11-05/11-13 全新部署从未跑过 25 日任务，202610/202611 一直未建",
+      "impact": "当月埋点全部落兜底表；按月表取数的指标为空，且兜底表无去重索引（DEF-05）",
+      "fix": "2026-11-13 热修：CREATE TABLE track_event_202611 LIKE track_event_202609（已核 uk_event_dedup / idx_event_ts / idx_user_ts 全部复制）；2026-11-14 代码闭环：TrackMonthTableTask 增加启动（ApplicationReadyEvent）与每日 03:10 的 ensureMonthTables，确保「当月 + 下月」存在，结构模板取库内最新合法月表（不再假定当月表存在），prebuild 复用同一逻辑",
+      "status": "fixed_verified",
+      "code_gap": "已闭环（2026-11-14）：启动与每日兜底确保当月+下月，失败不阻塞启动；预建模板改为库内最新月表",
+      "verification": "2026-11-14 发版 s2s-app:20261114-080047 后，启动兜底自动建出此前不存在的 track_event_202612；SHOW INDEX 确认 uk_event_dedup / idx_event_ts / idx_user_ts 全部复制；后端全量 767/767 通过",
+      "owner": "backend + ops"
+    },
+    {
+      "id": "DEF-05",
+      "severity": "P1",
+      "title": "track_event_fallback 缺 uk_event_dedup，降级路径重传重复落库",
+      "observed_at": "2026-11-13",
+      "environment": "prod / s2s_track",
+      "evidence": "同批事件重传（新 Idempotency-Key）：accepted=2，fallback 行数 2→4；月表同样重传时行数不增",
+      "root_cause": "兜底表刻意不建 uk_event_dedup（数据库设计 §3.17：缓冲不是终点，去重应在搬入月表时由终点唯一索引完成）；但设计要求的「每分钟按 ts 搬运」任务在代码中未实现（TrackMonthTableTask 仅有预建/清理），fallback 成了终点，重传重复永久保留",
+      "impact": "一旦月表缺失触发降级，客户端「响应丢在回程→整批重传」会重复入账；且兜底行永远进不了月表与指标",
+      "fix": "已实现 TrackMonthTableTask#relayFallbackRows：每分钟按 ts 分月，INSERT ... SELECT ... ON DUPLICATE KEY UPDATE ${tableName}.id = ${tableName}.id 搬入月表后删除已搬行（限定目标表名，避免 INSERT...SELECT 下 id 歧义）；月表 1146 时保留行待下次（同进程同表 WARN 只打一次）。新增 TrackFallbackMapper + XML + 3 条单测；mvn test 763/763 通过",
+      "status": "fixed_verified",
+      "verification": "2026-11-14 生产复验（镜像 s2s-app:20261113-234910）：合成兜底行（ts=UTC_TIMESTAMP，目标 track_event_202611）10s 内完成搬运——fallback 0 行、月表 1 行，合成行已清理",
+      "owner": "backend"
+    },
+    {
+      "id": "DEF-06",
+      "severity": "P2",
+      "title": "/track/events 的 accepted 对重复行仍报 1，与实际净新增不符",
+      "observed_at": "2026-11-13",
+      "environment": "prod / s2s_track",
+      "evidence": "月表重传：accepted=1 两次，track_event_202609 行数仍 1；202611 重传 accepted=2，行数未增",
+      "root_cause": "Connector/J 默认 useAffectedRows=false（CLIENT_FOUND_ROWS），ON DUPLICATE KEY UPDATE id=id 对重复行返回 1；Mapper 注释假设重复返回 0",
+      "impact": "数据不丢不重；但契约「accepted=实际入库（去重后净新增）」失真，影响客户端队列判定与指标口径",
+      "fix": "已修：FlywayTrackConfig#trackDataSource 仅对埋点库 URL 追加 useAffectedRows=true（业务库不动，避免破坏乐观锁 0 行→40903 口径）；新增 FlywayTrackConfigTest 3 例；mvn test 763/763 通过",
+      "status": "fixed_verified",
+      "verification": "2026-11-14 生产复验（镜像 s2s-app:20261113-234910 / 测试号 user 5）：首次 accepted=1，同 interaction_id 重传 accepted=0；库侧 track_event_202611 仅 1 行，已清理",
+      "owner": "backend"
+    },
+    {
+      "id": "DEF-07",
+      "severity": "P3",
+      "title": "prod 配置注释宣称可用 Actuator 动态调日志级别，但 exposure 仅开 health（实测 404）",
+      "observed_at": "2026-11-14",
+      "environment": "prod / s2s-app 容器（SPRING_PROFILES_ACTIVE=prod，配置挂载 /mnt/s2s/deploy/config/app → /opt/s2s/config）",
+      "evidence": "deploy/config/app/application-prod.yml 原 32-34 行写「通过 Actuator 动态调整日志级别，不重启容器（POST /actuator/loggers/com.s2s）」；同文件 45-48 行 `management.endpoints.web.exposure.include: health`；容器内 `wget http://127.0.0.1:8080/actuator/loggers/com.s2s` 与 `/actuator/loggers/root` 均 HTTP 404",
+      "root_cause": "注释与 exposure 白名单分别维护、无一致性校验：actuator loggers 未在 include 内，端点不存在",
+      "impact": "排障时按注释操作必然失败；同时暴露「prod 日志档位 root/com.s2s=WARN，仅 ACCESS=INFO」这一事实——com.s2s 业务 INFO（定时任务正常路径）不落盘，验证需改取库侧终态或 WARN/ERROR 行",
+      "fix": "已修注释：application-prod.yml 日志段改为「提级需临时把 loggers 加入 exposure.include 并重启，再 POST /actuator/loggers/...」，并注明当前直接调用会 404 与 INFO 不落盘的副作用；未改暴露面（保持仅 health）",
+      "status": "fixed_verified",
+      "verification": "2026-11-14：python yaml.safe_load 校验通过（logging.level = root WARN / com.s2s WARN / ACCESS INFO 未变）；注释内容与容器内实测结果逐条对齐；未改动任何运行期参数，无需发版。**同步边界**：线上副本 /mnt/s2s 仍是提交 35f9ea9（2026-11-12）的旧注释，下次拉取/发版后一致；仅注释差异，不影响运行",
+      "owner": "devops"
+    },
+    {
+      "id": "DEF-08",
+      "severity": "P1",
+      "title": "gate-check G11 镜像基线 FAIL：mysql/redis 台账 digest 与实际运行镜像不一致，阻塞发版",
+      "observed_at": "2026-11-14",
+      "environment": "prod / 47.92.238.177 / deploy/images.lock（台账文件 mtime 2026-11-12，内容注释称 2026-10-07 首次填充，来自旧机经 docker.1panel.live 拉取的镜像）",
+      "evidence": "gate-check prod 输出 `[FAIL] mysql:8.4 digest 不一致 台账 sha256:6ea90827…3aeb242 / 实际 sha256:a81d0439…71b0902`、`redis:7.4-alpine 台账 sha256:858f009f…833b3499 / 实际 sha256:7f7d30b7…287fbe`；caddy:2.8-alpine 一致；`docker image inspect` 显示 mysql 镜像 created 2026-11-03（拉取源 docker.1ms.run）、redis created 2026-11-09；运行中 s2s-mysql / s2s-redis 的 imageId 等于上述实际 digest",
+      "root_cause": "11-13 换机全新部署，mysql/redis 镜像是从另一镜像站重新拉取（非旧机同一层），而 images.lock 未重灌；台账记录的是旧机镜像的 RepoDigests",
+      "impact": "门禁 G11 FAIL ⇒ 按 MC-11 步骤 4 规则阻塞发版；运行时功能不受影响，回滚仍可用本地镜像 tag（本次演练已验证）",
+      "fix": "已修：① 先做 digest 漂移预检（`docker pull` caddy/mysql/redis 前后 RepoDigests 不变，镜像站为透明代理）；② 在服务器执行 `bash deploy/scripts/image-baseline.sh --refresh`（5/5 OK，FAIL 0），台账回写 mysql → a81d0439…71b0902、redis → 7f7d30b7…287fbe、eclipse-temurin:21-jre-alpine → ac05c3c4…baf474（该 tag 上游有新构建，仅构建期镜像）；③ 新台账已拷回仓库 deploy/images.lock（3 行变更），原文件备份 /root/backup/images.lock.bak-20261114",
+      "status": "fixed_verified",
+      "verification": "2026-11-14 复跑 `gate-check.sh prod`：`[G11] PASS 镜像基线校验通过`，整轮 PASS 12 / FAIL 0 / SKIP 1（仅 G7 人工项）/ N/A 1；`docker images` 与实际运行容器 imageId 与台账一致",
+      "owner": "devops"
+    },
+    {
+      "id": "DEF-09",
+      "severity": "P2",
+      "title": "gate-check G6 判据期望 HTTP 301，Caddy 实际返回 308，门禁误判 FAIL",
+      "observed_at": "2026-11-14",
+      "environment": "prod / zhaoyazhaoapp.com / caddy:2.8-alpine（s2s-web）",
+      "evidence": "`SITE_DOMAIN=zhaoyazhaoapp.com gate-check.sh prod` 输出 `[G6] HTTP 301 跳转 [FAIL] HTTP 返回 308，期望 301`；不设 SITE_DOMAIN 时该项本为 SKIP（原门禁未判定）",
+      "root_cause": "Caddy 2.x 的自动 HTTPS 重定向默认用 308（Permanent Redirect，保留方法与请求体），门禁脚本按 301 硬编码判定",
+      "impact": "门禁 FAIL 阻塞发版；实际跳转行为正确（308 与 301 同为永久重定向，且 308 语义更严格），属判据与实现不匹配",
+      "fix": "已修：gate-check.sh G6 接受 301/308 并注明理由（DEF-09 出处）；《部署架构设计文档》§10 G6 判据行同步为「301 或 308」；脚本已同步到 /mnt/s2s/deploy/scripts/gate-check.sh",
+      "status": "fixed_verified",
+      "verification": "2026-11-14 复跑：`[G6] HTTP 永久重定向（301/308） [PASS] HTTP 返回 308`",
+      "owner": "devops"
+    },
+    {
+      "id": "DEF-10",
+      "severity": "P2",
+      "title": "prod 未安装 ossutil，每日备份只落本地，不满足「OSS 7 份 + 异地」保留要求",
+      "observed_at": "2026-11-14",
+      "environment": "prod / 47.92.238.177 / deploy/scripts/backup-mysql.sh",
+      "evidence": "`bash deploy/scripts/backup-mysql.sh prod` 输出：备份完成 `/var/backups/s2s/prod/s2s-prod-20261114-111517.sql.gz`（27KB、权限 600）→ `[3/4] 上传至 OSS：oss://s2s-prod-bucket/backup/` → `[WARN] 未安装 ossutil，跳过上传。备份仅存本地，不满足异地要求`；门禁 G8 仍 PASS（只查权限）",
+      "root_cause": "换机部署后未安装 ossutil，备份脚本的 OSS 上传分支被跳过；门禁 G8 只校验本地文件权限，不校验是否已上传",
+      "impact": "磁盘损坏/误删即失去唯一备份；与《部署架构设计文档》§8「mysqldump 日备 + OSS 7 份 + 本地 1 份」承诺不符；本地仅保留 1 份",
+      "fix": "待办：安装 ossutil 并配置 AK（建议 RAM 最小权限 + 桶 lifecycle 7 份），跑一次 backup-mysql.sh 验证上传成功；可选：G8 增加「最近一次上传时间」判据",
+      "verification_evidence": "2026-11-15 08:31 实测：安装 ossutil v1.7.19（/usr/bin/ossutil，/root/.ossutilconfig 权限 600，AK 取自 .env.prod 的 OSS_ACCESS_KEY_ID/SECRET）；`bash deploy/scripts/backup-mysql.sh prod` → `[3/4] 上传成功`，OSS `oss://s2s-prod-bucket/backup/s2s-prod-20261115-083158.sql.gz` 27,443B 与本地同 size，本地保留 1 份且 600；`ossutil stat` Content-Length 一致。桶 lifecycle 原为 NoSuchLifecycle → 已写 `backup-retain-7`（Prefix `backup/`、Expiration 7 天 + NoncurrentVersionExpiration 7 天；桶版本控制 Enabled）。**连带发现并一并修复**：crond 原完全未配置备份任务（`no crontab for root`）→ 已补 `30 3 * * * bash /mnt/s2s/deploy/scripts/backup-mysql.sh prod`（docker 位于 /usr/bin，满足 cron 默认 PATH）",
+      "verified_at": "2026-11-15",
+      "status": "fixed_verified",
+      "disposition": "G8 判据增强（最近上传时间）本轮不做，登记为可选优化；备份恢复演练仍按 MC-11 口径单独执行",
+      "owner": "devops"
+    },
+    {
+      "id": "DEF-11",
+      "severity": "P0",
+      "title": "prod 数据面端口 3316/6389/7080 与 22 对公网开放（G7 无源 IP 白名单）",
+      "observed_at": "2026-11-14 11:25 +08:00",
+      "environment": "prod / 47.92.238.177（元数据：instance i-8vbcso05a0pfyi1x5qa9 / cn-zhangjiakou-b / vpc-8vbp5034wbh9b7ctf8i1n）",
+      "evidence": "① 外部多节点探活 check-host.net（6 个互不相关节点）：3316 **open 6/6**、6389 **open 6/6**、7080 **open 6/6**、22 **open 6/6**、443 open 4/6（2 节点为路径阻断，非本机规则）；② 本机 `Test-NetConnection` 五端口全部 True；③ 该 ECS 不在当前 aliyun CLI 账号内（`DescribeInstances cn-zhangjiakou` Total=1 仅 launch-advisor-20261023），故**未能直接读取安全组规则文本**，G7 由「未判定」转为实测 FAIL",
+      "root_cause": "安全组入方向规则未按《部署架构设计文档》§5.2 收敛到源 IP 白名单；DEC-28 放开 3316/6389/7080 直连端口的前提（安全组源 IP 白名单）未落地",
+      "impact": "MySQL/Redis 直接暴露公网（有口令 + 业务库要求 TLS 客户端证书，Redis 仅口令），可被暴力破解/漏洞利用；7080 绕过 Caddy，缺少边缘访问日志与 HTTP→HTTPS 跳转；与 G7 判据「入方向仅 443/80/22 白名单」直接冲突",
+      "fix": "待办（需在云控制台或改 compose）：① 安全组入方向收紧为 443/80 + SSH 固定源 IP，3316/6389/7080 仅白名单或直接关闭；② 或改 compose 取消这三个 published 端口，数据面改走 SSH 隧道；③ 整改后用 check-host.net 与本机 Test-NetConnection 复测并重跑 gate-check（GATE_MANUAL_CONFIRMED=G7）",
+      "status": "deferred",
+      "defer_until": "用户自行在云控制台整改安全组（日期未定，2026-11-15 裁定放行）",
+      "disposition": "2026-11-15 用户裁定放行：暂不整改，按「已知偏离·风险接受」记档（放行 ≠ 合格）；整改前 G7 保持 FAIL/SKIP，不得以 GATE_MANUAL_CONFIRMED=G7 声明通过；发版时该项按已知偏离单独签字。整改后按 fix ③ 复验。**同日二次确认**：明确本轮不采用服务器防火墙或改 compose 绑 127.0.0.1 的替代整改，继续维持放行",
+      "owner": "devops（用户自行处理）"
+    },
+    {
+      "id": "DEF-12",
+      "severity": "P3",
+      "title": "/map/pins 与 /posts/search 的 SQL 未过滤 post.deleted_at（软删 + active 组合仍会被列出）",
+      "observed_at": "2026-11-14 21:56 +08:00",
+      "environment": "prod / api.zhaoyazhaoapp.com",
+      "evidence": "测试数据清理时先对 post 8 置 deleted_at（保持 status=active）→ GET /posts/8 回 410/41001，但 GET /posts/search（cat 10302）仍返回 id=8；src/main/resources/mapper/MapPostMapper.xml 四处查询只有 status/expire_at 条件，无 deleted_at IS NULL",
+      "root_cause": "MapPostMapper 的 pins/search SQL 假定「被删帖必为 archived」（API 删除接口要求先下架），故只按 status 过滤；DELETE /posts/{id} 契约也写「只置 deleted_at，原 status 不变」，两条假定在「active + deleted_at」组合下不一致",
+      "impact": "当前 API 路径不可达（删除接口强制先下架，删除后 status=archived 已被过滤）；仅 DB 直改或未来放宽删除条件时会暴露已删帖",
+      "fix": "待办：MapPostMapper 四处（pins 聚合 / clusters / search 主查 + 计数）补 `AND p.deleted_at IS NULL`，并补一条软删帖不出现在列表的集成断言",
+      "verification_evidence": "2026-11-15 修复：① MapPostMapper 四条语句补 `deleted_at IS NULL`（selectPins/countPins/selectClusters 用裸列，selectSearchPosts 用 `p.deleted_at`）；② 新增 V39__pins_deleted_index.sql 把 deleted_at 追加进 idx_pins_cover / idx_pins_community（紧随 price，避免覆盖索引退化为回表）；③ 新增 MapPostSqlGuardTest 2 例（四条语句均含软删过滤 + 两个索引均含 deleted_at），全量 `mvn -B -o test` **779/779**；④ 热修发版 `s2s-app:20261115-083414`（compose up --no-deps --wait，健康 UP），Flyway V39 success=1；⑤ 线上复核：`SHOW INDEX` 两索引第 7 列为 deleted_at、`EXPLAIN`（FORCE INDEX idx_pins_cover，含 deleted_at IS NULL）→ `type=range / key=idx_pins_cover / Extra=\"Using where; Using index\"`（index-only 未退化）；`/map/pins`、`/posts/search` 均 200 code=0。**边界**：库内无「active + deleted_at」组合样本，行为面由静态守门覆盖，未另造测试数据",
+      "verified_at": "2026-11-15",
+      "status": "fixed_verified",
+      "owner": "backend"
+    },
+    {
+      "id": "DEF-13",
+      "severity": "P1",
+      "title": "GET /admin/certs 认证审核队列 500：SQL 选择 cert 表不存在的 expire_at 列",
+      "observed_at": "2026-11-14 22:06 +08:00",
+      "environment": "prod / api.zhaoyazhaoapp.com（镜像 s2s-app:20261114-095424）",
+      "evidence": "super_admin/auditor 调 GET /admin/certs?status=pending&page=1&page_size=20 → 500/50001；服务端 ERROR 堆栈：BadSqlGrammarException…Unknown column 'expire_at' in 'field list'，SQL = `SELECT id,user_id,cert_type,status,submitted_at,approved_at,expire_at,reject_reason,ocr_image_ref,fail_count,lock_until FROM cert WHERE status=? ORDER BY submitted_at ASC,id ASC LIMIT ? OFFSET ?`（mapper/CertMapper.xml selectPageByStatus）；库侧 SHOW COLUMNS FROM cert 无 expire_at",
+      "root_cause": "CertMapper.xml 的 selectPageByStatus 多选了 expire_at（cert 表从未有该列），启动期未暴露，运行期到审核队列才触发",
+      "impact": "管理端认证审核队列完全不可用（500），认证无法通过后台审核；MC-08/IT-14 的认证审核正例只能绕过队列直调 review",
+      "fix": "已修（2026-11-14）：CertMapper.xml selectPageByStatus 移除 expire_at 列（该列由 V23__cert_drop_type_and_expire.sql 删除，mapper 未同步）；`mvn -B -o test` 777/777 通过；热修镜像 `s2s-app:20261114-221714` 已发版",
+      "status": "fixed_verified",
+      "verified_at": "2026-11-14 22:23 +08:00",
+      "verification_evidence": "发版后 auditor 登录 → GET /admin/certs?status=pending → **200/0（items=1，原 500/50001）**；随后审核该认证 200/0、证书置 approved",
+      "owner": "backend"
+    },
+    {
+      "id": "DEF-14",
+      "severity": "P2",
+      "title": "认证重复审核不拦截：非 pending 认证仍返回 200，并重复写 audit_log 与推通知",
+      "observed_at": "2026-11-14 22:06 +08:00",
+      "environment": "prod / POST /admin/certs/1/review",
+      "evidence": "首次 {approved:true} → 200 且 cert.status=approved；再次同请求 → 仍 200，audit_log 新增第二条 cert.approve（id 8/9 两条，operator_id=2/auditor），并再次 dispatch CERT 通知。对比举报处理：同工单重复处理回 400/40001",
+      "root_cause": "AdminCertService.review 未校验 cert.status 是否 pending；CertService.markReviewed 直接 UPDATE，无「0 行→拒绝」守卫",
+      "impact": "已审结认证可被反复审核，产生重复审计与重复通知；与 PRD §9.10.1「已处理不再处理」及举报口径不一致",
+      "fix": "已修（2026-11-14）：CertService.markReviewed 改为 UpdateWrapper 带 `id=? AND status='pending'`，0 行抛 40001（与举报重复处理同口径）；调用方因异常先于通知/审计，不会重复写。新增 2 条单测（审核通过仅更新 pending / 重复审核回 40001），`mvn -B -o test` 777/777 通过；热修镜像 `s2s-app:20261114-221714` 已发版",
+      "status": "fixed_verified",
+      "verified_at": "2026-11-14 22:23 +08:00",
+      "verification_evidence": "发版后：首次 review → 200/0；对同一已 approved 认证再次 review → **400/40001**；audit_log 仅新增 1 条（id 10），无重复审计、无重复通知",
+      "owner": "backend"
+    }
+  ],
+  "it14_admin_rbac": {
+    "executed_at": "2026-11-14 22:04–22:10 +08:00",
+    "environment": "prod / api.zhaoyazhaoapp.com；账号 it14_super（super_admin）/ it14_audit（auditor），测后已置 disabled（id 1/2）",
+    "fixtures": "report id=1（post 6，[测试]）、cert id=1（user 4，[测试]）；测后均已删除",
+    "results": [
+      { "case": "admin_login_super", "expected": "200/0", "actual": "200/0", "verdict": "PASS" },
+      { "case": "admin_login_wrong_pwd", "expected": "401", "actual": "401/40101", "verdict": "PASS" },
+      { "case": "admin_anonymous_rejected", "expected": "401", "actual": "401/40101", "verdict": "PASS" },
+      { "case": "admin_login_auditor", "expected": "200/0", "actual": "200/0", "verdict": "PASS" },
+      { "case": "rbac_auditor_denied_export", "expected": "403/40305", "actual": "403/40305", "verdict": "PASS" },
+      { "case": "audit_logs_list_super", "expected": "200/0", "actual": "200/0", "verdict": "PASS" },
+      { "case": "report_queue_has_fixture", "actual": "pending 队列 1 条（字段名为 report_id）", "verdict": "PASS（初版脚本按 id 断言属脚本缺陷，已改为 report_id）" },
+      { "case": "report_handle_false_report", "actual": "200/0；DB status=handled、handler_id=2、is_false_report=1", "verdict": "PASS" },
+      { "case": "report_handle_repeat_rejected", "actual": "400/40001", "verdict": "PASS" },
+      { "case": "cert_queue_list", "expected": "200", "actual": "500/50001（Unknown column 'expire_at'）", "verdict": "FAIL → DEF-13" },
+      { "case": "cert_review_approve", "actual": "200/0；DB status=approved", "verdict": "PASS（绕过队列直调）" },
+      { "case": "cert_review_repeat", "expected": "应拒（同举报口径）", "actual": "200/0，audit_log 重复写两条 cert.approve", "verdict": "FAIL → DEF-14" },
+      { "case": "temp_categories_list", "actual": "200/0", "verdict": "PASS" }
+    ],
+    "audit_evidence": "audit_log id 7 = report.handle/auditor/report#1；id 8/9 = cert.approve/auditor/cert#1（重复两条）",
+    "verdict": "13 条断言：11 PASS + 2 FAIL（DEF-13/14）；两项修复后复验转 PASS ⇒ 接口层 13/13",
+    "reverify_after_fix": {
+      "at": "2026-11-14 22:23 +08:00",
+      "image": "s2s-app:20261114-221714",
+      "results": [
+        { "case": "cert_queue_list", "actual": "200/0（items=1）", "verdict": "PASS（DEF-13 修复）" },
+        { "case": "cert_review_approve", "actual": "200/0，cert.status=approved", "verdict": "PASS" },
+        { "case": "cert_review_repeat", "actual": "400/40001，audit_log 仅新增 1 条", "verdict": "PASS（DEF-14 修复）" }
+      ],
+      "cleanup": "it14_audit 已置 disabled；复验用 cert id=2 已删除；口令文件已删除"
+    },
+    "residue": "两个测试管理员账号保留为 disabled；audit_log 7/8/9 按 180 天留存口径保留（不删审计）；夹具已删除",
+    "boundary": "MC-08 的 UI 部分不存在（仓库无后台前端页面，按用例记交付缺口）；MC-09（法务文案）与 MC-10（商店材料）属法务/行政，未执行"
+  },
+  "mc08_ui_console": {
+    "executed_at": "2026-11-14 22:30–22:55 +08:00",
+    "deliverable": "运营治理后台静态控制台（PRD §9.10.1 七页）",
+    "files": [
+      "website/ops/index.html",
+      "website/ops/app.js",
+      "website/ops/styles.css"
+    ],
+    "stack": "纯 HTML/CSS/vanilla JS，无构建链；sessionStorage 存后台 token；所有 DOM 经 el()/textContent 构造（0 处 innerHTML 赋值）",
+    "pages": {
+      "① 分类配置": "列表 152 条 + 新增/编辑；删除降级为禁用（GAP-05）",
+      "② 模板 Schema": "字段增删 + HTML5 drag&drop 排序 + 实时 JSON 预览，PUT 仅发 fields",
+      "③ 撮合权重": "weight_time/distance/completeness + GBDT + 灰度比例，和≠1 拒绝保存",
+      "④ 举报工单": "列表/详情/会话正文/单条处理/批量处理；风险分 ≥60 标红；理由前端强制（GAP-04，后端不落库）",
+      "⑤ 认证审核": "GET /admin/certs 队列 + 通过/驳回（GAP-03：接口不在 openapi）",
+      "⑥ 待运营跟进": "列表 3 条 + remark 处理",
+      "⑦ 开关与审计": "switches / message-switch；审计日志仅 super_admin 可见，导出二次确认 + Blob 下载"
+    },
+    "deployment": {
+      "url": "https://api.zhaoyazhaoapp.com/ops/",
+      "web_root": "/opt/s2s/website/ops（运行中容器的真实挂载点，不是 /mnt/s2s）",
+      "caddy": "/opt/s2s/caddy/Caddyfile 的 api 站点块内新增 root + handle /ops、/ops/*；备份 /root/backup/Caddyfile.bak-ops",
+      "why_ops_not_admin": "/admin/* 是后端 RBAC 接口前缀，静态 UI 同前缀会与反代冲突"
+    },
+    "verification": [
+      "GET /ops/ = 200、/ops/app.js = 200（92234B）、/ops/styles.css = 200（17490B）",
+      "build/ops/check_wiring.mjs：16 个 DOM id 全部被 app.js 引用（sidebar 为纯样式钩子）、7 条菜单路由齐全、10 个 /admin 端点齐全、innerHTML 赋值 0 处",
+      "super_admin 实测 9 个页面所需接口全部 code=0：categories 152 条、templates/10201、match-config、switches、reports、certs、follow-ups 3 条、audit-logs 5 条、message-switch",
+      "node --check website/ops/app.js 通过（2582 行）"
+    ],
+    "boundary": "浏览器端到端未完成：Playwright 与独立浏览器环境访问该域均 ERR_CONNECTION_RESET（同刻本机 curl 4/4 200、服务器 curl 200），属网络可达性问题；4 角色交叉验证只完成 super_admin 一档（菜单按角色隐藏已实现，auditor/operator/algo 未实测）",
+    "incident": "插入 Caddy 配置时首次使用了错误的锚点，导致 /opt/s2s/caddy/Caddyfile 语法错误、s2s-web 重启循环约 1 分钟；已用 /root/backup/Caddyfile.bak-ops 回滚并恢复 health 200，随后改用 python 精确插入、validate 通过再 reload",
+    "residue": "测试账号 it14_super / it14_audit 均已置 disabled；口令文件已删除；未产生业务数据"
+  },
+  "cleanup_20261114": {
+    "at": "2026-11-14 21:55–21:56 +08:00",
+    "reason": "两条 [测试] 帖（post 7 PT-04 样本 / post 8 A-20 样本）的 API 软删被短信验证码限频阻塞：测试号 A 触 1 日 10 条上限（42905），17:30 定时重试仍 429",
+    "method": "经 SSH + mysql root 以与 DELETE 接口同语义落库：post 7 原已 archived（reason 0）；post 8 补 status='archived'/status_reason=0 后置 deleted_at=NOW()",
+    "verification": "GET /posts/8 → 410/41001；GET /posts/search（cat 10302，全城）→ 0 条；库内 post 7/8 均 deleted_at 非空",
+    "byproduct": "由此发现 DEF-12（MapPostMapper 缺 deleted_at 过滤）"
+  },
+  "not_verified": [
+    {
+      "item": "IT-11 定时任务的其余项（过期下架 / 归档 / 孤儿清理等）",
+      "reason": "IT-13 已于 2026-11-13 执行并登记 DEF-04/05/06（见 it13_track_ingest）；IT-11 的月表预建缺口即 DEF-04（已修）；**PostExpireTask / MediaOrphanCleanupTask 已于 2026-11-14 实测 PASS**（见 it11_post_expire / it11_media_orphan）；**AuditLogCleanupTask 的 TTL 数据已造好（见 it11_audit_log_ttl），等 2026-11-15 04:30 窗口验证**；**TempCategoryExpireTask 已于 2026-11-14 实测 PASS**（见 it11_temp_category_expire，仅覆盖 expired 分支）；Favorite/PostView/ContactEvent/Deactivate 的 TTL 探针与 Track 月表清理探针已就位，等 2026-11-15 03:20/03:40/04:40/04:50/05:00 逐窗核对（见 it11_daily_cleanup_probes）",
+      "exit_condition": "按用例造数并在 cron 窗口后，用 s2s_ro 核对库侧终态（prod 档位 root/com.s2s=WARN + 仅 ACCESS=INFO，任务 INFO 不落盘，见 DEF-07；日志断言按库侧状态替代）"
+    },
+    {
+      "item": "IT-14 / MC-08 管理端（剩余部分）",
+      "reason": "2026-11-14 已用临时测试账号执行接口层 12 项（见 it14_admin_rbac），剩余未覆盖：① 认证审核队列被 DEF-13（GET /admin/certs 500）阻断；② 重复审核口径被 DEF-14 打破；③ MC-08 的 UI 部分仓库无后台前端页面，属交付缺口；④ MC-09（法务文案审阅）与 MC-10（商店材料）属法务/行政",
+      "exit_condition": "DEF-13/14 修复并发版后复跑认证队列与重复审核断言；MC-09 待法务、MC-10 待软著/备案/截图"
     },
     {
       "item": "MC-03 步骤 4（无发送器 WARN 只打一次）",
@@ -513,9 +1175,29 @@
       "exit_condition": "运维提供 s2s-app 日志只读片段，或厂商推送凭据到位后随 T3-03 一并复核"
     },
     {
-      "item": "PT-01 ~ PT-05 读接口压测",
-      "reason": "需显式批准后方可在正式环境执行",
-      "exit_condition": "批准后按 1–3 并发 × 1 分钟起步"
+      "item": "IT-16 release 包契约渲染（category_id=10101）",
+      "reason": "release 包已确认可正常取数与渲染分类树（A-20 截图 02/03），但图层弹层只暴露 L1 与一次 L2 下钻，未暴露 L3 分类入口，adb 无法构造 category_id=10101 的筛选条件",
+      "exit_condition": "前端补 L3 分类下钻入口或提供 deep-link/测试入口后复跑"
+    },
+    {
+      "item": "T2-02 弱网与手感（MC-05、PT-13）",
+      "reason": "本机无网络限速工具（clumsy/mitmproxy 均未安装），release 包基址编译期固定、无法改指向本地代理；adb 无系统级丢包/延迟注入能力",
+      "exit_condition": "安装 clumsy 或提供可注入 3G/200ms/1% 丢包的工具后执行"
+    },
+    {
+      "item": "T2-03 机型兼容矩阵（MC-06）",
+      "reason": "当前仅 1 台真机（Redmi 21091116C），无第二台 Android 与 iOS 设备",
+      "exit_condition": "提供 ≥3 台设备（含 iOS）后按同套 adb 编舞复跑"
+    },
+    {
+      "item": "T2-04 实时与消息（IT-09、PT-14、MC-12）",
+      "reason": "需两台同时在线设备；当前仅 1 台真机，无模拟器/第二客户端",
+      "exit_condition": "提供第二台设备后执行"
+    },
+    {
+      "item": "T2-05 管理端与合规（IT-14、MC-08/09/10）",
+      "reason": "无管理员测试账号（/admin/login 走独立 RBAC，仓库与部署配置均无默认凭据）；法务审阅未启动",
+      "exit_condition": "提供 super_admin / auditor 测试账号与法务口径后执行"
     }
   ]
 }

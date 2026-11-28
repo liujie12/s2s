@@ -29,9 +29,12 @@ spring:
 logging:
   level:
     root: WARN
-    # 生产环境只记 WARN 及以上，避免 INFO 日志量过大
-    # 如果出现需排查的线上问题，通过 Actuator 动态调整日志级别，
-    # 不重启容器（POST /actuator/loggers/com.s2s -d '{"configuredLevel":"DEBUG"}'）
+    # 生产环境只记 WARN 及以上，避免 INFO 日志量过大。
+    # 副作用（DEF-07，2026-11-14 实测）：com.s2s 的业务 INFO（如各定时任务的
+    # 「清理 N 行」「结算 M 条」）在此档位下不落盘，任务验证以库侧终态或 WARN/ERROR 行判据。
+    # 临时排障要提级：先把下方 exposure.include 临时加 loggers 并重启，再
+    # POST /actuator/loggers/com.s2s -d '{"configuredLevel":"INFO"}'；
+    # 当前仅暴露 health，直接调该端点会 404（原注释「不重启容器」与配置矛盾，已订正）。
     com.s2s: WARN
     # 访问日志独立 logger 显式放行（[122] U2/KTD5）：不落 com.s2s 层级，
     # 若不放行会被 root: WARN 压制——每请求一条 INFO（8 字段之 path/code/rt_ms），
