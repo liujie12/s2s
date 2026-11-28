@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>I2a · 视觉基座 Token 候选板 v0.2</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --primary:#0B7C8C;--primary-dark:#075E6B;--primary-light:#E6F6F8;
+  --accent:#B4531A;--text:#1F2937;--text-2:#6B7280;--text-3:#9CA3AF;
+  --border:#E5E7EB;--bg:#F8FAFC;--surface:#FFFFFF;--error:#EF4444;
+  --font:"Inter","HarmonyOS Sans SC","PingFang SC","Source Han Sans SC","Noto Sans SC","Microsoft YaHei",sans-serif;
+}
+body{background:#EEF1F4;padding:24px;font-family:var(--font);color:var(--text)}
+.board{display:flex;flex-direction:column;gap:24px;align-items:center}
+.frame{width:390px;background:var(--surface);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:12px}
+.tag{font-size:11px;line-height:16px;font-weight:500;color:var(--primary);letter-spacing:1px}
+.title{font-size:28px;line-height:40px;font-weight:700}
+.h{font-size:22px;line-height:32px;font-weight:700}
+.sub{font-size:17px;line-height:24px;font-weight:600}
+.strong{font-size:15px;line-height:24px;font-weight:600}
+.body{font-size:13px;line-height:20px;font-weight:400}
+.meta{font-size:12px;line-height:20px;font-weight:400;color:var(--text-2)}
+.note{font-size:12px;line-height:20px;font-weight:400;color:var(--error)}
+.row{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--border)}
+.row:last-child{border-bottom:0}
+.k{font-size:12px;line-height:20px;color:var(--text-2);min-width:96px}
+.v{font-size:13px;line-height:20px}
+.swatches{display:flex;gap:8px;flex-wrap:wrap}
+.sw{width:64px;height:64px;border-radius:8px;border:1px solid var(--border);display:flex;align-items:flex-end;justify-content:center;padding:4px;font-size:11px;line-height:16px;font-weight:500}
+.hero{background:var(--primary-light);border-radius:12px;padding:16px;display:flex;align-items:center;gap:12px}
+.hero .dot{width:96px;height:96px;border-radius:24px;background:var(--primary);flex:0 0 auto}
+.shadow-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;box-shadow:0 2px 8px rgba(31,41,55,0.06)}
+.shadow-float{background:var(--surface);border-radius:12px;padding:12px;box-shadow:0 8px 24px rgba(31,41,55,0.10)}
+table{width:100%;border-collapse:collapse}
+th,td{text-align:left;padding:8px 0;border-bottom:1px solid var(--border);font-size:12px;line-height:20px;font-weight:400}
+th{font-weight:600;color:var(--text-2)}
+</style>
+</head>
+<body>
+<div class="board">
+
+  <section class="frame">
+    <span class="tag">I2A · 候选 v0.2 · 未锁真源</span>
+    <h1 class="title">视觉基座 Token 板</h1>
+    <p class="body">依据 U-20：7 档字阶、字重 ≤4、行高与间距落 4px 基线、字体栈显式含中文回退、主色面积分档、card / float 两档光影。字阶采用设计能力库 J34 的七档取值。本板为设计候选，评审通过前不改 <span class="strong">code.js</span> 与 Dart 真源。</p>
+    <p class="note">未签字前不得进入编码（plan §0 硬规则 1）。</p>
+  </section>
+
+  <section class="frame">
+    <h2 class="h">1 · 字体栈</h2>
+    <p class="body">Inter → 系统中文字体，显式登记，不依赖默认回退。</p>
+    <div class="row"><span class="k">字族</span><span class="v">Inter, HarmonyOS Sans SC, PingFang SC, Source Han Sans SC, Noto Sans SC, Microsoft YaHei</span></div>
+    <div class="row"><span class="k">字重</span><span class="v">400 Regular / 500 Medium / 600 SemiBold / 700 Bold（≤4 档）</span></div>
+    <div class="row"><span class="k">数字</span><span class="v">价格与距离启用等宽数字特性（tabular-nums）</span></div>
+    <div class="row"><span class="k">中文包</span><span class="v">不引入字体包，仅走系统字体</span></div>
+  </section>
+
+  <section class="frame">
+    <h2 class="h">2 · 七档字阶（库 J34 取值）</h2>
+    <div class="row"><span class="k">display 28 / 700</span><span style="font-size:28px;line-height:40px;font-weight:700">¥ 3500</span></div>
+    <div class="row"><span class="k">h1 22 / 700</span><span style="font-size:22px;line-height:32px;font-weight:700">页面主标题</span></div>
+    <div class="row"><span class="k">h2 17 / 600</span><span style="font-size:17px;line-height:24px;font-weight:600">区块标题</span></div>
+    <div class="row"><span class="k">h3 15 / 600</span><span style="font-size:15px;line-height:24px;font-weight:600">卡片标题两行以内</span></div>
+    <div class="row"><span class="k">body 13 / 400</span><span style="font-size:13px;line-height:20px">正文与表单标签</span></div>
+    <div class="row"><span class="k">small 12 / 400</span><span style="font-size:12px;line-height:20px;color:var(--text-2)">距离 · 时间 · 元信息</span></div>
+    <div class="row"><span class="k">caption 11 / 500</span><span style="font-size:11px;line-height:16px;font-weight:500">角标与最小标签</span></div>
+  </section>
+
+  <section class="frame">
+    <h2 class="h">3 · 迁移映射</h2>
+    <table>
+      <tr><th>旧值</th><th>新值</th><th>处理</th></tr>
+      <tr><td>11 caption</td><td>11 caption</td><td>不变</td></tr>
+      <tr><td>12 small</td><td>12 small</td><td>不变</td></tr>
+      <tr><td>14 body</td><td>13 body</td><td>正文降 1px，行高 20 不变</td></tr>
+      <tr><td>16 h3</td><td>15 h3</td><td>卡片标题降 1px</td></tr>
+      <tr><td>18 h2</td><td>17 h2</td><td>导航与区块标题降 1px</td></tr>
+      <tr><td>24 h1</td><td>22 h1</td><td>页面主标题降 2px</td></tr>
+      <tr><td>—</td><td>28 display</td><td>详情价格、发布成功等大数字场景</td></tr>
+    </table>
+    <p class="meta">价格层级：卡片价格 22 / 元信息 12，比值 1.83，满足 G3 的 ≥1.5。</p>
+  </section>
+
+  <section class="frame">
+    <h2 class="h">4 · 间距与圆角（4px 网格）</h2>
+    <div class="row"><span class="k">间距</span><span class="v">4 / 8 / 12 / 16 / 24 / 32</span></div>
+    <div class="row"><span class="k">圆角</span><span class="v">4 / 8 / 12 / 16 / full</span></div>
+    <div class="row"><span class="k">行高</span><span class="v">16 / 20 / 24 / 32 / 40（全部 4 的倍数）</span></div>
+    <div class="row"><span class="k">栅格</span><span class="v">页面左右 16，卡片内 12，元素间 8</span></div>
+  </section>
+
+  <section class="frame">
+    <h2 class="h">5 · 光影两档</h2>
+    <div class="shadow-card"><p class="strong">elevation/card</p><p class="meta">0 2 8 rgba(31,41,55,0.04) · 列表卡与内容卡</p></div>
+    <div class="shadow-float"><p class="strong">elevation/float</p><p class="meta">0 2 8 rgba(31,41,55,0.12) · 搜索胶囊、FAB、选中信息卡</p></div>
+    <p class="meta">阴影取环境冷灰（text-primary 色相），不用纯黑；两档之外不得自行发明阴影。</p>
+  </section>
+
+  <section class="frame">
+    <h2 class="h">6 · 色彩预算与对比度</h2>
+    <div class="hero"><div class="dot"></div><div><p class="strong">主色面积预算</p><p class="meta">内容帧 ≤24%，地图帧 ≤36%；主色只承担操作，不兼任分类</p></div></div>
+    <table>
+      <tr><th>组合</th><th>比值</th><th>判定</th></tr>
+      <tr><td>text-primary / surface</td><td>14.68</td><td>通过</td></tr>
+      <tr><td>text-secondary / surface</td><td>4.83</td><td>通过</td></tr>
+      <tr><td>text-secondary / background</td><td>4.62</td><td>通过</td></tr>
+      <tr><td>surface / primary</td><td>4.91</td><td>通过</td></tr>
+      <tr><td>surface / primary-dark</td><td>7.44</td><td>通过</td></tr>
+      <tr><td>text-placeholder / surface</td><td>2.54</td><td>弃用</td></tr>
+    </table>
+    <p class="meta">占位文案改用 text-secondary（4.83 / 4.62）；text-placeholder 仅保留为禁用态且不承载信息，不再用于输入提示。</p>
+    <div class="swatches">
+      <span class="sw" style="background:#0B7C8C;color:#FFFFFF">primary</span>
+      <span class="sw" style="background:#075E6B;color:#FFFFFF">dark</span>
+      <span class="sw" style="background:#E6F6F8;color:#1F2937">light</span>
+      <span class="sw" style="background:#1F2937;color:#FFFFFF">text</span>
+      <span class="sw" style="background:#6B7280;color:#FFFFFF">text-2</span>
+      <span class="sw" style="background:#E5E7EB;color:#1F2937">border</span>
+    </div>
+  </section>
+
+  <section class="frame">
+    <h2 class="h">7 · 验收清单</h2>
+    <div class="row"><span class="k">J34</span><span class="v">字号恰 7 档：11 / 12 / 13 / 15 / 17 / 22 / 28</span></div>
+    <div class="row"><span class="k">J5</span><span class="v">字体栈显式含中文字体回退</span></div>
+    <div class="row"><span class="k">J32</span><span class="v">间距、行高全部落 4px 网格</span></div>
+    <div class="row"><span class="k">J28</span><span class="v">主色面积内容帧 ≤24% / 地图帧 ≤36%</span></div>
+    <div class="row"><span class="k">五处一致</span><span class="v">真源 / Dart / 规范 / PRD 规格表 / 两个 probe</span></div>
+    <p class="meta">评审通过后才改 code.js，再跑两个导出脚本与两个 probe；生成物禁止手改。</p>
+  </section>
+
+</div>
+</body>
+</html>

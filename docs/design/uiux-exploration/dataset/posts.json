@@ -1,0 +1,60 @@
+{
+  "batch": "demo-2026-11-17-a",
+  "disclaimer": "演示数据（非真实供给）",
+  "viewport": "390x844",
+  "frozen_at": "2026-11-17",
+  "notes": "全部为演示内容：标题与描述为虚构，地址仅到区县，联系方式已打码，昵称头像为占位。禁止据此宣称真实供给密度、热度、在线状态或竞争地位。",
+  "categories": [
+    { "code": "house", "l2": "找房" },
+    { "code": "seek", "l2": "求租" },
+    { "code": "repair", "l2": "维修" },
+    { "code": "moving", "l2": "搬家" },
+    { "code": "cleaning", "l2": "保洁" },
+    { "code": "secondhand", "l2": "二手" }
+  ],
+  "posts": [
+    { "id": "demo-01", "l2": "找房", "type": "offer", "title": "整租两居 拎包入住", "desc": "南北通透，家电齐全，可月付。", "price": 3200, "priceUnit": "元/月", "hasImage": true, "mediaKind": "glyph-cover", "district": "桥东区", "completeness": 3 },
+    { "id": "demo-02", "l2": "找房", "type": "offer", "title": "合租次卧 近地铁", "desc": "限一人，押一付三。", "price": 1500, "priceUnit": "元/月", "hasImage": false, "mediaKind": null, "district": "桥西区", "completeness": 2 },
+    { "id": "demo-03", "l2": "找房", "type": "offer", "title": "短租一个月 可议", "desc": "家具简单，随时看房。", "price": null, "priceUnit": "面议", "hasImage": false, "mediaKind": null, "district": "经开区", "completeness": 2 },
+    { "id": "demo-04", "l2": "找房", "type": "offer", "title": "三居 带车位", "desc": "适合一家人，看房提前联系。", "price": 4800, "priceUnit": "元/月", "hasImage": true, "mediaKind": "glyph", "district": "宣化区", "completeness": 2 },
+
+    { "id": "demo-05", "l2": "求租", "type": "demand", "title": "求租一居 长期", "desc": "希望有独立厨卫，稳定工作。", "price": 2500, "priceUnit": "元/月", "hasImage": true, "mediaKind": "glyph-cover", "district": "桥东区", "completeness": 3 },
+    { "id": "demo-06", "l2": "求租", "type": "demand", "title": "求租单间 可合租", "desc": "预算有限，希望离单位近。", "price": 1200, "priceUnit": "元/月", "hasImage": false, "mediaKind": null, "district": "桥西区", "completeness": 1 },
+    { "id": "demo-07", "l2": "求租", "type": "demand", "title": "求租整租 面议", "desc": "一家人，希望安静小区。", "price": null, "priceUnit": "面议", "hasImage": false, "mediaKind": null, "district": "万全区", "completeness": 2 },
+    { "id": "demo-08", "l2": "求租", "type": "demand", "title": "求租学区附近", "desc": "孩子上学方便优先。", "price": 3500, "priceUnit": "元/月", "hasImage": false, "mediaKind": null, "district": "经开区", "completeness": 2 },
+
+    { "id": "demo-09", "l2": "维修", "type": "offer", "title": "空调上门维修", "desc": "不制冷、漏水均可处理，上门费透明。", "price": 80, "priceUnit": "元起", "hasImage": true, "mediaKind": "glyph-cover", "district": "桥东区", "completeness": 3 },
+    { "id": "demo-10", "l2": "维修", "type": "offer", "title": "水管疏通 当天到", "desc": "家庭厨房卫生间管道疏通。", "price": 60, "priceUnit": "元起", "hasImage": false, "mediaKind": null, "district": "桥西区", "completeness": 2 },
+    { "id": "demo-11", "l2": "维修", "type": "offer", "title": "家电维修 价格可议", "desc": "冰箱洗衣机等常见故障。", "price": null, "priceUnit": "面议", "hasImage": false, "mediaKind": null, "district": "宣化区", "completeness": 1 },
+    { "id": "demo-12", "l2": "维修", "type": "offer", "title": "门锁更换 含安装", "desc": "普通锁芯与智能锁均可。", "price": 120, "priceUnit": "元起", "hasImage": true, "mediaKind": "glyph", "district": "崇礼区", "completeness": 3 },
+
+    { "id": "demo-13", "l2": "搬家", "type": "offer", "title": "小型搬家 一车到底", "desc": "市区内起步价含两名师傅。", "price": 200, "priceUnit": "元起", "hasImage": true, "mediaKind": "glyph-cover", "district": "经开区", "completeness": 3 },
+    { "id": "demo-14", "l2": "搬家", "type": "offer", "title": "居民搬家 可按件计", "desc": "家具拆装另议，提前一天约。", "price": 300, "priceUnit": "元起", "hasImage": false, "mediaKind": null, "district": "桥西区", "completeness": 2 },
+    { "id": "demo-15", "l2": "搬家", "type": "offer", "title": "公司搬迁 面议", "desc": "工位、文件柜统一打包。", "price": null, "priceUnit": "面议", "hasImage": false, "mediaKind": null, "district": "桥东区", "completeness": 2 },
+    { "id": "demo-16", "l2": "搬家", "type": "offer", "title": "搬运零活 随叫随到", "desc": "单件大件搬运，楼下就近。", "price": 150, "priceUnit": "元起", "hasImage": true, "mediaKind": "glyph", "district": "万全区", "completeness": 2 },
+
+    { "id": "demo-17", "l2": "保洁", "type": "offer", "title": "深度保洁 按面积计", "desc": "厨房卫生间重点处理。", "price": 180, "priceUnit": "元起", "hasImage": true, "mediaKind": "glyph-cover", "district": "桥东区", "completeness": 3 },
+    { "id": "demo-18", "l2": "保洁", "type": "offer", "title": "日常保洁 小时工", "desc": "两小时起，可固定每周。", "price": 80, "priceUnit": "元起", "hasImage": false, "mediaKind": null, "district": "桥西区", "completeness": 2 },
+    { "id": "demo-19", "l2": "保洁", "type": "offer", "title": "开荒保洁 面议", "desc": "新房入住前整体清洁。", "price": null, "priceUnit": "面议", "hasImage": false, "mediaKind": null, "district": "经开区", "completeness": 1 },
+    { "id": "demo-20", "l2": "保洁", "type": "offer", "title": "玻璃清洁 含高空", "desc": "二米以内常规窗，需现场评估。", "price": 100, "priceUnit": "元起", "hasImage": false, "mediaKind": null, "district": "宣化区", "completeness": 2 },
+
+    { "id": "demo-21", "l2": "二手", "type": "offer", "title": "九成新洗衣机", "desc": "自用两年，功能正常，自提。", "price": 650, "priceUnit": "元", "hasImage": true, "mediaKind": "glyph-cover", "district": "桥东区", "completeness": 3 },
+    { "id": "demo-22", "l2": "二手", "type": "offer", "title": "实木书桌 转让", "desc": "有使用痕迹，不包配送。", "price": 300, "priceUnit": "元", "hasImage": false, "mediaKind": null, "district": "桥西区", "completeness": 2 },
+    { "id": "demo-23", "l2": "二手", "type": "offer", "title": "旧空调 价格可议", "desc": "需自行拆机搬运。", "price": null, "priceUnit": "面议", "hasImage": false, "mediaKind": null, "district": "崇礼区", "completeness": 1 },
+    { "id": "demo-24", "l2": "二手", "type": "offer", "title": "折叠沙发 低价出", "desc": "小户型适用，可当天取。", "price": 420, "priceUnit": "元", "hasImage": true, "mediaKind": "glyph", "district": "万全区", "completeness": 2 }
+  ],
+  "boundary": [
+    { "id": "edge-01", "kind": "long-title", "note": "标题超 40 字，验证两行截断与省略号" },
+    { "id": "edge-02", "kind": "long-title", "note": "标题含中英混排与数字，验证换行不破词" },
+    { "id": "edge-03", "kind": "extreme-ratio", "note": "纵向超长占位图，验证裁剪与卡片高度" },
+    { "id": "edge-04", "kind": "extreme-ratio", "note": "横向超宽占位图，验证填充方式" },
+    { "id": "edge-05", "kind": "long-desc", "note": "描述超 300 字，验证详情展开与截断" },
+    { "id": "edge-06", "kind": "long-desc", "note": "描述含大量换行，验证段落节奏" }
+  ],
+  "constraints": {
+    "no_fake_metrics": "不出现浏览数、收藏数、成交量、在线状态、热度标识",
+    "no_real_contact": "联系方式一律打码，不出现完整手机号或微信号",
+    "district_only": "位置仅到区县，不出现小区名、楼栋、门牌",
+    "image_policy": "仅使用同骨架分类字形占位；不使用商店宣传图、竞品截图或网络抓图"
+  }
+}

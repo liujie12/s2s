@@ -1,0 +1,12 @@
+{
+  "root": ".",
+  "note": "root 相对本文件；pages 为产品页，boardPages 为规范/Token 看板（J27 等按库口径不判）。2026-11-28 加入 I2a Token 候选板。",
+  "pages": [
+    "prototype-figma/home-search-redesign.html"
+  ],
+  "frames": ".phone,.frame,.ph",
+  "boardPages": [
+    "docs/design/i2a/Token板-候选-2026-11-28.html"
+  ],
+  "baseline": ".baseline"
+}
