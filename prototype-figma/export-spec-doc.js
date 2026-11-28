@@ -42,7 +42,7 @@ const OUT = path.join(path.dirname(BASE), 'docs', '设计系统与组件规范.m
 const SOURCE_NAMES = [
   'SEMANTIC_COLORS', 'CATEGORY_COLORS', 'CATEGORY_DEEP', 'CONTRAST_PAIRS',
   'CARD_STATES', 'TYPE_SCALE', 'SPACING', 'TIGHT_GAP', 'RADIUS', 'CANVAS',
-  'MOTION', 'BUTTON_SPECS', 'TAG_SPECS', 'DOT_SIZES', 'FIELD_SPECS',
+  'MOTION', 'ELEVATION', 'BUTTON_SPECS', 'TAG_SPECS', 'DOT_SIZES', 'FIELD_SPECS',
   'EMPTY_STATE_SIZES', 'CARD_META_SLOTS', 'COMPONENT_SETS', 'TEXT_STYLE_PREFIX',
   'BUTTON_VARIANTS', 'SHELL_TABS', 'CAT_LIST',
   'hexOfRole', 'describeComponents'
@@ -233,6 +233,18 @@ ${radius}
 ### 1.5 画布规格
 
 设计画框固定 **${s.CANVAS.w} × ${s.CANVAS.h}**（iPhone 14 逻辑分辨率，与 Flutter 逻辑像素一致）。
+
+### 1.6 光影（${Object.keys(s.ELEVATION).length} 档）
+
+| 档位 | 值 | 用途 | 依据 |
+|---|---|---|---|
+${Object.keys(s.ELEVATION).map((k) => {
+  const e = s.ELEVATION[k];
+  return '| `elevation/' + k + '` | `' + e.value + '` | ' + e.usage + ' | ' + e.prd + ' |';
+}).join('\n')}
+
+阴影**不入 Figma Variables**（无阴影类型），与动效同为 annotation-only 契约；
+颜色取环境冷灰而非纯黑，两档之外不得自行发明阴影。
 `;
 }
 

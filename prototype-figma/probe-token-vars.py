@@ -164,7 +164,7 @@ type_scale = {
     for k, v in re.findall(r"([a-z0-9]+):\s*\{\s*size:\s*(\d+)", m_type.group(1))
 }
 
-check("parse TYPE_SCALE", len(type_scale) == 6, f"{len(type_scale)} 阶 {sorted(type_scale.values())}")
+check("parse TYPE_SCALE", len(type_scale) == 7, f"{len(type_scale)} 阶 {sorted(type_scale.values())}")
 check("parse SPACING", len(spacing) == 6, f"{len(spacing)} 阶 {sorted(spacing.values())}")
 check("parse RADIUS", len(radius) == 5, f"{len(radius)} 阶 {sorted(radius.values())}")
 
@@ -243,7 +243,7 @@ float_total = len(type_scale) + len(spacing) + len(radius)
 # 的形态。现在把 COLOR 也纳入实际计数。
 check(
     f"变量总数 = COLOR {color_total} + FLOAT {float_total} = {color_total + float_total}",
-    float_total == 17 and color_total == 26,
+    float_total == 18 and color_total == 26,
     f"语义 {len(semantic_colors)} + 分类 {len(category_colors)}"
     f" + 分类深色 {len(category_deep)} = COLOR {color_total}；FLOAT {float_total}",
 )
@@ -530,11 +530,23 @@ check(
 )
 
 # PRD 侧规格仍在，防止「改实现顺手改了 PRD」
+# 2026-11-28 I2a：阴影由纯黑改为环境冷灰，PRD 与 code.js ELEVATION 同步改，
+# 断言值随契约更新（纯黑会被设计能力库 J4 判为缺陷）。
 check(
     "PRD §1.4.7 阴影规格未被改动",
-    "0 2 8 rgba(0,0,0,0.04)" in prd,
+    "0 2 8 rgba(31,41,55,0.04)" in prd,
 )
 check("PRD §1.4.7 内边距规格未被改动", "内边距 lg（16）" in prd)
+
+# 光影两档：真源 ELEVATION 与 PRD 双向一致（2026-11-28 I2a）。
+# 阴影不入 Variables（无阴影类型），故 PRD 是它唯一的另一处落点，
+# 只在 PRD 里断言字面量而不回查真源，等于允许两边各自漂移。
+m_elev = re.search(r"var\s+ELEVATION\s*=\s*\{(.*?)\n\};", code, re.S)
+assert m_elev, "未找到真源表 ELEVATION"
+elev_values = re.findall(r"value:\s*'([^']+)'", m_elev.group(1))
+check("parse ELEVATION", len(elev_values) == 2, f"{len(elev_values)} 档 {elev_values}")
+for _v in elev_values:
+    check(f"PRD 收录阴影 {_v}", _v in prd)
 
 # ============================================================
 # 六之二、口径标注卡必须移出画框
@@ -940,7 +952,7 @@ reverse = [
     ),
     (
         "只改字重（size 不变）也应被 Dart 产物一致性检出",
-        lambda t: t.replace("h2:      { size: 18, weight: 'SemiBold'", "h2:      { size: 18, weight: 'Bold'"),
+        lambda t: t.replace("h2:      { size: 17, weight: 'SemiBold'", "h2:      { size: 17, weight: 'Bold'"),
         lambda c: dart_styles.get("size/h2")
         == parse_type_scale_in(c)["size/h2"],
     ),

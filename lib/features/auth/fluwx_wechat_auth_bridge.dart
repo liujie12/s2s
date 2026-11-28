@@ -14,7 +14,7 @@
 /// 组装根后传入本类，不写死在仓库源码里；AppSecret **只在服务端**，客户端不接触。
 ///
 /// **未注入 AppID 时**：[isAvailable] 为 false，`requestCode` 抛
-/// [WechatAuthUnavailableException]，登录页按既有口径提示「微信登录暂未开放」，
+/// [WechatAuthUnavailableException]，登录页按既有口径提示「微信登录暂不可用」，
 /// 与接入前的行为一致（不会崩溃、不会静默无响应）。
 library;
 

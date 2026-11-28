@@ -203,13 +203,21 @@ var CARD_STATES = [
 ];
 
 /** 字阶（PRD §1.4.4）：size 单位 px，lineHeight 为倍数 */
+/**
+ * 字阶（PRD §1.4.4）。2026-11-28 I2a：按设计能力库 J34 定为七档
+ * 11 / 12 / 13 / 15 / 17 / 22 / 28，原 6 档（24/18/16/14/12/11）作废。
+ *
+ * 行高仍以倍数存（不入 Variables），倍数的选取目标是让 size × 倍数 四舍五入后
+ * 落在 4px 基线上：28→40、22→32、17→24、15→24、13→20、12→20、11→16。
+ */
 var TYPE_SCALE = {
-  h1:      { size: 24, weight: 'Bold',     lineHeight: 1.3 },
-  h2:      { size: 18, weight: 'SemiBold', lineHeight: 1.3 },
-  h3:      { size: 16, weight: 'SemiBold', lineHeight: 1.4 },
-  body:    { size: 14, weight: 'Regular',  lineHeight: 1.5 },
-  small:   { size: 12, weight: 'Regular',  lineHeight: 1.5 },
-  caption: { size: 11, weight: 'Medium',   lineHeight: 1.2 }
+  display: { size: 28, weight: 'Bold',     lineHeight: 1.4286 },
+  h1:      { size: 22, weight: 'Bold',     lineHeight: 1.4545 },
+  h2:      { size: 17, weight: 'SemiBold', lineHeight: 1.4118 },
+  h3:      { size: 15, weight: 'SemiBold', lineHeight: 1.6 },
+  body:    { size: 13, weight: 'Regular',  lineHeight: 1.5385 },
+  small:   { size: 12, weight: 'Regular',  lineHeight: 1.6667 },
+  caption: { size: 11, weight: 'Medium',   lineHeight: 1.4545 }
 };
 
 /** 间距阶（PRD §1.4.5） */
@@ -313,6 +321,29 @@ var MOTION = {
     scene: '图层切换', dur: 200, ease: 'ease-out',
     impl: '分类 Tab 切换 Marker 颜色重刷；资源/需求切换形状立即变、颜色渐变',
     prd: 'PRD §6.8'
+  }
+};
+
+/**
+ * 光影两档（I2a，2026-11-28）。
+ *
+ * 为什么留在 code.js 而不进 Variables：`figma.createVariable` 只支持
+ * COLOR / FLOAT / STRING / BOOLEAN，没有阴影类型 —— 与 MOTION 同理，
+ * 只能作为 annotation-only 契约，由画布标注 + 规范文档承载。
+ *
+ * 颜色取环境冷灰（text-primary 色相 #1F2937），不用纯黑：纯黑阴影压在
+ * 浅灰底上会发脏，设计能力库 J4 也把纯黑判为缺陷。
+ */
+var ELEVATION = {
+  card: {
+    value: '0 2 8 rgba(31,41,55,0.04)',
+    usage: '列表卡与内容卡，替代原纯黑 0 2 8 rgba(0,0,0,0.04)',
+    prd: 'PRD §1.4.7'
+  },
+  float: {
+    value: '0 2 8 rgba(31,41,55,0.12)',
+    usage: '地图悬浮信息卡、FAB、选中态浮层',
+    prd: 'PRD §6.7'
   }
 };
 
@@ -2246,6 +2277,9 @@ function buttonRaw(label, variant, width) {
   var conf = BUTTON_SPECS[variant] || {};
 
   var b = box('btn/' + variant + '/' + label, 'HORIZONTAL', {
+    // 固定 44 高（PRD §1.8 触控下限）：字阶降到 body 13 后，12+12 内边距 + 20 行高
+    // 只有 43；靠内容撑高会随字号漂移，故显式钉住。
+    h: 44,
     padTop: SPACING.md, padBottom: SPACING.md,
     padLeft: SPACING.lg, padRight: SPACING.lg,
     fill: conf.fill, radius: conf.radius, stroke: conf.stroke,
@@ -2679,7 +2713,7 @@ function card(title, sub, catRole, meta, completeness, state) {
     strokeWeight: stateKey === 'selected' ? 1 : undefined
   });
   c.effects = [{
-    type: 'DROP_SHADOW', color: { r: 0, g: 0, b: 0, a: 0.04 },
+    type: 'DROP_SHADOW', color: { r: 0.122, g: 0.161, b: 0.216, a: 0.04 },
     offset: { x: 0, y: 2 }, radius: 8, spread: 0, visible: true, blendMode: 'NORMAL'
   }];
   // 描边不计入 Auto Layout 尺寸（2026-09-02 实机核验查出）：Figma 默认
@@ -5939,6 +5973,8 @@ function selectField(label, value, placeholder, width) {
  */
 function listRow(label, value) {
   var r = box('row/' + label, 'HORIZONTAL', {
+    // 固定 44 高：字阶降到 body 13 后 Auto Layout 撑出 43，低于 PRD §1.8 触控下限。
+    h: 44,
     w: CANVAS.w, padLeft: SPACING.lg, padRight: SPACING.lg, padTop: SPACING.md, padBottom: SPACING.md,
     fill: 'color/surface', stroke: 'color/border', align: 'CENTER', justify: 'SPACE_BETWEEN'
   });
@@ -7305,7 +7341,8 @@ function buildCategorySelector() {
     for (var i = 0; i < colData[c].length; i++) {
       // 名字带层级与文案：三列同名 _item 会让批次 5 无法唯一定位「帮厨」
       var cell = box('_item/L' + (c + 1) + '/' + colData[c][i], 'HORIZONTAL', {
-        w: CANVAS.w / 3, padTop: SPACING.md, padBottom: SPACING.md,
+        // 固定 44 高：body 降到 13 后内容撑出 43，低于 PRD §1.8 触控下限。
+        w: CANVAS.w / 3, h: 44, padTop: SPACING.md, padBottom: SPACING.md,
         padLeft: SPACING.md, padRight: SPACING.md, align: 'CENTER', gap: SPACING.xs
       });
       // 选中项取色必须跟着该列底色走（2026-08-26 实机对比度核查后修）。

@@ -12,7 +12,7 @@
 // 本文件刻意不 import 'package:flutter/material.dart'：颜色以 int 存
 // 0xAARRGGBB，任何 Dart 项目都能直接引用，消费侧自行包 Color()。
 //
-// 计数：COLOR 26 + FLOAT 17 = 43
+// 计数：COLOR 26 + FLOAT 18 = 44
 
 /// 语义色板（PRD §1.4.2）。对应 Figma 变量 color/*。
 ///
@@ -141,46 +141,53 @@ class AppTextStyleToken {
 class AppTypeScale {
   const AppTypeScale._();
 
-  /// size/h1  ·  24px / Bold / ×1.3
-  static const AppTextStyleToken h1 = AppTextStyleToken(
-    size: 24,
+  /// size/display  ·  28px / Bold / ×1.4286
+  static const AppTextStyleToken display = AppTextStyleToken(
+    size: 28,
     weight: 'Bold',
-    lineHeight: 1.3,
+    lineHeight: 1.4286,
   );
 
-  /// size/h2  ·  18px / SemiBold / ×1.3
+  /// size/h1  ·  22px / Bold / ×1.4545
+  static const AppTextStyleToken h1 = AppTextStyleToken(
+    size: 22,
+    weight: 'Bold',
+    lineHeight: 1.4545,
+  );
+
+  /// size/h2  ·  17px / SemiBold / ×1.4118
   static const AppTextStyleToken h2 = AppTextStyleToken(
-    size: 18,
+    size: 17,
     weight: 'SemiBold',
-    lineHeight: 1.3,
+    lineHeight: 1.4118,
   );
 
-  /// size/h3  ·  16px / SemiBold / ×1.4
+  /// size/h3  ·  15px / SemiBold / ×1.6
   static const AppTextStyleToken h3 = AppTextStyleToken(
-    size: 16,
+    size: 15,
     weight: 'SemiBold',
-    lineHeight: 1.4,
+    lineHeight: 1.6,
   );
 
-  /// size/body  ·  14px / Regular / ×1.5
+  /// size/body  ·  13px / Regular / ×1.5385
   static const AppTextStyleToken body = AppTextStyleToken(
-    size: 14,
+    size: 13,
     weight: 'Regular',
-    lineHeight: 1.5,
+    lineHeight: 1.5385,
   );
 
-  /// size/small  ·  12px / Regular / ×1.5
+  /// size/small  ·  12px / Regular / ×1.6667
   static const AppTextStyleToken small = AppTextStyleToken(
     size: 12,
     weight: 'Regular',
-    lineHeight: 1.5,
+    lineHeight: 1.6667,
   );
 
-  /// size/caption  ·  11px / Medium / ×1.2
+  /// size/caption  ·  11px / Medium / ×1.4545
   static const AppTextStyleToken caption = AppTextStyleToken(
     size: 11,
     weight: 'Medium',
-    lineHeight: 1.2,
+    lineHeight: 1.4545,
   );
 }
 

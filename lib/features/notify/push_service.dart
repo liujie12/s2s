@@ -143,7 +143,7 @@ class PushService {
     } on MissingPluginException {
       // 未接入该通道：静默降级。
     } on PlatformException catch (e) {
-      if (kDebugMode) debugPrint('push: 读取 token 失败 ${e.code}');
+      if (kDebugMode) debugPrint('push: 读取推送凭据失败 ${e.code}');
     }
   }
 
@@ -160,7 +160,7 @@ class PushService {
         );
         await _report(channel, token);
       } on PlatformException catch (e) {
-        if (kDebugMode) debugPrint('push: ${channel.wire} 读取 token 失败 ${e.code}');
+        if (kDebugMode) debugPrint('push: ${channel.wire} 读取推送凭据失败 ${e.code}');
       }
     }
   }
@@ -221,7 +221,9 @@ class PushService {
     try {
       await _reporter(channel, value);
     } catch (e) {
-      if (kDebugMode) debugPrint('push: token 上报失败 $e');
+      // 只记错误码/类型，不打印异常对象：异常消息可能携带请求体或推送凭据。
+      final String detail = e is PlatformException ? e.code : e.runtimeType.toString();
+      if (kDebugMode) debugPrint('push: 推送凭据上报失败 $detail');
     }
   }
 
