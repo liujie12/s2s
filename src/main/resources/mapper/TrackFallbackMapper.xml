@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.s2s.server.track.mapper.TrackFallbackMapper">
+
+    <!--
+      埋点兜底表搬运（数据库设计 §3.17；DDL V1__init_track_schema.sql）。
+
+      形态纪律：
+        * 搬运写月表必须 ON DUPLICATE KEY UPDATE id = id —— 兜底表刻意无唯一索引，
+          重复由月表 uk_event_dedup 在终点一次性消化；
+        * 严禁 INSERT IGNORE —— 不掩盖数据质量报错；
+        * 先插月表、后删兜底行（deleteByIds），中途失败只触发下次重搬，不丢行。
+
+      表名以 ${tableName} 拼接：任务侧用 TrackTableNames 生成 ^track_event_\d{6}$，
+      不接受任何外部输入。
+    -->
+    <select id="selectPending" resultType="com.s2s.server.track.dto.TrackFallbackRow">
+        SELECT id, ts
+        FROM track_event_fallback
+        ORDER BY id
+        LIMIT #{limit}
+    </select>
+
+    <insert id="relayToMonth">
+        INSERT INTO ${tableName} (event_name,
+                                  interaction_id,
+                                  user_id,
+                                  device_id,
+                                  ts,
+                                  props,
+                                  leaf_category_id,
+                                  completeness_level,
+                                  is_ai_assisted,
+                                  grid_id)
+        SELECT event_name,
+               interaction_id,
+               user_id,
+               device_id,
+               ts,
+               props,
+               leaf_category_id,
+               completeness_level,
+               is_ai_assisted,
+               grid_id
+        FROM track_event_fallback
+        WHERE id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+        ON DUPLICATE KEY UPDATE ${tableName}.id = ${tableName}.id
+    </insert>
+
+    <delete id="deleteByIds">
+        DELETE FROM track_event_fallback
+        WHERE id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </delete>
+
+</mapper>
